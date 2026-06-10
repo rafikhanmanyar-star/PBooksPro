@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
+import { requireAdminRole } from '../middleware/authMiddleware.js';
 import { getPool } from '../db/pool.js';
 import type { PersonalTaskRow } from '../services/personalTasksService.js';
 import {
@@ -15,6 +16,8 @@ import {
 } from '../services/personalTasksService.js';
 
 export const tasksRouter = Router();
+
+tasksRouter.use(requireAdminRole);
 
 function mapCalendar(grouped: Record<string, PersonalTaskRow[]>): Record<string, Record<string, unknown>[]> {
   const out: Record<string, Record<string, unknown>[]> = {};

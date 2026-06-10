@@ -8,7 +8,8 @@ alwaysApply: false
 
 ## Components
 - Use functional components with hooks
-- Extract reusable logic into custom hooks in `hooks/`
+- Prefer `useStateSelector` or domain hooks (`context/domains/`) over broad `useAppContext()`
+- Extract reusable logic into `hooks/` or `modules/<feature>/hooks/`
 - Colocate component-specific styles with the component
 
 ## Styling

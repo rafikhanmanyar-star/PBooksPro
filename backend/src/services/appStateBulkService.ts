@@ -48,6 +48,7 @@ import {
   rowToPersonalTransactionApi,
 } from './personalTransactionsService.js';
 import { listAllSettings } from './appSettingsService.js';
+import { isAdminRole } from '../middleware/authMiddleware.js';
 
 /** Max transactions returned by GET /state/bulk (use /state/bulk-chunked for larger tenants). */
 export const BULK_TRANSACTION_CAP = 50_000;
@@ -111,9 +112,11 @@ function wantEntity(canonical: BulkEntityKey, filter: Set<string> | null): boole
 export async function getBulkAppState(
   client: pg.PoolClient,
   tenantId: string,
-  entitiesQuery?: unknown
+  entitiesQuery?: unknown,
+  userRole?: string
 ): Promise<Record<string, unknown>> {
   const filter = parseEntityFilter(entitiesQuery);
+  const canAccessPersonalFinance = isAdminRole(userRole);
 
   const [
     accountRows,
@@ -184,10 +187,10 @@ export async function getBulkAppState(
     wantEntity('transactionLog', filter)
       ? listTransactionLogs(client, tenantId, { limit: 500 })
       : Promise.resolve([]),
-    wantEntity('personalCategories', filter)
+    wantEntity('personalCategories', filter) && canAccessPersonalFinance
       ? listPersonalCategories(client, tenantId)
       : Promise.resolve([]),
-    wantEntity('personalTransactions', filter)
+    wantEntity('personalTransactions', filter) && canAccessPersonalFinance
       ? listPersonalTransactions(client, tenantId)
       : Promise.resolve([]),
     wantEntity('appSettings', filter) ? listAllSettings(client, tenantId) : Promise.resolve({}),
@@ -277,10 +280,10 @@ export async function getBulkAppState(
   if (wantEntity('vendors', filter)) {
     out.vendors = vendorRows.map((r) => rowToVendorApi(r));
   }
-  if (wantEntity('personalCategories', filter)) {
+  if (wantEntity('personalCategories', filter) && canAccessPersonalFinance) {
     out.personalCategories = personalCategoryRows.map((r) => rowToPersonalCategoryApi(r));
   }
-  if (wantEntity('personalTransactions', filter)) {
+  if (wantEntity('personalTransactions', filter) && canAccessPersonalFinance) {
     out.personalTransactions = personalTransactionRows.map((r) =>
       rowToPersonalTransactionApi(r)
     );
@@ -318,7 +321,8 @@ export async function getBulkAppStateChunked(
   client: pg.PoolClient,
   tenantId: string,
   limitRaw: unknown,
-  offsetRaw: unknown
+  offsetRaw: unknown,
+  userRole?: string
 ): Promise<BulkChunkResult> {
   const limit = Math.min(Math.max(Number(limitRaw) || 200, 1), 500);
   const offset = Math.max(Number(offsetRaw) || 0, 0);
@@ -328,7 +332,7 @@ export async function getBulkAppStateChunked(
   const totals: Record<string, number> = { transactions: txTotal };
 
   if (offset === 0) {
-    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES);
+    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES, userRole);
     Object.assign(entities, staticState);
     for (const [key, val] of Object.entries(staticState)) {
       if (Array.isArray(val)) totals[key] = val.length;

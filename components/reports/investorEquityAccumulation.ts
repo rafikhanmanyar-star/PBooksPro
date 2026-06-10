@@ -1,4 +1,5 @@
-import { AccountType, AppState, TransactionType } from '../../types';
+import { AppState, TransactionType } from '../../types';
+import { getInvestorEquityAccounts } from '../investmentManagement/equityMetrics';
 
 type InvestorMapEntry = { name: string; invested: number; withdrawn: number; profit: number };
 
@@ -11,7 +12,7 @@ export function accumulateInvestorMapForProject(
     asOf: Date,
     projectId: string | 'all'
 ): Record<string, InvestorMapEntry> {
-    const equityAccounts = state.accounts.filter((a) => a.type === AccountType.EQUITY);
+    const equityAccounts = getInvestorEquityAccounts(state);
     const equityAccountIds = new Set(equityAccounts.map((a) => a.id));
     const investorMap: Record<string, InvestorMapEntry> = {};
 

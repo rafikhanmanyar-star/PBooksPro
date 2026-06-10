@@ -250,6 +250,7 @@ npm run dev:backend:production
 | `npm run electron:dev` | Electron dev mode (local SQLite build) |
 | `npm run electron:local` | Same as electron:dev |
 | `npm run electron:installer` | Build offline SQLite installer → `release/` (no publish) |
+| `npm run icons:generate` | Regenerate app icons (ICO/ICNS/PNG) from `pbookspro logo.png` → `electron/assets/`, `public/` |
 | `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10) |
 | `npm run prepare-local-db` | Rewrite tenant/user IDs in local SQLite DB |
 | `npm run clear-local-transactions` | Clear transactions from local SQLite DB |

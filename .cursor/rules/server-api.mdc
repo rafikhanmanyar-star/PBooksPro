@@ -1,22 +1,25 @@
 ---
 description: Server API routes and middleware conventions
-globs: "server/**/*.ts"
+globs: backend/**/*.ts
 alwaysApply: false
 ---
 
 # Server API Conventions
 
+See `architecture-backend.mdc` for full backend architecture. Quick reference:
+
 ## Routes
-- Each route file: `import { Router } from 'express'`; export `router`
-- Use `getDatabaseService()` or equivalent for DB access (lazy init)
-- Return JSON: `res.status(code).json({ error?, ...data })`
+- File: `backend/src/routes/*Routes.ts`; export `*Router`
+- Thin handlers: validate → call service → `sendSuccess` / `handleRouteError`
+- SQL belongs in `backend/src/services/`, not route files
 
 ## Auth & Tenant
-- Apply `tenantMiddleware(pool)` for tenant-scoped routes
-- `req.tenantId`, `req.userId`, `req.user` available after middleware
-- Admin routes use `adminAuthMiddleware` / `adminOnlyMiddleware`
+- Mount with `authMiddleware` + `requireActiveSubscription()` in `backend/src/index.ts`
+- `req.tenantId`, `req.userId`, `req.role` on `AuthedRequest` after auth
+- RBAC: `requirePermission('feature.action')` or mount-level `requirePermissionWhenPathStartsWith`
+- Admin portal: `backend/src/adminPortal/` with `adminAuthMiddleware`
 
 ## Errors
-- Validate input; return 400 with clear message for bad requests
-- Use rate limiting for public endpoints (e.g. login, lookup)
-- Log failures with `console.error`; avoid exposing internals to client
+- Validate input; `sendFailure(res, 400, 'message')` for bad requests
+- Rate limiting on public endpoints (login, lookup)
+- Log with `console.error`; never expose internals to client

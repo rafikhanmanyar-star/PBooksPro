@@ -136,7 +136,7 @@ const InvestmentDashboard: React.FC = () => {
         {
             label: 'Investor accounts',
             value: String(investorCount),
-            sub: 'Excluding template Owner Equity',
+            sub: 'User-created investor equity accounts only',
             status: 'up' as const,
             icon: Users,
             color: 'text-purple-600',

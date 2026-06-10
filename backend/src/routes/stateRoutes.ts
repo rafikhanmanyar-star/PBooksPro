@@ -21,7 +21,7 @@ stateRouter.get('/state/bulk', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const payload = await getBulkAppState(client, tenantId, req.query.entities);
+      const payload = await getBulkAppState(client, tenantId, req.query.entities, req.role);
       sendSuccess(res, payload);
     } finally {
       client.release();
@@ -46,7 +46,8 @@ stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
         client,
         tenantId,
         req.query.limit,
-        req.query.offset
+        req.query.offset,
+        req.role
       );
       sendSuccess(res, payload);
     } finally {
@@ -66,7 +67,7 @@ stateRouter.get('/state/changes', async (req: AuthedRequest, res) => {
   }
   const sinceRaw = typeof req.query.since === 'string' ? req.query.since : '';
   try {
-    const payload = await withTransaction((c) => getStateChanges(c, tenantId, sinceRaw));
+    const payload = await withTransaction((c) => getStateChanges(c, tenantId, sinceRaw, req.role));
     sendSuccess(res, payload);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

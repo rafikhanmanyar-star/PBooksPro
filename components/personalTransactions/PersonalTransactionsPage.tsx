@@ -11,6 +11,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import { isAdminRole } from '../../hooks/useRecordLock';
 
 const LoanManagementPage = lazy(() => import('../loans/LoanManagementPage'));
 
@@ -34,12 +35,8 @@ const PersonalTransactionsPage: React.FC = () => {
   const currentUserRole = useStateSelector(s => s.currentUser?.role);
   const companyCtx = useCompanyOptional();
 
-  const isAdmin =
-    user?.role === 'Admin' ||
-    user?.role === 'SUPER_ADMIN' ||
-    currentUserRole === 'Admin' ||
-    currentUserRole === 'SUPER_ADMIN' ||
-    companyCtx?.authenticatedUser?.role === 'SUPER_ADMIN';
+  const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
+  const isAdmin = isAdminRole(effectiveRole);
 
   useEffect(() => {
     if (isAdmin && isLocalOnlyMode()) {

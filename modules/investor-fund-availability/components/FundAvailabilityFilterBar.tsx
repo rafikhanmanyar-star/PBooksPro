@@ -3,7 +3,7 @@ import Input from '../../../components/ui/Input';
 import Button from '../../../components/ui/Button';
 import ComboBox from '../../../components/ui/ComboBox';
 import type { AppState } from '../../../types';
-import { AccountType } from '../../../types';
+import { getInvestorEquityAccounts } from '../../../components/investmentManagement/equityMetrics';
 import { useFundAvailabilityFiltersStore } from '../store/fundAvailabilityFiltersStore';
 import type { FundAvailabilityRow } from '../types/fundAvailability.types';
 import { uniqueCities, uniqueDistributionCycleKeys } from '../services/investorFundAvailability.service';
@@ -27,7 +27,7 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
         useFundAvailabilityFiltersStore();
     const [presetName, setPresetName] = useState('');
 
-    const equityAccounts = useMemo(() => state.accounts.filter((a) => a.type === AccountType.EQUITY), [state.accounts]);
+    const investorAccounts = useMemo(() => getInvestorEquityAccounts(state), [state]);
 
     const cities = useMemo(() => ['all', ...uniqueCities(allRows)], [allRows]);
 
@@ -44,8 +44,8 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
     ).map(([id, name]) => ({ id, name }));
 
     const investorItems = useMemo(
-        () => [{ id: 'all', name: 'All investors' }, ...equityAccounts.map((a) => ({ id: a.id, name: a.name }))],
-        [equityAccounts]
+        () => [{ id: 'all', name: 'All investors' }, ...investorAccounts.map((a) => ({ id: a.id, name: a.name }))],
+        [investorAccounts]
     );
 
     const projectItems = useMemo(

@@ -74,6 +74,7 @@ import {
   rowToSalaryComponentApi,
   rowToTenantConfigApi,
 } from './payrollService.js';
+import { isAdminRole } from '../middleware/authMiddleware.js';
 
 export type StateChangesPayload = {
   since: string;
@@ -86,12 +87,14 @@ export type StateChangesPayload = {
 export async function getStateChanges(
   client: pg.PoolClient,
   tenantId: string,
-  sinceIso: string
+  sinceIso: string,
+  userRole?: string
 ): Promise<StateChangesPayload> {
   const since = sinceIso ? new Date(sinceIso) : new Date(0);
   if (Number.isNaN(since.getTime())) {
     throw new Error('Invalid since timestamp');
   }
+  const canAccessPersonalFinance = isAdminRole(userRole);
 
   const [
     vendorRows,
@@ -152,8 +155,12 @@ export async function getStateChanges(
     listSalaryComponentsChangedSince(client, tenantId, since),
     listPayrollProjectsChangedSince(client, tenantId, since),
     getTenantConfigIfChangedSince(client, tenantId, since),
-    listPersonalCategoriesChangedSince(client, tenantId, since),
-    listPersonalTransactionsChangedSince(client, tenantId, since),
+    canAccessPersonalFinance
+      ? listPersonalCategoriesChangedSince(client, tenantId, since)
+      : Promise.resolve([]),
+    canAccessPersonalFinance
+      ? listPersonalTransactionsChangedSince(client, tenantId, since)
+      : Promise.resolve([]),
     listPmCycleAllocationsChangedSince(client, tenantId, since),
     listPlanAmenitiesChangedSince(client, tenantId, since),
     listInstallmentPlansChangedSince(client, tenantId, since),
@@ -208,8 +215,12 @@ export async function getStateChanges(
     payroll_salary_components: payrollSalaryComponentRows.map((r) => rowToSalaryComponentApi(r)),
     payroll_projects: payrollProjectRows.map((r) => rowToPayrollProjectApi(r)),
     payroll_tenant_config: payrollConfigRow ? [rowToTenantConfigApi(payrollConfigRow)] : [],
-    personal_categories: personalCategoryRows.map((r) => rowToPersonalCategoryApi(r)),
-    personal_transactions: personalTransactionRows.map((r) => rowToPersonalTransactionApi(r)),
+    ...(canAccessPersonalFinance
+      ? {
+          personal_categories: personalCategoryRows.map((r) => rowToPersonalCategoryApi(r)),
+          personal_transactions: personalTransactionRows.map((r) => rowToPersonalTransactionApi(r)),
+        }
+      : {}),
     plan_amenities: planAmenityRows.map((r) => rowToPlanAmenityApi(r)),
     installment_plans: installmentPlanRows.map((r) => rowToInstallmentPlanApi(r)),
   };

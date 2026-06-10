@@ -1,0 +1,65 @@
+---
+description: Frontend architecture — state, API client, navigation, and component organization
+globs: "{components/**,hooks/**,services/**,context/**,modules/**,stores/**}/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Frontend Architecture
+
+## State Management (pick the right layer)
+
+| Layer | Use when |
+|-------|----------|
+| `useStateSelector` / domain hooks | Reading slices of AppContext (`context/domains/`) — **preferred for new code** |
+| `useDispatchOnly()` | Component only dispatches, never reads state |
+| React Query (`hooks/queries/`) | Server-fetched or report data; add keys to `queryKeys.ts` |
+| Zustand (`stores/`) | Ephemeral UI state decoupled from AppContext (e.g. dashboard filters) |
+| AppContext reducer | Core entities that must persist/sync (accounts, transactions, invoices) |
+
+Do not duplicate server-fetched report data in AppContext when a React Query hook exists.
+
+Pure state transitions → `context/reducers/`; I/O (hydration, socket, save) → `AppContext.tsx` provider.
+
+## API Client Layer
+
+- Singleton: `services/api/client.ts` (`apiClient`) — JWT, tenant ID, base URL, error parsing
+- Per-entity repos: `services/api/repositories/*Api.ts` with `normalize*FromApi()`
+- Thin feature APIs: `services/api/*Api.ts` for non-CRUD endpoints
+
+## Navigation (not React Router)
+
+1. Add page to `Page` union in `types.ts`
+2. Add to `PAGE_GROUPS` and lazy import in `App.tsx` (`lazyWithRetry`)
+3. Wire Sidebar / `utils/appNavigation.ts` for deep links
+
+## Component Organization
+
+```
+components/layout/     — Header, Sidebar, Footer
+components/ui/           — design system primitives (see doc/DESIGN_SYSTEM.md)
+components/<domain>/     — feature pages and modals
+components/reports/      — report UIs + calculation engines
+components/erp/            — shared table/skeleton patterns
+modules/<feature>/       — self-contained feature (hooks + UI colocated)
+```
+
+## New Frontend Feature Checklist
+
+1. Types in `types/` or root `types.ts`
+2. API repo in `services/api/repositories/` or `services/api/`
+3. React Query hook in `hooks/queries/` (if server-backed)
+4. UI in `components/<domain>/` or `modules/<feature>/`
+5. Navigation wiring (Page, PAGE_GROUPS, Sidebar)
+6. Permissions: `usePermissions()` / `hooks/usePermissions.ts`
+
+## Styling
+
+- Tailwind CSS + semantic tokens from `styles/design-tokens.css`
+- Icons: `lucide-react`
+- Entity CRUD modals: `hooks/useEntityFormModal`
+
+## Local-Only (SQLite) Path
+
+- Schema changes: `services/database/schema.ts` → `npm run electron:extract-schema`
+- Access via database service / Electron IPC — never raw SQL from components
+- `unifiedDatabaseService.query()` throws by design in API mode

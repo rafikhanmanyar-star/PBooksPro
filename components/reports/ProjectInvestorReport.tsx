@@ -1,7 +1,7 @@
 
 import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { TransactionType, AccountType, AppState } from '../../types';
+import { TransactionType, AppState } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -17,6 +17,7 @@ import { useWhatsApp } from '../../context/WhatsAppContext';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { accumulateInvestorMapForProject } from './investorEquityAccumulation';
+import { getInvestorEquityAccounts } from '../investmentManagement/equityMetrics';
 
 interface InvestorRow {
     accountId: string;
@@ -91,9 +92,9 @@ const ProjectInvestorReport: React.FC = () => {
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...state.projects], [state.projects]);
     
     const investorItems = useMemo(() => {
-        const investors = state.accounts.filter(a => a.type === AccountType.EQUITY);
+        const investors = getInvestorEquityAccounts(state);
         return [{ id: 'all', name: 'All Investors' }, ...investors];
-    }, [state.accounts]);
+    }, [state]);
 
     const handleRangeChange = (type: ReportDateRange) => {
         setDateRange(type);

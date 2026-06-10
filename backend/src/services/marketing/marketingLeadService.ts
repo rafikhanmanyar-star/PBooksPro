@@ -5,6 +5,7 @@ import type pg from 'pg';
 import { getPool } from '../../db/pool.js';
 
 import { enrollLeadInSequence } from './emailSequenceService.js';
+import { logger } from '../../utils/logger.js';
 
 
 
@@ -343,11 +344,18 @@ export async function createMarketingLead(
 
   const lead = insert.rows[0];
 
-  const enrollmentId = await enrollLeadInSequence(client, lead.id, input.source);
+  let enrollmentId: string | undefined;
+  try {
+    enrollmentId = (await enrollLeadInSequence(client, lead.id, input.source)) ?? undefined;
+  } catch (e) {
+    logger.warn('[marketing] Lead saved but email enrollment failed', {
+      leadId: lead.id,
+      source: input.source,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 
-
-
-  return { lead, isNew: true, enrollmentId: enrollmentId ?? undefined };
+  return { lead, isNew: true, enrollmentId };
 
 }
 

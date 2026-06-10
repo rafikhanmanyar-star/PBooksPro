@@ -7,7 +7,7 @@ import { useProfitabilityFiltersStore } from '../store/profitabilityFiltersStore
 import type { ProjectProfitabilityRow } from '../types/profitability.types';
 import { uniqueCities, uniqueProjectTypes } from '../services/projectProfitability.service';
 import type { AppState } from '../../../types';
-import { AccountType } from '../../../types';
+import { getInvestorEquityAccounts } from '../../../components/investmentManagement/equityMetrics';
 
 export interface ProfitabilityFilterBarProps {
     state: AppState;
@@ -29,7 +29,7 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
     const { filters, setFilter, resetFilters, savePreset, loadPreset, deletePreset, savedPresets } = useProfitabilityFiltersStore();
     const [presetName, setPresetName] = useState('');
 
-    const equityAccounts = useMemo(() => state.accounts.filter((a) => a.type === AccountType.EQUITY), [state.accounts]);
+    const investorAccounts = useMemo(() => getInvestorEquityAccounts(state), [state]);
     const projectTypes = useMemo(() => ['all', ...uniqueProjectTypes(allRows)], [allRows]);
     const cities = useMemo(() => ['all', ...uniqueCities(allRows)], [allRows]);
 
@@ -46,8 +46,8 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
     const statusItems = ['all', 'Active', 'Completed', 'On Hold', 'Closed'].map((s) => ({ id: s, name: s === 'all' ? 'All statuses' : s }));
 
     const investorItems = useMemo(
-        () => [{ id: 'all', name: 'All investors' }, ...equityAccounts.map((a) => ({ id: a.id, name: a.name }))],
-        [equityAccounts]
+        () => [{ id: 'all', name: 'All investors' }, ...investorAccounts.map((a) => ({ id: a.id, name: a.name }))],
+        [investorAccounts]
     );
 
     const projectItems = useMemo(() => {

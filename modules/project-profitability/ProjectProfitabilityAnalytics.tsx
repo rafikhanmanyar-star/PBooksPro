@@ -12,12 +12,16 @@ import { usePrintContext } from '../../context/PrintContext';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import {
+    CollectionTrendChart,
     MonthlyProfitTrendChart,
     ProjectStatusDonutChart,
     RevenueVsExpenseChart,
     RoiComparisonChart,
+    SalesTrendChart,
     TopProfitableProjectsChart,
+    UnitStatusDonutChart,
 } from './charts/ProfitabilityCharts';
+import { ProjectSummaryKpiStrip } from './components/ProjectSummaryKpiStrip';
 import { ColumnSettingsMenu, ProfitabilityDataTable } from './components/ProfitabilityDataTable';
 import { exportProfitabilityCsv, exportProfitabilityExcel, exportProfitabilityPdf } from './components/exportProfitability';
 import { ProfitabilityFilterBar } from './components/ProfitabilityFilterBar';
@@ -25,6 +29,7 @@ import { ProfitabilityKpiStrip } from './components/ProfitabilityKpiStrip';
 import { ProjectProfitabilityDrawer } from './components/ProjectProfitabilityDrawer';
 import {
     useFilteredProfitabilityRows,
+    usePortfolioCollectionTrendQuery,
     usePortfolioMonthlyTrendQuery,
     useProfitabilityPermissions,
     useProjectProfitabilityDetailsQuery,
@@ -75,6 +80,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
 
     const summaryQuery = useProjectProfitabilitySummaryQuery(state, endDate);
     const monthlyQuery = usePortfolioMonthlyTrendQuery(state, endDate);
+    const collectionQuery = usePortfolioCollectionTrendQuery(state, endDate);
     const focusedProjectId = filters.projectId && filters.projectId !== 'all' ? filters.projectId : null;
     const projectDetailsQuery = useProjectProfitabilityDetailsQuery(state, focusedProjectId, endDate, !!focusedProjectId);
 
@@ -121,6 +127,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     const handleRefresh = useCallback(() => {
         void queryClient.invalidateQueries({ queryKey: ['project-profitability-summary'] });
         void queryClient.invalidateQueries({ queryKey: ['project-profitability-monthly'] });
+        void queryClient.invalidateQueries({ queryKey: ['project-profitability-collection'] });
         void queryClient.invalidateQueries({ queryKey: ['project-profitability-details'] });
     }, [queryClient]);
 
@@ -210,8 +217,15 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
             </div>
 
             {displaySummary && (
-                <div className="print:hidden">
-                    <ProfitabilityKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
+                <div className="print:hidden space-y-4">
+                    <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Project summary</p>
+                        <ProjectSummaryKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
+                    </div>
+                    <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Profitability</p>
+                        <ProfitabilityKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
+                    </div>
                 </div>
             )}
 
@@ -226,15 +240,25 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                 {displaySummary && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 print:hidden shrink-0">
                         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Sales trend</p>
+                            <SalesTrendChart points={monthlyChartPoints} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Collection trend</p>
+                            <CollectionTrendChart points={collectionQuery.data ?? []} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
                             <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                                {focusedProjectId ? 'Revenue vs expense' : 'Revenue vs expense (top projects)'}
+                                {focusedProjectId ? 'Revenue vs expense' : 'Expense vs revenue (top projects)'}
                             </p>
                             <RevenueVsExpenseChart rows={filteredRows} />
                         </div>
                         <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
-                                {focusedProjectId ? 'Monthly profit trend (project)' : 'Monthly profit trend (portfolio)'}
-                            </p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Unit status distribution</p>
+                            <UnitStatusDonutChart rows={filteredRows} />
+                        </div>
+                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Profitability trend</p>
                             <MonthlyProfitTrendChart points={monthlyChartPoints} />
                         </div>
                         {!focusedProjectId && (
@@ -244,15 +268,15 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                                     <TopProfitableProjectsChart rows={filteredRows} />
                                 </div>
                                 <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Status distribution</p>
+                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Project status</p>
                                     <ProjectStatusDonutChart rows={filteredRows} />
                                 </div>
                             </>
                         )}
                         <div
-                            className={`rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm ${focusedProjectId ? '' : 'xl:col-span-2'}`}
+                            className={`rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm ${focusedProjectId ? 'xl:col-span-2' : ''}`}
                         >
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">ROI comparison (projects with investor capital)</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">ROI comparison</p>
                             <RoiComparisonChart rows={filteredRows} />
                         </div>
                     </div>

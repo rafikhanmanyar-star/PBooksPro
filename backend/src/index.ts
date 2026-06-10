@@ -41,6 +41,7 @@ import { stateRouter } from './routes/stateRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './routes/recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './routes/payrollRoutes.js';
 import { contractorRouter } from './routes/contractorRoutes.js';
+import { projectExpenseVoucherRouter } from './routes/projectExpenseVoucherRoutes.js';
 import { personalFinanceRouter } from './routes/personalFinanceRoutes.js';
 import { tasksRouter } from './routes/tasksRoutes.js';
 import { databaseBackupRouter } from './routes/databaseBackupRoutes.js';
@@ -64,6 +65,13 @@ import { cashFlowRouter } from './routes/cashFlowRoutes.js';
 import { trialBalanceRouter } from './routes/trialBalanceRoutes.js';
 import { financialReconciliationRouter } from './routes/financialReconciliationRoutes.js';
 import { rentalOwnerSummariesRouter } from './routes/rentalOwnerSummariesRoutes.js';
+import { dashboardMetricsRouter } from './routes/dashboardMetricsRoutes.js';
+import { rentalAnalyticsRouter } from './routes/rentalAnalyticsRoutes.js';
+import { accountingAnalyticsRouter } from './routes/accountingAnalyticsRoutes.js';
+import { expenseAnalyticsRouter } from './routes/expenseAnalyticsRoutes.js';
+import { collectionsAnalyticsRouter } from './routes/collectionsAnalyticsRoutes.js';
+import { vendorAnalyticsRouter } from './routes/vendorAnalyticsRoutes.js';
+import { bankingAnalyticsRouter } from './routes/bankingAnalyticsRoutes.js';
 import { customReportsRouter } from './routes/customReportsRoutes.js';
 import { ownerRentalIncomeRouter } from './routes/ownerRentalIncomeRoutes.js';
 import { rentalBillsDashboardRouter } from './routes/rentalBillsDashboardRoutes.js';
@@ -244,6 +252,13 @@ app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWh
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/trial-balance', 'reports.trial_balance.read'), trialBalanceRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), requirePermissionWhenPathStartsWith('/reports/reconciliation', 'reports.trial_balance.read'), financialReconciliationRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), dashboardMetricsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), rentalAnalyticsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), accountingAnalyticsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), expenseAnalyticsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), collectionsAnalyticsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), vendorAnalyticsRouter);
+app.use('/api', authMiddleware, requireActiveSubscription(), bankingAnalyticsRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), rentalOwnerSummariesRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), ownerRentalIncomeRouter);
 app.use('/api', authMiddleware, requireActiveSubscription(), rentalBillsDashboardRouter);
@@ -347,6 +362,8 @@ app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWri
 app.use('/api', authMiddleware, requireActiveSubscription(), requirePayrollAccessForPayrollPaths(), payrollRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, contractorRouter);
+
+app.use('/api', authMiddleware, requireActiveSubscription(), projectExpenseVoucherRouter);
 
 app.use('/api', authMiddleware, requireActiveSubscription(), requireFinancialWriteOnMutations, personalFinanceRouter);
 

@@ -1,0 +1,69 @@
+---
+description: Backend API architecture — routes, services, middleware, tenant scope, responses
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Architecture
+
+## Pattern: Routes → Services
+
+Routes are thin; services own SQL and business logic.
+
+```
+backend/src/routes/myFeatureRoutes.ts   ← HTTP, validation, pool lifecycle
+backend/src/services/myFeatureService.ts ← SQL, rowTo*Api(), transactions
+```
+
+**Exception:** `backend/src/modules/reporting/` uses repositories + SQL compilers for custom reports.
+
+## New REST Endpoint Checklist
+
+1. Migration in `database/migrations/` (next sequential number)
+2. `*Service.ts` — all queries filter `WHERE tenant_id = $N`; pass `tenantId` as explicit param (no `runWithTenantContext` helper)
+3. `*Routes.ts` — use `AuthedRequest`; return via `sendSuccess` / `handleRouteError`
+4. Register router in `backend/src/index.ts` with correct middleware stack
+5. On mutations: `emitEntityEvent(tenantId, action, entityType, payload)` for live sync
+6. New permissions: edit `shared/rbac/permissions.ts`, then `npm run build:backend`
+
+## Middleware Chain (order matters)
+
+Public routes (no JWT): `/health`, auth login, marketing, webhooks.
+
+Authenticated stack (per router mount in `index.ts`):
+1. `authMiddleware` → sets `req.userId`, `req.tenantId`, `req.role`
+2. `requireActiveSubscription()`
+3. Optional: `requirePermissionWhenPathStartsWith`, `requireFinancialWriteOnMutations`, `requirePayrollAccessForPayrollPaths`
+
+Per-endpoint: `requirePermission('feature.action')` from `middleware/rbacMiddleware.ts`.
+
+Admin portal (`/api/admin`): separate JWT via `adminPortal/` — not tenant-scoped.
+
+## API Response Contract
+
+```typescript
+// Success
+sendSuccess(res, data);
+
+// Failure in catch
+handleRouteError(res, e);
+
+// Manual failure
+sendFailure(res, 400, 'Clear user-facing message');
+```
+
+Envelope shape: `{ success, data?, error? }`.
+
+## Data Mapping
+
+DB snake_case → `rowTo*Api()` in service → camelCase JSON → frontend `normalize*FromApi()`.
+
+## DB Access
+
+- `getPool()` / `pool.connect()` from `backend/src/db/pool.ts`
+- Multi-step writes: `withTransaction(client => …)`
+- Never expose raw SQL errors to clients; log with `console.error`
+
+## Report Services
+
+Standard reports: load tenant state in `*ReportService.ts`, call shared engine from `backend/dist/*Engine.mjs` (synced from `components/reports/`).

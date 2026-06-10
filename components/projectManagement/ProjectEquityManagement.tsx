@@ -24,7 +24,7 @@ import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-ava
 import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { computeEquityBalances, roundEquityBalance, EQUITY_BALANCE_EPS } from '../investmentManagement/equityMetrics';
+import { computeEquityBalances, getInvestorEquityAccounts, roundEquityBalance, EQUITY_BALANCE_EPS } from '../investmentManagement/equityMetrics';
 import {
     getEquityFlowLegs,
     presentationForEquityLeg,
@@ -227,7 +227,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     const [transferSourceBankId, setTransferSourceBankId] = useState('');
     const [transferDestBankId, setTransferDestBankId] = useState('');
 
-    const equityAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.EQUITY), [state.accounts]);
+    const investorAccounts = useMemo(() => getInvestorEquityAccounts(state), [state]);
     const bankAccounts = useMemo(() => state.accounts.filter(a => a.type === AccountType.BANK && a.name !== 'Internal Clearing'), [state.accounts]);
     const bankAndCashAccounts = useMemo(
         () => state.accounts.filter((a) => (a.type === AccountType.BANK || a.type === AccountType.CASH) && a.name !== 'Internal Clearing'),
@@ -284,11 +284,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
     const balances = useMemo(() => computeEquityBalances(state), [state]);
 
-
-    const investorAccounts = useMemo(() => 
-        equityAccounts.filter(a => a.name !== 'Owner Equity'), 
-        [equityAccounts]
-    );
 
     // --- Data ---
     const treeData = useMemo<TreeNode[]>(() => {
@@ -370,7 +365,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         return nodes;
     }, [state.projects, investorAccounts, balances]);
 
-    const equityAccountIds = useMemo(() => new Set(equityAccounts.map(a => a.id)), [equityAccounts]);
+    const investorAccountIds = useMemo(() => new Set(investorAccounts.map(a => a.id)), [investorAccounts]);
     const invoiceMap = useMemo(() => new Map(state.invoices.map(i => [i.id, i])), [state.invoices]);
     const billMap = useMemo(() => new Map(state.bills.map(b => [b.id, b])), [state.bills]);
 
@@ -386,17 +381,17 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
         let txs = state.transactions.filter((tx) => {
             if (tx.type === TransactionType.TRANSFER) return true;
-            if (tx.type === TransactionType.INCOME && equityAccountIds.has(tx.accountId)) return true;
-            if (equityAccountIds.has(tx.accountId)) return true;
+            if (tx.type === TransactionType.INCOME && investorAccountIds.has(tx.accountId)) return true;
+            if (investorAccountIds.has(tx.accountId)) return true;
             return false;
         });
 
         if (selectedTreeId === 'root-investors') {
             txs = txs.filter(
                 (tx) =>
-                    equityAccountIds.has(tx.fromAccountId!) ||
-                    equityAccountIds.has(tx.toAccountId!) ||
-                    equityAccountIds.has(tx.accountId)
+                    investorAccountIds.has(tx.fromAccountId!) ||
+                    investorAccountIds.has(tx.toAccountId!) ||
+                    investorAccountIds.has(tx.accountId)
             );
         } else if (selectedTreeType === 'project') {
             txs = txs.filter((tx) => resolveProjectId(tx) === selectedTreeId);
@@ -415,16 +410,16 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
         txs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime() || a.id.localeCompare(b.id));
         return txs;
-    }, [selectedTreeId, selectedTreeType, selectedParentId, state.transactions, equityAccountIds, invoiceMap, billMap]);
+    }, [selectedTreeId, selectedTreeType, selectedParentId, state.transactions, investorAccountIds, invoiceMap, billMap]);
 
     const ledgerSummaryTotals = useMemo(
         () =>
             computeEquityLedgerSummaryTotals(
                 filteredLedgerTxs,
-                equityAccounts,
+                investorAccounts,
                 selectedTreeType === 'staff' && selectedTreeId ? selectedTreeId : null,
             ),
-        [filteredLedgerTxs, equityAccounts, selectedTreeType, selectedTreeId],
+        [filteredLedgerTxs, investorAccounts, selectedTreeType, selectedTreeId],
     );
 
     /** Net equity for the current tree selection (same basis as Projects & Investors balances). */
@@ -459,7 +454,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
         const rowRefs: { tx: Transaction; leg?: EquityFlowLeg }[] = [];
         txs.forEach((tx) => {
-            let legs = getEquityFlowLegs(tx, equityAccounts);
+            let legs = getEquityFlowLegs(tx, investorAccounts);
             if (selectedTreeType === 'staff' && selectedTreeId) {
                 legs = legs.filter((l) => l.investorId === selectedTreeId);
             }
@@ -487,8 +482,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         let runningLegacy = 0;
 
         const computeLegacy = (tx: Transaction) => {
-            const isFromEquity = equityAccountIds.has(tx.fromAccountId!);
-            const isToEquity = equityAccountIds.has(tx.toAccountId!);
+            const isFromEquity = investorAccountIds.has(tx.fromAccountId!);
+            const isToEquity = investorAccountIds.has(tx.toAccountId!);
             let paymentType = 'Transfer';
             let paymentTypeColor = 'text-slate-600';
             const amount = tx.amount;
@@ -631,8 +626,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         selectedParentId,
         state.projects,
         state.accounts,
-        equityAccounts,
-        equityAccountIds,
+        investorAccounts,
+        investorAccountIds,
     ]);
 
     const sortedLedgerData = useMemo(() => {
@@ -773,13 +768,13 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         if (mode === 'SIMPLE') {
             // Simple Transfer update
             // Determine if this is an investment or withdrawal based on original transaction
-            const originalIsInvestment = equityAccounts.some(a => a.id === mainTx.fromAccountId) && 
+            const originalIsInvestment = investorAccounts.some(a => a.id === mainTx.fromAccountId) && 
                                         bankAccounts.some(a => a.id === mainTx.toAccountId);
             const originalIsWithdrawal = bankAccounts.some(a => a.id === mainTx.fromAccountId) && 
-                                         equityAccounts.some(a => a.id === mainTx.toAccountId);
+                                         investorAccounts.some(a => a.id === mainTx.toAccountId);
             
             let fromId, toId;
-            if (originalIsInvestment || (!originalIsWithdrawal && equityAccounts.some(a => a.id === investorId))) {
+            if (originalIsInvestment || (!originalIsWithdrawal && investorAccounts.some(a => a.id === investorId))) {
                 // Investment: from=investor, to=bank
                 fromId = investorId;
                 toId = bankAccountId;
@@ -790,7 +785,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             }
 
             const isWithdrawalEdit =
-                bankAccounts.some((a) => a.id === fromId) && equityAccounts.some((a) => a.id === toId);
+                bankAccounts.some((a) => a.id === fromId) && investorAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
                 const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
@@ -1080,8 +1075,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 distributed += tx.amount;
             }
             if (tx.type === TransactionType.TRANSFER) {
-                const toEquity = equityAccounts.find(a => a.id === tx.toAccountId);
-                const fromEquity = equityAccounts.find(a => a.id === tx.fromAccountId);
+                const toEquity = investorAccounts.find(a => a.id === tx.toAccountId);
+                const fromEquity = investorAccounts.find(a => a.id === tx.fromAccountId);
                 if (fromEquity && !toEquity) investedCapital += tx.amount;
                 else if (toEquity && !fromEquity) investedCapital -= tx.amount;
             }
@@ -1095,7 +1090,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             available,
             investedCapital,
         };
-    }, [distProjectId, state, equityAccounts]);
+    }, [distProjectId, state, investorAccounts]);
 
     const handleCalculateDistShares = () => {
         if (!distProjectId) return;
@@ -1186,8 +1181,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         state.transactions.forEach(tx => {
             if (tx.projectId !== sourceProjectId) return;
             if (tx.type === TransactionType.TRANSFER) {
-                const fromEquity = equityAccounts.find(a => a.id === tx.fromAccountId);
-                const toEquity = equityAccounts.find(a => a.id === tx.toAccountId);
+                const fromEquity = investorAccounts.find(a => a.id === tx.fromAccountId);
+                const toEquity = investorAccounts.find(a => a.id === tx.toAccountId);
                 const fromAccount = state.accounts.find(a => a.id === tx.fromAccountId);
                 const isFromClearing = fromAccount?.name === 'Internal Clearing';
                 const isDivestment = tx.description && tx.description.includes('Equity Move out');
@@ -1915,7 +1910,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
             <Modal isOpen={isActionModalOpen} onClose={() => setIsActionModalOpen(false)} title="Record New Investment">
                 <div className="space-y-4">
-                    <ComboBox label="Investor" items={equityAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
+                    <ComboBox label="Investor" items={investorAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />
                     <ComboBox label="Bank/Cash Account" items={bankAccounts} selectedId={formBankAccountId} onSelect={(i) => setFormBankAccountId(i?.id || '')} required allowAddNew={false} />
                     <Input label="Amount" type="number" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
@@ -1943,19 +1938,19 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                              <>
                                 <ComboBox label="From Project (Divest)" items={state.projects} selectedId={editingBatch.projectId} onSelect={(i) => setEditingBatch({...editingBatch, projectId: i?.id || ''})} required allowAddNew={false} />
                                 <ComboBox label="To Project (Invest)" items={state.projects} selectedId={editingBatch.targetProjectId} onSelect={(i) => setEditingBatch({...editingBatch, targetProjectId: i?.id || ''})} required allowAddNew={false} />
-                                <ComboBox label="Investor" items={equityAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
+                                <ComboBox label="Investor" items={investorAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
                              </>
                         )}
                         {editingBatch.mode === 'BATCH_DIST' && (
                              <>
                                 <ComboBox label="Project" items={state.projects} selectedId={editingBatch.projectId} onSelect={(i) => setEditingBatch({...editingBatch, projectId: i?.id || ''})} required allowAddNew={false} />
-                                <ComboBox label="Investor" items={equityAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
+                                <ComboBox label="Investor" items={investorAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
                              </>
                         )}
                         {editingBatch.mode === 'SIMPLE' && (
                             <>
                                 <ComboBox label="Project" items={state.projects} selectedId={editingBatch.projectId} onSelect={(i) => setEditingBatch({...editingBatch, projectId: i?.id || ''})} required allowAddNew={false} />
-                                <ComboBox label="Investor" items={equityAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
+                                <ComboBox label="Investor" items={investorAccounts} selectedId={editingBatch.investorId} onSelect={(i) => setEditingBatch({...editingBatch, investorId: i?.id || ''})} required />
                                 <ComboBox label="Bank Account" items={bankAccounts} selectedId={editingBatch.bankAccountId} onSelect={(i) => setEditingBatch({...editingBatch, bankAccountId: i?.id || ''})} required allowAddNew={false} />
                             </>
                         )}

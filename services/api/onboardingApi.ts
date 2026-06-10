@@ -11,6 +11,7 @@ export type OnboardingState = {
   completedAt: string | null;
   updatedAt: string;
   progressPercent: number;
+  onboardingFlow?: 'standard' | 'trial';
 };
 
 const LOCAL_KEY_PREFIX = 'pbooks_onboarding_';

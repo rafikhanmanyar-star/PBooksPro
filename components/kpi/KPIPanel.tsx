@@ -1,8 +1,10 @@
 
 import { useDispatchOnly, useKPIAppState } from '../../hooks/useSelectiveState';
+import { useAuth } from '../../context/AuthContext';
+import { useKpiPanelServerValues } from '../../hooks/useKpiPanelServerValues';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useKpis } from '../../context/KPIContext';
-import KPICard from './KPICard';
+import { MetricCard } from '../analytics';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import KPISelector from './KPISelector';
@@ -31,17 +33,17 @@ const ExpandableKPICard: React.FC<ExpandableKPICardProps> = ({
 }) => {
     const isNegative = value < 0;
     const displayValue = Math.abs(value || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-    const valueColor = isNegative ? 'text-rose-400' : 'text-emerald-400';
+    const valueColor = isNegative ? 'text-ds-danger' : 'text-ds-success';
 
     return (
-        <div className="mb-2 bg-white/5 rounded-md border border-white/10 overflow-hidden transition-all">
+        <div className="mb-2 bg-app-card rounded-lg border border-app-border overflow-hidden transition-all">
             <div className="flex items-stretch">
                 <button 
                     onClick={onDrilldown}
-                    className={`flex-1 flex items-center justify-between px-3 py-2.5 text-left hover:bg-white/5 transition-colors group ${isActive ? 'bg-white/20' : ''}`}
+                    className={`flex-1 flex items-center justify-between px-3 py-2.5 text-left hover:bg-app-toolbar transition-colors group ${isActive ? 'bg-primary/10' : ''}`}
                 >
                     <div className="flex items-center gap-2 overflow-hidden">
-                        <span className="text-sm font-medium text-white/70 group-hover:text-white/90 truncate">{kpi.title}</span>
+                        <span className="text-sm font-medium text-app-muted group-hover:text-app-text truncate">{kpi.title}</span>
                     </div>
                     <span className={`text-base font-bold whitespace-nowrap ml-2 tabular-nums ${valueColor}`}>
                         {displayValue}
@@ -49,20 +51,20 @@ const ExpandableKPICard: React.FC<ExpandableKPICardProps> = ({
                 </button>
                 <button 
                     onClick={onToggle}
-                    className="px-2 border-l border-white/10 hover:bg-white/10 text-white/50 hover:text-white transition-colors flex items-center justify-center"
+                    className="px-2 border-l border-app-border hover:bg-app-toolbar text-app-muted hover:text-app-text transition-colors flex items-center justify-center"
                     aria-label={isExpanded ? "Collapse" : "Expand"}
                 >
                     <div className={`w-4 h-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}>{ICONS.arrowDown}</div>
                 </button>
             </div>
             {isExpanded && (
-                <div className="bg-black/20 py-2 px-3 border-t border-white/10 space-y-1.5 animate-fade-in-fast">
+                <div className="bg-app-toolbar/50 py-2 px-3 border-t border-app-border space-y-1.5 animate-fade-in-fast">
                     {items.length > 0 ? items.map((item, idx) => {
                         const itemIsNegative = item.amount < 0;
                         const itemDisplayVal = Math.abs(item.amount || 0).toLocaleString();
-                        const itemColor = itemIsNegative ? 'text-rose-400' : 'text-emerald-400';
+                        const itemColor = itemIsNegative ? 'text-ds-danger' : 'text-ds-success';
                         return (
-                            <div key={idx} className="flex justify-between text-xs text-white/70">
+                            <div key={idx} className="flex justify-between text-xs text-app-muted">
                                 <span className="truncate mr-2 flex-1">
                                     {item.type ? <span className="opacity-50 mr-1 text-[10px] uppercase tracking-wider">[{item.type}]</span> : null}
                                     {item.name}
@@ -70,7 +72,7 @@ const ExpandableKPICard: React.FC<ExpandableKPICardProps> = ({
                                 <span className={`font-mono tabular-nums ${itemColor}`}>{itemDisplayVal}</span>
                             </div>
                         );
-                    }) : <p className="text-xs text-white/40 italic text-center">No details available</p>}
+                    }) : <p className="text-xs text-app-muted italic text-center">No details available</p>}
                 </div>
             )}
         </div>
@@ -100,7 +102,9 @@ const KPIPanel: React.FC = () => {
         invoices,
         buildings,
         properties } = state;
-    const dispatch = useDispatchOnly();
+        const dispatch = useDispatchOnly();
+    const { isAuthenticated } = useAuth();
+    const serverKpiValues = useKpiPanelServerValues(isAuthenticated);
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [selectorInitialTab, setSelectorInitialTab] = useState<'KPIs' | 'Reports'>('KPIs');
     
@@ -170,10 +174,16 @@ const KPIPanel: React.FC = () => {
             const kpiDef = allKpis.find(k => k.id === id);
             if (!kpiDef) return null;
             
-            const value = kpiDef.getData ? kpiDef.getData(state) : 0;
-            return { ...kpiDef, value };
+            const serverMetric = serverKpiValues.get(kpiDef.id);
+            const value = serverMetric?.value ?? (kpiDef.getData ? kpiDef.getData(state) : 0);
+            return {
+              ...kpiDef,
+              value,
+              trendPercent: serverMetric?.trendPercent,
+              valueFormat: serverMetric?.format,
+            };
         }).filter((kpi): kpi is Exclude<typeof kpi, null> => kpi !== null);
-    }, [visibleKpiIds, allKpis, accounts, categories, projects, transactions, bills, invoices, buildings, properties]);
+    }, [visibleKpiIds, allKpis, serverKpiValues, accounts, categories, projects, transactions, bills, invoices, buildings, properties]);
 
     // Breakdown calculations
     const accountBreakdown = useMemo(() => accounts.filter(a => a.type === AccountType.BANK).map(acc => ({ name: acc.name, amount: acc.balance, type: '' })), [accounts]);
@@ -368,7 +378,7 @@ const KPIPanel: React.FC = () => {
         <>
             <div 
                 ref={sidebarRef}
-                className={`fixed top-0 right-0 h-full bg-slate-800 text-white shadow-2xl transition-transform duration-300 ease-in-out z-40 flex flex-col border-l border-slate-700 w-full md:w-auto ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+                className={`fixed top-0 right-0 h-full bg-app-card text-app-text shadow-2xl transition-transform duration-300 ease-in-out z-40 flex flex-col border-l border-app-border w-full md:w-auto ${isPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
                 style={{ width: isPanelOpen ? (typeof window !== 'undefined' && window.innerWidth < 768 ? '100%' : width) : 0 }}
             >
                 {/* Resize Handle - Desktop Only */}
@@ -377,9 +387,9 @@ const KPIPanel: React.FC = () => {
                     onMouseDown={startResizing}
                 ></div>
 
-                <header className="flex items-center justify-between p-3 md:p-4 border-b border-white/10 flex-shrink-0 bg-slate-900/50">
-                    <h2 className="text-base md:text-lg font-bold">Dashboard</h2>
-                    <Button variant="ghost" size="icon" onClick={togglePanel} className="text-white/60 hover:text-white hover:bg-white/10 touch-manipulation">
+                <header className="flex items-center justify-between p-3 md:p-4 border-b border-app-border flex-shrink-0 bg-app-toolbar/80">
+                    <h2 className="text-base md:text-lg font-bold text-app-text">Dashboard</h2>
+                    <Button variant="ghost" size="icon" onClick={togglePanel} className="text-app-muted hover:text-app-text hover:bg-app-toolbar touch-manipulation">
                         <div className="w-4 h-4 md:w-5 md:h-5">{ICONS.chevronRight}</div>
                     </Button>
                 </header>
@@ -400,16 +410,27 @@ const KPIPanel: React.FC = () => {
                                         return <ExpandableKPICard key={kpi.id} kpi={kpi} value={kpi.value} isExpanded={isBuildingFundsExpanded} onToggle={() => setIsBuildingFundsExpanded(!isBuildingFundsExpanded)} onDrilldown={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} items={buildingFundsBreakdown} />;
                                     }
                                     // ... other specific expandables ...
-                                    return <KPICard key={kpi.id} title={kpi.title} value={kpi.value} onClick={() => openDrilldown(kpi)} isActive={activeDrilldownKpi?.id === kpi.id} />;
-                                }) : <p className="text-center text-white/60 pt-8 text-sm">No KPIs selected.</p>}
+                                    return (
+                                      <MetricCard
+                                        key={kpi.id}
+                                        label={kpi.title}
+                                        value={kpi.value}
+                                        format={kpi.valueFormat ?? 'currency'}
+                                        trendPercent={kpi.trendPercent}
+                                        size="compact"
+                                        isActive={activeDrilldownKpi?.id === kpi.id}
+                                        onClick={() => openDrilldown(kpi)}
+                                      />
+                                    );
+                                }) : <p className="text-center text-app-muted pt-8 text-sm">No KPIs selected.</p>}
                             </div>
                         )}
                         {activePanelTab === 'reports' && (
                              <div className="space-y-2">
                                 {favoriteReports.map(report => (
-                                    <button key={report.id} onClick={() => handleReportClick(report)} className="w-full text-left p-3 rounded-md bg-white/5 hover:bg-white/10 transition-colors flex items-center justify-between group border border-white/10">
-                                        <span className="font-medium text-sm text-white/80 group-hover:text-white">{report.title}</span>
-                                        <span className="text-white/40">{ICONS.chevronRight}</span>
+                                    <button key={report.id} onClick={() => handleReportClick(report)} className="w-full text-left p-3 rounded-lg bg-app-card hover:bg-app-toolbar transition-colors flex items-center justify-between group border border-app-border">
+                                        <span className="font-medium text-sm text-app-text group-hover:text-primary">{report.title}</span>
+                                        <span className="text-app-muted">{ICONS.chevronRight}</span>
                                     </button>
                                 ))}
                              </div>
@@ -417,9 +438,9 @@ const KPIPanel: React.FC = () => {
                         {activePanelTab === 'shortcuts' && (
                              <div className="grid grid-cols-2 gap-3">
                                 {shortcuts.map(s => (
-                                    <button key={s.label} onClick={() => handleShortcutClick(s.page)} className="flex flex-col items-center justify-center p-4 bg-white/10 hover:bg-white/20 rounded-lg border border-white/10 transition-all hover:-translate-y-0.5 shadow-sm">
-                                        <div className="w-6 h-6 mb-2 opacity-80 text-sky-200">{s.icon}</div>
-                                        <span className="text-xs font-medium text-center text-white/90">{s.label}</span>
+                                    <button key={s.label} onClick={() => handleShortcutClick(s.page)} className="flex flex-col items-center justify-center p-4 bg-app-toolbar hover:bg-primary/10 rounded-lg border border-app-border transition-all hover:-translate-y-0.5 shadow-sm">
+                                        <div className="w-6 h-6 mb-2 opacity-80 text-primary">{s.icon}</div>
+                                        <span className="text-xs font-medium text-center text-app-text">{s.label}</span>
                                     </button>
                                 ))}
                             </div>
@@ -427,8 +448,8 @@ const KPIPanel: React.FC = () => {
                     </div>
 
                     {activePanelTab !== 'shortcuts' && (
-                         <div className="mt-4 flex-shrink-0 pt-4 border-t border-white/10">
-                            <Button variant="outline" onClick={handleCustomizeClick} className="w-full !border-white/30 !text-white/80 hover:!bg-white/10 hover:!text-white hover:!border-white/50 !justify-start">
+                         <div className="mt-4 flex-shrink-0 pt-4 border-t border-app-border">
+                            <Button variant="outline" onClick={handleCustomizeClick} className="w-full !justify-start">
                                 <div className="w-4 h-4 mr-2 opacity-70">{ICONS.edit}</div>
                                 <span className="text-sm font-normal">Customize</span>
                             </Button>
@@ -436,16 +457,16 @@ const KPIPanel: React.FC = () => {
                     )}
                 </main>
 
-                <footer className="p-2 border-t border-white/10 flex-shrink-0 bg-slate-900/50 grid grid-cols-3 gap-1">
-                     <button onClick={() => setActivePanelTab('kpis')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-white/5 ${activePanelTab === 'kpis' ? 'text-sky-400' : 'text-slate-400'}`}>
+                <footer className="p-2 border-t border-app-border flex-shrink-0 bg-app-toolbar/80 grid grid-cols-3 gap-1">
+                     <button onClick={() => setActivePanelTab('kpis')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-app-toolbar ${activePanelTab === 'kpis' ? 'text-primary' : 'text-app-muted'}`}>
                         <div className="w-5 h-5 mb-1">{ICONS.barChart}</div>
                         <span className="text-[10px] font-medium">KPIs</span>
                     </button>
-                    <button type="button" data-tour="kpi-reports-tab" onClick={() => setActivePanelTab('reports')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-white/5 ${activePanelTab === 'reports' ? 'text-sky-400' : 'text-slate-400'}`}>
+                    <button type="button" data-tour="kpi-reports-tab" onClick={() => setActivePanelTab('reports')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-app-toolbar ${activePanelTab === 'reports' ? 'text-primary' : 'text-app-muted'}`}>
                         <div className="w-5 h-5 mb-1">{ICONS.clipboard}</div>
                         <span className="text-[10px] font-medium">Reports</span>
                     </button>
-                    <button onClick={() => setActivePanelTab('shortcuts')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-white/5 ${activePanelTab === 'shortcuts' ? 'text-sky-400' : 'text-slate-400'}`}>
+                    <button onClick={() => setActivePanelTab('shortcuts')} className={`flex flex-col items-center justify-center p-2 rounded hover:bg-app-toolbar ${activePanelTab === 'shortcuts' ? 'text-primary' : 'text-app-muted'}`}>
                         <div className="w-5 h-5 mb-1">{ICONS.trendingUp}</div>
                         <span className="text-[10px] font-medium">Shortcuts</span>
                     </button>
@@ -458,7 +479,7 @@ const KPIPanel: React.FC = () => {
                     type="button"
                     data-tour="kpi-panel-toggle"
                     onClick={togglePanel}
-                    className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-slate-800 text-white py-6 px-1 rounded-l-md shadow-lg hover:bg-slate-700 hover:pr-2 transition-all z-30 group border-l border-t border-b border-slate-600"
+                    className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-app-card text-app-text py-6 px-1 rounded-l-md shadow-lg hover:bg-app-toolbar hover:pr-2 transition-all z-30 group border-l border-t border-b border-app-border"
                     title="Show Dashboard"
                 >
                     <div className="w-4 h-4 transform -rotate-90">{ICONS.barChart}</div>
