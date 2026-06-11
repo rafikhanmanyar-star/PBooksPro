@@ -9,6 +9,9 @@ import { listAlerts } from './drAlertService.js';
 import { listRestoreTests } from './drRestoreTestService.js';
 import { listVerificationRuns } from './drVerificationService.js';
 import { listBackupHistory } from '../backupSchedulerService.js';
+import { DrReportRepository } from '../../modules/dr/repositories/DrRepository.js';
+
+const reportRepo = new DrReportRepository();
 
 export type DrReportRow = {
   id: string;
@@ -59,14 +62,14 @@ export async function generateDrReport(
   };
 
   const id = randomUUID();
-  await client.query(
-    `INSERT INTO dr_reports (id, report_type, health_score, summary, requested_by)
-     VALUES ($1, $2, $3, $4::jsonb, $5)`,
-    [id, opts.reportType, dashboard.backupHealth.score, JSON.stringify(summary), opts.requestedBy]
-  );
-
-  const { rows } = await client.query(`SELECT * FROM dr_reports WHERE id = $1`, [id]);
-  return mapRow(rows[0]);
+  const row = await reportRepo.insert(client, {
+    id,
+    reportType: opts.reportType,
+    healthScore: dashboard.backupHealth.score,
+    summary,
+    requestedBy: opts.requestedBy,
+  });
+  return mapRow(row);
 }
 
 function buildRecommendations(dashboard: Awaited<ReturnType<typeof getDrDashboard>>): string[] {
@@ -94,10 +97,7 @@ export async function listDrReports(
   client: pg.PoolClient,
   limit = 20
 ): Promise<DrReportRow[]> {
-  const { rows } = await client.query(
-    `SELECT * FROM dr_reports ORDER BY generated_at DESC LIMIT $1`,
-    [limit]
-  );
+  const rows = await reportRepo.list(client, limit);
   return rows.map(mapRow);
 }
 
@@ -105,6 +105,6 @@ export async function getDrReport(
   client: pg.PoolClient,
   reportId: string
 ): Promise<DrReportRow | null> {
-  const { rows } = await client.query(`SELECT * FROM dr_reports WHERE id = $1`, [reportId]);
-  return rows.length ? mapRow(rows[0]) : null;
+  const row = await reportRepo.getById(client, reportId);
+  return row ? mapRow(row) : null;
 }

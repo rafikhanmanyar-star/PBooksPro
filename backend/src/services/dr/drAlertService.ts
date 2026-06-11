@@ -2,9 +2,16 @@
  * DR alerts and email notification dispatch.
  */
 
-import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { sendDrEmail } from './drEmailService.js';
+import {
+  DrAlertRepository,
+  newDrId,
+} from '../../modules/dr/repositories/DrRepository.js';
+import { BackupJobRepository } from '../../modules/backup/repositories/BackupJobRepository.js';
+
+const alertRepo = new DrAlertRepository();
+const jobRepo = new BackupJobRepository();
 
 export type DrAlertRow = {
   id: string;
@@ -33,42 +40,11 @@ export type DrNotificationSettings = {
   updated_at: string;
 };
 
-function mapAlert(row: pg.QueryResultRow): DrAlertRow {
-  return {
-    id: row.id,
-    alert_type: row.alert_type,
-    severity: row.severity,
-    title: row.title,
-    message: row.message,
-    related_run_id: row.related_run_id,
-    related_job_id: row.related_job_id,
-    acknowledged: row.acknowledged,
-    acknowledged_at: row.acknowledged_at,
-    acknowledged_by: row.acknowledged_by,
-    email_sent: row.email_sent,
-    email_error: row.email_error,
-    created_at: row.created_at,
-  };
-}
-
-function mapSettings(row: pg.QueryResultRow): DrNotificationSettings {
-  return {
-    id: row.id,
-    enabled: row.enabled,
-    email_recipients: Array.isArray(row.email_recipients) ? row.email_recipients : [],
-    alert_on_backup_failure: row.alert_on_backup_failure,
-    alert_on_verification_failure: row.alert_on_verification_failure,
-    alert_on_stale_backup: row.alert_on_stale_backup,
-    stale_backup_hours: row.stale_backup_hours,
-    updated_at: row.updated_at,
-  };
-}
-
 export async function getNotificationSettings(
   client: pg.PoolClient
 ): Promise<DrNotificationSettings> {
-  const { rows } = await client.query(`SELECT * FROM dr_notification_settings WHERE id = 'default'`);
-  if (rows.length === 0) {
+  const row = await alertRepo.getNotificationSettings(client);
+  if (!row) {
     return {
       id: 'default',
       enabled: false,
@@ -80,7 +56,7 @@ export async function getNotificationSettings(
       updated_at: new Date().toISOString(),
     };
   }
-  return mapSettings(rows[0]);
+  return row;
 }
 
 export async function updateNotificationSettings(
@@ -98,25 +74,7 @@ export async function updateNotificationSettings(
     stale_backup_hours: patch.stale_backup_hours ?? current.stale_backup_hours,
   };
 
-  await client.query(
-    `UPDATE dr_notification_settings SET
-       enabled = $1,
-       email_recipients = $2,
-       alert_on_backup_failure = $3,
-       alert_on_verification_failure = $4,
-       alert_on_stale_backup = $5,
-       stale_backup_hours = $6,
-       updated_at = NOW()
-     WHERE id = 'default'`,
-    [
-      next.enabled,
-      next.email_recipients,
-      next.alert_on_backup_failure,
-      next.alert_on_verification_failure,
-      next.alert_on_stale_backup,
-      next.stale_backup_hours,
-    ]
-  );
+  await alertRepo.updateNotificationSettings(client, next);
   return getNotificationSettings(client);
 }
 
@@ -134,10 +92,7 @@ async function dispatchAlertEmail(
     text: message,
   });
 
-  await client.query(
-    `UPDATE dr_alerts SET email_sent = $2, email_error = $3 WHERE id = $1`,
-    [alertId, result.sent, result.error ?? null]
-  );
+  await alertRepo.updateAlertEmailStatus(client, alertId, result.sent, result.error ?? null);
 }
 
 export async function createAlert(
@@ -152,20 +107,16 @@ export async function createAlert(
     sendEmail?: boolean;
   }
 ): Promise<DrAlertRow> {
-  const id = randomUUID();
-  await client.query(
-    `INSERT INTO dr_alerts (id, alert_type, severity, title, message, related_run_id, related_job_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [
-      id,
-      alert.alert_type,
-      alert.severity,
-      alert.title,
-      alert.message,
-      alert.related_run_id ?? null,
-      alert.related_job_id ?? null,
-    ]
-  );
+  const id = newDrId();
+  await alertRepo.insertAlert(client, {
+    id,
+    alertType: alert.alert_type,
+    severity: alert.severity,
+    title: alert.title,
+    message: alert.message,
+    relatedRunId: alert.related_run_id,
+    relatedJobId: alert.related_job_id,
+  });
 
   if (alert.sendEmail !== false) {
     const settings = await getNotificationSettings(client);
@@ -181,27 +132,18 @@ export async function createAlert(
     }
   }
 
-  const { rows } = await client.query(`SELECT * FROM dr_alerts WHERE id = $1`, [id]);
-  return mapAlert(rows[0]);
+  const created = await alertRepo.getAlertById(client, id);
+  return created!;
 }
 
 export async function listAlerts(
   client: pg.PoolClient,
   opts: { acknowledged?: boolean; limit?: number } = {}
 ): Promise<DrAlertRow[]> {
-  const limit = opts.limit ?? 50;
-  if (opts.acknowledged === undefined) {
-    const { rows } = await client.query(
-      `SELECT * FROM dr_alerts ORDER BY created_at DESC LIMIT $1`,
-      [limit]
-    );
-    return rows.map(mapAlert);
-  }
-  const { rows } = await client.query(
-    `SELECT * FROM dr_alerts WHERE acknowledged = $1 ORDER BY created_at DESC LIMIT $2`,
-    [opts.acknowledged, limit]
-  );
-  return rows.map(mapAlert);
+  return alertRepo.listAlerts(client, {
+    acknowledged: opts.acknowledged,
+    limit: opts.limit ?? 50,
+  });
 }
 
 export async function acknowledgeAlert(
@@ -209,37 +151,22 @@ export async function acknowledgeAlert(
   alertId: string,
   userId: string
 ): Promise<DrAlertRow | null> {
-  const { rowCount } = await client.query(
-    `UPDATE dr_alerts SET acknowledged = true, acknowledged_at = NOW(), acknowledged_by = $2
-     WHERE id = $1 AND acknowledged = false`,
-    [alertId, userId]
-  );
-  if (!rowCount) return null;
-  const { rows } = await client.query(`SELECT * FROM dr_alerts WHERE id = $1`, [alertId]);
-  return mapAlert(rows[0]);
+  const ok = await alertRepo.acknowledge(client, alertId, userId);
+  if (!ok) return null;
+  return alertRepo.getAlertById(client, alertId);
 }
 
 export async function countUnacknowledgedCritical(client: pg.PoolClient): Promise<number> {
-  const { rows } = await client.query(
-    `SELECT COUNT(*)::int AS c FROM dr_alerts WHERE acknowledged = false AND severity = 'critical'`
-  );
-  return rows[0]?.c ?? 0;
+  return alertRepo.countUnacknowledgedCritical(client);
 }
 
 export async function checkAndRaiseStaleBackupAlert(client: pg.PoolClient): Promise<void> {
   const settings = await getNotificationSettings(client);
   if (!settings.alert_on_stale_backup) return;
 
-  const { rows } = await client.query(
-    `SELECT completed_at FROM backup_job_runs WHERE success = true ORDER BY completed_at DESC LIMIT 1`
-  );
-  const lastSuccess = rows[0]?.completed_at as string | undefined;
+  const lastSuccess = await jobRepo.getLastSuccessfulCompletedAt(client);
   if (!lastSuccess) {
-    const recent = await client.query(
-      `SELECT id FROM dr_alerts WHERE alert_type = 'stale_backup' AND acknowledged = false
-       AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`
-    );
-    if (recent.rows.length === 0) {
+    if (!(await alertRepo.hasRecentStaleAlert(client))) {
       await createAlert(client, {
         alert_type: 'stale_backup',
         severity: 'critical',
@@ -253,11 +180,7 @@ export async function checkAndRaiseStaleBackupAlert(client: pg.PoolClient): Prom
   const hoursSince = (Date.now() - new Date(lastSuccess).getTime()) / 3_600_000;
   if (hoursSince <= settings.stale_backup_hours) return;
 
-  const recent = await client.query(
-    `SELECT id FROM dr_alerts WHERE alert_type = 'stale_backup' AND acknowledged = false
-     AND created_at > NOW() - INTERVAL '24 hours' LIMIT 1`
-  );
-  if (recent.rows.length > 0) return;
+  if (await alertRepo.hasRecentStaleAlert(client)) return;
 
   await createAlert(client, {
     alert_type: 'stale_backup',

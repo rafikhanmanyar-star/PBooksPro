@@ -11,6 +11,7 @@ import {
   type LegalAcceptanceContext,
   type LegalDocumentType,
 } from '../../constants/legalDocuments.js';
+import { LegalAcceptanceRepository } from '../../modules/legal/repositories/LegalAcceptanceRepository.js';
 
 export type LegalAcceptanceRow = {
   id: string;
@@ -28,6 +29,8 @@ export type AcceptanceInput = {
   documentVersion: string;
 };
 
+const legalRepo = new LegalAcceptanceRepository();
+
 function clientIp(req?: Request): string | null {
   if (!req) return null;
   const forwarded = req.headers['x-forwarded-for'];
@@ -35,19 +38,6 @@ function clientIp(req?: Request): string | null {
     return forwarded.split(',')[0]?.trim() ?? null;
   }
   return req.ip ?? null;
-}
-
-function mapRow(row: pg.QueryResultRow): LegalAcceptanceRow {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    user_id: row.user_id,
-    document_type: row.document_type,
-    document_version: row.document_version,
-    accepted_at: row.accepted_at,
-    ip_address: row.ip_address,
-    context: row.context,
-  };
 }
 
 export async function recordLegalAcceptances(
@@ -74,20 +64,15 @@ export async function recordLegalAcceptances(
     }
 
     const id = randomUUID();
-    await client.query(
-      `INSERT INTO legal_acceptance (
-         id, tenant_id, user_id, document_type, document_version, ip_address, context
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        id,
-        input.tenantId ?? null,
-        input.userId ?? null,
-        a.documentType,
-        a.documentVersion,
-        input.ipAddress ?? null,
-        input.context,
-      ]
-    );
+    await legalRepo.insert(client, {
+      id,
+      tenantId: input.tenantId ?? null,
+      userId: input.userId ?? null,
+      documentType: a.documentType,
+      documentVersion: a.documentVersion,
+      ipAddress: input.ipAddress ?? null,
+      context: input.context,
+    });
 
     rows.push({
       id,
@@ -136,11 +121,7 @@ export async function listAcceptancesForTenant(
   tenantId: string,
   limit = 50
 ): Promise<LegalAcceptanceRow[]> {
-  const { rows } = await client.query(
-    `SELECT * FROM legal_acceptance WHERE tenant_id = $1 ORDER BY accepted_at DESC LIMIT $2`,
-    [tenantId, limit]
-  );
-  return rows.map(mapRow);
+  return legalRepo.listForTenant(client, tenantId, limit);
 }
 
 export async function hasAcceptedCurrentVersion(
@@ -154,16 +135,12 @@ export async function hasAcceptedCurrentVersion(
   const doc = getLegalDocumentByType(input.documentType);
   if (!doc) return false;
 
-  const { rows } = await client.query(
-    `SELECT 1 FROM legal_acceptance
-     WHERE tenant_id = $1
-       AND document_type = $2
-       AND document_version = $3
-       AND ($4::text IS NULL OR user_id = $4)
-     LIMIT 1`,
-    [input.tenantId, input.documentType, doc.version, input.userId ?? null]
-  );
-  return rows.length > 0;
+  return legalRepo.hasAcceptedVersion(client, {
+    tenantId: input.tenantId,
+    userId: input.userId ?? null,
+    documentType: input.documentType,
+    documentVersion: doc.version,
+  });
 }
 
 export { validateAcceptancePayload, clientIp };

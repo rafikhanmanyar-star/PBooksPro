@@ -240,9 +240,9 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
           size="md"
           backdropClassName="bg-black/90"
         >
-          <div className="space-y-6 bg-white">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <p className="text-slate-700 text-base leading-relaxed whitespace-pre-wrap">{dialogState.message}</p>
+          <div className="space-y-6">
+            <div className="ds-alert-notice">
+              <p className="text-app-text text-base leading-relaxed whitespace-pre-wrap">{dialogState.message}</p>
             </div>
 
             <div className="flex justify-end gap-3">
@@ -261,11 +261,11 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
 
       {/* Progress overlay - full-screen "Creating invoices" style */}
       {progressMessage && (
-        <div className="fixed inset-0 bg-black/85 z-[10000] flex flex-col items-center justify-center p-4 animate-fade-in-fast">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 p-6 sm:p-8 max-w-sm w-full text-center">
-            <p className="text-slate-800 font-semibold text-lg mb-4">{progressMessage}</p>
-            <div className="h-2 w-full bg-slate-200 rounded-full overflow-hidden">
-              <div className="h-full w-1/3 bg-indigo-600 rounded-full animate-progress-bar" />
+        <div className="fixed inset-0 bg-black/85 z-[10000] flex flex-col items-center justify-center p-4 animate-fade-in-fast backdrop-blur-sm">
+          <div className="bg-app-modal rounded-xl shadow-ds-modal border border-app-border p-6 sm:p-8 max-w-sm w-full text-center">
+            <p className="text-app-text font-semibold text-lg mb-4">{progressMessage}</p>
+            <div className="h-2 w-full bg-app-border rounded-full overflow-hidden">
+              <div className="h-full w-1/3 bg-ds-primary rounded-full animate-progress-bar" />
             </div>
           </div>
         </div>

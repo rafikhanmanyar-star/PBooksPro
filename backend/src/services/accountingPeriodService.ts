@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { AccountingPeriodRepository } from '../modules/accounting/repositories/AccountingPeriodRepository.js';
 
 export type AccountingPeriodStatus = 'open' | 'closed' | 'locked';
 
@@ -65,16 +66,9 @@ export async function assertAccountingPeriodOpen(
 ): Promise<void> {
   if (options?.allowClosedPeriod) return;
   const d = entryDate.slice(0, 10);
-  const r = await client.query<{ id: string; start_date: string; end_date: string; status: string }>(
-    `SELECT id, start_date::text, end_date::text, status FROM accounting_periods
-     WHERE tenant_id = $1 AND status IN ('closed', 'locked')
-       AND $2::date >= start_date AND $2::date <= end_date
-     LIMIT 1`,
-    [tenantId, d]
-  );
-  if (r.rows.length === 0) return;
+  const p = await new AccountingPeriodRepository(tenantId).findClosedOrLockedForDate(client, d);
+  if (!p) return;
 
-  const p = r.rows[0];
   if (
     p.status === 'locked' &&
     options?.overrideLockedPeriod &&
@@ -96,11 +90,7 @@ export async function listAccountingPeriods(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<AccountingPeriodRow[]> {
-  const r = await client.query<AccountingPeriodRow>(
-    `SELECT * FROM accounting_periods WHERE tenant_id = $1 ORDER BY start_date DESC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new AccountingPeriodRepository(tenantId).list(client);
 }
 
 export async function getAccountingPeriodById(
@@ -108,11 +98,7 @@ export async function getAccountingPeriodById(
   tenantId: string,
   periodId: string
 ): Promise<AccountingPeriodRow | null> {
-  const r = await client.query<AccountingPeriodRow>(
-    `SELECT * FROM accounting_periods WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, periodId]
-  );
-  return r.rows[0] ?? null;
+  return new AccountingPeriodRepository(tenantId).getById(client, periodId);
 }
 
 export async function createAccountingPeriod(
@@ -124,24 +110,12 @@ export async function createAccountingPeriod(
   const end = input.endDate.slice(0, 10);
   if (start > end) throw new Error('start_date must be on or before end_date.');
 
-  const overlap = await client.query(
-    `SELECT id FROM accounting_periods
-     WHERE tenant_id = $1 AND NOT (end_date < $2::date OR start_date > $3::date)
-     LIMIT 1`,
-    [tenantId, start, end]
-  );
-  if (overlap.rows.length > 0) {
+  const repo = new AccountingPeriodRepository(tenantId);
+  if (await repo.hasOverlappingRange(client, start, end)) {
     throw new Error('Date range overlaps an existing accounting period.');
   }
 
-  const id = randomUUID();
-  const r = await client.query<AccountingPeriodRow>(
-    `INSERT INTO accounting_periods (id, tenant_id, start_date, end_date, status, created_at, updated_at)
-     VALUES ($1, $2, $3::date, $4::date, 'open', NOW(), NOW())
-     RETURNING *`,
-    [id, tenantId, start, end]
-  );
-  return r.rows[0];
+  return repo.insertPeriod(client, randomUUID(), start, end);
 }
 
 export async function markAccountingPeriodClosed(
@@ -152,22 +126,15 @@ export async function markAccountingPeriodClosed(
   closingJournalEntryId: string | null,
   yearEndTransferJournalEntryId: string | null
 ): Promise<AccountingPeriodRow> {
-  const r = await client.query<AccountingPeriodRow>(
-    `UPDATE accounting_periods SET
-       status = 'closed',
-       closed_by = $3,
-       closed_at = NOW(),
-       closing_journal_entry_id = $4,
-       year_end_transfer_journal_entry_id = $5,
-       reopened_by = NULL,
-       reopened_at = NULL,
-       updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2 AND status = 'open'
-     RETURNING *`,
-    [tenantId, periodId, actorUserId, closingJournalEntryId, yearEndTransferJournalEntryId]
+  const row = await new AccountingPeriodRepository(tenantId).markClosed(
+    client,
+    periodId,
+    actorUserId,
+    closingJournalEntryId,
+    yearEndTransferJournalEntryId
   );
-  if (r.rows.length === 0) throw new Error('Period not found or already closed.');
-  return r.rows[0];
+  if (!row) throw new Error('Period not found or already closed.');
+  return row;
 }
 
 export async function reopenAccountingPeriod(
@@ -176,16 +143,7 @@ export async function reopenAccountingPeriod(
   periodId: string,
   actorUserId: string | null
 ): Promise<AccountingPeriodRow> {
-  const r = await client.query<AccountingPeriodRow>(
-    `UPDATE accounting_periods SET
-       status = 'open',
-       reopened_by = $3,
-       reopened_at = NOW(),
-       updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2 AND status = 'closed'
-     RETURNING *`,
-    [tenantId, periodId, actorUserId]
-  );
-  if (r.rows.length === 0) throw new Error('Period not found or not closed.');
-  return r.rows[0];
+  const row = await new AccountingPeriodRepository(tenantId).reopen(client, periodId, actorUserId);
+  if (!row) throw new Error('Period not found or not closed.');
+  return row;
 }

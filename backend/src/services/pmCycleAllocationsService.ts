@@ -170,6 +170,27 @@ async function auditPmCycleAllocation(
   });
 }
 
+function allocationFieldValues(p: ReturnType<typeof pickBody>): unknown[] {
+  return [
+    p.project_id,
+    p.cycle_id,
+    p.cycle_label,
+    p.frequency,
+    p.start_date,
+    p.end_date,
+    p.allocation_date,
+    p.amount,
+    p.paid_amount,
+    p.status,
+    p.bill_id,
+    p.description ?? null,
+    p.expense_total,
+    p.fee_rate,
+    p.excluded_category_ids,
+    p.user_id,
+  ];
+}
+
 async function updateRowValues(
   client: pg.PoolClient,
   tenantId: string,
@@ -185,84 +206,19 @@ async function updateRowValues(
       clientVersion: expectedVersion,
     });
     if (lww.conflict) return { row: null, conflict: true };
-
-    const u = await client.query<PmCycleAllocationRow>(
-      `UPDATE pm_cycle_allocations SET
-         project_id = $3, cycle_id = $4, cycle_label = $5, frequency = $6,
-         start_date = $7::date, end_date = $8::date, allocation_date = $9::date,
-         amount = $10, paid_amount = $11, status = $12, bill_id = $13, description = $14,
-         expense_total = $15, fee_rate = $16, excluded_category_ids = $17, user_id = $18,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $19
-       RETURNING id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-                 amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-                 user_id, version, deleted_at, created_at, updated_at`,
-      [
-        rowId,
-        tenantId,
-        p.project_id,
-        p.cycle_id,
-        p.cycle_label,
-        p.frequency,
-        p.start_date,
-        p.end_date,
-        p.allocation_date,
-        p.amount,
-        p.paid_amount,
-        p.status,
-        p.bill_id,
-        p.description ?? null,
-        p.expense_total,
-        p.fee_rate,
-        p.excluded_category_ids,
-        p.user_id,
-        expectedVersion,
-      ]
-    );
-    if (u.rows.length === 0) {
-      const ex = await client.query(`SELECT 1 FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`, [
-        rowId,
-        tenantId,
-      ]);
-      if (ex.rows.length === 0) return { row: null, conflict: false };
-      return { row: null, conflict: true };
-    }
-    return { row: u.rows[0], conflict: false };
   }
 
-  const u = await client.query<PmCycleAllocationRow>(
-    `UPDATE pm_cycle_allocations SET
-       project_id = $3, cycle_id = $4, cycle_label = $5, frequency = $6,
-       start_date = $7::date, end_date = $8::date, allocation_date = $9::date,
-       amount = $10, paid_amount = $11, status = $12, bill_id = $13, description = $14,
-       expense_total = $15, fee_rate = $16, excluded_category_ids = $17, user_id = $18,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-               amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [
-      rowId,
-      tenantId,
-      p.project_id,
-      p.cycle_id,
-      p.cycle_label,
-      p.frequency,
-      p.start_date,
-      p.end_date,
-      p.allocation_date,
-      p.amount,
-      p.paid_amount,
-      p.status,
-      p.bill_id,
-      p.description ?? null,
-      p.expense_total,
-      p.fee_rate,
-      p.excluded_category_ids,
-      p.user_id,
-    ]
+  const result = await new PmCycleAllocationRepository(tenantId).updateActive(
+    client,
+    rowId,
+    allocationFieldValues(p),
+    expectedVersion
   );
-  return { row: u.rows[0] ?? null, conflict: false };
+  if (expectedVersion !== undefined && result.conflict) {
+    const ex = await new PmCycleAllocationRepository(tenantId).getById(client, rowId);
+    if (!ex) return { row: null, conflict: false };
+  }
+  return result;
 }
 
 /** Create or update (by id, or by tenant+project+cycle). */
@@ -294,41 +250,10 @@ export async function upsertPmCycleAllocation(
     if (p.version !== undefined && byId.version !== p.version) {
       throw new Error('Record was modified by another user');
     }
-    const u = await client.query<PmCycleAllocationRow>(
-      `UPDATE pm_cycle_allocations SET
-         project_id = $3, cycle_id = $4, cycle_label = $5, frequency = $6,
-         start_date = $7::date, end_date = $8::date, allocation_date = $9::date,
-         amount = $10, paid_amount = $11, status = $12, bill_id = $13, description = $14,
-         expense_total = $15, fee_rate = $16, excluded_category_ids = $17, user_id = $18,
-         deleted_at = NULL, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-                 amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-                 user_id, version, deleted_at, created_at, updated_at`,
-      [
-        id,
-        tenantId,
-        p.project_id,
-        p.cycle_id,
-        p.cycle_label,
-        p.frequency,
-        p.start_date,
-        p.end_date,
-        p.allocation_date,
-        p.amount,
-        p.paid_amount,
-        p.status,
-        p.bill_id,
-        p.description ?? null,
-        p.expense_total,
-        p.fee_rate,
-        p.excluded_category_ids,
-        p.user_id,
-      ]
-    );
-    if (u.rows[0]) {
-      await auditPmCycleAllocation(client, tenantId, 'update', u.rows[0], authUserId, byId);
-      return u.rows[0];
+    const restored = await repo.updateRestore(client, id, allocationFieldValues(p));
+    if (restored) {
+      await auditPmCycleAllocation(client, tenantId, 'update', restored, authUserId, byId);
+      return restored;
     }
   }
 
@@ -343,40 +268,7 @@ export async function upsertPmCycleAllocation(
     }
   }
 
-  const ins = await client.query<PmCycleAllocationRow>(
-    `INSERT INTO pm_cycle_allocations (
-       id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-       amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-       user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7::date, $8::date, $9::date, $10, $11, $12, $13, $14, $15, $16, $17, $18,
-       1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-               amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.project_id,
-      p.cycle_id,
-      p.cycle_label,
-      p.frequency,
-      p.start_date,
-      p.end_date,
-      p.allocation_date,
-      p.amount,
-      p.paid_amount,
-      p.status,
-      p.bill_id,
-      p.description ?? null,
-      p.expense_total,
-      p.fee_rate,
-      p.excluded_category_ids,
-      p.user_id,
-    ]
-  );
-  const inserted = ins.rows[0];
+  const inserted = await repo.insertAllocation(client, id, allocationFieldValues(p));
   await auditPmCycleAllocation(client, tenantId, 'create', inserted, authUserId);
   return inserted;
 }
@@ -400,12 +292,8 @@ export async function softDeletePmCycleAllocation(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE pm_cycle_allocations SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const ok = await repo.markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const meta = await repo.getByIdIncludingDeleted(client, id);
       if (!meta) return { ok: false, conflict: false };
       if (meta.deleted_at) return { ok: false, conflict: false };
@@ -414,12 +302,7 @@ export async function softDeletePmCycleAllocation(
     await auditPmCycleAllocation(client, tenantId, 'delete', null, userId, prior, id);
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE pm_cycle_allocations SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await repo.markDeleted(client, id);
   if (ok) {
     await auditPmCycleAllocation(client, tenantId, 'delete', null, userId, prior, id);
   }

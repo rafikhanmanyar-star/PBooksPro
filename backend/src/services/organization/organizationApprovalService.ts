@@ -15,6 +15,7 @@ import {
   sendOrganizationRejectedEmail,
 } from './organizationApprovalEmailService.js';
 import { captureMonitoringEvent } from '../monitoring/monitoringCapture.js';
+import { OrganizationRepository } from '../../modules/organization/repositories/OrganizationRepository.js';
 
 export type OrganizationRequestRow = {
   id: string;
@@ -39,6 +40,8 @@ export type OrganizationRequestDetail = OrganizationRequestRow & {
   rejectionReason: string | null;
 };
 
+const orgRepo = new OrganizationRepository();
+
 export class OrganizationAccessDeniedError extends Error {
   readonly code: string;
   readonly title: string;
@@ -62,10 +65,8 @@ export class OrganizationAccessDeniedError extends Error {
 
 export async function allocateRegistrationReference(client: PoolClient): Promise<string> {
   const year = new Date().getFullYear();
-  const r = await client.query<{ n: string }>(
-    `SELECT nextval('tenant_registration_ref_seq')::text AS n`
-  );
-  const seq = Number(r.rows[0]?.n ?? 1);
+  const n = await orgRepo.nextRegistrationReference(client);
+  const seq = Number(n);
   return `ORG-${year}-${String(seq).padStart(6, '0')}`;
 }
 
@@ -73,11 +74,7 @@ export async function getTenantOrganizationStatus(
   client: PoolClient,
   tenantId: string
 ): Promise<{ status: OrganizationStatus; rejectionReason: string | null }> {
-  const r = await client.query<{ status: string; rejection_reason: string | null }>(
-    `SELECT status, rejection_reason FROM tenants WHERE id = $1`,
-    [tenantId]
-  );
-  const row = r.rows[0];
+  const row = await orgRepo.getTenantStatus(client, tenantId);
   if (!row) {
     return { status: 'ACTIVE', rejectionReason: null };
   }
@@ -132,7 +129,6 @@ async function logOrganizationStatusChange(
     reason?: string | null;
   }
 ): Promise<void> {
-  // Platform admins live in admin_users, not tenant users — audit_events.user_id FK targets users(id).
   await appendAuditEvent(client, {
     tenantId: input.tenantId,
     userId: null,
@@ -151,14 +147,62 @@ async function logOrganizationStatusChange(
   });
 }
 
-async function invalidateTenantSessions(client: PoolClient, tenantId: string): Promise<void> {
-  try {
-    await client.query('SAVEPOINT sp_invalidate_tenant_sessions');
-    await client.query(`DELETE FROM user_sessions WHERE tenant_id = $1`, [tenantId]);
-    await client.query('RELEASE SAVEPOINT sp_invalidate_tenant_sessions');
-  } catch {
-    await client.query('ROLLBACK TO SAVEPOINT sp_invalidate_tenant_sessions');
-  }
+function mapListRow(row: {
+  id: string;
+  name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  status: string;
+  registration_reference: string | null;
+  created_at: Date;
+  owner_name: string | null;
+  owner_email: string | null;
+}): OrganizationRequestRow {
+  return {
+    id: row.id,
+    name: row.name,
+    companyName: row.company_name,
+    email: row.email,
+    phone: row.phone,
+    country: row.country,
+    status: (isOrganizationStatus(row.status) ? row.status : 'ACTIVE') as OrganizationStatus,
+    registrationReference: row.registration_reference,
+    createdAt: row.created_at.toISOString(),
+    ownerName: row.owner_name,
+    ownerEmail: row.owner_email,
+  };
+}
+
+function mapDetailRow(row: {
+  id: string;
+  name: string;
+  company_name: string | null;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  address: string | null;
+  status: string;
+  registration_reference: string | null;
+  created_at: Date;
+  approved_at: Date | null;
+  approved_by: string | null;
+  rejected_at: Date | null;
+  rejected_by: string | null;
+  rejection_reason: string | null;
+  owner_name: string | null;
+  owner_email: string | null;
+}): OrganizationRequestDetail {
+  return {
+    ...mapListRow(row),
+    address: row.address,
+    approvedAt: row.approved_at?.toISOString() ?? null,
+    approvedBy: row.approved_by,
+    rejectedAt: row.rejected_at?.toISOString() ?? null,
+    rejectedBy: row.rejected_by,
+    rejectionReason: row.rejection_reason,
+  };
 }
 
 export async function listOrganizationRequests(
@@ -168,61 +212,19 @@ export async function listOrganizationRequests(
   const limit = Math.min(Math.max(options.limit ?? 100, 1), 500);
   const offset = Math.max(options.offset ?? 0, 0);
   const params: unknown[] = [];
-  let where = 'WHERE t.id !~ \'^__\'';
+  let where = "WHERE t.id !~ '^__'";
   if (options.status) {
     params.push(options.status);
     where += ` AND t.status = $${params.length}`;
   }
 
-  const countR = await client.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM tenants t ${where}`,
-    params
-  );
+  const total = await orgRepo.countOrganizationRequests(client, where, params);
   params.push(limit, offset);
-  const listR = await client.query<{
-    id: string;
-    name: string;
-    company_name: string | null;
-    email: string | null;
-    phone: string | null;
-    country: string | null;
-    status: string;
-    registration_reference: string | null;
-    created_at: Date;
-    owner_name: string | null;
-    owner_email: string | null;
-  }>(
-    `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.country, t.status,
-            t.registration_reference, t.created_at,
-            u.name AS owner_name, u.email AS owner_email
-     FROM tenants t
-     LEFT JOIN LATERAL (
-       SELECT name, email FROM users
-       WHERE tenant_id = t.id AND role IN ('Admin', 'admin', 'SUPER_ADMIN', 'super_admin')
-       ORDER BY created_at ASC
-       LIMIT 1
-     ) u ON TRUE
-     ${where}
-     ORDER BY t.created_at DESC
-     LIMIT $${params.length - 1} OFFSET $${params.length}`,
-    params
-  );
+  const rows = await orgRepo.listOrganizationRequests(client, where, params);
 
   return {
-    total: Number(countR.rows[0]?.count ?? 0),
-    items: listR.rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      companyName: row.company_name,
-      email: row.email,
-      phone: row.phone,
-      country: row.country,
-      status: (isOrganizationStatus(row.status) ? row.status : 'ACTIVE') as OrganizationStatus,
-      registrationReference: row.registration_reference,
-      createdAt: row.created_at.toISOString(),
-      ownerName: row.owner_name,
-      ownerEmail: row.owner_email,
-    })),
+    total,
+    items: rows.map(mapListRow),
   };
 }
 
@@ -230,60 +232,9 @@ export async function getOrganizationRequestDetail(
   client: PoolClient,
   tenantId: string
 ): Promise<OrganizationRequestDetail | null> {
-  const r = await client.query<{
-    id: string;
-    name: string;
-    company_name: string | null;
-    email: string | null;
-    phone: string | null;
-    country: string | null;
-    address: string | null;
-    status: string;
-    registration_reference: string | null;
-    created_at: Date;
-    approved_at: Date | null;
-    approved_by: string | null;
-    rejected_at: Date | null;
-    rejected_by: string | null;
-    rejection_reason: string | null;
-    owner_name: string | null;
-    owner_email: string | null;
-  }>(
-    `SELECT t.id, t.name, t.company_name, t.email, t.phone, t.country, t.address, t.status,
-            t.registration_reference, t.created_at, t.approved_at, t.approved_by,
-            t.rejected_at, t.rejected_by, t.rejection_reason,
-            u.name AS owner_name, u.email AS owner_email
-     FROM tenants t
-     LEFT JOIN LATERAL (
-       SELECT name, email FROM users
-       WHERE tenant_id = t.id AND role IN ('Admin', 'admin', 'SUPER_ADMIN', 'super_admin')
-       ORDER BY created_at ASC
-       LIMIT 1
-     ) u ON TRUE
-     WHERE t.id = $1`,
-    [tenantId]
-  );
-  const row = r.rows[0];
+  const row = await orgRepo.getOrganizationDetail(client, tenantId);
   if (!row) return null;
-  return {
-    id: row.id,
-    name: row.name,
-    companyName: row.company_name,
-    email: row.email,
-    phone: row.phone,
-    country: row.country,
-    address: row.address,
-    status: (isOrganizationStatus(row.status) ? row.status : 'ACTIVE') as OrganizationStatus,
-    registrationReference: row.registration_reference,
-    createdAt: row.created_at.toISOString(),
-    ownerName: row.owner_name,
-    ownerEmail: row.owner_email,
-    approvedAt: row.approved_at?.toISOString() ?? null,
-    approvedBy: row.approved_by,
-    rejectedAt: row.rejected_at?.toISOString() ?? null,
-    rejectedBy: row.rejected_by,
-    rejectionReason: row.rejection_reason,
-  };
+  return mapDetailRow(row as Parameters<typeof mapDetailRow>[0]);
 }
 
 export async function approveOrganization(
@@ -297,18 +248,7 @@ export async function approveOrganization(
   const previousStatus = current.status;
   if (previousStatus === 'ACTIVE') return current;
 
-  await client.query(
-    `UPDATE tenants
-     SET status = 'ACTIVE',
-         approved_by = $2,
-         approved_at = NOW(),
-         rejected_by = NULL,
-         rejected_at = NULL,
-         rejection_reason = NULL,
-         updated_at = NOW()
-     WHERE id = $1`,
-    [tenantId, adminUserId]
-  );
+  await orgRepo.approve(client, tenantId, adminUserId);
 
   await startTrialSubscription(client, tenantId).catch((err) => {
     console.warn('[organizationApproval] Trial subscription not started on approve:', err);
@@ -347,18 +287,8 @@ export async function rejectOrganization(
   if (!current) throw new Error('Organization not found');
   const previousStatus = current.status;
 
-  await client.query(
-    `UPDATE tenants
-     SET status = 'REJECTED',
-         rejected_by = $2,
-         rejected_at = NOW(),
-         rejection_reason = $3,
-         updated_at = NOW()
-     WHERE id = $1`,
-    [tenantId, adminUserId, trimmedReason]
-  );
-
-  await invalidateTenantSessions(client, tenantId);
+  await orgRepo.reject(client, tenantId, adminUserId, trimmedReason);
+  await orgRepo.invalidateTenantSessions(client, tenantId);
 
   await logOrganizationStatusChange(client, {
     tenantId,
@@ -389,11 +319,8 @@ export async function suspendOrganization(
   if (!current) throw new Error('Organization not found');
   const previousStatus = current.status;
 
-  await client.query(
-    `UPDATE tenants SET status = 'SUSPENDED', updated_at = NOW() WHERE id = $1`,
-    [tenantId]
-  );
-  await invalidateTenantSessions(client, tenantId);
+  await orgRepo.suspend(client, tenantId);
+  await orgRepo.invalidateTenantSessions(client, tenantId);
 
   await logOrganizationStatusChange(client, {
     tenantId,
@@ -418,15 +345,7 @@ export async function activateOrganization(
   if (!current) throw new Error('Organization not found');
   const previousStatus = current.status;
 
-  await client.query(
-    `UPDATE tenants
-     SET status = 'ACTIVE',
-         approved_by = COALESCE(approved_by, $2),
-         approved_at = COALESCE(approved_at, NOW()),
-         updated_at = NOW()
-     WHERE id = $1`,
-    [tenantId, adminUserId]
-  );
+  await orgRepo.activate(client, tenantId, adminUserId);
 
   await logOrganizationStatusChange(client, {
     tenantId,
@@ -455,22 +374,16 @@ export async function registerPendingOrganization(
   const registrationReference = await allocateRegistrationReference(client);
   const initialStatus: OrganizationStatus = isOrganizationApprovalEnabled() ? 'PENDING' : 'ACTIVE';
 
-  await client.query(
-    `INSERT INTO tenants (
-       id, name, company_name, email, phone, address, country, status, registration_reference
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-    [
-      input.tenantId,
-      input.companyName,
-      input.companyName,
-      input.email,
-      input.phone ?? null,
-      input.address ?? null,
-      input.country ?? null,
-      initialStatus,
-      registrationReference,
-    ]
-  );
+  await orgRepo.insertPendingOrganization(client, {
+    tenantId: input.tenantId,
+    companyName: input.companyName,
+    email: input.email,
+    phone: input.phone ?? null,
+    address: input.address ?? null,
+    country: input.country ?? null,
+    status: initialStatus,
+    registrationReference,
+  });
 
   if (initialStatus === 'PENDING') {
     captureMonitoringEvent({

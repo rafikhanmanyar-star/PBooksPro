@@ -15,9 +15,18 @@
   min-width: 100%;
 }
 
-.report-print-content:not(.owner-rental-income-report-print) table th,
-.report-print-content:not(.owner-rental-income-report-print) table td {
-  white-space: nowrap;
+.report-print-content:not(.owner-rental-income-report-print):not(.owner-ledger-report-print) table th,
+.report-print-content:not(.owner-rental-income-report-print):not(.owner-ledger-report-print) table td {
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Custom report builder — allow horizontal scroll containers to expand for print */
+.custom-report-print [data-print-scroll-container],
+.custom-report-print .overflow-auto {
+  overflow: visible !important;
+  max-height: none !important;
 }
 
 /* Screen: hide portal content from view (only visible when printing) */

@@ -17,12 +17,15 @@ import {
 } from './demoSeedService.js';
 import { validatePassword } from '../../utils/passwordPolicy.js';
 import { syncPublicDemoTrialSubscription } from './demoLicenseService.js';
+import { DemoEnvironmentRepository } from '../../modules/demo/repositories/DemoRepository.js';
 
 export type DemoResetResult = {
   tenantId: string;
   resetAt: string;
   durationMs: number;
 };
+
+const demoRepo = new DemoEnvironmentRepository();
 
 async function upsertDemoTenantAndUser(
   client: pg.PoolClient,
@@ -33,24 +36,16 @@ async function upsertDemoTenantAndUser(
 ): Promise<void> {
   const companyName =
     tenantId === DEMO_PUBLIC_TENANT_ID ? 'Al Noor Properties' : tenantName;
-  await client.query(
-    `INSERT INTO tenants (id, name, company_name) VALUES ($1, $2, $3)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, company_name = EXCLUDED.company_name, updated_at = NOW()`,
-    [tenantId, tenantName, companyName]
-  );
+  await demoRepo.upsertDemoTenant(client, tenantId, tenantName, companyName);
 
   const passwordHash = await bcrypt.hash(password, 10);
-  await client.query(
-    `INSERT INTO users (id, tenant_id, username, name, role, password_hash, is_active)
-     VALUES ($1, $2, $3, $4, 'Admin', $5, TRUE)
-     ON CONFLICT (tenant_id, username) DO UPDATE SET
-       password_hash = EXCLUDED.password_hash,
-       name = EXCLUDED.name,
-       role = EXCLUDED.role,
-       is_active = TRUE,
-       updated_at = NOW()`,
-    [userId, tenantId, DEMO_DEFAULT_USERNAME, 'Demo User', passwordHash]
-  );
+  await demoRepo.upsertDemoUser(client, {
+    userId,
+    tenantId,
+    username: DEMO_DEFAULT_USERNAME,
+    name: 'Demo User',
+    passwordHash,
+  });
 }
 
 export async function provisionDemoEnvironment(pool?: pg.Pool): Promise<void> {

@@ -15,6 +15,9 @@ import {
   upsertWebhookDelivery,
 } from './paddleInvoiceSyncService.js';
 import { logBillingAudit } from './billingAuditService.js';
+import { SubscriptionRepository } from '../../modules/billing/repositories/SubscriptionRepository.js';
+
+const subRepo = new SubscriptionRepository();
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
@@ -69,16 +72,7 @@ async function markSubscriptionPastDue(
   paddleSubId: string | undefined
 ): Promise<void> {
   if (!paddleSubId) return;
-  const { rows } = await client.query<{ tenant_id: string }>(
-    `UPDATE subscriptions SET
-       status = 'past_due',
-       past_due_at = COALESCE(past_due_at, NOW()),
-       updated_at = NOW()
-     WHERE paddle_subscription_id = $1
-     RETURNING tenant_id`,
-    [paddleSubId]
-  );
-  const tenantId = rows[0]?.tenant_id;
+  const tenantId = await subRepo.markPastDueByPaddleSubId(client, paddleSubId);
   if (tenantId) {
     const { captureMonitoringEvent } = await import('../monitoring/monitoringCapture.js');
     captureMonitoringEvent({
@@ -97,14 +91,7 @@ async function clearPastDueOnPayment(
   paddleSubId: string | undefined
 ): Promise<void> {
   if (!paddleSubId) return;
-  await client.query(
-    `UPDATE subscriptions SET
-       status = 'active',
-       past_due_at = NULL,
-       updated_at = NOW()
-     WHERE paddle_subscription_id = $1 AND status = 'past_due'`,
-    [paddleSubId]
-  );
+  await subRepo.clearPastDueByPaddleSubId(client, paddleSubId);
 }
 
 async function dispatchEvent(
@@ -178,11 +165,7 @@ async function dispatchEvent(
   if (eventType === 'subscription.canceled') {
     const paddleSubId = str(data.id);
     if (paddleSubId) {
-      await client.query(
-        `UPDATE subscriptions SET status = 'canceled', canceled_at = NOW(), updated_at = NOW()
-         WHERE paddle_subscription_id = $1`,
-        [paddleSubId]
-      );
+      await subRepo.cancelByPaddleSubId(client, paddleSubId);
     }
     return;
   }
@@ -195,16 +178,7 @@ async function dispatchEvent(
   if (eventType === 'subscription.resumed') {
     const paddleSubId = str(data.id);
     if (paddleSubId) {
-      await client.query(
-        `UPDATE subscriptions SET
-           status = 'active',
-           past_due_at = NULL,
-           cancel_at_period_end = FALSE,
-           canceled_at = NULL,
-           updated_at = NOW()
-         WHERE paddle_subscription_id = $1`,
-        [paddleSubId]
-      );
+      await subRepo.resumeByPaddleSubId(client, paddleSubId);
     }
     return;
   }

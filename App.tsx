@@ -59,6 +59,7 @@ import { devLogger } from './utils/devLogger';
 import { navPerfLog } from './utils/navPerfLogger';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { PrintController } from './components/print/PrintController';
+import { ensureReportPrintStyles } from './services/printService';
 import SchemaBlockedScreen from './components/diagnostics/SchemaBlockedScreen';
 import StabilityBanner from './components/stability/StabilityBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
@@ -140,6 +141,10 @@ const App: React.FC = () => {
   // Ref tracks currentPage without causing callback identity changes on navigation
   const currentPageRef = React.useRef(currentPage);
   currentPageRef.current = currentPage;
+
+  useEffect(() => {
+    ensureReportPrintStyles();
+  }, []);
 
   /** Local-only: block UI when main-process schema validation reports a critical failure. */
   const [schemaGate, setSchemaGate] = useState<'unset' | 'ok' | { errors: string[] }>('ok');

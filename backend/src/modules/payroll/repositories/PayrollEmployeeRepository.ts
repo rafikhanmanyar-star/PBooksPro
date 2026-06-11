@@ -156,4 +156,12 @@ export class PayrollEmployeeRepository extends TenantRepository {
       [id, this.tenantId, departmentId]
     );
   }
+
+  async listActiveIds(client: pg.PoolClient): Promise<string[]> {
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM payroll_employees WHERE tenant_id = $1 AND deleted_at IS NULL`,
+      [this.tenantId]
+    );
+    return r.rows.map((row) => row.id);
+  }
 }

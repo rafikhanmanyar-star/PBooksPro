@@ -12,13 +12,10 @@ import {
   DEMO_PUBLIC_TENANT_ID,
   isDemoMasterTenant,
 } from '../constants/demoEnvironment.js';
-
-const JOURNAL_IMMUTABILITY_TRIGGERS = [
-  'journal_lines_immutable_del',
-  'journal_lines_immutable_upd',
-  'journal_entries_immutable_del',
-  'journal_entries_immutable_upd',
-] as const;
+import {
+  TenantJournalMaintenanceRepository,
+  TenantWipeRepository,
+} from '../core/repositories/TenantMaintenanceRepository.js';
 
 /** Child tables first. Missing tables are skipped (savepoint per table). */
 const CLEAR_TRANSACTION_TABLES = [
@@ -92,26 +89,8 @@ function assertTenantMayBeWiped(tenantId: string): void {
   }
 }
 
-async function setJournalImmutabilityTriggers(
-  client: pg.PoolClient,
-  enabled: boolean
-): Promise<void> {
-  const verb = enabled ? 'ENABLE' : 'DISABLE';
-  for (const trigger of JOURNAL_IMMUTABILITY_TRIGGERS) {
-    const table = trigger.startsWith('journal_lines') ? 'journal_lines' : 'journal_entries';
-    await client.query(`ALTER TABLE ${table} ${verb} TRIGGER ${trigger}`);
-  }
-}
-
-async function deleteTenantJournalRows(client: pg.PoolClient, tenantId: string): Promise<void> {
-  await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
-  await client.query(
-    `DELETE FROM journal_lines
-     WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = $1)`,
-    [tenantId]
-  );
-  await client.query(`DELETE FROM journal_entries WHERE tenant_id = $1`, [tenantId]);
-}
+const journalMaintenance = new TenantJournalMaintenanceRepository();
+const wipeRepo = new TenantWipeRepository();
 
 /** Bypass journal immutability triggers (managed Postgres / Render). */
 export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
@@ -119,7 +98,7 @@ export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string
     withSavepoint(client, 'tenant_journal_purge_replica', async (c) => {
       await c.query(`SET session_replication_role = replica`);
       try {
-        await deleteTenantJournalRows(c, tenantId);
+        await journalMaintenance.deleteTenantJournalRows(c, tenantId);
       } finally {
         await c.query(`SET session_replication_role = DEFAULT`);
       }
@@ -127,11 +106,11 @@ export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string
 
   const purgeWithTriggersDisabled = () =>
     withSavepoint(client, 'tenant_journal_purge_triggers', async (c) => {
-      await setJournalImmutabilityTriggers(c, false);
+      await journalMaintenance.setJournalImmutabilityTriggers(c, false);
       try {
-        await deleteTenantJournalRows(c, tenantId);
+        await journalMaintenance.deleteTenantJournalRows(c, tenantId);
       } finally {
-        await setJournalImmutabilityTriggers(c, true);
+        await journalMaintenance.setJournalImmutabilityTriggers(c, true);
       }
     });
 
@@ -150,19 +129,6 @@ export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string
   }
 }
 
-async function deleteFromTenantTable(
-  client: pg.PoolClient,
-  tenantId: string,
-  table: string
-): Promise<number> {
-  let deleted = 0;
-  await withSavepoint(client, `wipe_${table}`, async (c) => {
-    const r = await c.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-    deleted = r.rowCount ?? 0;
-  });
-  return deleted;
-}
-
 async function wipeTenantTables(
   client: pg.PoolClient,
   tenantId: string,
@@ -177,7 +143,9 @@ async function wipeTenantTables(
 
   for (const table of tables) {
     try {
-      const n = await deleteFromTenantTable(client, tenantId, table);
+      const n = await withSavepoint(client, `wipe_${table}`, async (c) =>
+        wipeRepo.deleteFromTenantTable(c, tenantId, table)
+      );
       if (n > 0) tablesCleared += 1;
       recordsDeleted += n;
     } catch {
@@ -186,23 +154,20 @@ async function wipeTenantTables(
   }
 
   try {
-    await withSavepoint(client, 'wipe_tenant_accounts', async (c) => {
-      const r = await c.query(`DELETE FROM accounts WHERE tenant_id = $1`, [tenantId]);
-      recordsDeleted += r.rowCount ?? 0;
-    });
+    const n = await withSavepoint(client, 'wipe_tenant_accounts', async (c) =>
+      wipeRepo.deleteTenantAccounts(c, tenantId)
+    );
+    recordsDeleted += n;
     tablesCleared += 1;
   } catch {
     /* optional */
   }
 
   try {
-    await withSavepoint(client, 'wipe_tenant_categories', async (c) => {
-      const r = await c.query(
-        `DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`,
-        [tenantId]
-      );
-      recordsDeleted += r.rowCount ?? 0;
-    });
+    const n = await withSavepoint(client, 'wipe_tenant_categories', async (c) =>
+      wipeRepo.deleteNonPermanentCategories(c, tenantId)
+    );
+    recordsDeleted += n;
     tablesCleared += 1;
   } catch {
     /* optional */

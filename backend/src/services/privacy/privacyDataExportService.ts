@@ -5,18 +5,10 @@
 import type pg from 'pg';
 import { PRIVACY_EXPORT_FORMAT, type PrivacyExportScope } from '../../constants/privacyRequestTypes.js';
 import { buildTenantBackupPayload } from '../tenantBackupService.js';
-
-const USER_EXPORT_COLUMNS = [
-  'id',
-  'tenant_id',
-  'username',
-  'name',
-  'role',
-  'email',
-  'is_active',
-  'created_at',
-  'updated_at',
-] as const;
+import {
+  PrivacyDataExportRepository,
+  sanitizeUserRow,
+} from '../../modules/privacy/repositories/PrivacyRepository.js';
 
 export type PrivacyUserExportPayload = {
   format: typeof PRIVACY_EXPORT_FORMAT;
@@ -42,22 +34,7 @@ export type PrivacyTenantExportPayload = {
   privacyRequests: unknown[];
 };
 
-async function tableExists(client: pg.PoolClient, table: string): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`,
-    [table]
-  );
-  return r.rows.length > 0;
-}
-
-function sanitizeUserRow(row: pg.QueryResultRow): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const col of USER_EXPORT_COLUMNS) {
-    if (row[col] !== undefined) out[col] = row[col];
-  }
-  return out;
-}
+const exportRepo = new PrivacyDataExportRepository();
 
 export async function buildUserPrivacyExport(
   client: pg.PoolClient,
@@ -65,56 +42,29 @@ export async function buildUserPrivacyExport(
   userId: string,
   scope: 'data' | 'user' = 'data'
 ): Promise<PrivacyUserExportPayload> {
-  const { rows: userRows } = await client.query(
-    `SELECT ${USER_EXPORT_COLUMNS.join(', ')} FROM users WHERE id = $1 AND tenant_id = $2`,
-    [userId, tenantId]
-  );
-  if (userRows.length === 0) {
+  const profileRow = await exportRepo.getUserProfile(client, tenantId, userId);
+  if (!profileRow) {
     throw new Error('User not found in this organization.');
   }
 
   const auditEvents: unknown[] = [];
-  if (await tableExists(client, 'audit_events')) {
-    const r = await client.query(
-      `SELECT id, module, action, entity_type, entity_id, summary, ip_address, occurred_at
-       FROM audit_events WHERE tenant_id = $1 AND user_id = $2
-       ORDER BY occurred_at DESC LIMIT 500`,
-      [tenantId, userId]
-    );
-    auditEvents.push(...r.rows);
+  if (await exportRepo.tableExists(client, 'audit_events')) {
+    auditEvents.push(...(await exportRepo.listUserAuditEvents(client, tenantId, userId)));
   }
 
   const loginEvents: unknown[] = [];
-  if (await tableExists(client, 'login_events')) {
-    const r = await client.query(
-      `SELECT id, email, login_time, logout_time, ip_address, user_agent, status
-       FROM login_events WHERE tenant_id = $1 AND user_id = $2
-       ORDER BY login_time DESC LIMIT 200`,
-      [tenantId, userId]
-    );
-    loginEvents.push(...r.rows);
+  if (await exportRepo.tableExists(client, 'login_events')) {
+    loginEvents.push(...(await exportRepo.listUserLoginEvents(client, tenantId, userId)));
   }
 
   const legalAcceptances: unknown[] = [];
-  if (await tableExists(client, 'legal_acceptance')) {
-    const r = await client.query(
-      `SELECT document_type, document_version, accepted_at, ip_address, context
-       FROM legal_acceptance WHERE tenant_id = $1 AND user_id = $2
-       ORDER BY accepted_at DESC`,
-      [tenantId, userId]
-    );
-    legalAcceptances.push(...r.rows);
+  if (await exportRepo.tableExists(client, 'legal_acceptance')) {
+    legalAcceptances.push(...(await exportRepo.listUserLegalAcceptances(client, tenantId, userId)));
   }
 
   const privacyRequests: unknown[] = [];
-  if (await tableExists(client, 'privacy_requests')) {
-    const r = await client.query(
-      `SELECT id, request_type, status, requested_at, completed_at, metadata
-       FROM privacy_requests WHERE tenant_id = $1 AND requested_by_user_id = $2
-       ORDER BY requested_at DESC LIMIT 100`,
-      [tenantId, userId]
-    );
-    privacyRequests.push(...r.rows);
+  if (await exportRepo.tableExists(client, 'privacy_requests')) {
+    privacyRequests.push(...(await exportRepo.listUserPrivacyRequests(client, tenantId, userId)));
   }
 
   return {
@@ -123,7 +73,7 @@ export async function buildUserPrivacyExport(
     scope,
     tenantId,
     userId,
-    profile: sanitizeUserRow(userRows[0]!),
+    profile: sanitizeUserRow(profileRow),
     auditEvents,
     loginEvents,
     legalAcceptances,
@@ -135,27 +85,16 @@ export async function buildTenantPrivacyExport(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<PrivacyTenantExportPayload> {
-  const { rows: tenantRows } = await client.query(
-    `SELECT id, name, created_at, updated_at FROM tenants WHERE id = $1`,
-    [tenantId]
-  );
-  if (tenantRows.length === 0) {
+  const tenantRow = await exportRepo.getTenantRow(client, tenantId);
+  if (!tenantRow) {
     throw new Error('Organization not found.');
   }
 
-  const { rows: userRows } = await client.query(
-    `SELECT ${USER_EXPORT_COLUMNS.join(', ')} FROM users WHERE tenant_id = $1 ORDER BY created_at`,
-    [tenantId]
-  );
+  const users = await exportRepo.listTenantUsers(client, tenantId);
 
   const privacyRequests: unknown[] = [];
-  if (await tableExists(client, 'privacy_requests')) {
-    const r = await client.query(
-      `SELECT id, request_type, status, requested_at, completed_at, requested_by_user_id, metadata
-       FROM privacy_requests WHERE tenant_id = $1 ORDER BY requested_at DESC LIMIT 200`,
-      [tenantId]
-    );
-    privacyRequests.push(...r.rows);
+  if (await exportRepo.tableExists(client, 'privacy_requests')) {
+    privacyRequests.push(...(await exportRepo.listTenantPrivacyRequests(client, tenantId)));
   }
 
   const tenantData = await buildTenantBackupPayload(client, tenantId);
@@ -165,8 +104,8 @@ export async function buildTenantPrivacyExport(
     exportedAt: new Date().toISOString(),
     scope: 'tenant',
     tenantId,
-    tenant: tenantRows[0] as Record<string, unknown>,
-    users: userRows.map(sanitizeUserRow),
+    tenant: tenantRow as Record<string, unknown>,
+    users,
     tenantData,
     privacyRequests,
   };

@@ -36,13 +36,22 @@ export const ReportLayout: React.FC<ReportLayoutProps> = ({ data }) => {
 
   if (!html) return null;
 
-  const isOwnerRentalIncome = data.elementId === 'owner-rental-income-print-root';
+  const reportPrintClass =
+    data.elementId === 'owner-rental-income-print-root'
+      ? ' owner-rental-income-report-print'
+      : data.elementId === 'print-area'
+        ? ' owner-ledger-report-print'
+        : data.elementId === 'custom-report-print-area'
+          ? ' custom-report-print'
+          : data.elementId === 'fund-availability-print'
+            ? ' fund-availability-report-print'
+            : '';
 
   return (
     <div
-      className={`report-print-content${isOwnerRentalIncome ? ' owner-rental-income-report-print' : ''}`}
+      className={`report-print-content print-report-surface${reportPrintClass}`}
       dangerouslySetInnerHTML={{ __html: html }}
-      style={{ width: '100%', minHeight: '100vh', background: '#fff' }}
+      style={{ width: '100%', minHeight: '100vh', background: '#fff', color: '#0f172a' }}
     />
   );
 };

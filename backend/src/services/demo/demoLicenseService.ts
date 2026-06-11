@@ -16,6 +16,9 @@ import {
   getActiveSubscription,
   type SubscriptionRow,
 } from '../billing/subscriptionService.js';
+import { DemoEnvironmentRepository, newDemoId } from '../../modules/demo/repositories/DemoRepository.js';
+
+const demoRepo = new DemoEnvironmentRepository();
 
 function addDays(from: Date, days: number): Date {
   const d = new Date(from);
@@ -23,21 +26,7 @@ function addDays(from: Date, days: number): Date {
   return d;
 }
 
-async function getLatestSubscription(
-  client: pg.PoolClient,
-  tenantId: string
-): Promise<SubscriptionRow | null> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.tenant_id = $1
-     ORDER BY s.updated_at DESC
-     LIMIT 1`,
-    [tenantId]
-  );
-  if (!rows[0]) return null;
-  const row = rows[0];
+function mapSub(row: pg.QueryResultRow): SubscriptionRow {
   return {
     id: row.id,
     tenant_id: row.tenant_id,
@@ -60,53 +49,48 @@ async function getLatestSubscription(
   };
 }
 
-/** Align public demo trial to tenant creation + DEMO_TRIAL_DAYS (default 7). */
+async function getLatestSubscription(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<SubscriptionRow | null> {
+  const row = await demoRepo.getLatestSubscriptionWithPlan(client, tenantId);
+  return row ? mapSub(row) : null;
+}
+
 export async function syncPublicDemoTrialSubscription(client: pg.PoolClient): Promise<void> {
   if (!isDemoEnvironmentEnabled()) return;
 
   const trialDays = getDemoTrialDays();
-  const tenantRow = await client.query<{ created_at: string }>(
-    `SELECT created_at FROM tenants WHERE id = $1`,
-    [DEMO_PUBLIC_TENANT_ID]
-  );
-  if (!tenantRow.rows[0]) return;
+  const createdAt = await demoRepo.getTenantCreatedAt(client, DEMO_PUBLIC_TENANT_ID);
+  if (!createdAt) return;
 
-  const startDate = new Date(tenantRow.rows[0].created_at);
+  const startDate = new Date(createdAt);
   const trialEnd = addDays(startDate, trialDays);
   const expired = trialEnd.getTime() < Date.now();
   const status = expired ? 'expired' : 'trialing';
 
   const existing = await getLatestSubscription(client, DEMO_PUBLIC_TENANT_ID);
   if (existing) {
-    await client.query(
-      `UPDATE subscriptions
-       SET start_date = $2,
-           trial_end_date = $3,
-           renewal_date = $3,
-           status = $4,
-           updated_at = NOW()
-       WHERE id = $1`,
-      [existing.id, startDate.toISOString(), trialEnd.toISOString(), status]
-    );
+    await demoRepo.updatePublicDemoTrial(client, {
+      subscriptionId: existing.id,
+      startDate: startDate.toISOString(),
+      trialEnd: trialEnd.toISOString(),
+      status,
+    });
     return;
   }
 
   const trialPlan = await getBillingPlanByCode(client, 'trial');
   if (!trialPlan) return;
 
-  await client.query(
-    `INSERT INTO subscriptions (
-       id, tenant_id, plan_id, status, billing_cycle, start_date, trial_end_date, renewal_date
-     ) VALUES ($1, $2, $3, $4, 'trial', $5, $6, $6)`,
-    [
-      randomUUID(),
-      DEMO_PUBLIC_TENANT_ID,
-      trialPlan.id,
-      status,
-      startDate.toISOString(),
-      trialEnd.toISOString(),
-    ]
-  );
+  await demoRepo.insertPublicDemoTrial(client, {
+    id: newDemoId(),
+    tenantId: DEMO_PUBLIC_TENANT_ID,
+    planId: trialPlan.id,
+    status,
+    startDate: startDate.toISOString(),
+    trialEnd: trialEnd.toISOString(),
+  });
 }
 
 export async function isPublicDemoTrialExpired(client: pg.PoolClient): Promise<boolean> {
@@ -151,11 +135,7 @@ export async function countTenantTransactions(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<number> {
-  const { rows } = await client.query<{ c: number }>(
-    `SELECT COUNT(*)::int AS c FROM transactions WHERE tenant_id = $1`,
-    [tenantId]
-  );
-  return rows[0]?.c ?? 0;
+  return demoRepo.countTenantTransactions(client, tenantId);
 }
 
 export async function assertDemoCanCreateTransaction(
@@ -186,7 +166,6 @@ export async function assertDemoCanCreateProject(
   }
 }
 
-/** Unlock all modules for demo; relax plan quotas so seeded sample data never blocks navigation. */
 export function applyPublicDemoLicenseProfile(
   payload: LicenseEnforcementPayload,
   usage: Awaited<ReturnType<typeof computeCurrentUsage>>,

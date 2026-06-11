@@ -1,6 +1,10 @@
 import type pg from 'pg';
 import type { Request } from 'express';
-import { randomUUID } from 'crypto';
+import {
+  AuditEventRepository,
+  type AuditEventRow,
+  type LoginEventRow,
+} from '../core/repositories/AuditEventRepository.js';
 
 export type AuditAction =
   | 'create'
@@ -53,34 +57,7 @@ export type AppendAuditEventInput = {
   occurredAt?: Date;
 };
 
-export type AuditEventRow = {
-  id: string;
-  tenant_id: string;
-  user_id: string | null;
-  email: string | null;
-  module: string;
-  action: string;
-  entity_type: string | null;
-  entity_id: string | null;
-  summary: string | null;
-  old_value: unknown;
-  new_value: unknown;
-  ip_address: string | null;
-  user_agent: string | null;
-  occurred_at: Date;
-};
-
-export type LoginEventRow = {
-  id: string;
-  tenant_id: string;
-  user_id: string | null;
-  email: string | null;
-  login_time: Date;
-  logout_time: Date | null;
-  ip_address: string | null;
-  user_agent: string | null;
-  status: LoginEventStatus;
-};
+export type { AuditEventRow, LoginEventRow };
 
 export type UnifiedAuditRow = {
   id: string;
@@ -121,11 +98,6 @@ export function auditContextFromRequest(req: Request): AuditRequestContext {
   return { ipAddress: ip, userAgent: ua };
 }
 
-function jsonOrNull(v: unknown): string | null {
-  if (v === undefined || v === null) return null;
-  return JSON.stringify(v);
-}
-
 export async function appendAuditEvent(
   client: pg.PoolClient,
   input: AppendAuditEventInput
@@ -135,33 +107,21 @@ export async function appendAuditEvent(
     throw new Error('appendAuditEvent requires a tenantId');
   }
 
-  const id = randomUUID();
   const ctx = input.ctx ?? {};
-  await client.query(
-    `INSERT INTO audit_events (
-       id, tenant_id, user_id, email, module, action, entity_type, entity_id,
-       summary, old_value, new_value, ip_address, user_agent, occurred_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, COALESCE($14::timestamptz, NOW())
-     )`,
-    [
-      id,
-      tenantId,
-      input.userId ?? null,
-      input.email ?? null,
-      input.module,
-      input.action,
-      input.entityType ?? null,
-      input.entityId ?? null,
-      input.summary ?? null,
-      jsonOrNull(input.oldValue),
-      jsonOrNull(input.newValue),
-      ctx.ipAddress ?? null,
-      ctx.userAgent ?? null,
-      input.occurredAt ?? null,
-    ]
-  );
-  return id;
+  return new AuditEventRepository(tenantId).insertAuditEvent(client, {
+    userId: input.userId,
+    email: input.email,
+    module: input.module,
+    action: input.action,
+    entityType: input.entityType,
+    entityId: input.entityId,
+    summary: input.summary,
+    oldValue: input.oldValue,
+    newValue: input.newValue,
+    ipAddress: ctx.ipAddress ?? null,
+    userAgent: ctx.userAgent ?? null,
+    occurredAt: input.occurredAt,
+  });
 }
 
 export async function recordLoginEvent(
@@ -174,13 +134,15 @@ export async function recordLoginEvent(
     ctx?: AuditRequestContext;
   }
 ): Promise<string> {
-  const id = randomUUID();
   const ctx = input.ctx ?? {};
-  await client.query(
-    `INSERT INTO login_events (id, tenant_id, user_id, email, login_time, ip_address, user_agent, status)
-     VALUES ($1, $2, $3, $4, NOW(), $5, $6, $7)`,
-    [id, input.tenantId, input.userId ?? null, input.email ?? null, ctx.ipAddress ?? null, ctx.userAgent ?? null, input.status]
-  );
+  const repo = new AuditEventRepository(input.tenantId);
+  const id = await repo.insertLoginEvent(client, {
+    userId: input.userId,
+    email: input.email,
+    status: input.status,
+    ipAddress: ctx.ipAddress ?? null,
+    userAgent: ctx.userAgent ?? null,
+  });
 
   if (input.status === 'success') {
     await appendAuditEvent(client, {
@@ -222,27 +184,15 @@ export async function recordLogoutEvent(
   }
 ): Promise<void> {
   const ctx = input.ctx ?? {};
+  const repo = new AuditEventRepository(input.tenantId);
   let closedId = input.loginEventId ?? null;
 
   if (closedId) {
-    await client.query(
-      `UPDATE login_events SET logout_time = NOW(), status = 'logout'
-       WHERE id = $1 AND tenant_id = $2 AND user_id = $3`,
-      [closedId, input.tenantId, input.userId]
-    );
+    await repo.closeLoginEvent(client, closedId, input.userId);
   } else {
-    const open = await client.query<{ id: string }>(
-      `SELECT id FROM login_events
-       WHERE tenant_id = $1 AND user_id = $2 AND status = 'success' AND logout_time IS NULL
-       ORDER BY login_time DESC LIMIT 1`,
-      [input.tenantId, input.userId]
-    );
-    closedId = open.rows[0]?.id ?? null;
+    closedId = await repo.findOpenLoginSession(client, input.userId);
     if (closedId) {
-      await client.query(
-        `UPDATE login_events SET logout_time = NOW(), status = 'logout' WHERE id = $1`,
-        [closedId]
-      );
+      await repo.closeLoginEventById(client, closedId);
     }
   }
 
@@ -315,85 +265,34 @@ export async function listUnifiedAuditTrail(
 ): Promise<UnifiedAuditRow[]> {
   const limit = Math.min(Math.max(filters.limit ?? 200, 1), 500);
   const offset = Math.max(filters.offset ?? 0, 0);
-
-  const auditParams: unknown[] = [tenantId];
-  let auditQ = `SELECT id, tenant_id, user_id, email, module, action, entity_type, entity_id, summary,
-                         old_value, new_value, ip_address, user_agent, occurred_at
-                  FROM audit_events WHERE tenant_id = $1`;
-
-  if (filters.userId) {
-    auditParams.push(filters.userId);
-    auditQ += ` AND user_id = $${auditParams.length}`;
-  }
-  if (filters.module) {
-    auditParams.push(filters.module);
-    auditQ += ` AND module = $${auditParams.length}`;
-  }
-  if (filters.action) {
-    auditParams.push(filters.action);
-    auditQ += ` AND action = $${auditParams.length}`;
-  }
-  if (filters.startDate) {
-    auditParams.push(filters.startDate);
-    auditQ += ` AND occurred_at >= $${auditParams.length}::date`;
-  }
-  if (filters.endDate) {
-    auditParams.push(filters.endDate);
-    auditQ += ` AND occurred_at < ($${auditParams.length}::date + INTERVAL '1 day')`;
-  }
-
-  auditQ += ` ORDER BY occurred_at DESC LIMIT ${limit + offset}`;
-
-  const loginParams: unknown[] = [tenantId];
-  let loginQ = `SELECT id, tenant_id, user_id, email, login_time, logout_time, ip_address, user_agent, status
-                FROM login_events WHERE tenant_id = $1`;
-
+  const repo = new AuditEventRepository(tenantId);
   const includeLoginEvents = !filters.module || filters.module === 'auth';
 
-  if (includeLoginEvents) {
-    if (filters.userId) {
-      loginParams.push(filters.userId);
-      loginQ += ` AND user_id = $${loginParams.length}`;
-    }
-    if (filters.action) {
-      const loginActionMap: Record<string, string> = {
-        login: 'success',
-        failed_login: 'failed',
-        logout: 'logout',
-      };
-      const st = loginActionMap[filters.action];
-      if (st) {
-        loginParams.push(st);
-        loginQ += ` AND status = $${loginParams.length}`;
-      } else {
-        loginQ += ` AND 1=0`;
-      }
-    }
-    if (filters.startDate) {
-      loginParams.push(filters.startDate);
-      loginQ += ` AND login_time >= $${loginParams.length}::date`;
-    }
-    if (filters.endDate) {
-      loginParams.push(filters.endDate);
-      loginQ += ` AND login_time < ($${loginParams.length}::date + INTERVAL '1 day')`;
-    }
-    loginQ += ` ORDER BY login_time DESC LIMIT ${limit + offset}`;
-  }
-
   const [auditRes, loginRes] = await Promise.all([
-    client.query<AuditEventRow>(auditQ, auditParams),
+    repo.queryAuditEvents(client, {
+      userId: filters.userId,
+      module: filters.module,
+      action: filters.action,
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      limit,
+      offset,
+    }),
     includeLoginEvents
-      ? client.query<LoginEventRow>(loginQ, loginParams)
-      : Promise.resolve({ rows: [] as LoginEventRow[] }),
+      ? repo.queryLoginEvents(client, {
+          userId: filters.userId,
+          action: filters.action,
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          limit,
+          offset,
+        })
+      : Promise.resolve([] as LoginEventRow[]),
   ]);
 
   const merged = [
-    ...auditRes.rows
-      .filter((row) => row.tenant_id === tenantId)
-      .map(rowToUnifiedFromAudit),
-    ...loginRes.rows
-      .filter((row) => row.tenant_id === tenantId)
-      .map(rowToUnifiedFromLogin),
+    ...auditRes.filter((row) => row.tenant_id === tenantId).map(rowToUnifiedFromAudit),
+    ...loginRes.filter((row) => row.tenant_id === tenantId).map(rowToUnifiedFromLogin),
   ];
 
   merged.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
@@ -424,24 +323,12 @@ export async function listAuditModules(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<string[]> {
-  const r = await client.query<{ module: string }>(
-    `SELECT DISTINCT module FROM audit_events WHERE tenant_id = $1
-     UNION SELECT 'auth' WHERE EXISTS (SELECT 1 FROM login_events WHERE tenant_id = $1)
-     ORDER BY 1`,
-    [tenantId]
-  );
-  return r.rows.map((x) => x.module);
+  return new AuditEventRepository(tenantId).listDistinctModules(client);
 }
 
 export async function listAuditActions(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<string[]> {
-  const r = await client.query<{ action: string }>(
-    `SELECT DISTINCT action FROM audit_events WHERE tenant_id = $1
-     UNION SELECT unnest(ARRAY['login','logout','failed_login'])
-     ORDER BY 1`,
-    [tenantId]
-  );
-  return r.rows.map((x) => x.action);
+  return new AuditEventRepository(tenantId).listDistinctActions(client);
 }

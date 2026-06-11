@@ -86,7 +86,7 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
 
   return (
     <div className="fixed top-4 right-4 z-50 w-96 max-w-[calc(100vw-2rem)] animate-slide-in-right">
-      <div className="bg-white rounded-lg shadow-xl border border-blue-200 overflow-hidden">
+      <div className="ds-notification-card border-blue-200 dark:border-blue-900/60">
         <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-500 to-blue-600">
           <div className="flex items-center gap-2 text-white">
             <RefreshCw className="w-5 h-5" />
@@ -102,11 +102,11 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
         </div>
         
         <div className="px-4 py-3 space-y-3">
-          <div className="text-sm text-slate-700">
+          <div className="text-sm text-app-text">
             <p className="font-medium mb-1">A new version is available!</p>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-app-muted">
               Current: <span className="font-mono">{clientVersion}</span> → 
-              New: <span className="font-mono text-blue-600">{serverVersion}</span>
+              New: <span className="font-mono text-ds-primary">{serverVersion}</span>
             </p>
           </div>
           
@@ -120,7 +120,7 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
             </button>
             <button
               onClick={() => handleDismiss(1)}
-              className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-md transition-colors flex items-center gap-1"
+              className="px-4 py-2 text-sm text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-md transition-colors flex items-center gap-1"
               title="Remind me in 1 hour"
             >
               <Clock className="w-4 h-4" />
@@ -128,7 +128,7 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
             </button>
           </div>
           
-          <div className="text-xs text-slate-400 text-center">
+          <div className="text-xs text-app-muted text-center">
             You can continue working - the update will only apply when you choose
           </div>
         </div>

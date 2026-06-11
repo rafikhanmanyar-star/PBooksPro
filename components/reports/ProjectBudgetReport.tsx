@@ -1,17 +1,19 @@
 import { useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
-import { usePrintContext } from '../../context/PrintContext';
 import { TransactionType } from '../../types';
 import Select from '../ui/Select';
 import { CURRENCY } from '../../constants';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
+import ReportHeader from './ReportHeader';
+import ReportFooter from './ReportFooter';
+import { usePrintReport } from '../../hooks/usePrintReport';
 
 type SortKey = 'categoryName' | 'budgeted' | 'totalSpent' | 'variance' | 'percentUsed';
 
 const ProjectBudgetReport: React.FC = () => {
     const state = useProjectReportAppState();
-    const { print: triggerPrint } = usePrintContext();
+    const printReport = usePrintReport();
     const [selectedProjectId, setSelectedProjectId] = useState<string>(state.defaultProjectId || '');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'budgeted', direction: 'desc' });
     
@@ -340,18 +342,17 @@ const ProjectBudgetReport: React.FC = () => {
                             ))}
                         </Select>
                     </div>
-                    <Button onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })} variant="outline" size="sm">
+                    <Button onClick={() => printReport()} variant="outline" size="sm">
                         Print Report
                     </Button>
                 </div>
             </div>
             
             {/* Report Content */}
-            <Card id="printable-area" className="printable-area">
-                {/* Print-only title */}
-                <div className="hidden print:block text-center border-b border-slate-200 pb-2 mb-2">
-                    <h1 className="text-lg font-bold text-slate-800">Budget vs Actual Spending Report</h1>
-                    <div className="mt-1 text-xs text-slate-600">
+            <Card id="printable-area" className="printable-area print-report-surface">
+                <ReportHeader reportTitle="Budget vs Actual Spending Report" />
+                <div className="text-center border-b border-slate-200 pb-2 mb-2 report-title-block">
+                    <div className="text-xs text-slate-600">
                         <span className="font-medium">{selectedProject?.name}</span>
                         <span className="text-slate-400 ml-2">• All Time</span>
                     </div>
@@ -552,6 +553,7 @@ const ProjectBudgetReport: React.FC = () => {
                         <p className="text-sm text-slate-400 mt-2">Set budgets in the Configuration → Budget Management section.</p>
                     </div>
                 )}
+                <ReportFooter />
             </Card>
         </div>
     );

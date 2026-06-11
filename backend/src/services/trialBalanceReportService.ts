@@ -1,5 +1,4 @@
 import type pg from 'pg';
-import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { roundMoney } from '../financial/validation.js';
 import {
   applyOpeningBalances,
@@ -11,6 +10,8 @@ import {
   type TrialBalanceRawRow,
   type TrialBalanceReportPayload,
 } from '../financial/trialBalanceCore.js';
+import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
+import { AccountRepository } from '../modules/accounting/repositories/AccountRepository.js';
 
 export type { TrialBalanceBasis, TrialBalanceReportPayload };
 
@@ -38,17 +39,26 @@ export async function fetchTrialBalanceRawRows(
   tenantId: string,
   options: { from: string; to: string; basis: TrialBalanceBasis }
 ): Promise<TrialBalanceRawRow[]> {
-  const periodRows = await fetchJournalAggregateRows(client, tenantId, options);
+  const journalRepo = new JournalRepository(tenantId);
+  const periodRows = (
+    await journalRepo.aggregateTrialBalanceRows(client, {
+      from: options.from,
+      to: options.to,
+      basis: options.basis,
+    })
+  ).map((r) => mapPgRow(r as unknown as Record<string, unknown>));
 
   let activityRows = periodRows;
   if (options.basis === 'period') {
-    const priorRows = await fetchJournalAggregateRows(client, tenantId, {
-      from: '1900-01-01',
-      to: options.from,
-      basis: 'cumulative',
-      priorOnly: true,
-      priorBefore: options.from,
-    });
+    const priorRows = (
+      await journalRepo.aggregateTrialBalanceRows(client, {
+        from: '1900-01-01',
+        to: options.from,
+        basis: 'cumulative',
+        priorOnly: true,
+        priorBefore: options.from,
+      })
+    ).map((r) => mapPgRow(r as unknown as Record<string, unknown>));
     activityRows = mergeRawRowsByAccount([...priorRows, ...periodRows]);
   }
 
@@ -69,83 +79,17 @@ async function fetchAccountOpeningInputs(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<AccountOpeningInput[]> {
-  const r = await client.query(
-    `SELECT
-      a.id AS account_id,
-      a.name AS account_name,
-      a.type AS account_type,
-      a.parent_account_id AS parent_account_id,
-      a.account_code AS account_code,
-      a.sub_type AS sub_type,
-      COALESCE(a.is_active, TRUE) AS is_active,
-      COALESCE(a.opening_balance, 0)::float AS opening_balance
-    FROM accounts a
-    WHERE (a.tenant_id = $1 OR a.tenant_id = $2)
-      AND a.deleted_at IS NULL
-      AND COALESCE(a.opening_balance, 0) <> 0`,
-    [tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
-  return (r.rows as Record<string, unknown>[]).map((row) => ({
-    accountId: String(row.account_id),
-    accountName: String(row.account_name),
-    accountType: String(row.account_type),
-    parentAccountId: row.parent_account_id != null ? String(row.parent_account_id) : null,
-    accountCode: row.account_code != null ? String(row.account_code) : null,
-    subType: row.sub_type != null ? String(row.sub_type) : null,
-    isActive: row.is_active === null || row.is_active === undefined ? true : Boolean(row.is_active),
-    openingBalance: roundMoney(Number(row.opening_balance)),
+  const rows = await new AccountRepository(tenantId).listOpeningBalanceInputs(client);
+  return rows.map((row) => ({
+    accountId: row.account_id,
+    accountName: row.account_name,
+    accountType: row.account_type,
+    parentAccountId: row.parent_account_id,
+    accountCode: row.account_code,
+    subType: row.sub_type,
+    isActive: row.is_active,
+    openingBalance: roundMoney(row.opening_balance),
   }));
-}
-
-type JournalAggregateOptions = {
-  from: string;
-  to: string;
-  basis: TrialBalanceBasis;
-  priorOnly?: boolean;
-  priorBefore?: string;
-};
-
-async function fetchJournalAggregateRows(
-  client: pg.PoolClient,
-  tenantId: string,
-  options: JournalAggregateOptions
-): Promise<TrialBalanceRawRow[]> {
-  const params: unknown[] = [tenantId, GLOBAL_SYSTEM_TENANT_ID];
-  let dateCond = '';
-  if (options.priorOnly && options.priorBefore) {
-    dateCond = ` AND je.entry_date < $${params.length + 1}`;
-    params.push(options.priorBefore);
-  } else if (options.basis === 'cumulative') {
-    dateCond = ` AND je.entry_date <= $${params.length + 1}`;
-    params.push(options.to);
-  } else {
-    dateCond = ` AND je.entry_date >= $${params.length + 1} AND je.entry_date <= $${params.length + 2}`;
-    params.push(options.from, options.to);
-  }
-
-  const r = await client.query(
-    `SELECT
-      jl.account_id AS account_id,
-      a.name AS account_name,
-      a.type AS account_type,
-      a.parent_account_id AS parent_account_id,
-      a.account_code AS account_code,
-      a.sub_type AS sub_type,
-      COALESCE(a.is_active, TRUE) AS is_active,
-      COALESCE(SUM(jl.debit_amount), 0)::float AS gross_debit,
-      COALESCE(SUM(jl.credit_amount), 0)::float AS gross_credit
-    FROM journal_lines jl
-    INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
-    INNER JOIN accounts a ON a.id = jl.account_id
-      AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2)
-    WHERE je.tenant_id = $1
-      AND a.deleted_at IS NULL
-      ${dateCond}
-    GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active`,
-    params
-  );
-
-  return (r.rows as Record<string, unknown>[]).map(mapPgRow);
 }
 
 export async function getTrialBalanceReportPayload(

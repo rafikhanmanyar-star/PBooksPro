@@ -28,7 +28,7 @@ const UpdateNotification: React.FC = () => {
   if (updateDownloaded && updateInfo) {
     return (
       <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] animate-slide-in-up">
-        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="ds-notification-card">
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-500">
             <div className="flex items-center gap-2 text-white">
               <CheckCircle className="w-4 h-4" />
@@ -43,10 +43,10 @@ const UpdateNotification: React.FC = () => {
           </div>
 
           <div className="px-4 py-3">
-            <p className="text-sm text-slate-700 mb-2">
+            <p className="text-sm text-app-text mb-2">
               Version <span className="font-semibold">{updateInfo.version}</span> has been downloaded and is ready to install.
             </p>
-            <p className="text-xs text-slate-500 mb-4">
+            <p className="text-xs text-app-muted mb-4">
               The update will be applied when you close the app, or you can restart now.
             </p>
 
@@ -72,7 +72,7 @@ const UpdateNotification: React.FC = () => {
               </button>
               <button
                 onClick={() => setIsDismissed(true)}
-                className="px-4 py-2 text-slate-600 hover:text-slate-800 text-sm font-medium transition-colors"
+                className="px-4 py-2 text-app-muted hover:text-app-text text-sm font-medium transition-colors"
               >
                 Install on Quit
               </button>
@@ -86,7 +86,7 @@ const UpdateNotification: React.FC = () => {
   if (downloadProgress) {
     return (
       <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] animate-slide-in-up">
-        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="ds-notification-card">
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500">
             <div className="flex items-center gap-2 text-white">
               <Download className="w-4 h-4 animate-pulse" />
@@ -103,13 +103,13 @@ const UpdateNotification: React.FC = () => {
           {!isMinimized && (
             <div className="px-4 py-3">
               <div className="space-y-1">
-                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                <div className="w-full h-2 bg-app-border rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300 ease-out"
                     style={{ width: `${downloadProgress.percent}%` }}
                   />
                 </div>
-                <p className="text-center text-xs font-medium text-indigo-600">
+                <p className="text-center text-xs font-medium text-ds-primary">
                   {downloadProgress.percent.toFixed(1)}% complete
                 </p>
               </div>
@@ -123,7 +123,7 @@ const UpdateNotification: React.FC = () => {
   if (updateAvailable && updateInfo) {
     return (
       <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] animate-slide-in-up">
-        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden">
+        <div className="ds-notification-card">
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500">
             <div className="flex items-center gap-2 text-white">
               <Download className="w-4 h-4" />
@@ -138,7 +138,7 @@ const UpdateNotification: React.FC = () => {
           </div>
 
           <div className="px-4 py-3">
-            <p className="text-sm text-slate-700 mb-4">
+            <p className="text-sm text-app-text mb-4">
               Version <span className="font-semibold">{updateInfo.version}</span> is available.
             </p>
             <div className="flex gap-2">
@@ -151,7 +151,7 @@ const UpdateNotification: React.FC = () => {
               </button>
               <button
                 onClick={() => setIsDismissed(true)}
-                className="px-4 py-2 text-slate-600 hover:text-slate-800 text-sm font-medium transition-colors"
+                className="px-4 py-2 text-app-muted hover:text-app-text text-sm font-medium transition-colors"
               >
                 Later
               </button>
@@ -168,8 +168,8 @@ const UpdateNotification: React.FC = () => {
     return (
       <div className="fixed bottom-4 right-4 z-50 w-80 max-w-[calc(100vw-2rem)] animate-slide-in-up">
         <div
-          className={`bg-white rounded-xl shadow-2xl border overflow-hidden ${
-            isUnavailable ? 'border-slate-200' : isInfoTone ? 'border-amber-200' : 'border-red-200'
+          className={`ds-notification-card ${
+            isUnavailable ? 'border-app-border' : isInfoTone ? 'border-amber-200 dark:border-amber-800' : 'border-red-200 dark:border-red-900/60'
           }`}
         >
           <div
@@ -198,7 +198,7 @@ const UpdateNotification: React.FC = () => {
           <div className="px-4 py-3">
             <p
               className={`text-sm mb-4 ${
-                isUnavailable ? 'text-slate-700' : isInfoTone ? 'text-amber-900' : 'text-rose-600'
+                isUnavailable ? 'text-app-text' : isInfoTone ? 'text-amber-950 dark:text-amber-100' : 'text-rose-600 dark:text-rose-400'
               }`}
             >
               {error}
@@ -218,7 +218,7 @@ const UpdateNotification: React.FC = () => {
                   checkForUpdates();
                   setIsDismissed(false);
                 }}
-                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-slate-700 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-semibold text-app-text bg-app-surface-2 rounded-lg hover:bg-app-toolbar transition-colors"
               >
                 <RefreshCw className="w-4 h-4" />
                 {isUnavailable ? 'Check again' : 'Try Again'}

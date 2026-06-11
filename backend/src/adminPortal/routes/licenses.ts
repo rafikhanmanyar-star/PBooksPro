@@ -1,45 +1,22 @@
 // @ts-nocheck
 import { Router } from 'express';
 import { AdminRequest } from '../middleware/adminAuthMiddleware.js';
-import { getDatabaseService } from '../adminPortalDb.js';
-import { LicenseService } from '../licenseService.js';
 import { getPool } from '../../db/pool.js';
+import { LicenseService } from '../licenseService.js';
 import { syncManualLicenseToSubscription } from '../../services/billing/subscriptionService.js';
+import { AdminLicenseRepository } from '../../modules/admin-portal/repositories/AdminPortalRepository.js';
 
 const router = Router();
-const getDb = () => getDatabaseService();
+const licenseRepo = new AdminLicenseRepository();
 
-// List all licenses
 router.get('/', async (req: AdminRequest, res) => {
   try {
-    const db = getDb();
     const { status, licenseType, tenantId } = req.query;
-
-    let query = `
-      SELECT lk.*, t.name as tenant_name, t.company_name, t.email as tenant_email
-      FROM license_keys lk
-      LEFT JOIN tenants t ON lk.tenant_id = t.id
-      WHERE 1=1
-    `;
-    const params: any[] = [];
-    let paramIndex = 1;
-
-    if (status) {
-      query += ` AND lk.status = $${paramIndex++}`;
-      params.push(status);
-    }
-    if (licenseType) {
-      query += ` AND lk.license_type = $${paramIndex++}`;
-      params.push(licenseType);
-    }
-    if (tenantId) {
-      query += ` AND lk.tenant_id = $${paramIndex++}`;
-      params.push(tenantId);
-    }
-
-    query += ' ORDER BY lk.created_at DESC';
-
-    const licenses = await db.query(query, params);
+    const licenses = await licenseRepo.listLicenseKeys({
+      status: status as string | undefined,
+      licenseType: licenseType as string | undefined,
+      tenantId: tenantId as string | undefined,
+    });
     res.json(licenses);
   } catch (error) {
     console.error('Error fetching licenses:', error);
@@ -47,16 +24,9 @@ router.get('/', async (req: AdminRequest, res) => {
   }
 });
 
-// Get license history for tenant
 router.get('/tenant/:tenantId/history', async (req: AdminRequest, res) => {
   try {
-    const db = getDb();
-    const history = await db.query(
-      `SELECT * FROM license_history 
-       WHERE tenant_id = $1 
-       ORDER BY created_at DESC`,
-      [req.params.tenantId]
-    );
+    const history = await licenseRepo.listLicenseHistory(req.params.tenantId);
     res.json(history);
   } catch (error) {
     console.error('Error fetching license history:', error);
@@ -64,23 +34,15 @@ router.get('/tenant/:tenantId/history', async (req: AdminRequest, res) => {
   }
 });
 
-// Revoke license
 router.post('/:id/revoke', async (req: AdminRequest, res) => {
   try {
-    await getDb().query(
-      `UPDATE license_keys 
-       SET status = 'revoked', updated_at = NOW()
-       WHERE id = $1`,
-      [req.params.id]
-    );
-
+    await licenseRepo.revokeLicenseKey(req.params.id);
     res.json({ success: true, message: 'License revoked' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to revoke license' });
   }
 });
 
-// Apply manual license
 router.post('/apply-manual', async (req: AdminRequest, res) => {
   try {
     const { tenantId, licenseType } = req.body;
@@ -89,12 +51,9 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
       return res.status(400).json({ error: 'Tenant ID and valid license type (monthly/yearly) are required' });
     }
 
-    const db = getDb();
-    const licenseService = new LicenseService(db);
+    const licenseService = new LicenseService();
 
-    // Check if tenant exists
-    const tenants = await db.query('SELECT id FROM tenants WHERE id = $1', [tenantId]);
-    if (tenants.length === 0) {
+    if (!(await licenseRepo.tenantExists(tenantId))) {
       return res.status(404).json({ error: 'Tenant not found' });
     }
 
@@ -112,18 +71,7 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
     try {
       await pgClient.query('BEGIN');
 
-      await pgClient.query(
-        `UPDATE tenants 
-         SET license_type = $1,
-             license_status = 'active',
-             license_expiry_date = $2,
-             last_renewal_date = $3,
-             next_renewal_date = $2,
-             updated_at = NOW()
-         WHERE id = $4`,
-        [licenseType, expiryDate, now, tenantId]
-      );
-
+      await licenseRepo.applyManualLicenseUpdate(pgClient, tenantId, licenseType, expiryDate, now);
       await syncManualLicenseToSubscription(pgClient, tenantId, licenseType, expiryDate);
 
       await pgClient.query('COMMIT');
@@ -134,24 +82,15 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
       pgClient.release();
     }
 
-    // Get current license status to determine from_status for history
     const currentStatus = await licenseService.checkLicenseStatus(tenantId);
 
-    // Log history
     const historyId = `history_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    await db.query(
-      `INSERT INTO license_history (
-        id, tenant_id, action, from_status, to_status, from_type, to_type, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
-      [
-        historyId,
-        tenantId,
-        'manual_license_applied',
-        currentStatus.licenseStatus,
-        'active',
-        currentStatus.licenseType,
-        licenseType
-      ]
+    await licenseRepo.insertManualLicenseHistory(
+      historyId,
+      tenantId,
+      currentStatus.licenseStatus,
+      currentStatus.licenseType,
+      licenseType
     );
 
     res.json({ success: true, message: `Manual ${licenseType} license applied successfully`, expiryDate });
@@ -162,4 +101,3 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
 });
 
 export default router;
-

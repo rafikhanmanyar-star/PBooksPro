@@ -11,6 +11,9 @@ import {
 } from './subscriptionInvoiceService.js';
 import { getActiveSubscription } from './subscriptionService.js';
 import { logBillingAudit } from './billingAuditService.js';
+import { PaddleWebhookRepository } from '../../modules/billing/repositories/BillingSupportRepository.js';
+
+const webhookRepo = new PaddleWebhookRepository();
 
 function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v.trim() : undefined;
@@ -114,21 +117,18 @@ export async function upsertWebhookDelivery(
     payload: Record<string, unknown>;
   }
 ): Promise<{ id: string; alreadyProcessed: boolean }> {
-  const { rows } = await client.query(
-    `SELECT id, status FROM paddle_webhook_deliveries WHERE id = $1`,
-    [input.eventId]
-  );
+  const existing = await webhookRepo.getDelivery(client, input.eventId);
 
-  if (rows.length) {
-    const status = rows[0].status as string;
-    return { id: rows[0].id, alreadyProcessed: status === 'processed' };
+  if (existing) {
+    return { id: existing.id, alreadyProcessed: existing.status === 'processed' };
   }
 
-  await client.query(
-    `INSERT INTO paddle_webhook_deliveries (id, event_type, tenant_id, payload, status)
-     VALUES ($1, $2, $3, $4::jsonb, 'pending')`,
-    [input.eventId, input.eventType, input.tenantId ?? null, JSON.stringify(input.payload)]
-  );
+  await webhookRepo.insertPending(client, {
+    eventId: input.eventId,
+    eventType: input.eventType,
+    tenantId: input.tenantId ?? null,
+    payload: input.payload,
+  });
 
   return { id: input.eventId, alreadyProcessed: false };
 }
@@ -139,44 +139,14 @@ export async function markWebhookDelivery(
   status: 'processing' | 'processed' | 'failed',
   error?: string
 ): Promise<void> {
-  const attemptInc = status === 'failed' ? 1 : 0;
-  const nextRetry =
-    status === 'failed'
-      ? new Date(Date.now() + Math.min(3600000, 60000 * Math.pow(2, attemptInc))).toISOString()
-      : null;
-
-  await client.query(
-    `UPDATE paddle_webhook_deliveries SET
-       status = $2,
-       attempt_count = attempt_count + $3,
-       last_error = $4,
-       processed_at = CASE WHEN $2 = 'processed' THEN NOW() ELSE processed_at END,
-       next_retry_at = $5,
-       updated_at = NOW()
-     WHERE id = $1`,
-    [deliveryId, status, attemptInc, error ?? null, nextRetry]
-  );
+  await webhookRepo.markDelivery(client, deliveryId, status, error);
 }
 
 export async function listRetryableWebhookDeliveries(
   client: pg.PoolClient,
   limit = 20
 ): Promise<Array<{ id: string; event_type: string; payload: Record<string, unknown>; attempt_count: number }>> {
-  const { rows } = await client.query(
-    `SELECT id, event_type, payload, attempt_count
-     FROM paddle_webhook_deliveries
-     WHERE status = 'failed' AND attempt_count < 5
-       AND (next_retry_at IS NULL OR next_retry_at <= NOW())
-     ORDER BY created_at ASC
-     LIMIT $1`,
-    [limit]
-  );
-  return rows.map((r) => ({
-    id: r.id,
-    event_type: r.event_type,
-    payload: r.payload as Record<string, unknown>,
-    attempt_count: r.attempt_count,
-  }));
+  return webhookRepo.listRetryable(client, limit);
 }
 
 export async function logWebhookEvent(
@@ -198,22 +168,14 @@ export async function logWebhookEvent(
   }
 }
 
-/** Dev helper: record a mock delivery row */
 export async function ensureDeliveryRow(
   client: pg.PoolClient,
   eventId: string,
   eventType: string,
   payload: Record<string, unknown>
 ): Promise<void> {
-  const exists = await client.query(`SELECT 1 FROM paddle_webhook_deliveries WHERE id = $1`, [
-    eventId,
-  ]);
-  if (exists.rows.length) return;
-  await client.query(
-    `INSERT INTO paddle_webhook_deliveries (id, event_type, payload, status)
-     VALUES ($1, $2, $3::jsonb, 'pending')`,
-    [eventId, eventType, JSON.stringify(payload)]
-  );
+  if (await webhookRepo.exists(client, eventId)) return;
+  await webhookRepo.insertPendingWithoutTenant(client, eventId, eventType, payload);
 }
 
 export { randomUUID as newEventId };

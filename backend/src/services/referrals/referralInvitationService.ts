@@ -5,6 +5,9 @@ import { getReferralProgramConfig } from './referralProgramConfigService.js';
 import { sendReferralEmail, invitationEmailSubject } from './referralEmailService.js';
 import { logReferralEvent } from './referralEventService.js';
 import { REFERRAL_EMAIL_TEMPLATES } from '../../constants/referralProgram.js';
+import { ReferralInvitationRepository } from '../../modules/referrals/repositories/ReferralRepository.js';
+
+const invitationRepo = new ReferralInvitationRepository();
 
 function inviteToken(): string {
   return randomBytes(24).toString('base64url');
@@ -31,22 +34,16 @@ export async function sendReferralInvitation(
   const invitationId = randomUUID();
   const shareUrl = `${buildShareUrl(config.signupBaseUrl, code.code)}&invite=${token}`;
 
-  await client.query(
-    `INSERT INTO referral_invitations (
-       id, referrer_tenant_id, referral_code_id, invitee_email, invitee_name,
-       invite_token, status, expires_at, created_by_user_id
-     ) VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)`,
-    [
-      invitationId,
-      input.referrerTenantId,
-      code.id,
-      input.inviteeEmail.trim().toLowerCase(),
-      input.inviteeName?.trim() || null,
-      token,
-      expiresAt.toISOString(),
-      input.createdByUserId,
-    ]
-  );
+  await invitationRepo.insert(client, {
+    id: invitationId,
+    referrerTenantId: input.referrerTenantId,
+    referralCodeId: code.id,
+    inviteeEmail: input.inviteeEmail.trim().toLowerCase(),
+    inviteeName: input.inviteeName?.trim() || null,
+    inviteToken: token,
+    expiresAt: expiresAt.toISOString(),
+    createdByUserId: input.createdByUserId,
+  });
 
   let sent = false;
   try {
@@ -59,10 +56,7 @@ export async function sendReferralInvitation(
       subject: invitationEmailSubject(input.inviterName),
     });
     sent = true;
-    await client.query(
-      `UPDATE referral_invitations SET status = 'sent', sent_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [invitationId]
-    );
+    await invitationRepo.markSent(client, invitationId);
   } catch (e) {
     console.error('[referral] invitation email failed:', e);
   }
@@ -80,27 +74,18 @@ export async function markInvitationOpened(
   client: pg.PoolClient,
   token: string
 ): Promise<{ valid: boolean; inviteeEmail?: string; code?: string }> {
-  const { rows } = await client.query(
-    `SELECT i.*, c.code FROM referral_invitations i
-     INNER JOIN referral_codes c ON c.id = i.referral_code_id
-     WHERE i.invite_token = $1 LIMIT 1`,
-    [token]
-  );
-  if (!rows.length) return { valid: false };
-  const inv = rows[0];
-  if (new Date(inv.expires_at) < new Date()) return { valid: false };
+  const inv = await invitationRepo.getByTokenWithCode(client, token);
+  if (!inv) return { valid: false };
+  if (new Date(inv.expires_at as string) < new Date()) return { valid: false };
 
   if (inv.status === 'sent' || inv.status === 'pending') {
-    await client.query(
-      `UPDATE referral_invitations SET status = 'opened', opened_at = NOW(), updated_at = NOW() WHERE id = $1`,
-      [inv.id]
-    );
+    await invitationRepo.markOpened(client, inv.id as string);
     await logReferralEvent(client, {
       eventType: 'invite_opened',
-      referrerTenantId: inv.referrer_tenant_id,
+      referrerTenantId: inv.referrer_tenant_id as string,
       payload: { invitationId: inv.id },
     });
   }
 
-  return { valid: true, inviteeEmail: inv.invitee_email, code: inv.code };
+  return { valid: true, inviteeEmail: inv.invitee_email as string, code: inv.code as string };
 }

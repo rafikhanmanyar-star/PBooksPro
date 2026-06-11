@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { RecordLockRepository } from '../modules/accounting/repositories/RecordLockRepository.js';
 
 const LOCK_TTL_MS = 10 * 60 * 1000;
 
@@ -48,7 +49,7 @@ async function getUserName(client: pg.PoolClient, tenantId: string, userId: stri
 
 /** Remove expired locks (best-effort; queries also treat expiry as unlocked). */
 export async function pruneExpiredLocks(client: pg.PoolClient, tenantId: string): Promise<void> {
-  await client.query(`DELETE FROM record_locks WHERE tenant_id = $1 AND expires_at < NOW()`, [tenantId]);
+  await new RecordLockRepository(tenantId).pruneExpired(client);
 }
 
 export async function getActiveLock(
@@ -57,13 +58,7 @@ export async function getActiveLock(
   recordType: RecordLockType,
   recordId: string
 ): Promise<RecordLockRow | null> {
-  const r = await client.query<RecordLockRow>(
-    `SELECT id, tenant_id, record_type, record_id, locked_by, locked_by_name, locked_at, expires_at
-     FROM record_locks
-     WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3 AND expires_at >= NOW()`,
-    [tenantId, recordType, recordId]
-  );
-  return r.rows[0] ?? null;
+  return new RecordLockRepository(tenantId).getActive(client, recordType, recordId);
 }
 
 export type AcquireResult =
@@ -77,18 +72,15 @@ export async function acquireLock(
   recordType: RecordLockType,
   recordId: string
 ): Promise<AcquireResult> {
-  await pruneExpiredLocks(client, tenantId);
+  const repo = new RecordLockRepository(tenantId);
+  await repo.pruneExpired(client);
   const userName = await getUserName(client, tenantId, userId);
-  const existing = await getActiveLock(client, tenantId, recordType, recordId);
+  const existing = await repo.getActive(client, recordType, recordId);
 
   if (existing) {
     if (existing.locked_by === userId) {
       const exp = new Date(Date.now() + LOCK_TTL_MS);
-      await client.query(
-        `UPDATE record_locks SET locked_by_name = $4, expires_at = $5, locked_at = NOW()
-         WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3`,
-        [tenantId, recordType, recordId, userName, exp]
-      );
+      await repo.refreshHolder(client, recordType, recordId, userName, exp);
       return { locked: false, success: true, expiresAt: exp.toISOString(), lockedBy: userName };
     }
     return {
@@ -98,13 +90,8 @@ export async function acquireLock(
     };
   }
 
-  const id = randomUUID();
   const expiresAt = new Date(Date.now() + LOCK_TTL_MS);
-  await client.query(
-    `INSERT INTO record_locks (id, tenant_id, record_type, record_id, locked_by, locked_by_name, locked_at, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
-    [id, tenantId, recordType, recordId, userId, userName, expiresAt]
-  );
+  await repo.insertLock(client, randomUUID(), recordType, recordId, userId, userName, expiresAt);
   return { locked: false, success: true, expiresAt: expiresAt.toISOString(), lockedBy: userName };
 }
 
@@ -117,13 +104,15 @@ export async function refreshLock(
 ): Promise<{ success: boolean; expiresAt?: string; lockedBy?: string }> {
   const userName = await getUserName(client, tenantId, userId);
   const exp = new Date(Date.now() + LOCK_TTL_MS);
-  const r = await client.query(
-    `UPDATE record_locks
-     SET expires_at = $5, locked_by_name = $6, locked_at = NOW()
-     WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3 AND locked_by = $4`,
-    [tenantId, recordType, recordId, userId, exp, userName]
+  const ok = await new RecordLockRepository(tenantId).refreshOwned(
+    client,
+    recordType,
+    recordId,
+    userId,
+    userName,
+    exp
   );
-  if (r.rowCount === 0) return { success: false };
+  if (!ok) return { success: false };
   return { success: true, expiresAt: exp.toISOString(), lockedBy: userName };
 }
 
@@ -134,12 +123,7 @@ export async function releaseLock(
   recordType: RecordLockType,
   recordId: string
 ): Promise<boolean> {
-  const r = await client.query(
-    `DELETE FROM record_locks
-     WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3 AND locked_by = $4`,
-    [tenantId, recordType, recordId, userId]
-  );
-  return (r.rowCount ?? 0) > 0;
+  return new RecordLockRepository(tenantId).releaseOwned(client, recordType, recordId, userId);
 }
 
 export type ForceResult = {
@@ -156,31 +140,18 @@ export async function forceLock(
   recordType: RecordLockType,
   recordId: string
 ): Promise<ForceResult> {
-  await pruneExpiredLocks(client, tenantId);
+  const repo = new RecordLockRepository(tenantId);
+  await repo.pruneExpired(client);
   const userName = await getUserName(client, tenantId, userId);
-  const existing = await client.query<RecordLockRow>(
-    `SELECT id, tenant_id, record_type, record_id, locked_by, locked_by_name, locked_at, expires_at
-     FROM record_locks WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3`,
-    [tenantId, recordType, recordId]
-  );
-  const prev = existing.rows[0];
+  const prev = await repo.getByRecord(client, recordType, recordId);
   const prevName = prev && prev.expires_at >= new Date() ? prev.locked_by_name : null;
   const prevId = prev && prev.expires_at >= new Date() ? prev.locked_by : null;
 
   const expiresAt = new Date(Date.now() + LOCK_TTL_MS);
   if (prev) {
-    await client.query(
-      `UPDATE record_locks SET locked_by = $4, locked_by_name = $5, locked_at = NOW(), expires_at = $6
-       WHERE tenant_id = $1 AND record_type = $2 AND record_id = $3`,
-      [tenantId, recordType, recordId, userId, userName, expiresAt]
-    );
+    await repo.forceTakeover(client, recordType, recordId, userId, userName, expiresAt);
   } else {
-    const id = randomUUID();
-    await client.query(
-      `INSERT INTO record_locks (id, tenant_id, record_type, record_id, locked_by, locked_by_name, locked_at, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)`,
-      [id, tenantId, recordType, recordId, userId, userName, expiresAt]
-    );
+    await repo.insertLock(client, randomUUID(), recordType, recordId, userId, userName, expiresAt);
   }
 
   return {
@@ -239,20 +210,14 @@ export async function logLockForceTakeover(
   previousUserId: string | null,
   previousName: string | null
 ): Promise<void> {
-  const id = randomUUID();
   const msg = `User ${actorName} forcefully took over lock from ${previousName ?? previousUserId ?? 'unknown'}`;
-  await client.query(
-    `INSERT INTO accounting_audit_log (id, tenant_id, entity_type, entity_id, action, user_id, old_value, new_value)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      id,
-      tenantId,
-      'record_lock',
-      `${recordType}:${recordId}`,
-      'force_takeover',
-      actorUserId,
-      previousName ?? previousUserId ?? '',
-      msg,
-    ]
+  await new RecordLockRepository(tenantId).insertForceTakeoverAudit(
+    client,
+    randomUUID(),
+    actorUserId,
+    recordType,
+    recordId,
+    previousName ?? previousUserId ?? '',
+    msg
   );
 }

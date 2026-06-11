@@ -26,6 +26,7 @@ import { elementToPdfBlob } from '../../utils/elementToPdf';
 import { useNotification } from '../../context/NotificationContext';
 import type { PayslipPrintData } from './PayslipPrintTemplate';
 import { PurchaseOrder } from '../../types';
+import { ensureReportPrintStyles } from '../../services/printService';
 import './printForm.css';
 import './printPortal.css';
 
@@ -186,6 +187,10 @@ function PrintControllerContent(): React.ReactElement | null {
       setWhatsAppPdfBusy(false);
     }
   }, [reportData, pdfWhatsApp, showToast]);
+
+  useEffect(() => {
+    ensureReportPrintStyles();
+  }, []);
 
   // Mark body so print CSS only hides #root when we're using the portal (not usePrintForm)
   useEffect(() => {

@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { CategoryRepository } from '../modules/accounting/repositories/CategoryRepository.js';
+import {
+  CategoryRepository,
+  type CategoryWriteFields,
+} from '../modules/accounting/repositories/CategoryRepository.js';
 
 /**
  * When only pl_category_mapping changes, categories.updated_at may not move — incremental sync
@@ -16,11 +19,7 @@ export async function touchCategoryRowAfterPlMappingChange(
   tenantId: string,
   categoryId: string
 ): Promise<void> {
-  await client.query(
-    `UPDATE categories SET updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2`,
-    [categoryId, tenantId]
-  );
+  await new CategoryRepository(tenantId).touchUpdatedAt(client, categoryId);
 }
 
 const ALLOWED_PL_TYPES = new Set([
@@ -54,20 +53,13 @@ export async function syncPlCategoryMappingFromPick(
   pick: PlSubTypePick
 ): Promise<void> {
   if (pick === 'preserve') return;
+  const repo = new CategoryRepository(tenantId);
   if (pick === null) {
-    await client.query(
-      `DELETE FROM pl_category_mapping WHERE tenant_id = $1 AND category_id = $2`,
-      [tenantId, categoryId]
-    );
+    await repo.deletePlMapping(client, categoryId);
     await touchCategoryRowAfterPlMappingChange(client, tenantId, categoryId);
     return;
   }
-  await client.query(
-    `INSERT INTO pl_category_mapping (tenant_id, category_id, pl_type, updated_at)
-     VALUES ($1, $2, $3, NOW())
-     ON CONFLICT (tenant_id, category_id) DO UPDATE SET pl_type = EXCLUDED.pl_type, updated_at = NOW()`,
-    [tenantId, categoryId, pick]
-  );
+  await repo.upsertPlMapping(client, categoryId, pick);
   await touchCategoryRowAfterPlMappingChange(client, tenantId, categoryId);
 }
 
@@ -76,13 +68,10 @@ export async function fetchPlSubTypesForTenant(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<Map<string, string>> {
-  const r = await client.query<{ category_id: string; pl_type: string; tenant_id: string }>(
-    `SELECT category_id, pl_type, tenant_id FROM pl_category_mapping WHERE tenant_id = $1 OR tenant_id = $2`,
-    [tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
+  const rows = await new CategoryRepository(tenantId).listPlMappings(client, GLOBAL_SYSTEM_TENANT_ID);
   const fromGlobal = new Map<string, string>();
   const fromTenant = new Map<string, string>();
-  for (const row of r.rows) {
+  for (const row of rows) {
     if (row.tenant_id === tenantId) {
       fromTenant.set(row.category_id, row.pl_type);
     } else {
@@ -101,14 +90,7 @@ export async function getPlSubTypeForCategory(
   tenantId: string,
   categoryId: string
 ): Promise<string | undefined> {
-  const r = await client.query<{ pl_type: string }>(
-    `SELECT pl_type FROM pl_category_mapping
-     WHERE category_id = $1 AND (tenant_id = $2 OR tenant_id = $3)
-     ORDER BY CASE WHEN tenant_id = $2 THEN 0 ELSE 1 END
-     LIMIT 1`,
-    [categoryId, tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
-  return r.rows[0]?.pl_type;
+  return new CategoryRepository(tenantId).getPlSubTypeForCategory(client, categoryId, GLOBAL_SYSTEM_TENANT_ID);
 }
 
 export type CategoryRow = {
@@ -168,6 +150,19 @@ function pickBody(body: Record<string, unknown>) {
       body.isHidden === true || body.isHidden === 1 || body.is_hidden === true || body.is_hidden === 1,
     parent_category_id: (body.parentCategoryId ?? body.parent_category_id) as string | null | undefined,
     version: typeof body.version === 'number' ? body.version : undefined,
+  };
+}
+
+function toCategoryWriteFields(p: ReturnType<typeof pickBody>): CategoryWriteFields {
+  return {
+    name: p.name,
+    type: p.type,
+    description: p.description ?? null,
+    is_permanent: p.is_permanent,
+    is_rental: p.is_rental,
+    is_hidden: p.is_hidden,
+    parent_category_id:
+      p.parent_category_id && String(p.parent_category_id).trim() ? String(p.parent_category_id).trim() : null,
   };
 }
 
@@ -248,26 +243,7 @@ export async function createCategory(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `cat_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<CategoryRow>(
-    `INSERT INTO categories (
-       id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.type,
-      p.description ?? null,
-      p.is_permanent,
-      p.is_rental,
-      p.is_hidden,
-      p.parent_category_id && String(p.parent_category_id).trim() ? String(p.parent_category_id).trim() : null,
-    ]
-  );
-  const row = r.rows[0];
+  const row = await new CategoryRepository(tenantId).insertCategory(client, id, toCategoryWriteFields(p));
   const plPick = pickPlSubType(body);
   if (plPick !== 'preserve') {
     await syncPlCategoryMappingFromPick(client, tenantId, row.id, plPick);
@@ -306,48 +282,18 @@ export async function updateCategory(
     if (lww.conflict) return { row: null, conflict: true };
   }
 
-  const vals = [
-    p.name,
-    p.type,
-    p.description ?? null,
-    p.is_permanent,
-    p.is_rental,
-    p.is_hidden,
-    p.parent_category_id && String(p.parent_category_id).trim() ? String(p.parent_category_id).trim() : null,
-  ];
+  const repo = new CategoryRepository(tenantId);
+  const fields = toCategoryWriteFields(p);
 
-  if (expectedVersion !== undefined) {
-    const u = await client.query<CategoryRow>(
-      `UPDATE categories SET
-         name = $3, type = $4, description = $5, is_permanent = $6, is_rental = $7, is_hidden = $8, parent_category_id = $9,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $10
-       RETURNING id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...vals, expectedVersion]
-    );
-    if (u.rows.length === 0) {
+  const updated = await repo.updateActive(client, id, fields, expectedVersion);
+  if (!updated) {
+    if (expectedVersion !== undefined) {
       const exists = await getCategoryById(client, tenantId, id);
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    const updated = u.rows[0];
-    const plPick = pickPlSubType(body);
-    if (plPick !== 'preserve') {
-      await syncPlCategoryMappingFromPick(client, tenantId, id, plPick);
-    }
-    await auditCategoryMutation(client, tenantId, id, 'update', { oldValue: oldApi });
-    return { row: updated, conflict: false };
+    return { row: null, conflict: false };
   }
-
-  const u = await client.query<CategoryRow>(
-    `UPDATE categories SET
-       name = $3, type = $4, description = $5, is_permanent = $6, is_rental = $7, is_hidden = $8, parent_category_id = $9,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  const updated = u.rows[0] ?? null;
   if (updated) {
     const plPick = pickPlSubType(body);
     if (plPick !== 'preserve') {
@@ -403,25 +349,7 @@ export async function upsertCategory(
 
   const oldApi = await categoryApiSnapshot(client, tenantId, existing);
 
-  const vals = [
-    p.name,
-    p.type,
-    p.description ?? null,
-    p.is_permanent,
-    p.is_rental,
-    p.is_hidden,
-    p.parent_category_id && String(p.parent_category_id).trim() ? String(p.parent_category_id).trim() : null,
-  ];
-
-  const u = await client.query<CategoryRow>(
-    `UPDATE categories SET
-       name = $3, type = $4, description = $5, is_permanent = $6, is_rental = $7, is_hidden = $8, parent_category_id = $9,
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  const row = u.rows[0];
+  const row = await new CategoryRepository(tenantId).updateUpsertRestore(client, id, toCategoryWriteFields(p));
   if (!row) throw new Error('Category upsert failed.');
   const plPick = pickPlSubType(body as Record<string, unknown>);
   if (plPick !== 'preserve') {
@@ -450,12 +378,9 @@ export async function softDeleteCategory(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const repo = new CategoryRepository(tenantId);
+    const ok = await repo.markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const ex = await getCategoryById(client, tenantId, id);
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -463,12 +388,7 @@ export async function softDeleteCategory(
     await auditCategoryMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await new CategoryRepository(tenantId).markDeleted(client, id);
   if (ok) {
     await auditCategoryMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
   }

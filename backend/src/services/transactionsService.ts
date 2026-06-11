@@ -20,6 +20,11 @@ import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
 import { TransactionRepository, type TransactionWriteFields } from '../modules/accounting/repositories/TransactionRepository.js';
+import { PayslipRepository } from '../modules/payroll/repositories/PayslipRepository.js';
+import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
+import { InvoiceRepository } from '../modules/customers/repositories/InvoiceRepository.js';
+import { PropertyRepository } from '../modules/properties/repositories/PropertyRepository.js';
+import { RentalAgreementRepository } from '../modules/leases/repositories/RentalAgreementRepository.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -31,50 +36,29 @@ export async function recalculatePayslipPaymentFromLedger(
   payslipId: string,
   options?: { skipPayrollRunAggregate?: boolean }
 ): Promise<void> {
-  const psR = await client.query<{ net_pay: string; payroll_run_id: string; employee_id: string }>(
-    `SELECT net_pay::text, payroll_run_id, employee_id FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [payslipId, tenantId]
-  );
-  const ps = psR.rows[0];
+  const payslipRepo = new PayslipRepository(tenantId);
+  const ps = await payslipRepo.getLedgerRecalcContext(client, payslipId);
   if (!ps) return;
 
-  const sumR = await client.query<{ sum: string | null; last_date: Date | null; cnt: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text AS sum, MAX(date) AS last_date, COUNT(*)::text AS cnt
-     FROM transactions
-     WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL`,
-    [tenantId, payslipId]
-  );
-  const rawPaidSum = Number(sumR.rows[0]?.sum ?? 0);
+  const txRepo = new TransactionRepository(tenantId);
+  const { sum: rawPaidSum, lastDate, cnt } = await txRepo.aggregatePaymentsForPayslip(client, payslipId);
   const net = Number(ps.net_pay);
   const totalPaidTowardNet = Math.min(net, rawPaidSum);
   const isPaid = rawPaidSum >= net - 0.01;
-  const cnt = Number(sumR.rows[0]?.cnt ?? 0);
-  const lastDate = sumR.rows[0]?.last_date;
 
-  let singleTxId: string | null = null;
-  if (cnt === 1) {
-    const one = await client.query<{ id: string }>(
-      `SELECT id FROM transactions WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL LIMIT 1`,
-      [tenantId, payslipId]
-    );
-    singleTxId = one.rows[0]?.id ?? null;
-  }
+  const singleTxId = cnt === 1 ? await txRepo.getSingleActiveIdForPayslip(client, payslipId) : null;
 
   const paidAt =
     rawPaidSum > 0 && lastDate
       ? new Date(formatPgDateToYyyyMmDd(lastDate) + 'T12:00:00.000Z')
       : null;
 
-  await client.query(
-    `UPDATE payslips SET
-       is_paid = $3,
-       paid_amount = $4,
-       paid_at = CASE WHEN $4::numeric > 0 THEN $6::timestamptz ELSE NULL END,
-       transaction_id = $5,
-       updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [payslipId, tenantId, isPaid, totalPaidTowardNet, singleTxId, paidAt]
-  );
+  await payslipRepo.updatePaymentFromLedger(client, payslipId, {
+    isPaid,
+    paidAmount: totalPaidTowardNet,
+    transactionId: singleTxId,
+    paidAt,
+  });
 
   const { recalculatePayrollRunAggregates } = await import('./payrollService.js');
   if (!options?.skipPayrollRunAggregate) {
@@ -217,11 +201,8 @@ async function resolveExpenseCategoryFromBill(
   if (type !== 'Expense') return incomingCategory;
   if (!billId || String(billId).trim() === '') return incomingCategory;
   if (incomingCategory != null && String(incomingCategory).trim() !== '') return incomingCategory;
-  const r = await client.query<{ category_id: string | null }>(
-    `SELECT category_id FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [billId, tenantId]
-  );
-  const fromBill = r.rows[0]?.category_id;
+  const bill = await new BillRepository(tenantId).getById(client, billId);
+  const fromBill = bill?.category_id;
   return fromBill != null && String(fromBill).trim() !== '' ? fromBill : incomingCategory;
 }
 
@@ -245,27 +226,18 @@ async function resolveOwnerIdFromProperty(
   if (!propertyId || String(propertyId).trim() === '') return ownerId;
 
   if (invoiceId && String(invoiceId).trim() !== '') {
-    const invR = await client.query<{ agreement_id: string | null }>(
-      `SELECT agreement_id FROM invoices
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [invoiceId, tenantId]
-    );
-    const inv = invR.rows[0];
+    const inv = await new InvoiceRepository(tenantId).getById(client, invoiceId);
     if (inv?.agreement_id) {
-      const agrR = await client.query<{ owner_id: string | null }>(
-        `SELECT owner_id FROM rental_agreements
-         WHERE id = $1 AND tenant_id = $2`,
-        [inv.agreement_id, tenantId]
+      const ownerFromAgreement = await new RentalAgreementRepository(tenantId).getOwnerIdById(
+        client,
+        inv.agreement_id
       );
-      if (agrR.rows[0]?.owner_id) return agrR.rows[0].owner_id;
+      if (ownerFromAgreement) return ownerFromAgreement;
     }
   }
 
-  const p = await client.query<{ owner_id: string }>(
-    `SELECT owner_id FROM properties WHERE id = $1 AND tenant_id = $2`,
-    [propertyId, tenantId]
-  );
-  return p.rows[0]?.owner_id ?? ownerId;
+  const property = await new PropertyRepository(tenantId).getById(client, propertyId);
+  return property?.owner_id ?? ownerId;
 }
 
 function pickBody(body: Record<string, unknown>) {

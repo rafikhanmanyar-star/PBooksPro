@@ -291,38 +291,15 @@ export async function createProjectExpenseVoucher(
   const voucherNumber =
     picked.voucher_number || (await generateVoucherNumber(client, tenantId, picked.voucher_date));
 
-  await client.query(
-    `INSERT INTO project_expense_vouchers (
-       id, tenant_id, voucher_number, voucher_date, project_id, expense_category_id,
-       vendor_id, payment_source_account_id, amount, description, document_id,
-       status, posted_at, posted_by, created_by, version, created_at, updated_at
-     ) VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, $9, $10, $11, 'posted', NOW(), $12, $12, 1, NOW(), NOW())`,
-    [
-      id,
-      tenantId,
-      voucherNumber,
-      picked.voucher_date,
-      picked.project_id,
-      picked.expense_category_id,
-      picked.vendor_id,
-      picked.payment_source_account_id,
-      picked.amount,
-      picked.description,
-      picked.document_id,
-      createdBy,
-    ]
-  );
+  const repo = new ProjectExpenseVoucherRepository(tenantId);
+  await repo.insertPosted(client, id, { ...picked, voucher_number: voucherNumber }, createdBy);
 
   let row = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!row) throw new Error('Failed to create voucher.');
 
   const journalEntryId = await postJournalForVoucherRow(client, tenantId, row, createdBy);
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET journal_entry_id = $1, updated_at = NOW()
-     WHERE tenant_id = $2 AND id = $3`,
-    [journalEntryId, tenantId, id]
-  );
+  await repo.setJournalEntryId(client, id, journalEntryId);
 
   row = (await getProjectExpenseVoucherById(client, tenantId, id))!;
   if (!row) throw new Error('Failed to load voucher after posting.');
@@ -347,7 +324,8 @@ export async function updateProjectExpenseVoucher(
   body: Record<string, unknown>,
   actorUserId: string | null
 ): Promise<{ row: ProjectExpenseVoucherRow | null; conflict?: boolean }> {
-  const row = await new ProjectExpenseVoucherRepository(tenantId).getByIdForUpdate(client, id);
+  const repo = new ProjectExpenseVoucherRepository(tenantId);
+  const row = await repo.getByIdForUpdate(client, id);
   if (!row) return { row: null };
 
   const expectedVersion =
@@ -365,39 +343,13 @@ export async function updateProjectExpenseVoucher(
   await assertProjectExists(client, tenantId, picked.project_id);
   await assertExpenseCategory(client, tenantId, picked.expense_category_id);
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       voucher_date = $1::date, project_id = $2, expense_category_id = $3,
-       vendor_id = $4, payment_source_account_id = $5, amount = $6,
-       description = $7, document_id = $8,
-       status = 'posted', posted_at = COALESCE(posted_at, NOW()),
-       posted_by = COALESCE(posted_by, $9),
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $10 AND id = $11 AND deleted_at IS NULL`,
-    [
-      picked.voucher_date,
-      picked.project_id,
-      picked.expense_category_id,
-      picked.vendor_id,
-      picked.payment_source_account_id,
-      picked.amount,
-      picked.description,
-      picked.document_id,
-      actorUserId,
-      tenantId,
-      id,
-    ]
-  );
+  await repo.updatePosted(client, id, picked, actorUserId);
 
   let updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) return { row: null };
 
   const journalEntryId = await postJournalForVoucherRow(client, tenantId, updated, actorUserId);
-  await client.query(
-    `UPDATE project_expense_vouchers SET journal_entry_id = $1, updated_at = NOW()
-     WHERE tenant_id = $2 AND id = $3`,
-    [journalEntryId, tenantId, id]
-  );
+  await repo.setJournalEntryId(client, id, journalEntryId);
   updated = await getProjectExpenseVoucherById(client, tenantId, id);
 
   if (updated) {
@@ -423,13 +375,7 @@ export async function submitProjectExpenseVoucher(
   const row = await getProjectExpenseVoucherForUpdate(client, tenantId, id);
   if (row.status !== 'draft') throw new Error('Only draft vouchers can be submitted.');
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       status = 'submitted', submitted_at = NOW(), submitted_by = $1,
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $2 AND id = $3`,
-    [actorUserId, tenantId, id]
-  );
+  await new ProjectExpenseVoucherRepository(tenantId).markSubmitted(client, id, actorUserId);
 
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after submit.');
@@ -454,13 +400,7 @@ export async function approveProjectExpenseVoucher(
   const row = await getProjectExpenseVoucherForUpdate(client, tenantId, id);
   if (row.status !== 'submitted') throw new Error('Only submitted vouchers can be approved.');
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       status = 'approved', approved_at = NOW(), approved_by = $1,
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $2 AND id = $3`,
-    [actorUserId, tenantId, id]
-  );
+  await new ProjectExpenseVoucherRepository(tenantId).markApproved(client, id, actorUserId);
 
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after approval.');
@@ -486,12 +426,11 @@ export async function rejectProjectExpenseVoucher(
   const row = await getProjectExpenseVoucherForUpdate(client, tenantId, id);
   if (row.status !== 'submitted') throw new Error('Only submitted vouchers can be rejected.');
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       status = 'rejected', rejected_at = NOW(), rejected_by = $1, rejection_reason = $2,
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $3 AND id = $4`,
-    [actorUserId, reason?.trim() || null, tenantId, id]
+  await new ProjectExpenseVoucherRepository(tenantId).markRejected(
+    client,
+    id,
+    actorUserId,
+    reason?.trim() || null
   );
 
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
@@ -536,13 +475,7 @@ export async function postProjectExpenseVoucher(
   );
   if (!journalEntryId) throw new Error('Failed to post journal entry.');
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       status = 'posted', posted_at = NOW(), posted_by = $1, journal_entry_id = $2,
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $3 AND id = $4`,
-    [actorUserId, journalEntryId, tenantId, id]
-  );
+  await new ProjectExpenseVoucherRepository(tenantId).markPosted(client, id, actorUserId, journalEntryId);
 
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after posting.');
@@ -580,11 +513,7 @@ export async function softDeleteProjectExpenseVoucher(
     await reversePeVJournalMirror(client, tenantId, id, actorUserId);
   }
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-    [tenantId, id]
-  );
+  await new ProjectExpenseVoucherRepository(tenantId).markDeleted(client, id);
 
   await auditPeV(client, {
     tenantId,
@@ -619,13 +548,7 @@ export async function unpostProjectExpenseVoucher(
 
   await reversePeVJournalMirror(client, tenantId, id, actorUserId);
 
-  await client.query(
-    `UPDATE project_expense_vouchers SET
-       status = 'approved', journal_entry_id = NULL, posted_at = NULL, posted_by = NULL,
-       version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, id]
-  );
+  await new ProjectExpenseVoucherRepository(tenantId).markUnposted(client, id);
 
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after unpost.');

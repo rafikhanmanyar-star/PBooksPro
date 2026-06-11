@@ -1,13 +1,13 @@
 // @ts-nocheck
 import crypto from 'crypto';
-import { DatabaseService } from './adminPortalDb.js';
+import {
+  AdminLicenseRepository,
+  DEFAULT_LICENSE_MODULES,
+  type ModuleKey,
+} from '../../modules/admin-portal/repositories/AdminPortalRepository.js';
 
-const SECRET_SALT = process.env.LICENSE_SECRET_SALT || 'PBOOKSPRO_SECURE_SALT_2024';
-
-export type ModuleKey = 'real_estate' | 'rental';
-
-/** Default modules included when tenant has active paid license but no tenant_modules rows (e.g. base yearly/monthly). */
-export const DEFAULT_LICENSE_MODULES: ModuleKey[] = ['real_estate', 'rental'];
+export type { ModuleKey };
+export { DEFAULT_LICENSE_MODULES };
 
 export interface TenantModule {
   id: string;
@@ -27,46 +27,33 @@ export interface LicenseInfo {
   isExpired: boolean;
 }
 
-export class LicenseService {
-  private db: DatabaseService;
+const licenseRepo = new AdminLicenseRepository();
 
-  constructor(db: DatabaseService) {
-    this.db = db;
+/** @deprecated Use AdminLicenseRepository via LicenseService — kept for admin portal routes. */
+export class LicenseService {
+  private repo = licenseRepo;
+
+  constructor(_db?: unknown) {
+    /* db param ignored — repository uses shared pool */
   }
 
-  /**
-   * Check and update license status
-   */
   async checkLicenseStatus(tenantId: string): Promise<LicenseInfo> {
-    const tenants = await this.db.query(
-      'SELECT * FROM tenants WHERE id = $1',
-      [tenantId]
-    );
-
-    if (tenants.length === 0) {
+    const tenant = await this.repo.getTenantById(tenantId);
+    if (!tenant) {
       throw new Error('Tenant not found');
     }
 
-    const tenant = tenants[0];
     const now = new Date();
 
-    // Check if trial expired
     if (tenant.license_type === 'trial' && tenant.trial_start_date) {
       const trialEnd = new Date(tenant.trial_start_date);
-      trialEnd.setDate(trialEnd.getDate() + 30); // 30-day trial
+      trialEnd.setDate(trialEnd.getDate() + 30);
 
       if (now > trialEnd) {
-        // Trial expired
-        await this.db.query(
-          `UPDATE tenants 
-           SET license_status = 'expired', updated_at = NOW()
-           WHERE id = $1`,
-          [tenantId]
-        );
-
-        await this.logLicenseHistory(tenantId, null, 'trial_expired', {
+        await this.repo.markLicenseExpired(tenantId);
+        await this.repo.logLicenseHistory(tenantId, null, 'trial_expired', {
           from_status: 'active',
-          to_status: 'expired'
+          to_status: 'expired',
         });
 
         return {
@@ -74,7 +61,7 @@ export class LicenseService {
           licenseStatus: 'expired',
           expiryDate: trialEnd,
           daysRemaining: 0,
-          isExpired: true
+          isExpired: true,
         };
       }
 
@@ -84,103 +71,74 @@ export class LicenseService {
         licenseStatus: 'active',
         expiryDate: trialEnd,
         daysRemaining,
-        isExpired: false
+        isExpired: false,
       };
     }
 
-    // Check if license expired
     if (tenant.license_expiry_date) {
       const expiryDate = new Date(tenant.license_expiry_date);
 
       if (now > expiryDate) {
-        // License expired
-        await this.db.query(
-          `UPDATE tenants 
-           SET license_status = 'expired', updated_at = NOW()
-           WHERE id = $1`,
-          [tenantId]
-        );
-
-        await this.logLicenseHistory(tenantId, null, 'license_expired', {
+        await this.repo.markLicenseExpired(tenantId);
+        await this.repo.logLicenseHistory(tenantId, null, 'license_expired', {
           from_status: 'active',
-          to_status: 'expired'
+          to_status: 'expired',
         });
 
         return {
-          licenseType: tenant.license_type as any,
+          licenseType: tenant.license_type as LicenseInfo['licenseType'],
           licenseStatus: 'expired',
           expiryDate,
           daysRemaining: 0,
-          isExpired: true
+          isExpired: true,
         };
       }
 
       const daysRemaining = Math.ceil((expiryDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       return {
-        licenseType: tenant.license_type as any,
-        licenseStatus: tenant.license_status as any,
+        licenseType: tenant.license_type as LicenseInfo['licenseType'],
+        licenseStatus: tenant.license_status as LicenseInfo['licenseStatus'],
         expiryDate,
         daysRemaining,
-        isExpired: false
+        isExpired: false,
       };
     }
 
-    // Perpetual license
     return {
-      licenseType: tenant.license_type as any,
-      licenseStatus: tenant.license_status as any,
+      licenseType: tenant.license_type as LicenseInfo['licenseType'],
+      licenseStatus: tenant.license_status as LicenseInfo['licenseStatus'],
       expiryDate: null,
       daysRemaining: Infinity,
-      isExpired: false
+      isExpired: false,
     };
   }
 
-  /**
-   * Check if a specific module is enabled for a tenant.
-   * Returns true if tenant_modules has an active row, or if tenant has active paid license and module is in default set.
-   */
   async isModuleEnabled(tenantId: string, moduleKey: string): Promise<boolean> {
-    const modules = await this.db.query(
-      "SELECT status FROM tenant_modules WHERE tenant_id = $1 AND module_key = $2 AND status = 'active'",
-      [tenantId, moduleKey]
-    );
-    if (modules.length > 0) return true;
+    const modules = await this.repo.getActiveModuleKeys(tenantId);
+    const active = modules.filter((key) => DEFAULT_LICENSE_MODULES.includes(key as ModuleKey));
+    if (active.some((key) => key === moduleKey)) return true;
 
     const allModules = await this.getTenantModules(tenantId);
     return allModules.includes(moduleKey);
   }
 
-  /**
-   * Get all active modules for a tenant.
-   * If tenant has an active paid license (yearly/monthly/perpetual) but no tenant_modules rows,
-   * returns the default module list so features are enabled (base license includes all modules).
-   */
   async getTenantModules(tenantId: string): Promise<string[]> {
-    const modules = await this.db.query(
-      "SELECT module_key FROM tenant_modules WHERE tenant_id = $1 AND status = 'active'",
-      [tenantId]
+    const fromDb = (await this.repo.getActiveModuleKeys(tenantId)).filter((key) =>
+      DEFAULT_LICENSE_MODULES.includes(key as ModuleKey)
     );
-    const fromDb = modules
-      .map((m: { module_key: string }) => m.module_key)
-      .filter((key: string) => DEFAULT_LICENSE_MODULES.includes(key as ModuleKey));
     if (fromDb.length > 0) return fromDb;
 
-    const tenants = await this.db.query(
-      'SELECT license_type, license_status FROM tenants WHERE id = $1',
-      [tenantId]
-    );
-    if (tenants.length === 0) return [];
-    const tenant = tenants[0];
+    const tenant = await this.repo.getTenantLicenseSummary(tenantId);
+    if (!tenant) return [];
     const paidActive =
-      (tenant.license_type === 'yearly' || tenant.license_type === 'monthly' || tenant.license_type === 'perpetual') &&
+      (tenant.license_type === 'yearly' ||
+        tenant.license_type === 'monthly' ||
+        tenant.license_type === 'perpetual') &&
       tenant.license_status === 'active';
     if (paidActive) return [...DEFAULT_LICENSE_MODULES];
     return [];
   }
 
-  /**
-   * Update or enable a module for a tenant
-   */
   async updateTenantModule(
     tenantId: string,
     moduleKey: string,
@@ -191,52 +149,29 @@ export class LicenseService {
       throw new Error(`Unknown or removed module: ${moduleKey}`);
     }
 
-    await this.db.query(
-      `INSERT INTO tenant_modules (tenant_id, module_key, status, expires_at, updated_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       ON CONFLICT (tenant_id, module_key) 
-       DO UPDATE SET status = EXCLUDED.status, 
-                     expires_at = EXCLUDED.expires_at,
-                     updated_at = NOW()`,
-      [tenantId, moduleKey, status, expiresAt || null]
-    );
-
-    await this.logLicenseHistory(tenantId, null, 'module_updated', {
+    await this.repo.upsertTenantModule(tenantId, moduleKey, status, expiresAt ?? null);
+    await this.repo.logLicenseHistory(tenantId, null, 'module_updated', {
       module_key: moduleKey,
-      status: status,
-      expires_at: expiresAt
+      status,
+      expires_at: expiresAt ?? null,
     });
   }
 
-  /**
-   * Get tenant limits (users, projects, etc.)
-   */
   async getTenantLimits(tenantId: string): Promise<{ maxUsers: number; maxProjects: number }> {
-    const tenants = await this.db.query(
-      'SELECT max_users, max_projects FROM tenants WHERE id = $1',
-      [tenantId]
-    );
-
-    if (tenants.length === 0) {
+    const row = await this.repo.getTenantLimits(tenantId);
+    if (!row) {
       return { maxUsers: 1, maxProjects: 10 };
     }
-
     return {
-      maxUsers: tenants[0].max_users || 1,
-      maxProjects: tenants[0].max_projects || 10
+      maxUsers: row.max_users || 1,
+      maxProjects: row.max_projects || 10,
     };
   }
 
-  /**
-   * Renew license
-   */
   async renewLicense(tenantId: string, licenseType: 'monthly' | 'yearly'): Promise<boolean> {
     return this.renewLicenseWithPayment(tenantId, licenseType);
   }
 
-  /**
-   * Renew license with optional payment tracking
-   */
   async renewLicenseWithPayment(
     tenantId: string,
     licenseType: 'monthly' | 'yearly',
@@ -251,36 +186,27 @@ export class LicenseService {
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     }
 
-    await this.db.query(
-      `UPDATE tenants 
-       SET license_type = $1,
-           license_status = 'active',
-           license_expiry_date = $2,
-           last_renewal_date = $3,
-           next_renewal_date = $2,
-           updated_at = NOW()
-       WHERE id = $4`,
-      [licenseType, expiryDate, now, tenantId]
-    );
+    await this.repo.renewTenantLicense(tenantId, licenseType, expiryDate, now);
 
-    // Get current license status to determine from_status
     const currentStatus = await this.checkLicenseStatus(tenantId);
     const fromStatus = currentStatus.isExpired ? 'expired' : currentStatus.licenseStatus;
 
-    // Log history with payment link if provided
-    const historyId = await this.logLicenseHistory(tenantId, null, 'license_renewed', {
-      from_status: fromStatus,
-      to_status: 'active',
-      from_type: currentStatus.licenseType,
-      to_type: licenseType
-    }, paymentId);
+    await this.repo.logLicenseHistory(
+      tenantId,
+      null,
+      'license_renewed',
+      {
+        from_status: fromStatus,
+        to_status: 'active',
+        from_type: currentStatus.licenseType,
+        to_type: licenseType,
+      },
+      paymentId
+    );
 
     return true;
   }
 
-  /**
-   * Create new tenant with free trial
-   */
   async createTenantWithTrial(data: {
     name: string;
     companyName: string;
@@ -292,71 +218,25 @@ export class LicenseService {
     const tenantId = `tenant_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
     const now = new Date();
 
-    await this.db.query(
-      `INSERT INTO tenants (
-        id, name, company_name, email, phone, address,
-        license_type, license_status, trial_start_date, is_supplier
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-      [
-        tenantId,
-        data.name,
-        data.companyName,
-        data.email,
-        data.phone || null,
-        data.address || null,
-        'trial',
-        'active',
-        now,
-        data.isSupplier || false
-      ]
-    );
+    await this.repo.insertTrialTenant({
+      tenantId,
+      name: data.name,
+      companyName: data.companyName,
+      email: data.email,
+      phone: data.phone || null,
+      address: data.address || null,
+      now,
+      isSupplier: data.isSupplier || false,
+    });
 
-    await this.logLicenseHistory(tenantId, null, 'trial_started', {
+    await this.repo.logLicenseHistory(tenantId, null, 'trial_started', {
       to_status: 'active',
-      to_type: 'trial'
+      to_type: 'trial',
     });
 
     return {
       tenantId,
-      daysRemaining: 30
+      daysRemaining: 30,
     };
   }
-
-  private hashCode(str: string): number {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = (hash << 5) - hash + char;
-      hash = hash & hash;
-    }
-    return Math.abs(hash);
-  }
-
-  private async logLicenseHistory(
-    tenantId: string,
-    licenseKeyId: string | null,
-    action: string,
-    data: any,
-    paymentId?: string
-  ): Promise<string> {
-    const historyId = `history_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-    await this.db.query(
-      `INSERT INTO license_history (
-        id, tenant_id, license_key_id, action, from_status, to_status, from_type, to_type, payment_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        historyId,
-        tenantId,
-        licenseKeyId,
-        action,
-        data.from_status || null,
-        data.to_status || null,
-        data.from_type || null,
-        data.to_type || null,
-        paymentId || null
-      ]
-    );
-    return historyId;
-  }
 }
-

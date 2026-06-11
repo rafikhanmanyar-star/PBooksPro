@@ -2,10 +2,10 @@
  * Tenant usage metrics vs plan limits.
  */
 
-import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getBillingPlanById, isUnlimited, type BillingPlanRow } from './billingPlanService.js';
 import { getActiveSubscription } from './subscriptionService.js';
+import { SubscriptionUsageRepository } from '../../modules/billing/repositories/BillingSupportRepository.js';
 
 export type UsageSnapshot = {
   usersCount: number;
@@ -27,39 +27,27 @@ export type UsageStatus = {
   violations: string[];
 };
 
+const usageRepo = new SubscriptionUsageRepository();
+
 export async function computeCurrentUsage(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<UsageSnapshot> {
-  const [users, projects] = await Promise.all([
-    client.query(`SELECT COUNT(*)::int AS c FROM users WHERE tenant_id = $1 AND is_active = TRUE`, [
-      tenantId,
-    ]),
-    client.query(`SELECT COUNT(*)::int AS c FROM projects WHERE tenant_id = $1`, [tenantId]),
+  const [usersCount, projectsCount] = await Promise.all([
+    usageRepo.countActiveUsers(client, tenantId),
+    usageRepo.countProjects(client, tenantId),
   ]);
 
-  // Storage: document_metadata inline bytes + declared file_size (R2 objects use file_size).
   let storageBytes = 0;
   try {
-    const storage = await client.query<{ bytes: string }>(
-      `SELECT COALESCE(SUM(
-         CASE
-           WHEN inline_data IS NOT NULL THEN octet_length(inline_data)
-           ELSE COALESCE(file_size, 0)
-         END
-       ), 0)::bigint AS bytes
-       FROM document_metadata
-       WHERE tenant_id = $1 AND deleted_at IS NULL`,
-      [tenantId]
-    );
-    storageBytes = Number(storage.rows[0]?.bytes ?? 0);
+    storageBytes = await usageRepo.sumDocumentStorageBytes(client, tenantId);
   } catch {
     storageBytes = 0;
   }
 
   return {
-    usersCount: users.rows[0]?.c ?? 0,
-    projectsCount: projects.rows[0]?.c ?? 0,
+    usersCount,
+    projectsCount,
     storageBytes,
     storageGb: storageBytes / (1024 * 1024 * 1024),
   };
@@ -112,22 +100,13 @@ export async function recordUsageSnapshot(
 ): Promise<void> {
   const usage = await computeCurrentUsage(client, tenantId);
   const today = new Date().toISOString().slice(0, 10);
-  await client.query(
-    `INSERT INTO subscription_usage_metrics (id, tenant_id, metric_date, users_count, projects_count, storage_bytes)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (tenant_id, metric_date) DO UPDATE SET
-       users_count = EXCLUDED.users_count,
-       projects_count = EXCLUDED.projects_count,
-       storage_bytes = EXCLUDED.storage_bytes`,
-    [
-      randomUUID(),
-      tenantId,
-      today,
-      usage.usersCount,
-      usage.projectsCount,
-      usage.storageBytes,
-    ]
-  );
+  await usageRepo.upsertDailySnapshot(client, {
+    tenantId,
+    metricDate: today,
+    usersCount: usage.usersCount,
+    projectsCount: usage.projectsCount,
+    storageBytes: usage.storageBytes,
+  });
 }
 
 export async function listUsageHistory(
@@ -142,13 +121,5 @@ export async function listUsageHistory(
     storage_bytes: string;
   }>
 > {
-  const { rows } = await client.query(
-    `SELECT metric_date, users_count, projects_count, storage_bytes::text
-     FROM subscription_usage_metrics
-     WHERE tenant_id = $1
-     ORDER BY metric_date DESC
-     LIMIT $2`,
-    [tenantId, limit]
-  );
-  return rows;
+  return usageRepo.listHistory(client, tenantId, limit);
 }

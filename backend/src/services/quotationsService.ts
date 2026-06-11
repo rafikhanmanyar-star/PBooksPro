@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { QuotationRepository } from '../modules/vendors/repositories/QuotationRepository.js';
+import {
+  QuotationRepository,
+  type QuotationWriteFields,
+} from '../modules/vendors/repositories/QuotationRepository.js';
 
 export type QuotationRow = {
   id: string;
@@ -105,8 +108,6 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
-const SELECT_COLS = `id, tenant_id, vendor_id, name, date, items, total_amount::text, document_id, user_id, version, deleted_at, created_at, updated_at`;
-
 export async function listQuotations(client: pg.PoolClient, tenantId: string): Promise<QuotationRow[]> {
   return new QuotationRepository(tenantId).listActive(client);
 }
@@ -135,11 +136,11 @@ export async function listQuotationsChangedSince(
   return new QuotationRepository(tenantId).listChangedSince(client, since);
 }
 
-function quotationWriteFields(p: ReturnType<typeof pickBody>) {
+function quotationWriteFields(p: ReturnType<typeof pickBody>): QuotationWriteFields {
   return {
-    vendor_id: p.vendor_id!,
-    name: p.name!,
-    date: p.date!,
+    vendor_id: p.vendor_id,
+    name: p.name,
+    date: p.date,
     items_json: JSON.stringify(p.items),
     total_amount: p.total_amount,
     document_id: p.document_id ?? null,

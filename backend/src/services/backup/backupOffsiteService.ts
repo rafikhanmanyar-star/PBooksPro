@@ -20,6 +20,9 @@ import {
   getConfiguredProvider,
   getStorageSettingsRow,
 } from './backupStorageSettingsService.js';
+import { BackupOffsiteRepository } from '../../modules/backup/repositories/BackupSettingsRepository.js';
+
+const offsiteRepo = new BackupOffsiteRepository();
 
 export type OffsiteUploadStatus = 'pending' | 'uploading' | 'verifying' | 'completed' | 'failed';
 
@@ -65,19 +68,14 @@ export async function getOffsiteUpload(
   client: pg.PoolClient,
   uploadId: string
 ): Promise<OffsiteUploadRow | null> {
-  const r = await client.query(`SELECT * FROM backup_offsite_uploads WHERE id = $1`, [uploadId]);
-  return r.rows[0] ? mapUpload(r.rows[0]) : null;
+  return offsiteRepo.getById(client, uploadId);
 }
 
 export async function getOffsiteUploadByRunId(
   client: pg.PoolClient,
   runId: string
 ): Promise<OffsiteUploadRow | null> {
-  const r = await client.query(
-    `SELECT * FROM backup_offsite_uploads WHERE run_id = $1 ORDER BY created_at DESC LIMIT 1`,
-    [runId]
-  );
-  return r.rows[0] ? mapUpload(r.rows[0]) : null;
+  return offsiteRepo.getByRunId(client, runId);
 }
 
 export async function listOffsiteUploads(
@@ -85,18 +83,7 @@ export async function listOffsiteUploads(
   opts: { runId?: string; limit?: number } = {}
 ): Promise<OffsiteUploadRow[]> {
   const limit = Math.min(Math.max(opts.limit ?? 100, 1), 500);
-  const params: unknown[] = [];
-  let where = '';
-  if (opts.runId) {
-    params.push(opts.runId);
-    where = `WHERE run_id = $${params.length}`;
-  }
-  params.push(limit);
-  const r = await client.query(
-    `SELECT * FROM backup_offsite_uploads ${where} ORDER BY created_at DESC LIMIT $${params.length}`,
-    params
-  );
-  return r.rows.map(mapUpload);
+  return offsiteRepo.list(client, { runId: opts.runId, limit });
 }
 
 export async function queueOffsiteUploadAfterBackup(
@@ -115,12 +102,13 @@ export async function queueOffsiteUploadAfterBackup(
     if (!existing) {
       const uploadId = randomUUID();
       const objectKey = buildObjectKey(runId, localPath);
-      await client.query(
-        `INSERT INTO backup_offsite_uploads (
-           id, run_id, object_key, provider, status, encrypted, attempt_number
-         ) VALUES ($1, $2, $3, $4, 'pending', true, 1)`,
-        [uploadId, runId, objectKey, settings.provider]
-      );
+      await offsiteRepo.insertPending(client, {
+        id: uploadId,
+        runId,
+        objectKey,
+        provider: settings.provider,
+        attemptNumber: 1,
+      });
     }
   } finally {
     client.release();
@@ -146,19 +134,7 @@ async function updateUploadStatus(
     attempt_number: number;
   }>
 ): Promise<void> {
-  const fields: string[] = [];
-  const values: unknown[] = [uploadId];
-  let i = 2;
-  for (const [key, val] of Object.entries(patch)) {
-    if (val === undefined) continue;
-    fields.push(`${key} = $${i++}`);
-    values.push(val);
-  }
-  fields.push('updated_at = NOW()');
-  await client.query(
-    `UPDATE backup_offsite_uploads SET ${fields.join(', ')} WHERE id = $1`,
-    values
-  );
+  await offsiteRepo.updateStatus(client, uploadId, patch);
 }
 
 export async function executeOffsiteUploadForRun(
@@ -185,12 +161,13 @@ export async function executeOffsiteUploadForRun(
       }
       const uploadId = randomUUID();
       const objectKey = buildObjectKey(runId, localPath);
-      await client.query(
-        `INSERT INTO backup_offsite_uploads (
-           id, run_id, object_key, provider, status, encrypted, attempt_number
-         ) VALUES ($1, $2, $3, $4, 'pending', true, $5)`,
-        [uploadId, runId, objectKey, settings.provider, attemptNumber]
-      );
+      await offsiteRepo.insertPending(client, {
+        id: uploadId,
+        runId,
+        objectKey,
+        provider: settings.provider,
+        attemptNumber,
+      });
       upload = await getOffsiteUpload(client, uploadId);
     }
 

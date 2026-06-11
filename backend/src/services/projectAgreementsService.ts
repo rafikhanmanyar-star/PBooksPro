@@ -4,7 +4,10 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional, todayUtcYyyyMmD
 import { enforceLockForSave } from './recordLocksService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { ProjectAgreementRepository } from '../modules/project-selling/repositories/ProjectAgreementRepository.js';
+import {
+  ProjectAgreementRepository,
+  type ProjectAgreementWriteFields,
+} from '../modules/project-selling/repositories/ProjectAgreementRepository.js';
 
 export type ProjectAgreementRow = {
   id: string;
@@ -169,17 +172,11 @@ export async function getProjectAgreementById(
 
 async function replaceAgreementUnits(
   client: pg.PoolClient,
+  tenantId: string,
   agreementId: string,
   unitIds: string[]
 ): Promise<void> {
-  await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [agreementId]);
-  for (const uid of unitIds) {
-    if (!uid || !String(uid).trim()) continue;
-    await client.query(
-      `INSERT INTO project_agreement_units (agreement_id, unit_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [agreementId, String(uid).trim()]
-    );
-  }
+  await new ProjectAgreementRepository(tenantId).replaceAgreementUnits(client, agreementId, unitIds);
 }
 
 function pickBody(body: Record<string, unknown>) {
@@ -268,6 +265,40 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function trimOrNull(v: string | null | undefined): string | null {
+  return v && String(v).trim() ? String(v).trim() : null;
+}
+
+function toProjectAgreementWriteFields(p: ReturnType<typeof pickBody>): ProjectAgreementWriteFields {
+  return {
+    agreement_number: p.agreement_number,
+    client_id: p.client_id,
+    project_id: p.project_id,
+    unit_ids_json: p.unit_ids_json,
+    list_price: p.list_price,
+    customer_discount: p.customer_discount,
+    floor_discount: p.floor_discount,
+    lump_sum_discount: p.lump_sum_discount,
+    misc_discount: p.misc_discount,
+    selling_price: p.selling_price,
+    rebate_amount: p.rebate_amount != null && Number.isFinite(p.rebate_amount) ? p.rebate_amount : null,
+    rebate_broker_id: trimOrNull(p.rebate_broker_id),
+    issue_date: p.issue_date,
+    description: p.description ?? null,
+    status: p.status,
+    cancellation_details: p.cancellation_details,
+    installment_plan: p.installment_plan,
+    list_price_category_id: trimOrNull(p.list_price_category_id),
+    customer_discount_category_id: trimOrNull(p.customer_discount_category_id),
+    floor_discount_category_id: trimOrNull(p.floor_discount_category_id),
+    lump_sum_discount_category_id: trimOrNull(p.lump_sum_discount_category_id),
+    misc_discount_category_id: trimOrNull(p.misc_discount_category_id),
+    selling_price_category_id: trimOrNull(p.selling_price_category_id),
+    rebate_category_id: trimOrNull(p.rebate_category_id),
+    user_id: trimOrNull(p.user_id),
+  };
+}
+
 /** Owner, project, at least one unit, and final price (selling price) are required for project agreements. */
 function assertProjectAgreementCore(p: { unitIds: string[]; selling_price: number }): void {
   if (!p.unitIds || p.unitIds.length === 0) {
@@ -291,74 +322,9 @@ export async function createProjectAgreement(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `pa_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<ProjectAgreementRow>(
-    `INSERT INTO project_agreements (
-       id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-       list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-       rebate_amount, rebate_broker_id, issue_date, description, status,
-       cancellation_details, installment_plan,
-       list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-       lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-       user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6,
-       $7, $8, $9, $10, $11, $12,
-       $13, $14, $15::date, $16, $17,
-       $18::jsonb, $19::jsonb,
-       $20, $21, $22, $23, $24, $25, $26,
-       $27, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-               list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-               rebate_amount, rebate_broker_id, issue_date, description, status,
-               cancellation_details, installment_plan,
-               list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-               lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.agreement_number,
-      p.client_id,
-      p.project_id,
-      p.unit_ids_json,
-      p.list_price,
-      p.customer_discount,
-      p.floor_discount,
-      p.lump_sum_discount,
-      p.misc_discount,
-      p.selling_price,
-      p.rebate_amount != null && Number.isFinite(p.rebate_amount) ? p.rebate_amount : null,
-      p.rebate_broker_id && String(p.rebate_broker_id).trim() ? String(p.rebate_broker_id).trim() : null,
-      p.issue_date,
-      p.description ?? null,
-      p.status,
-      p.cancellation_details,
-      p.installment_plan,
-      p.list_price_category_id && String(p.list_price_category_id).trim()
-        ? String(p.list_price_category_id).trim()
-        : null,
-      p.customer_discount_category_id && String(p.customer_discount_category_id).trim()
-        ? String(p.customer_discount_category_id).trim()
-        : null,
-      p.floor_discount_category_id && String(p.floor_discount_category_id).trim()
-        ? String(p.floor_discount_category_id).trim()
-        : null,
-      p.lump_sum_discount_category_id && String(p.lump_sum_discount_category_id).trim()
-        ? String(p.lump_sum_discount_category_id).trim()
-        : null,
-      p.misc_discount_category_id && String(p.misc_discount_category_id).trim()
-        ? String(p.misc_discount_category_id).trim()
-        : null,
-      p.selling_price_category_id && String(p.selling_price_category_id).trim()
-        ? String(p.selling_price_category_id).trim()
-        : null,
-      p.rebate_category_id && String(p.rebate_category_id).trim() ? String(p.rebate_category_id).trim() : null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null,
-    ]
-  );
-  await replaceAgreementUnits(client, id, p.unitIds);
-  const row = r.rows[0];
+  const repo = new ProjectAgreementRepository(tenantId);
+  const row = await repo.insertAgreement(client, id, toProjectAgreementWriteFields(p));
+  await replaceAgreementUnits(client, tenantId, id, p.unitIds);
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id ?? actorUserIdFromBody(body),
@@ -390,47 +356,8 @@ export async function updateProjectAgreement(
   assertProjectAgreementCore({ unitIds: p.unitIds, selling_price: p.selling_price });
   const expectedVersion = p.version;
 
-  const vals = [
-    id,
-    tenantId,
-    p.agreement_number,
-    p.client_id,
-    p.project_id,
-    p.unit_ids_json,
-    p.list_price,
-    p.customer_discount,
-    p.floor_discount,
-    p.lump_sum_discount,
-    p.misc_discount,
-    p.selling_price,
-    p.rebate_amount != null && Number.isFinite(p.rebate_amount) ? p.rebate_amount : null,
-    p.rebate_broker_id && String(p.rebate_broker_id).trim() ? String(p.rebate_broker_id).trim() : null,
-    p.issue_date,
-    p.description ?? null,
-    p.status,
-    p.cancellation_details,
-    p.installment_plan,
-    p.list_price_category_id && String(p.list_price_category_id).trim()
-      ? String(p.list_price_category_id).trim()
-      : null,
-    p.customer_discount_category_id && String(p.customer_discount_category_id).trim()
-      ? String(p.customer_discount_category_id).trim()
-      : null,
-    p.floor_discount_category_id && String(p.floor_discount_category_id).trim()
-      ? String(p.floor_discount_category_id).trim()
-      : null,
-    p.lump_sum_discount_category_id && String(p.lump_sum_discount_category_id).trim()
-      ? String(p.lump_sum_discount_category_id).trim()
-      : null,
-    p.misc_discount_category_id && String(p.misc_discount_category_id).trim()
-      ? String(p.misc_discount_category_id).trim()
-      : null,
-    p.selling_price_category_id && String(p.selling_price_category_id).trim()
-      ? String(p.selling_price_category_id).trim()
-      : null,
-    p.rebate_category_id && String(p.rebate_category_id).trim() ? String(p.rebate_category_id).trim() : null,
-    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null,
-  ];
+  const repo = new ProjectAgreementRepository(tenantId);
+  const fields = toProjectAgreementWriteFields(p);
 
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -441,30 +368,11 @@ export async function updateProjectAgreement(
     });
     if (lww.conflict) return { row: null, conflict: true, unitIds: [] };
 
-    const u = await client.query<ProjectAgreementRow>(
-      `UPDATE project_agreements SET
-         agreement_number = $3, client_id = $4, project_id = $5, unit_ids = $6,
-         list_price = $7, customer_discount = $8, floor_discount = $9, lump_sum_discount = $10, misc_discount = $11,
-         selling_price = $12, rebate_amount = $13, rebate_broker_id = $14, issue_date = $15::date, description = $16,
-         status = $17, cancellation_details = $18::jsonb, installment_plan = $19::jsonb,
-         list_price_category_id = $20, customer_discount_category_id = $21, floor_discount_category_id = $22,
-         lump_sum_discount_category_id = $23, misc_discount_category_id = $24, selling_price_category_id = $25, rebate_category_id = $26,
-         user_id = $27, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-                 list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-                 rebate_amount, rebate_broker_id, issue_date, description, status,
-                 cancellation_details, installment_plan,
-                 list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-                 lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-                 user_id, version, deleted_at, created_at, updated_at`,
-      vals
-    );
-    if (u.rows.length === 0) {
+    const row = await repo.updateActive(client, id, fields);
+    if (!row) {
       return { row: null, conflict: false, unitIds: [] };
     }
-    await replaceAgreementUnits(client, id, p.unitIds);
-    const row = u.rows[0];
+    await replaceAgreementUnits(client, tenantId, id, p.unitIds);
     await recordDomainMutation(client, {
       tenantId,
       userId: actorUserId ?? row.user_id,
@@ -479,28 +387,9 @@ export async function updateProjectAgreement(
     return { row, conflict: false, unitIds: p.unitIds };
   }
 
-  const u = await client.query<ProjectAgreementRow>(
-    `UPDATE project_agreements SET
-       agreement_number = $3, client_id = $4, project_id = $5, unit_ids = $6,
-       list_price = $7, customer_discount = $8, floor_discount = $9, lump_sum_discount = $10, misc_discount = $11,
-       selling_price = $12, rebate_amount = $13, rebate_broker_id = $14, issue_date = $15::date, description = $16,
-       status = $17, cancellation_details = $18::jsonb, installment_plan = $19::jsonb,
-       list_price_category_id = $20, customer_discount_category_id = $21, floor_discount_category_id = $22,
-       lump_sum_discount_category_id = $23, misc_discount_category_id = $24, selling_price_category_id = $25, rebate_category_id = $26,
-       user_id = $27, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-               list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-               rebate_amount, rebate_broker_id, issue_date, description, status,
-               cancellation_details, installment_plan,
-               list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-               lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-               user_id, version, deleted_at, created_at, updated_at`,
-    vals
-  );
-  if (u.rows[0]) {
-    await replaceAgreementUnits(client, id, p.unitIds);
-    const row = u.rows[0];
+  const row = await repo.updateActive(client, id, fields);
+  if (row) {
+    await replaceAgreementUnits(client, tenantId, id, p.unitIds);
     await recordDomainMutation(client, {
       tenantId,
       userId: actorUserId ?? row.user_id,
@@ -526,6 +415,7 @@ export async function softDeleteProjectAgreement(
 ): Promise<{ ok: boolean; conflict: boolean }> {
   await enforceLockForSave(client, tenantId, 'agreement', id, actorUserId);
   const before = await getProjectAgreementById(client, tenantId, id);
+  const repo = new ProjectAgreementRepository(tenantId);
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
       tenantId,
@@ -535,21 +425,9 @@ export async function softDeleteProjectAgreement(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE project_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-                 list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-                 rebate_amount, rebate_broker_id, issue_date, description, status,
-                 cancellation_details, installment_plan,
-                 list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-                 lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-                 user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false };
-    await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [id]);
-    const row = r.rows[0] as ProjectAgreementRow;
+    const row = await repo.markDeleted(client, id);
+    if (!row) return { ok: false, conflict: false };
+    await repo.deleteAgreementUnits(client, id);
     await recordDomainMutation(client, {
       tenantId,
       userId: actorUserId ?? row.user_id,
@@ -563,21 +441,9 @@ export async function softDeleteProjectAgreement(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE project_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-               list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-               rebate_amount, rebate_broker_id, issue_date, description, status,
-               cancellation_details, installment_plan,
-               list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-               lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  if ((r.rowCount ?? 0) > 0) {
-    await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [id]);
-    const row = r.rows[0] as ProjectAgreementRow;
+  const row = await repo.markDeleted(client, id);
+  if (row) {
+    await repo.deleteAgreementUnits(client, id);
     await recordDomainMutation(client, {
       tenantId,
       userId: actorUserId ?? row.user_id,
@@ -590,7 +456,7 @@ export async function softDeleteProjectAgreement(
       version: row.version,
     });
   }
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  return { ok: row != null, conflict: false };
 }
 
 /** For incremental sync: attach unit ids from junction + JSON fallback */

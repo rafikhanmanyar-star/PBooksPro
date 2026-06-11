@@ -6,97 +6,41 @@ import type pg from 'pg';
 import {
   isValidOnboardingStep,
   getOnboardingFlow,
-  progressPercentForFlow,
   nextStepForFlow,
   stepOrderForFlow,
   type OnboardingStepId,
   type OnboardingStatus,
 } from '../../constants/onboardingSteps.js';
+import {
+  OnboardingRepository,
+  type OnboardingState,
+} from '../../modules/onboarding/repositories/OnboardingRepository.js';
 
-export type OnboardingState = {
-  tenantId: string;
-  status: OnboardingStatus;
-  currentStep: OnboardingStepId;
-  completedSteps: OnboardingStepId[];
-  stepData: Record<string, unknown>;
-  startedAt: string;
-  completedAt: string | null;
-  updatedAt: string;
-  progressPercent: number;
-  onboardingFlow: 'standard' | 'trial';
-};
+export type { OnboardingState };
 
-function parseCompletedSteps(raw: unknown): OnboardingStepId[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((s): s is OnboardingStepId => typeof s === 'string' && isValidOnboardingStep(s));
-}
-
-function parseStepData(raw: unknown): Record<string, unknown> {
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
-  return {};
-}
-
-function mapRow(row: pg.QueryResultRow): OnboardingState {
-  const completedSteps = parseCompletedSteps(row.completed_steps);
-  const stepData = parseStepData(row.step_data);
-  const flow = getOnboardingFlow(stepData);
-
-  return {
-    tenantId: row.tenant_id,
-    status: row.status,
-    currentStep: isValidOnboardingStep(row.current_step) ? row.current_step : 'welcome',
-    completedSteps,
-    stepData,
-    startedAt: row.started_at,
-    completedAt: row.completed_at ?? null,
-    updatedAt: row.updated_at,
-    progressPercent: progressPercentForFlow(flow, completedSteps),
-    onboardingFlow: flow,
-  };
-}
+const onboardingRepo = new OnboardingRepository();
 
 export async function getOrCreateOnboarding(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<OnboardingState> {
-  const { rows } = await client.query(
-    `SELECT * FROM tenant_onboarding WHERE tenant_id = $1`,
-    [tenantId]
-  );
+  const existing = await onboardingRepo.getByTenant(client, tenantId);
+  if (existing) return existing;
 
-  if (rows.length) return mapRow(rows[0]);
-
-  await client.query(
-    `INSERT INTO tenant_onboarding (tenant_id, status, current_step)
-     VALUES ($1, 'in_progress', 'welcome')
-     ON CONFLICT (tenant_id) DO NOTHING`,
-    [tenantId]
-  );
-
-  const again = await client.query(`SELECT * FROM tenant_onboarding WHERE tenant_id = $1`, [tenantId]);
-  if (!again.rows.length) throw new Error('Failed to initialize onboarding.');
-  return mapRow(again.rows[0]);
+  await onboardingRepo.insertDefault(client, tenantId);
+  const row = await onboardingRepo.getByTenant(client, tenantId);
+  if (!row) throw new Error('Failed to initialize onboarding.');
+  return row;
 }
 
 export async function initializeTrialOnboarding(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<OnboardingState> {
-  await client.query(
-    `INSERT INTO tenant_onboarding (tenant_id, status, current_step, step_data)
-     VALUES ($1, 'in_progress', 'welcome', '{"onboarding_flow":"trial"}'::jsonb)
-     ON CONFLICT (tenant_id) DO UPDATE SET
-       status = 'in_progress',
-       current_step = 'welcome',
-       step_data = tenant_onboarding.step_data || '{"onboarding_flow":"trial"}'::jsonb,
-       updated_at = NOW()`,
-    [tenantId]
-  );
-  const { rows } = await client.query(`SELECT * FROM tenant_onboarding WHERE tenant_id = $1`, [tenantId]);
-  if (!rows.length) throw new Error('Failed to initialize trial onboarding.');
-  return mapRow(rows[0]);
+  await onboardingRepo.upsertTrial(client, tenantId);
+  const row = await onboardingRepo.getByTenant(client, tenantId);
+  if (!row) throw new Error('Failed to initialize trial onboarding.');
+  return row;
 }
 
 export async function updateOnboarding(
@@ -141,10 +85,7 @@ export async function updateOnboarding(
     }
   }
 
-  await client.query(`UPDATE tenant_onboarding SET ${sets.join(', ')} WHERE tenant_id = $1`, params);
-
-  const { rows } = await client.query(`SELECT * FROM tenant_onboarding WHERE tenant_id = $1`, [tenantId]);
-  return mapRow(rows[0]);
+  return onboardingRepo.patch(client, tenantId, sets, params);
 }
 
 export async function completeOnboardingStep(
@@ -178,19 +119,7 @@ export async function skipOnboarding(client: pg.PoolClient, tenantId: string): P
 export async function restartOnboarding(client: pg.PoolClient, tenantId: string): Promise<OnboardingState> {
   const current = await getOrCreateOnboarding(client, tenantId);
   const flowFlag = current.onboardingFlow === 'trial' ? { onboarding_flow: 'trial' } : {};
-
-  await client.query(
-    `UPDATE tenant_onboarding SET
-       status = 'in_progress',
-       current_step = 'welcome',
-       completed_steps = '[]'::jsonb,
-       step_data = $2::jsonb,
-       completed_at = NULL,
-       updated_at = NOW()
-     WHERE tenant_id = $1`,
-    [tenantId, JSON.stringify(flowFlag)]
-  );
-  const { rows } = await client.query(`SELECT * FROM tenant_onboarding WHERE tenant_id = $1`, [tenantId]);
-  if (rows.length) return mapRow(rows[0]);
+  const restarted = await onboardingRepo.restart(client, tenantId, JSON.stringify(flowFlag));
+  if (restarted) return restarted;
   return getOrCreateOnboarding(client, tenantId);
 }

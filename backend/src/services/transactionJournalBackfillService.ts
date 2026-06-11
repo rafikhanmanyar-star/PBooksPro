@@ -6,13 +6,9 @@ import {
   buildJournalLinesFromTransaction,
   shouldSkipTransactionJournalMirror,
   syncTransactionJournalMirror,
-  TRANSACTION_JOURNAL_SOURCE_MODULE,
 } from './transactionJournalPostingService.js';
-
-const TX_SELECT = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,
-    t.account_id, t.from_account_id, t.to_account_id, t.category_id, t.contact_id, t.vendor_id, t.project_id,
-    t.building_id, t.property_id, t.unit_id, t.invoice_id, t.bill_id, t.payslip_id, t.contract_id, t.agreement_id,
-    t.batch_id, t.project_asset_id, t.owner_id, t.is_system, t.version, t.deleted_at, t.created_at, t.updated_at`;
+import { withSavepoint } from '../db/pool.js';
+import { TransactionJournalBackfillRepository } from '../modules/accounting/repositories/TransactionJournalBackfillRepository.js';
 
 export type TransactionJournalBackfillOptions = {
   fromDate?: string | null;
@@ -35,6 +31,8 @@ export type TransactionJournalBackfillStats = {
   errors: { transactionId: string; message: string }[];
 };
 
+const backfillRepo = new TransactionJournalBackfillRepository();
+
 function logProgress(options: TransactionJournalBackfillOptions, msg: string): void {
   options.onProgress?.(msg);
 }
@@ -45,37 +43,7 @@ export async function listTransactionsNeedingJournalMirror(
   tenantId: string,
   options?: Pick<TransactionJournalBackfillOptions, 'fromDate' | 'toDate'>
 ): Promise<TransactionRow[]> {
-  const params: unknown[] = [tenantId, TRANSACTION_JOURNAL_SOURCE_MODULE];
-  let dateCond = '';
-  if (options?.fromDate) {
-    params.push(options.fromDate);
-    dateCond += ` AND t.date >= $${params.length}::date`;
-  }
-  if (options?.toDate) {
-    params.push(options.toDate);
-    dateCond += ` AND t.date <= $${params.length}::date`;
-  }
-
-  const q = `${TX_SELECT}
-    FROM transactions t
-    WHERE t.tenant_id = $1
-      AND t.deleted_at IS NULL
-      ${dateCond}
-      AND NOT EXISTS (
-        SELECT 1 FROM journal_entries je
-        WHERE je.tenant_id = t.tenant_id
-          AND je.source_module = $2
-          AND je.source_id = t.id
-          AND NOT EXISTS (
-            SELECT 1 FROM journal_reversals jr
-            WHERE jr.tenant_id = t.tenant_id
-              AND jr.original_journal_entry_id = je.id
-          )
-      )
-    ORDER BY t.date ASC, t.id ASC`;
-
-  const r = await client.query<TransactionRow>(q, params);
-  return r.rows;
+  return backfillRepo.listNeedingJournalMirror(client, tenantId, options);
 }
 
 export async function countTransactionsNeedingJournalMirror(
@@ -126,31 +94,23 @@ export async function backfillTransactionJournalMirrorsForTenant(
 
   for (let i = 0; i < eligible.length; i += batchSize) {
     const batch = eligible.slice(i, i + batchSize);
-    await client.query('BEGIN');
-    try {
-      for (const row of batch) {
-        await client.query('SAVEPOINT tx_journal_backfill');
-        try {
-          const result = await ensureTransactionJournalMirror(client, tenantId, row, row.user_id);
+    for (const row of batch) {
+      try {
+        await withSavepoint(client, `tx_journal_backfill_${row.id}`, async (spClient) => {
+          const result = await ensureTransactionJournalMirror(spClient, tenantId, row, row.user_id);
           if (result.skipped === 'already_posted') stats.skippedAlreadyPosted += 1;
           else if (result.skipped === 'mirror_rule') stats.skippedMirrorRule += 1;
           else if (result.skipped === 'no_lines') stats.skippedNoLines += 1;
           else if (result.journalEntryId) stats.posted += 1;
-          await client.query('RELEASE SAVEPOINT tx_journal_backfill');
-        } catch (e) {
-          await client.query('ROLLBACK TO SAVEPOINT tx_journal_backfill');
-          stats.failed += 1;
-          const message = e instanceof Error ? e.message : String(e);
-          stats.errors.push({ transactionId: row.id, message });
-          if (stats.errors.length <= 20) {
-            logProgress(options, `ERROR tx=${row.id}: ${message}`);
-          }
+        });
+      } catch (e) {
+        stats.failed += 1;
+        const message = e instanceof Error ? e.message : String(e);
+        stats.errors.push({ transactionId: row.id, message });
+        if (stats.errors.length <= 20) {
+          logProgress(options, `ERROR tx=${row.id}: ${message}`);
         }
       }
-      await client.query('COMMIT');
-    } catch (e) {
-      await client.query('ROLLBACK');
-      throw e;
     }
     logProgress(
       options,
@@ -167,30 +127,13 @@ export async function replaceAllTransactionJournalMirrorsForTenant(
   tenantId: string,
   options: Pick<TransactionJournalBackfillOptions, 'fromDate' | 'toDate' | 'dryRun' | 'onProgress'> = {}
 ): Promise<TransactionJournalBackfillStats> {
-  const params: unknown[] = [tenantId];
-  let dateCond = '';
-  if (options.fromDate) {
-    params.push(options.fromDate);
-    dateCond += ` AND t.date >= $${params.length}::date`;
-  }
-  if (options.toDate) {
-    params.push(options.toDate);
-    dateCond += ` AND t.date <= $${params.length}::date`;
-  }
-
   await bootstrapTenantChart(client, tenantId, { legacyIds: false });
 
-  const r = await client.query<TransactionRow>(
-    `${TX_SELECT}
-     FROM transactions t
-     WHERE t.tenant_id = $1 AND t.deleted_at IS NULL ${dateCond}
-     ORDER BY t.date ASC, t.id ASC`,
-    params
-  );
+  const r = await backfillRepo.listActiveForReplace(client, tenantId, options);
 
   const stats: TransactionJournalBackfillStats = {
     tenantId,
-    candidates: r.rows.length,
+    candidates: r.length,
     posted: 0,
     skippedAlreadyPosted: 0,
     skippedMirrorRule: 0,
@@ -200,11 +143,11 @@ export async function replaceAllTransactionJournalMirrorsForTenant(
   };
 
   if (options.dryRun) {
-    logProgress(options, `tenant=${tenantId} would_replace=${r.rows.length} transaction mirrors`);
+    logProgress(options, `tenant=${tenantId} would_replace=${r.length} transaction mirrors`);
     return stats;
   }
 
-  for (const row of r.rows) {
+  for (const row of r) {
     try {
       if (shouldSkipTransactionJournalMirror(row)) {
         stats.skippedMirrorRule += 1;

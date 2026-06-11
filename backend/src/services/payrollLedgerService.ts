@@ -6,27 +6,21 @@ import {
   type LedgerBuildRun,
   type LedgerBuildTx,
 } from './payrollLedgerCore.js';
+import { PayslipRepository } from '../modules/payroll/repositories/PayslipRepository.js';
+import { PayrollRunRepository } from '../modules/payroll/repositories/PayrollRunRepository.js';
+import { PayrollEmployeeRepository } from '../modules/payroll/repositories/PayrollEmployeeRepository.js';
+import {
+  PayrollTransactionRepository,
+  type PayrollLedgerRowDb,
+} from '../modules/payroll/repositories/PayrollTransactionRepository.js';
+import { TransactionRepository } from '../modules/accounting/repositories/TransactionRepository.js';
 
 function num(v: string | number | null | undefined): number {
   if (typeof v === 'number') return v || 0;
   return parseFloat(String(v ?? '0')) || 0;
 }
 
-export type PayrollLedgerRowDb = {
-  id: string;
-  tenant_id: string;
-  employee_id: string;
-  payroll_run_id: string | null;
-  transaction_date: Date | string;
-  transaction_type: string;
-  reference_id: string | null;
-  description: string | null;
-  debit: string;
-  credit: string;
-  balance_after: string;
-  source_transaction_id: string | null;
-  ledger_sort_ts: string;
-};
+export type { PayrollLedgerRowDb };
 
 /**
  * Replace employee payroll ledger rows with a chronological rebuild from payslips + linked expense transactions.
@@ -36,39 +30,21 @@ export async function syncPayrollLedgerForEmployee(
   tenantId: string,
   employeeId: string
 ): Promise<void> {
-  const psRows = await client.query<{
-    id: string;
-    payroll_run_id: string;
-    net_pay: string;
-    created_at: Date;
-  }>(
-    `SELECT id, payroll_run_id, net_pay::text, created_at FROM payslips
-     WHERE tenant_id = $1 AND employee_id = $2 AND deleted_at IS NULL
-     ORDER BY created_at ASC`,
-    [tenantId, employeeId]
-  );
+  const psRows = await new PayslipRepository(tenantId).listForLedgerRebuild(client, employeeId);
 
-  const payslips: LedgerBuildPayslip[] = psRows.rows.map((r) => ({
+  const payslips: LedgerBuildPayslip[] = psRows.map((r) => ({
     id: r.id,
     payroll_run_id: r.payroll_run_id,
     net_pay: num(r.net_pay),
     created_at: r.created_at,
   }));
 
-  const runIds = [...new Set(psRows.rows.map((r) => r.payroll_run_id))];
+  const runIds = [...new Set(psRows.map((r) => r.payroll_run_id))];
   const runsById = new Map<string, LedgerBuildRun>();
-  let labelMap = new Map<string, string>();
+  const labelMap = new Map<string, string>();
   if (runIds.length > 0) {
-    const runQ = await client.query<{
-      id: string;
-      month: string;
-      year: number;
-      period_end: Date | null;
-    }>(
-      `SELECT id, month, year, period_end FROM payroll_runs WHERE tenant_id = $1 AND id = ANY($2::text[])`,
-      [tenantId, runIds]
-    );
-    for (const r of runQ.rows) {
+    const runRows = await new PayrollRunRepository(tenantId).getPeriodLabelsByIds(client, runIds);
+    for (const r of runRows) {
       runsById.set(r.id, {
         id: r.id,
         period_end: r.period_end,
@@ -79,41 +55,21 @@ export async function syncPayrollLedgerForEmployee(
     }
   }
 
-  const payslipIds = payslips.map((p) => p.id);
-  let payrollTransactions: LedgerBuildTx[] = [];
-  if (payslipIds.length > 0) {
-    const tq = await client.query<{
-      id: string;
-      payslip_id: string | null;
-      amount: string;
-      date: Date;
-      description: string | null;
-      created_at: Date;
-      type: string;
-    }>(
-      `SELECT t.id, t.payslip_id, t.amount::text, t.date, t.description, t.created_at, t.type
-       FROM transactions t
-       INNER JOIN payslips p ON p.id = t.payslip_id AND p.tenant_id = t.tenant_id
-       WHERE t.tenant_id = $1 AND p.employee_id = $2 AND t.deleted_at IS NULL`,
-      [tenantId, employeeId]
-    );
-    payrollTransactions = tq.rows.map((t) => ({
-      id: t.id,
-      payslip_id: t.payslip_id,
-      amount: num(t.amount),
-      date: t.date,
-      description: t.description,
-      created_at: t.created_at,
-      type: String(t.type),
-    }));
-  }
+  const payrollTransactions: LedgerBuildTx[] = (
+    await new TransactionRepository(tenantId).listPayrollExpenseForEmployee(client, employeeId)
+  ).map((t) => ({
+    id: t.id,
+    payslip_id: t.payslip_id,
+    amount: num(t.amount),
+    date: t.date,
+    description: t.description,
+    created_at: t.created_at,
+    type: String(t.type),
+  }));
 
   const built = buildPayrollLedgerRowsFromSource(payslips, runsById, payrollTransactions);
-
-  await client.query(`DELETE FROM payroll_transactions WHERE tenant_id = $1 AND employee_id = $2`, [
-    tenantId,
-    employeeId,
-  ]);
+  const ledgerRepo = new PayrollTransactionRepository(tenantId);
+  await ledgerRepo.deleteForEmployee(client, employeeId);
 
   if (built.length === 0) return;
 
@@ -124,43 +80,32 @@ export async function syncPayrollLedgerForEmployee(
       if (lbl) description = `Payslip (${lbl}) — net`;
     }
 
-    await client.query(
-      `INSERT INTO payroll_transactions (
-         id, tenant_id, employee_id, payroll_run_id, transaction_date, transaction_type,
-         reference_id, description, debit, credit, balance_after, source_transaction_id,
-         ledger_sort_ts, payslip_created_at, created_by
-       ) VALUES (
-         $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NULL,NULL
-       )`,
-      [
-        row.id,
-        tenantId,
-        employeeId,
-        row.payroll_run_id,
-        row.transaction_date,
-        row.transaction_type,
-        row.reference_id,
-        description,
-        row.debit,
-        row.credit,
-        row.balance_after,
-        row.source_transaction_id,
-        row.ledger_sort_ts,
-      ]
-    );
+    await ledgerRepo.insertRow(client, employeeId, {
+      id: row.id,
+      payroll_run_id: row.payroll_run_id,
+      transaction_date: row.transaction_date,
+      transaction_type: row.transaction_type,
+      reference_id: row.reference_id,
+      description,
+      debit: row.debit,
+      credit: row.credit,
+      balance_after: row.balance_after,
+      source_transaction_id: row.source_transaction_id,
+      ledger_sort_ts: row.ledger_sort_ts,
+    });
   }
 }
 
 /** Full-tenant backfill — run manually after migrating `payroll_transactions`. */
-export async function syncPayrollLedgerForAllEmployees(client: pg.PoolClient, tenantId: string): Promise<number> {
-  const r = await client.query<{ id: string }>(
-    `SELECT id FROM payroll_employees WHERE tenant_id = $1 AND deleted_at IS NULL`,
-    [tenantId]
-  );
-  for (const row of r.rows) {
-    await syncPayrollLedgerForEmployee(client, tenantId, row.id);
+export async function syncPayrollLedgerForAllEmployees(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<number> {
+  const ids = await new PayrollEmployeeRepository(tenantId).listActiveIds(client);
+  for (const id of ids) {
+    await syncPayrollLedgerForEmployee(client, tenantId, id);
   }
-  return r.rows.length;
+  return ids.length;
 }
 
 export async function getEmployeePayrollBalanceFromDb(
@@ -168,18 +113,7 @@ export async function getEmployeePayrollBalanceFromDb(
   tenantId: string,
   employeeId: string
 ): Promise<ReturnType<typeof summarizePayrollBalanceFromRows>> {
-  const agg = await client.query<{ debit: string; credit: string; last_bal: string | null }>(
-    `SELECT
-       COALESCE(SUM(debit), 0)::text AS debit,
-       COALESCE(SUM(credit), 0)::text AS credit,
-       (SELECT balance_after::text FROM payroll_transactions
-         WHERE tenant_id = $1 AND employee_id = $2
-         ORDER BY transaction_date DESC, ledger_sort_ts DESC, id DESC LIMIT 1) AS last_bal
-     FROM payroll_transactions
-     WHERE tenant_id = $1 AND employee_id = $2`,
-    [tenantId, employeeId]
-  );
-  const row = agg.rows[0];
+  const row = await new PayrollTransactionRepository(tenantId).summarizeBalance(client, employeeId);
   if (!row || (parseFloat(row.debit ?? '0') === 0 && parseFloat(row.credit ?? '0') === 0 && row.last_bal == null)) {
     return { totalDebit: 0, totalCredit: 0, balance: 0, advanceAmount: 0, payableAmount: 0 };
   }
@@ -233,8 +167,7 @@ export async function fetchEmployeeLedgerPage(
   const offset = Math.max(Number(opts.offset) || 0, 0);
 
   let filterSql = '';
-  const countVals: unknown[] = [tenantId, employeeId];
-  const selVals: unknown[] = [tenantId, employeeId];
+  const filterParams: unknown[] = [];
 
   const tfRaw = opts.typeFilter || 'all';
   const tf = String(tfRaw).toLowerCase();
@@ -249,30 +182,12 @@ export async function fetchEmployeeLedgerPage(
       ` OR (transaction_type = 'PAYMENT' AND balance_after < -0.01))`;
   } else if (tf !== 'all' && LEDGER_ALLOWED_TYPES.has(String(tfRaw))) {
     filterSql = ` AND transaction_type = $3`;
-    countVals.push(tfRaw);
-    selVals.push(tfRaw);
+    filterParams.push(tfRaw);
   }
 
-  const cq = await client.query<{ c: number }>(
-    `SELECT COUNT(*)::int AS c FROM payroll_transactions WHERE tenant_id = $1 AND employee_id = $2${filterSql}`,
-    countVals
-  );
+  const ledgerRepo = new PayrollTransactionRepository(tenantId);
+  const total = await ledgerRepo.countForEmployee(client, employeeId, filterSql, filterParams);
+  const rows = await ledgerRepo.listPage(client, employeeId, filterSql, filterParams, limit, offset);
 
-  const lp = selVals.length + 1;
-  const op = selVals.length + 2;
-  selVals.push(limit, offset);
-
-  const qr = await client.query<PayrollLedgerRowDb>(
-    `SELECT id, tenant_id, employee_id, payroll_run_id, transaction_date, transaction_type,
-            reference_id, description, debit::text, credit::text, balance_after::text, source_transaction_id,
-            ledger_sort_ts::text, created_at
-     FROM payroll_transactions
-     WHERE tenant_id = $1 AND employee_id = $2${filterSql}
-     ORDER BY transaction_date ASC, ledger_sort_ts ASC, id ASC
-     LIMIT $${lp} OFFSET $${op}`,
-    selVals
-  );
-
-  return { total: cq.rows[0]?.c ?? 0, rows: qr.rows };
+  return { total, rows };
 }
-

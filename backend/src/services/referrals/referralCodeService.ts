@@ -1,6 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getReferralProgramConfig } from './referralProgramConfigService.js';
+import { ReferralCodeRepository } from '../../modules/referrals/repositories/ReferralRepository.js';
 
 export type ReferralCodeRow = {
   id: string;
@@ -11,6 +12,8 @@ export type ReferralCodeRow = {
   totalSignups: number;
   totalConversions: number;
 };
+
+const codeRepo = new ReferralCodeRepository();
 
 function slugPrefix(tenantId: string): string {
   const clean = tenantId.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase();
@@ -36,40 +39,24 @@ export function hashSignupIp(ip: string | undefined): string | null {
   return createHash('sha256').update(ip).digest('hex').slice(0, 32);
 }
 
-function mapRow(row: pg.QueryResultRow): ReferralCodeRow {
-  return {
-    id: row.id,
-    tenantId: row.tenant_id,
-    code: row.code,
-    isActive: row.is_active,
-    totalClicks: row.total_clicks,
-    totalSignups: row.total_signups,
-    totalConversions: row.total_conversions,
-  };
-}
-
 export async function getOrCreateReferralCode(
   client: pg.PoolClient,
   tenantId: string,
   createdByUserId?: string | null
 ): Promise<ReferralCodeRow> {
-  const { rows } = await client.query(
-    `SELECT * FROM referral_codes WHERE tenant_id = $1 LIMIT 1`,
-    [tenantId]
-  );
-  if (rows.length) return mapRow(rows[0]);
+  const existing = await codeRepo.getByTenant(client, tenantId);
+  if (existing) return existing;
 
   for (let attempt = 0; attempt < 5; attempt++) {
     const id = randomUUID();
     const code = buildReferralCode(tenantId);
     try {
-      await client.query(
-        `INSERT INTO referral_codes (id, tenant_id, code, created_by_user_id)
-         VALUES ($1, $2, $3, $4)`,
-        [id, tenantId, code, createdByUserId ?? null]
-      );
-      const created = await client.query(`SELECT * FROM referral_codes WHERE id = $1`, [id]);
-      return mapRow(created.rows[0]);
+      return await codeRepo.insert(client, {
+        id,
+        tenantId,
+        code,
+        createdByUserId: createdByUserId ?? null,
+      });
     } catch (e: unknown) {
       const err = e as { code?: string };
       if (err.code !== '23505') throw e;
@@ -82,11 +69,7 @@ export async function findReferralCodeByCode(
   client: pg.PoolClient,
   code: string
 ): Promise<ReferralCodeRow | null> {
-  const { rows } = await client.query(
-    `SELECT * FROM referral_codes WHERE LOWER(code) = LOWER($1) AND is_active = TRUE LIMIT 1`,
-    [code.trim()]
-  );
-  return rows.length ? mapRow(rows[0]) : null;
+  return codeRepo.findByCode(client, code);
 }
 
 export async function validateReferralCode(
@@ -99,8 +82,7 @@ export async function validateReferralCode(
   const row = await findReferralCodeByCode(client, code);
   if (!row) return { valid: false };
 
-  const { rows } = await client.query(`SELECT name FROM tenants WHERE id = $1`, [row.tenantId]);
-  const tenantName = rows[0]?.name as string | undefined;
+  const tenantName = await codeRepo.getTenantName(client, row.tenantId);
 
   return {
     valid: true,
@@ -115,8 +97,5 @@ export async function incrementReferralCodeMetric(
   codeId: string,
   metric: 'total_clicks' | 'total_signups' | 'total_conversions'
 ): Promise<void> {
-  await client.query(
-    `UPDATE referral_codes SET ${metric} = ${metric} + 1, updated_at = NOW() WHERE id = $1`,
-    [codeId]
-  );
+  await codeRepo.incrementMetric(client, codeId, metric);
 }
