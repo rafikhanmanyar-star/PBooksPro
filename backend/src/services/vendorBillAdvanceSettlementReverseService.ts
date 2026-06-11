@@ -62,16 +62,13 @@ export async function reverseVendorBillAdvanceSettlement(
   const touchedAdvanceIds = [...new Set(clearingRows.map((r) => r.contractor_advance_id).filter(Boolean) as string[])];
   touchedAdvanceIds.sort((a, b) => a.localeCompare(b));
 
+  const advanceRepo = new ContractorAdvanceRepository(tenantId);
   for (const row of clearingRows) {
     const advId = row.contractor_advance_id;
     if (!advId) continue;
     const amt = roundMoney(Number(row.amount));
     if (!(amt > 0)) continue;
-    await client.query(
-      `UPDATE contractor_advances SET remaining_amount = remaining_amount + $1::numeric, updated_at = NOW()
-       WHERE tenant_id = $2 AND id = $3`,
-      [amt, tenantId, advId]
-    );
+    await advanceRepo.adjustRemaining(client, advId, amt);
   }
 
   await client.query(`DELETE FROM vendor_bill_advance_clearings WHERE tenant_id = $1 AND journal_entry_id = $2`, [
@@ -105,7 +102,6 @@ export async function reverseVendorBillAdvanceSettlement(
 
   const { reversalJournalEntryId } = await reverseJournalEntry(client, tenantId, jeId, rreason, actorUserId);
 
-  const advanceRepo = new ContractorAdvanceRepository(tenantId);
   for (const bid of billIds) {
     const updatedBill = await getBillById(client, tenantId, bid);
     if (!updatedBill) continue;
