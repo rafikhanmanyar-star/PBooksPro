@@ -75,11 +75,14 @@ import {
   rowToTenantConfigApi,
 } from './payrollService.js';
 import { isAdminRole } from '../middleware/authMiddleware.js';
+import { changeLogRowToApi, listChangeLogSince } from './changeLogService.js';
 
 export type StateChangesPayload = {
   since: string;
   updatedAt: string;
   entities: Record<string, unknown[]>;
+  /** Architecture v2 — mutation feed for domains using recordDomainMutation(). */
+  changeLog?: Record<string, unknown>[];
   /** Present when any tenant app_settings row changed since `since` (full map for client merge). */
   appSettings?: Record<string, unknown>;
 };
@@ -128,6 +131,7 @@ export async function getStateChanges(
     pmCycleAllocationRows,
     planAmenityRows,
     installmentPlanRows,
+    changeLogRows,
   ] = await Promise.all([
     listVendorsChangedSince(client, tenantId, since),
     listContactsChangedSince(client, tenantId, since),
@@ -164,6 +168,7 @@ export async function getStateChanges(
     listPmCycleAllocationsChangedSince(client, tenantId, since),
     listPlanAmenitiesChangedSince(client, tenantId, since),
     listInstallmentPlansChangedSince(client, tenantId, since),
+    listChangeLogSince(client, tenantId, since),
   ]);
 
   /** P&L overrides live in pl_category_mapping; system (global) category rows do not get updated_at bumps. */
@@ -238,6 +243,7 @@ export async function getStateChanges(
     since: sinceIso,
     updatedAt: new Date().toISOString(),
     entities,
+    changeLog: changeLogRows.map((r) => changeLogRowToApi(r)),
     appSettings,
   };
 }

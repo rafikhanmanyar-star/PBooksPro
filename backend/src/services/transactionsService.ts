@@ -18,6 +18,7 @@ import {
 } from './transactionJournalPostingService.js';
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -657,6 +658,16 @@ export async function updateTransaction(
   ];
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'transactions',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) {
+      return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [] };
+    }
+
     const u = await client.query<TransactionRow>(
       `UPDATE transactions SET
          type = $3, subtype = $4, amount = $5, date = $6::date, description = $7, reference = $8,
@@ -664,16 +675,14 @@ export async function updateTransaction(
          project_id = $15, building_id = $16, property_id = $17, unit_id = $18, invoice_id = $19, bill_id = $20, payslip_id = $21,
          contract_id = $22, agreement_id = $23, batch_id = $24, project_asset_id = $25, owner_id = $26, is_system = $27,
          version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $28
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
                  category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
                  contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...fieldVals, expectedVersion]
+      [id, tenantId, ...fieldVals]
     );
     if (u.rows.length === 0) {
-      const exists = await getTransactionById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
-      return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [] };
+      return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
     }
     const row = u.rows[0];
     await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id], [
@@ -777,14 +786,22 @@ export async function upsertTransaction(
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return {
-      row: existing,
-      conflict: true,
-      wasInsert: false,
-      affectedInvoiceIds: [],
-      affectedBillIds: [],
-    };
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'transactions',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) {
+      return {
+        row: existing,
+        conflict: true,
+        wasInsert: false,
+        affectedInvoiceIds: [],
+        affectedBillIds: [],
+      };
+    }
   }
 
   const categoryResolvedUpsert = await resolveExpenseCategoryFromBill(

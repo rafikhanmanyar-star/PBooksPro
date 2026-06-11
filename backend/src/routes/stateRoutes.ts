@@ -58,7 +58,7 @@ stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
   }
 });
 
-/** Incremental sync: vendors, contacts, contracts, budgets, rental_agreements, project_agreements, plan_amenities, installment_plans, pm_cycle_allocations, invoices, bills, accounts, transactions, categories, recurring_invoice_templates, projects, buildings, properties, units, personal_categories, personal_transactions, payroll_* + payslips + app_settings changed since `since` (ISO8601). */
+/** Incremental sync: vendors, contacts, … + Architecture v2 `changeLog` feed when present. */
 stateRouter.get('/state/changes', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {

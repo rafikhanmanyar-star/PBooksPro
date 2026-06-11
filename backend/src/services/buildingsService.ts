@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { BuildingRepository } from '../modules/properties/repositories/BuildingRepository.js';
 
 export type BuildingRow = {
   id: string;
@@ -46,12 +49,7 @@ function pickBody(body: Record<string, unknown>) {
 }
 
 export async function listBuildings(client: pg.PoolClient, tenantId: string): Promise<BuildingRow[]> {
-  const r = await client.query<BuildingRow>(
-    `SELECT id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at
-     FROM buildings WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new BuildingRepository(tenantId).listActive(client);
 }
 
 export async function getBuildingById(
@@ -59,12 +57,7 @@ export async function getBuildingById(
   tenantId: string,
   id: string
 ): Promise<BuildingRow | null> {
-  const r = await client.query<BuildingRow>(
-    `SELECT id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at
-     FROM buildings WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new BuildingRepository(tenantId).getById(client, id);
 }
 
 export async function createBuilding(
@@ -81,7 +74,19 @@ export async function createBuilding(
      RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
     [id, tenantId, p.name, p.description ?? null, p.color ?? null]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: null,
+    module: 'buildings',
+    entityType: 'building',
+    entityId: row.id,
+    action: 'create',
+    summary: `Building ${row.name} created`,
+    newValue: rowToBuildingApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateBuilding(

@@ -420,6 +420,17 @@ export interface StateChangesResponse {
   since: string;
   updatedAt: string;
   entities: Record<string, unknown[]>;
+  /** Architecture v2 mutation feed (audit + change_log for priority domains). */
+  changeLog?: Array<{
+    id: string;
+    entityType: string;
+    entityId: string;
+    action: string;
+    version: number;
+    changedAt: string;
+    changedBy?: string;
+    payload?: unknown;
+  }>;
   /** When any app_settings row changed since `since`, full key→value map for tenant (merge on client). */
   appSettings?: Record<string, unknown>;
   has_more?: boolean;

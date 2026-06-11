@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { VendorRepository } from '../modules/vendors/repositories/VendorRepository.js';
 
 export type VendorRow = {
   id: string;
@@ -43,13 +46,7 @@ export async function listVendorsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<VendorRow[]> {
-  const r = await client.query<VendorRow>(
-    `SELECT id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at
-     FROM vendors WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new VendorRepository(tenantId).listChangedSince(client, since);
 }
 
 function pickBody(body: Record<string, unknown>) {
@@ -78,12 +75,7 @@ function pickBody(body: Record<string, unknown>) {
 }
 
 export async function listVendors(client: pg.PoolClient, tenantId: string): Promise<VendorRow[]> {
-  const r = await client.query<VendorRow>(
-    `SELECT id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at
-     FROM vendors WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new VendorRepository(tenantId).listActive(client);
 }
 
 export async function getVendorById(
@@ -91,12 +83,7 @@ export async function getVendorById(
   tenantId: string,
   id: string
 ): Promise<VendorRow | null> {
-  const r = await client.query<VendorRow>(
-    `SELECT id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at
-     FROM vendors WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new VendorRepository(tenantId).getById(client, id);
 }
 
 export async function createVendor(
@@ -125,7 +112,19 @@ export async function createVendor(
       p.userId ?? null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'vendors',
+    entityType: 'vendor',
+    entityId: row.id,
+    action: 'create',
+    summary: `Vendor ${row.name} created`,
+    newValue: rowToVendorApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateVendor(
@@ -140,12 +139,20 @@ export async function updateVendor(
   const isActive = p.isActive !== false;
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'vendors',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const r = await client.query<VendorRow>(
       `UPDATE vendors SET
         name = $3, contact_no = $4, company_name = $5, address = $6, description = $7,
         is_active = $8, user_id = $9,
         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $10
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
       [
         id,
@@ -157,15 +164,22 @@ export async function updateVendor(
         p.description ?? null,
         isActive,
         p.userId ?? null,
-        expectedVersion,
       ]
     );
-    if (r.rows.length === 0) {
-      const exists = await getVendorById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
-    }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0] ?? null;
+    if (!row) return { row: null, conflict: false };
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'vendors',
+      entityType: 'vendor',
+      entityId: row.id,
+      action: 'update',
+      summary: `Vendor ${row.name} updated`,
+      newValue: rowToVendorApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<VendorRow>(
@@ -187,7 +201,21 @@ export async function updateVendor(
       p.userId ?? null,
     ]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'vendors',
+      entityType: 'vendor',
+      entityId: row.id,
+      action: 'update',
+      summary: `Vendor ${row.name} updated`,
+      newValue: rowToVendorApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function softDeleteVendor(
@@ -196,28 +224,57 @@ export async function softDeleteVendor(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getVendorById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'vendors',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE vendors SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const chk = await client.query<{ deleted_at: Date | null }>(
-        `SELECT deleted_at FROM vendors WHERE id = $1 AND tenant_id = $2`,
-        [id, tenantId]
-      );
-      const row = chk.rows[0];
-      if (!row) return { ok: false, conflict: false };
-      if (row.deleted_at) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false };
+    const row = r.rows[0] as VendorRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'vendors',
+      entityType: 'vendor',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Vendor ${row.name} deleted`,
+      oldValue: before ? rowToVendorApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE vendors SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as VendorRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'vendors',
+      entityType: 'vendor',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Vendor ${row.name} deleted`,
+      oldValue: before ? rowToVendorApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }

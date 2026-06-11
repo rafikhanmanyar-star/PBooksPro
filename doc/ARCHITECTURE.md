@@ -36,7 +36,7 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | `document_metadata` + `DocumentStorageService` | Built in `modules/documents/` |
 | `change_log` + `sync_queue` + `assertLwwVersion()` | Tables + helpers; **`completeEntityMutation()`** combines LWW + audit (opt-in per route) |
 | `recordDomainMutation()` + `withAudit()` | Wired for bills, invoices, documents, **transactions**, **contacts**, **rental agreements**, **PEV** |
-| Domain repository strangler | **Bills** + **invoices** list/get delegated to `BillRepository` / `InvoiceRepository` |
+| Domain repository strangler | **Bills**, **invoices**, **contacts** list/get delegated to domain repos |
 
 ### Not done / partially wired
 
@@ -46,7 +46,8 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | **`withAudit()`** | Implemented; delegates to **`recordDomainMutation()`** (audit + change_log) |
 | **`recordDomainMutation()`** | Priority domains above; payroll, projects, properties, vendors CRUD still ad hoc |
 | **`change_log` writes** | Via `recordDomainMutation` on priority mutations; **`appStateBulkService` does not write change_log** |
-| **`assertLwwVersion()` (LWW)** | Helper in **`core/entityMutation.ts`**; not yet wired on all versioned upserts |
+| **`assertLwwVersion()` (LWW)** | Wired on priority upserts/updates via **`checkEntityLwwConflict()`** (transactions, bills, invoices, contacts, rental agreements) |
+| **`change_log` in incremental sync** | **`GET /state/changes`** includes `changeLog[]` from `change_log` table |
 | **Documents on R2** | Phase 3 ✅ — `document_metadata` only; legacy `documents` blocked by trigger (migration 111) |
 | **Domain module migration** | Repositories scaffolded (vendors, customers, crm, leases, properties, project-selling); **no module routes/services** except dashboard + documents storage + accounting posting |
 | **Report engines** | Logic in `shared/report-engines/`; backend uses centralized **`loadReportEngine()`** over esbuild bundles (direct TS import deferred) |
@@ -222,7 +223,7 @@ Migration: `105_accounting_periods_locked_status.sql`. Enforced in `FinancialPos
 ### API Versioning
 
 - **Canonical prefix:** `/api/v1` (mounted via `mountVersionedApi()` in `backend/src/routes/mountVersionedApi.ts`)
-- **Deprecated alias:** `/api` (same router instances — remove after all clients migrate)
+- **Deprecated alias:** removed — clients use `/api/v1` only
 - **Exempt from versioning:** `/health`, `/api/webhooks/*`, `/api/admin`
 - Client default: `getDefaultApiBaseUrl()` → `…/api/v1` (`config/apiUrl.ts`)
 
@@ -246,7 +247,7 @@ Migration: `105_accounting_periods_locked_status.sql`. Enforced in `FinancialPos
 1. `authMiddleware` → sets `req.userId`, `req.tenantId`, `req.role`
 2. `requireActiveSubscription()`
 3. Optional: `requirePermissionWhenPathStartsWith`, `requireFinancialWriteOnMutations`, `requirePayrollAccessForPayrollPaths`
-4. `auditRequestContextMiddleware` on `/api/v1` and `/api`
+4. `auditRequestContextMiddleware` on `/api/v1`
 
 **Per-endpoint:** `requirePermission('feature.action')` from `middleware/rbacMiddleware.ts`.
 

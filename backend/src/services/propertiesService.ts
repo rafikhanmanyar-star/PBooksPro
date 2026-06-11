@@ -2,6 +2,9 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { getBuildingById } from './buildingsService.js';
 import { getContactById } from './contactsService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { PropertyRepository } from '../modules/properties/repositories/PropertyRepository.js';
 
 export type PropertyRow = {
   id: string;
@@ -78,18 +81,7 @@ export async function listProperties(
   tenantId: string,
   filters?: { buildingId?: string }
 ): Promise<PropertyRow[]> {
-  const params: unknown[] = [tenantId];
-  let where = 'tenant_id = $1 AND deleted_at IS NULL';
-  if (filters?.buildingId) {
-    params.push(filters.buildingId);
-    where += ` AND building_id = $${params.length}`;
-  }
-  const r = await client.query<PropertyRow>(
-    `SELECT id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at
-     FROM properties WHERE ${where} ORDER BY name ASC`,
-    params
-  );
-  return r.rows;
+  return new PropertyRepository(tenantId).list(client, filters);
 }
 
 export async function getPropertyById(
@@ -97,12 +89,7 @@ export async function getPropertyById(
   tenantId: string,
   id: string
 ): Promise<PropertyRow | null> {
-  const r = await client.query<PropertyRow>(
-    `SELECT id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at
-     FROM properties WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PropertyRepository(tenantId).getById(client, id);
 }
 
 export async function createProperty(
@@ -137,7 +124,19 @@ export async function createProperty(
       p.monthly_service_charge !== undefined ? p.monthly_service_charge : null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: null,
+    module: 'properties',
+    entityType: 'property',
+    entityId: row.id,
+    action: 'create',
+    summary: `Property ${row.name} created`,
+    newValue: rowToPropertyApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateProperty(
@@ -161,20 +160,36 @@ export async function updateProperty(
   const mscVal = p.monthly_service_charge !== undefined ? p.monthly_service_charge : null;
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'properties',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const r = await client.query<PropertyRow>(
       `UPDATE properties SET
         name = $3, owner_id = $4, building_id = $5, description = $6, monthly_service_charge = $7,
         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $8
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.owner_id, p.building_id, p.description ?? null, mscVal, expectedVersion]
+      [id, tenantId, p.name, p.owner_id, p.building_id, p.description ?? null, mscVal]
     );
-    if (r.rows.length === 0) {
-      const exists = await getPropertyById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
-    }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0] ?? null;
+    if (!row) return { row: null, conflict: false };
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'properties',
+      entityType: 'property',
+      entityId: row.id,
+      action: 'update',
+      summary: `Property ${row.name} updated`,
+      newValue: rowToPropertyApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<PropertyRow>(
@@ -185,7 +200,21 @@ export async function updateProperty(
      RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
     [id, tenantId, p.name, p.owner_id, p.building_id, p.description ?? null, mscVal]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'properties',
+      entityType: 'property',
+      entityId: row.id,
+      action: 'update',
+      summary: `Property ${row.name} updated`,
+      newValue: rowToPropertyApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function countRentalAgreementsForProperty(
@@ -212,25 +241,59 @@ export async function softDeleteProperty(
     return { ok: false, conflict: false, blocked: true };
   }
 
+  const before = await getPropertyById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'properties',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE properties SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const cur = await getPropertyById(client, tenantId, id);
-      if (!cur) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false };
+    const row = r.rows[0] as PropertyRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'properties',
+      entityType: 'property',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Property ${row.name} deleted`,
+      oldValue: before ? rowToPropertyApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE properties SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as PropertyRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'properties',
+      entityType: 'property',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Property ${row.name} deleted`,
+      oldValue: before ? rowToPropertyApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 /** Incremental sync: properties created/updated/deleted since `since` (includes soft-deleted rows). */
@@ -239,11 +302,5 @@ export async function listPropertiesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PropertyRow[]> {
-  const r = await client.query<PropertyRow>(
-    `SELECT id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at
-     FROM properties WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new PropertyRepository(tenantId).listChangedSince(client, since);
 }

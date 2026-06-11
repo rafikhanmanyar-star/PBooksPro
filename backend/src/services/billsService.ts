@@ -4,6 +4,7 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdO
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
 import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
 
 export type BillRow = {
@@ -553,8 +554,14 @@ export async function upsertBill(
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existingById.version !== expectedVersion) {
-    return { row: existingById, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'bills',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existingById, conflict: true, wasInsert: false };
   }
 
   await enforceLockForSave(client, tenantId, 'bill', id, actorUserId);

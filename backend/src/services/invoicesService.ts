@@ -4,6 +4,7 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnl
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from './invoiceJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
 import { InvoiceRepository } from '../modules/customers/repositories/InvoiceRepository.js';
 
 export type InvoiceRow = {
@@ -208,8 +209,14 @@ export async function upsertInvoice(
   await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'invoices',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
   }
 
   const vals = [

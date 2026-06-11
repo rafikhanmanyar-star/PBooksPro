@@ -9,7 +9,7 @@ Tracked items intentionally deferred after commercial launch scope.
 | Full CQRS | Not started | Event sourcing not required for launch |
 | Field-level sync conflicts | Planned | After LWW (`change_log` + `version`) proven in production |
 | Distributed workers | Planned | Depends on BullMQ |
-| Retire `/api` alias | Planned | After all clients use `/api/v1` |
+| Retire `/api` alias | **Done** | Clients normalized to `/api/v1` |
 | Retire esbuild report bundles | Planned | After backend imports `shared/report-engines` directly |
 | Payroll → journal_entries unification | Planned | `payrollLedger` remains separate exception |
 

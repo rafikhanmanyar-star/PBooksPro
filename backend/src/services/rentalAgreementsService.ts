@@ -10,6 +10,7 @@ import { getPropertyById } from './propertiesService.js';
 import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
 import { enforceLockForSave } from './recordLocksService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -248,13 +249,21 @@ export async function updateRentalAgreement(
   const expectedVersion = p.version;
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'rental_agreements',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const u = await client.query<RentalAgreementRow>(
       `UPDATE rental_agreements SET
          agreement_number = $3, contact_id = $4, property_id = $5, start_date = $6::date, end_date = $7::date,
          monthly_rent = $8, rent_due_date = $9, status = $10, description = $11,
          security_deposit = $12, broker_id = $13, broker_fee = $14, owner_id = $15, previous_agreement_id = $16,
          version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $17
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
                  rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
                  version, deleted_at, created_at, updated_at`,
@@ -277,13 +286,10 @@ export async function updateRentalAgreement(
         p.previous_agreement_id && String(p.previous_agreement_id).trim()
           ? String(p.previous_agreement_id).trim()
           : null,
-        expectedVersion,
       ]
     );
     if (u.rows.length === 0) {
-      const exists = await getRentalAgreementById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
+      return { row: null, conflict: false };
     }
     const row = u.rows[0];
     await recordDomainMutation(client, {
