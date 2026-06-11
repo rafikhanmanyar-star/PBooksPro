@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../core/recordDomainMutation.js';
-import { PayrollProjectRepository } from '../../modules/payroll/repositories/PayrollProjectRepository.js';
+import { PayrollProjectRepository, type PayrollProjectWriteFields } from '../../modules/payroll/repositories/PayrollProjectRepository.js';
 import { PayrollSalaryComponentRepository } from '../../modules/payroll/repositories/PayrollSalaryComponentRepository.js';
 import { PayrollTenantConfigRepository } from '../../modules/payroll/repositories/PayrollTenantConfigRepository.js';
 import { j, numStr, optStr } from './payrollHelpers.js';
@@ -21,11 +21,7 @@ export async function getTenantConfig(client: pg.PoolClient, tenantId: string): 
   const repo = new PayrollTenantConfigRepository(tenantId);
   const existing = await repo.get(client);
   if (existing) return existing;
-  await client.query(
-    `INSERT INTO payroll_tenant_config (tenant_id, earning_types, deduction_types, updated_at) VALUES ($1, '[]'::jsonb, '[]'::jsonb, NOW())
-     ON CONFLICT (tenant_id) DO NOTHING`,
-    [tenantId]
-  );
+  await repo.ensureDefault(client);
   const again = await repo.get(client);
   return (
     again ?? {
@@ -47,13 +43,7 @@ export async function updateTenantConfigEarningTypes(
   userId?: string | null
 ): Promise<PayrollTenantConfigRow> {
   const prior = await getTenantConfig(client, tenantId);
-  const r = await client.query<PayrollTenantConfigRow>(
-    `UPDATE payroll_tenant_config SET earning_types = $2::jsonb, updated_at = NOW() WHERE tenant_id = $1
-     RETURNING tenant_id, earning_types, deduction_types, default_account_id, default_category_id, default_project_id, updated_at`,
-    [tenantId, JSON.stringify(types ?? [])]
-  );
-  const row = r.rows[0];
-  if (!row) throw new Error('Failed to update earning types.');
+  const row = await new PayrollTenantConfigRepository(tenantId).updateEarningTypes(client, types);
   await recordDomainMutation(client, {
     tenantId,
     userId: userId ?? null,
@@ -75,13 +65,7 @@ export async function updateTenantConfigDeductionTypes(
   userId?: string | null
 ): Promise<PayrollTenantConfigRow> {
   const prior = await getTenantConfig(client, tenantId);
-  const r = await client.query<PayrollTenantConfigRow>(
-    `UPDATE payroll_tenant_config SET deduction_types = $2::jsonb, updated_at = NOW() WHERE tenant_id = $1
-     RETURNING tenant_id, earning_types, deduction_types, default_account_id, default_category_id, default_project_id, updated_at`,
-    [tenantId, JSON.stringify(types ?? [])]
-  );
-  const row = r.rows[0];
-  if (!row) throw new Error('Failed to update deduction types.');
+  const row = await new PayrollTenantConfigRepository(tenantId).updateDeductionTypes(client, types);
   await recordDomainMutation(client, {
     tenantId,
     userId: userId ?? null,
@@ -115,17 +99,11 @@ export async function updatePayrollSettings(
     body.defaultProjectId !== undefined || body.default_project_id !== undefined
       ? optStr(body.defaultProjectId ?? body.default_project_id)
       : cur.default_project_id;
-  const r = await client.query<PayrollTenantConfigRow>(
-    `UPDATE payroll_tenant_config SET
-       default_account_id = $2,
-       default_category_id = $3,
-       default_project_id = $4,
-       updated_at = NOW()
-     WHERE tenant_id = $1
-     RETURNING tenant_id, earning_types, deduction_types, default_account_id, default_category_id, default_project_id, updated_at`,
-    [tenantId, da ?? null, dc ?? null, dp ?? null]
-  );
-  const row = r.rows[0];
+  const row = await new PayrollTenantConfigRepository(tenantId).updateDefaults(client, {
+    default_account_id: da ?? null,
+    default_category_id: dc ?? null,
+    default_project_id: dp ?? null,
+  });
   if (!row) throw new Error('Failed to update payroll settings.');
   await recordDomainMutation(client, {
     tenantId,
@@ -160,26 +138,14 @@ export async function upsertPayrollProject(
   const prior = await new PayrollProjectRepository(tenantId).getByIdIncludingDeleted(client, id);
   const name = String(body.name ?? '').trim();
   if (!name) throw new Error('name is required.');
-  const code = String(body.code ?? '').trim() || id.slice(0, 8).toUpperCase();
-  const description = optStr(body.description);
-  const status = String(body.status ?? 'ACTIVE');
+  const fields: PayrollProjectWriteFields = {
+    name,
+    code: String(body.code ?? '').trim() || id.slice(0, 8).toUpperCase(),
+    description: optStr(body.description) ?? null,
+    status: String(body.status ?? 'ACTIVE'),
+  };
 
-  const r = await client.query<PayrollProjectRow>(
-    `INSERT INTO payroll_projects (id, tenant_id, name, code, description, status, created_by, updated_by, deleted_at, created_at, updated_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NOW(),NOW())
-     ON CONFLICT (id) DO UPDATE SET
-       name = EXCLUDED.name,
-       code = EXCLUDED.code,
-       description = EXCLUDED.description,
-       status = EXCLUDED.status,
-       updated_by = EXCLUDED.updated_by,
-       deleted_at = CASE WHEN payroll_projects.deleted_at IS NOT NULL THEN NULL ELSE payroll_projects.deleted_at END,
-       updated_at = NOW()
-     RETURNING id, tenant_id, name, code, description, status, created_by, updated_by, deleted_at, created_at, updated_at`,
-    [id, tenantId, name, code, description, status, userId, userId]
-  );
-  const row = r.rows[0];
-  if (!row) throw new Error('Failed to upsert payroll project.');
+  const row = await new PayrollProjectRepository(tenantId).upsertProject(client, id, fields, userId);
   await recordDomainMutation(client, {
     tenantId,
     userId,

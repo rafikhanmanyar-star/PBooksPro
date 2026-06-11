@@ -317,17 +317,7 @@ export async function settleVendorBillsBatchWithAdvances(
     await recalculateBillPaymentAggregates(client, tenantId, billId);
 
     const paymentNote = buildBillPaymentRecordNote(p);
-    await client.query(
-      `UPDATE bills SET
-         description =
-           CASE
-             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
-             ELSE trim(description) || E'\n' || $3::text
-           END,
-         version = version + 1, updated_at = NOW()
-       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-      [tenantId, billId, paymentNote]
-    );
+    await billRepo.appendPaymentNote(client, billId, paymentNote);
   }
 
   for (const [aid, totalDec] of globalAdvanceUse.entries()) {

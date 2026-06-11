@@ -297,4 +297,19 @@ export class BillRepository extends TenantRepository {
       [id, this.tenantId, paidAmount, status]
     );
   }
+
+  /** Append settlement/payment note to bill description (vendor prepaid settlement flow). */
+  async appendPaymentNote(client: pg.PoolClient, id: string, note: string): Promise<void> {
+    await client.query(
+      `UPDATE bills SET
+         description =
+           CASE
+             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
+             ELSE trim(description) || E'\n' || $3::text
+           END,
+         version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [this.tenantId, id, note]
+    );
+  }
 }

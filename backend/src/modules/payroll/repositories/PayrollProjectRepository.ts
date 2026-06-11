@@ -4,6 +4,13 @@ import type { PayrollProjectRow } from '../../../services/payroll/payrollTypes.j
 
 const PROJECT_COLUMNS = `id, tenant_id, name, code, description, status, created_by, updated_by, deleted_at, created_at, updated_at`;
 
+export type PayrollProjectWriteFields = {
+  name: string;
+  code: string;
+  description: string | null;
+  status: string;
+};
+
 export class PayrollProjectRepository extends TenantRepository {
   constructor(tenantId: string, client?: pg.PoolClient) {
     super(tenantId, client);
@@ -34,5 +41,30 @@ export class PayrollProjectRepository extends TenantRepository {
       [this.tenantId, since]
     );
     return r.rows;
+  }
+
+  async upsertProject(
+    client: pg.PoolClient,
+    id: string,
+    fields: PayrollProjectWriteFields,
+    userId: string | null
+  ): Promise<PayrollProjectRow> {
+    const r = await client.query<PayrollProjectRow>(
+      `INSERT INTO payroll_projects (id, tenant_id, name, code, description, status, created_by, updated_by, deleted_at, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL,NOW(),NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name,
+         code = EXCLUDED.code,
+         description = EXCLUDED.description,
+         status = EXCLUDED.status,
+         updated_by = EXCLUDED.updated_by,
+         deleted_at = CASE WHEN payroll_projects.deleted_at IS NOT NULL THEN NULL ELSE payroll_projects.deleted_at END,
+         updated_at = NOW()
+       RETURNING ${PROJECT_COLUMNS}`,
+      [id, this.tenantId, fields.name, fields.code, fields.description, fields.status, userId, userId]
+    );
+    const row = r.rows[0];
+    if (!row) throw new Error('Failed to upsert payroll project.');
+    return row;
   }
 }

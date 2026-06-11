@@ -10,6 +10,68 @@ const SELECT_ROW = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.am
   t.building_id, t.property_id, t.unit_id, t.invoice_id, t.bill_id, t.payslip_id, t.contract_id, t.agreement_id,
   t.batch_id, t.project_asset_id, t.owner_id, t.is_system, t.version, t.deleted_at, t.created_at, t.updated_at`;
 
+const TX_RETURNING = `id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
+  category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
+  contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`;
+
+export type TransactionWriteFields = {
+  type: string;
+  subtype: string | null;
+  amount: number;
+  date: string;
+  description: string | null;
+  reference: string | null;
+  account_id: string;
+  from_account_id: string | null;
+  to_account_id: string | null;
+  category_id: string | null;
+  contact_id: string | null;
+  vendor_id: string | null;
+  project_id: string | null;
+  building_id: string | null;
+  property_id: string | null;
+  unit_id: string | null;
+  invoice_id: string | null;
+  bill_id: string | null;
+  payslip_id: string | null;
+  contract_id: string | null;
+  agreement_id: string | null;
+  batch_id: string | null;
+  project_asset_id: string | null;
+  owner_id: string | null;
+  is_system: boolean;
+};
+
+function transactionFieldParams(fields: TransactionWriteFields): unknown[] {
+  return [
+    fields.type,
+    fields.subtype,
+    fields.amount,
+    fields.date,
+    fields.description,
+    fields.reference,
+    fields.account_id,
+    fields.from_account_id,
+    fields.to_account_id,
+    fields.category_id,
+    fields.contact_id,
+    fields.vendor_id,
+    fields.project_id,
+    fields.building_id,
+    fields.property_id,
+    fields.unit_id,
+    fields.invoice_id,
+    fields.bill_id,
+    fields.payslip_id,
+    fields.contract_id,
+    fields.agreement_id,
+    fields.batch_id,
+    fields.project_asset_id,
+    fields.owner_id,
+    fields.is_system,
+  ];
+}
+
 export class TransactionRepository extends TenantRepository {
   constructor(tenantId: string, client?: pg.PoolClient) {
     super(tenantId, client);
@@ -131,5 +193,61 @@ export class TransactionRepository extends TenantRepository {
       [this.tenantId, since]
     );
     return r.rows;
+  }
+
+  async insertTransaction(
+    client: pg.PoolClient,
+    id: string,
+    fields: TransactionWriteFields,
+    userId: string | null
+  ): Promise<TransactionRow> {
+    const r = await client.query<TransactionRow>(
+      `INSERT INTO transactions (
+         id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
+         category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
+         contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 1, NULL, NOW(), NOW()
+       )
+       RETURNING ${TX_RETURNING}`,
+      [id, this.tenantId, userId, ...transactionFieldParams(fields)]
+    );
+    return r.rows[0]!;
+  }
+
+  async updateActive(
+    client: pg.PoolClient,
+    id: string,
+    fields: TransactionWriteFields,
+    options?: { userId?: string | null; restoreDeleted?: boolean }
+  ): Promise<TransactionRow | null> {
+    const restore = options?.restoreDeleted === true;
+    const userClause = restore ? ', user_id = COALESCE($28, user_id)' : '';
+    const deletedClause = restore ? ', deleted_at = NULL' : '';
+    const whereDeleted = restore ? '' : ' AND deleted_at IS NULL';
+    const params: unknown[] = [id, this.tenantId, ...transactionFieldParams(fields)];
+    if (restore) params.push(options?.userId ?? null);
+
+    const r = await client.query<TransactionRow>(
+      `UPDATE transactions SET
+         type = $3, subtype = $4, amount = $5, date = $6::date, description = $7, reference = $8,
+         account_id = $9, from_account_id = $10, to_account_id = $11, category_id = $12, contact_id = $13, vendor_id = $14,
+         project_id = $15, building_id = $16, property_id = $17, unit_id = $18, invoice_id = $19, bill_id = $20, payslip_id = $21,
+         contract_id = $22, agreement_id = $23, batch_id = $24, project_asset_id = $25, owner_id = $26, is_system = $27,
+         version = version + 1, updated_at = NOW()${userClause}${deletedClause}
+       WHERE id = $1 AND tenant_id = $2${whereDeleted}
+       RETURNING ${TX_RETURNING}`,
+      params
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async markDeleted(client: pg.PoolClient, id: string): Promise<boolean> {
+    const r = await client.query(
+      `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [id, this.tenantId]
+    );
+    return (r.rowCount ?? 0) > 0;
   }
 }

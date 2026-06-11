@@ -19,7 +19,7 @@ import {
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { TransactionRepository } from '../modules/accounting/repositories/TransactionRepository.js';
+import { TransactionRepository, type TransactionWriteFields } from '../modules/accounting/repositories/TransactionRepository.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -312,6 +312,40 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function transactionWriteFields(
+  p: ReturnType<typeof pickBody>,
+  categoryId: string | null | undefined,
+  ownerId: string | null | undefined
+): TransactionWriteFields {
+  return {
+    type: p.type,
+    subtype: p.subtype ?? null,
+    amount: Number.isFinite(p.amount) ? p.amount : 0,
+    date: p.date,
+    description: p.description ?? null,
+    reference: p.reference ?? null,
+    account_id: p.account_id,
+    from_account_id: p.from_account_id ?? null,
+    to_account_id: p.to_account_id ?? null,
+    category_id: categoryId ?? null,
+    contact_id: p.contact_id ?? null,
+    vendor_id: p.vendor_id ?? null,
+    project_id: p.project_id ?? null,
+    building_id: p.building_id ?? null,
+    property_id: p.property_id ?? null,
+    unit_id: p.unit_id ?? null,
+    invoice_id: p.invoice_id ?? null,
+    bill_id: p.bill_id ?? null,
+    payslip_id: p.payslip_id ?? null,
+    contract_id: p.contract_id ?? null,
+    agreement_id: p.agreement_id ?? null,
+    batch_id: p.batch_id ?? null,
+    project_asset_id: p.project_asset_id ?? null,
+    owner_id: ownerId ?? null,
+    is_system: p.is_system,
+  };
+}
+
 export async function listTransactions(
   client: pg.PoolClient,
   tenantId: string,
@@ -398,49 +432,12 @@ export async function createTransaction(
 
   await assertAccountingPeriodOpen(client, tenantId, p.date);
 
-  const r = await client.query<TransactionRow>(
-    `INSERT INTO transactions (
-       id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
-       category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-       contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
-               category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-               contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-      p.type,
-      p.subtype ?? null,
-      Number.isFinite(p.amount) ? p.amount : 0,
-      p.date,
-      p.description ?? null,
-      p.reference ?? null,
-      p.account_id,
-      p.from_account_id ?? null,
-      p.to_account_id ?? null,
-      categoryResolved ?? null,
-      p.contact_id ?? null,
-      p.vendor_id ?? null,
-      p.project_id ?? null,
-      p.building_id ?? null,
-      p.property_id ?? null,
-      p.unit_id ?? null,
-      p.invoice_id ?? null,
-      p.bill_id ?? null,
-      p.payslip_id ?? null,
-      p.contract_id ?? null,
-      p.agreement_id ?? null,
-      p.batch_id ?? null,
-      p.project_asset_id ?? null,
-      ownerIdResolved ?? null,
-      p.is_system,
-    ]
+  const row = await new TransactionRepository(tenantId).insertTransaction(
+    client,
+    id,
+    transactionWriteFields(p, categoryResolved, ownerIdResolved),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
-  const row = r.rows[0];
   if (expenseCashBatchCtx && row.project_id && row.type === 'Expense') {
     expenseCashBatchCtx.recordInsertedTransaction(rowToProjectCashTxRow(row));
   }
@@ -548,33 +545,7 @@ export async function updateTransaction(
     exclude_transaction_id: id,
   });
 
-  const fieldVals = [
-    p.type,
-    p.subtype ?? null,
-    Number.isFinite(p.amount) ? p.amount : 0,
-    p.date,
-    p.description ?? null,
-    p.reference ?? null,
-    p.account_id,
-    p.from_account_id ?? null,
-    p.to_account_id ?? null,
-    categoryResolved ?? null,
-    p.contact_id ?? null,
-    p.vendor_id ?? null,
-    p.project_id ?? null,
-    p.building_id ?? null,
-    p.property_id ?? null,
-    p.unit_id ?? null,
-    p.invoice_id ?? null,
-    p.bill_id ?? null,
-    p.payslip_id ?? null,
-    p.contract_id ?? null,
-    p.agreement_id ?? null,
-    p.batch_id ?? null,
-    p.project_asset_id ?? null,
-    ownerIdResolvedUpdate ?? null,
-    p.is_system,
-  ];
+  const fieldVals = transactionWriteFields(p, categoryResolved, ownerIdResolvedUpdate);
 
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -593,20 +564,7 @@ export async function updateTransaction(
     return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
   }
 
-  const u = await client.query<TransactionRow>(
-    `UPDATE transactions SET
-       type = $3, subtype = $4, amount = $5, date = $6::date, description = $7, reference = $8,
-       account_id = $9, from_account_id = $10, to_account_id = $11, category_id = $12, contact_id = $13, vendor_id = $14,
-       project_id = $15, building_id = $16, property_id = $17, unit_id = $18, invoice_id = $19, bill_id = $20, payslip_id = $21,
-       contract_id = $22, agreement_id = $23, batch_id = $24, project_asset_id = $25, owner_id = $26, is_system = $27,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
-               category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-               contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...fieldVals]
-  );
-  const row = u.rows[0] ?? null;
+  const row = await new TransactionRepository(tenantId).updateActive(client, id, fieldVals);
   if (!row) {
     return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
   }
@@ -718,49 +676,12 @@ export async function upsertTransaction(
     exclude_transaction_id: id,
   });
 
-  const fieldVals = [
-    p.type,
-    p.subtype ?? null,
-    Number.isFinite(p.amount) ? p.amount : 0,
-    p.date,
-    p.description ?? null,
-    p.reference ?? null,
-    p.account_id,
-    p.from_account_id ?? null,
-    p.to_account_id ?? null,
-    categoryResolvedUpsert ?? null,
-    p.contact_id ?? null,
-    p.vendor_id ?? null,
-    p.project_id ?? null,
-    p.building_id ?? null,
-    p.property_id ?? null,
-    p.unit_id ?? null,
-    p.invoice_id ?? null,
-    p.bill_id ?? null,
-    p.payslip_id ?? null,
-    p.contract_id ?? null,
-    p.agreement_id ?? null,
-    p.batch_id ?? null,
-    p.project_asset_id ?? null,
-    ownerIdResolvedUpsert ?? null,
-    p.is_system,
-  ];
+  const upsertFields = transactionWriteFields(p, categoryResolvedUpsert, ownerIdResolvedUpsert);
 
-  const u = await client.query<TransactionRow>(
-    `UPDATE transactions SET
-       type = $3, subtype = $4, amount = $5, date = $6::date, description = $7, reference = $8,
-       account_id = $9, from_account_id = $10, to_account_id = $11, category_id = $12, contact_id = $13, vendor_id = $14,
-       project_id = $15, building_id = $16, property_id = $17, unit_id = $18, invoice_id = $19, bill_id = $20, payslip_id = $21,
-       contract_id = $22, agreement_id = $23, batch_id = $24, project_asset_id = $25, owner_id = $26, is_system = $27,
-       user_id = COALESCE($28, user_id),
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
-               category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-               contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...fieldVals, p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId]
-  );
-  const row = u.rows[0];
+  const row = await new TransactionRepository(tenantId).updateActive(client, id, upsertFields, {
+    userId: p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
+    restoreDeleted: true,
+  });
   if (!row) throw new Error('Transaction upsert failed.');
   await recalculateAggregatesForLinkedIds(client, tenantId, [existing.invoice_id, row.invoice_id], [existing.bill_id, row.bill_id], [
     existing.payslip_id,
@@ -835,12 +756,9 @@ export async function softDeleteTransaction(
   const locked = await new TransactionRepository(tenantId).getByIdForUpdate(client, id);
   if (!locked) return { ok: false, conflict: false };
 
-  const r = await client.query(
-    `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  if ((r.rowCount ?? 0) === 0) return { ok: false, conflict: false };
+  const txRepo = new TransactionRepository(tenantId);
+  const deleted = await txRepo.markDeleted(client, id);
+  if (!deleted) return { ok: false, conflict: false };
 
   await reverseTransactionJournalMirror(client, tenantId, id, row.user_id);
 
