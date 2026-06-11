@@ -40,24 +40,24 @@ const MyWalletsTab: React.FC = () => {
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">My wallets</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <h1 className="text-2xl font-bold text-app-text">My wallets</h1>
+        <p className="text-sm text-app-muted mt-0.5">
           Bank account balances from personal transactions only.
         </p>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden max-w-2xl">
+      <div className="rounded-2xl border border-app-border bg-app-card shadow-ds-card overflow-hidden max-w-2xl">
         <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-app-table-header border-b border-app-border">
             <tr>
-              <th className="text-left py-3 px-4 font-semibold text-gray-700">Account</th>
-              <th className="text-right py-3 px-4 font-semibold text-gray-700">Balance</th>
+              <th className="text-left py-3 px-4 font-semibold text-app-muted">Account</th>
+              <th className="text-right py-3 px-4 font-semibold text-app-muted">Balance</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={2} className="py-8 text-center text-gray-500">
+                <td colSpan={2} className="py-8 text-center text-app-muted">
                   No personal transactions yet. Add transactions in the Transactions tab to see balances here.
                 </td>
               </tr>
@@ -65,14 +65,14 @@ const MyWalletsTab: React.FC = () => {
               rows.map((row) => (
                 <tr
                   key={row.accountId}
-                  className="border-b border-gray-100 hover:bg-gray-50/50"
+                  className="border-b border-app-border hover:bg-app-table-hover"
                 >
-                  <td className="py-3 px-4 font-medium text-gray-900">
+                  <td className="py-3 px-4 font-medium text-app-text">
                     {row.accountName}
                   </td>
                   <td
                     className={`py-3 px-4 text-right font-medium ${
-                      row.balance >= 0 ? 'text-green-600' : 'text-red-600'
+                      row.balance >= 0 ? 'text-ds-success' : 'text-ds-danger'
                     }`}
                   >
                     {formatAmount(row.balance)}
@@ -82,12 +82,12 @@ const MyWalletsTab: React.FC = () => {
             )}
           </tbody>
           {rows.length > 0 && (
-            <tfoot className="bg-gray-50 border-t-2 border-gray-200">
+            <tfoot className="bg-app-table-header border-t-2 border-app-border">
               <tr>
-                <td className="py-3 px-4 font-semibold text-gray-900">Net balance</td>
+                <td className="py-3 px-4 font-semibold text-app-text">Net balance</td>
                 <td
                   className={`py-3 px-4 text-right font-semibold ${
-                    netBalance >= 0 ? 'text-green-600' : 'text-red-600'
+                    netBalance >= 0 ? 'text-ds-success' : 'text-ds-danger'
                   }`}
                 >
                   {formatAmount(netBalance)}

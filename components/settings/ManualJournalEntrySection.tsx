@@ -119,9 +119,9 @@ const ManualJournalEntrySection: React.FC = () => {
   };
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-6">
+    <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6 space-y-6">
       <div>
-        <p className="text-slate-600 text-sm">
+        <p className="text-app-muted text-sm">
           Post a balanced double-entry journal to the general ledger. Entries are immutable; mistakes are corrected with a reversal, not an edit.
         </p>
       </div>
@@ -134,14 +134,14 @@ const ManualJournalEntrySection: React.FC = () => {
 
       <div className="space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Lines</h3>
+          <h3 className="text-sm font-semibold text-app-text">Lines</h3>
           <Button type="button" variant="secondary" className="text-sm" onClick={addLine}>
             Add line
           </Button>
         </div>
-        <div className="overflow-x-auto border border-slate-200 rounded-lg">
+        <div className="overflow-x-auto border border-app-border rounded-lg">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+            <thead className="bg-app-bg text-app-muted">
               <tr>
                 <th className="text-left px-3 py-2">Account</th>
                 <th className="text-left px-3 py-2">Side</th>
@@ -151,10 +151,10 @@ const ManualJournalEntrySection: React.FC = () => {
             </thead>
             <tbody>
               {lines.map((line) => (
-                <tr key={line.key} className="border-t border-slate-100">
+                <tr key={line.key} className="border-t border-app-border">
                   <td className="px-3 py-2">
                     <select
-                      className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-slate-800 bg-white"
+                      className="w-full border border-app-border rounded-md px-2 py-1.5 text-app-text bg-app-card"
                       aria-label={`Account for line ${line.key}`}
                       value={line.accountId}
                       onChange={(e) => updateLine(line.key, { accountId: e.target.value })}
@@ -169,7 +169,7 @@ const ManualJournalEntrySection: React.FC = () => {
                   </td>
                   <td className="px-3 py-2">
                     <select
-                      className="border border-slate-200 rounded-md px-2 py-1.5"
+                      className="border border-app-border rounded-md px-2 py-1.5"
                       aria-label={`Debit or credit for line ${line.key}`}
                       value={line.side}
                       onChange={(e) => updateLine(line.key, { side: e.target.value as 'debit' | 'credit' })}
@@ -181,7 +181,7 @@ const ManualJournalEntrySection: React.FC = () => {
                   <td className="px-3 py-2 text-right">
                     <input
                       type="number"
-                      className="w-full max-w-[140px] ml-auto border border-slate-200 rounded-md px-2 py-1.5 tabular-nums text-right"
+                      className="w-full max-w-[140px] ml-auto border border-app-border rounded-md px-2 py-1.5 tabular-nums text-right"
                       min={0}
                       step="0.01"
                       value={line.amountStr}
@@ -193,7 +193,7 @@ const ManualJournalEntrySection: React.FC = () => {
                     {lines.length > 2 && (
                       <button
                         type="button"
-                        className="text-rose-600 text-xs hover:underline"
+                        className="text-ds-danger text-xs hover:underline"
                         onClick={() => removeLine(line.key)}
                       >
                         Remove

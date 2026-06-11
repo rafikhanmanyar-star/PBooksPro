@@ -54,9 +54,9 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, o
 
     return (
         <div className="space-y-6">
-            <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                <h3 className="font-semibold text-lg text-slate-800 mb-4">Organizational Installment Configuration</h3>
-                <p className="text-sm text-slate-600 mb-4">This configuration will be used as the default for all project agreements when auto-generating installments.</p>
+            <div className="p-4 bg-app-bg rounded-lg border border-app-border">
+                <h3 className="font-semibold text-lg text-app-text mb-4">Organizational Installment Configuration</h3>
+                <p className="text-sm text-app-muted mb-4">This configuration will be used as the default for all project agreements when auto-generating installments.</p>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <Input 
@@ -98,7 +98,7 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, o
                 </div>
 
                 <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Installment Frequency</label>
+                    <label className="block text-sm font-medium text-app-text mb-2">Installment Frequency</label>
                     <div className="flex flex-wrap gap-4">
                         {(['Yearly', 'Quarterly', 'Monthly'] as InstallmentFrequency[]).map((freq) => (
                             <label key={freq} className="flex items-center cursor-pointer">
@@ -109,25 +109,25 @@ const InstallmentConfigForm: React.FC<InstallmentConfigFormProps> = ({ config, o
                                     value={freq} 
                                     checked={frequency === freq} 
                                     onChange={() => setFrequency(freq)}
-                                    className="w-4 h-4 text-accent border-gray-300 focus:ring-accent"
+                                    className="w-4 h-4 text-accent border-app-border focus:ring-accent"
                                 />
-                                <span className="ml-2 text-sm text-slate-700">{freq} Plan</span>
+                                <span className="ml-2 text-sm text-app-text">{freq} Plan</span>
                             </label>
                         ))}
                     </div>
                 </div>
 
-                <div className="border-t border-slate-200 pt-4 mt-4">
+                <div className="border-t border-app-border pt-4 mt-4">
                     <label className="flex items-center gap-2 cursor-pointer mb-2">
                         <input
                             type="checkbox"
                             checked={optionalInstallment}
                             onChange={(e) => setOptionalInstallment(e.target.checked)}
-                            className="w-4 h-4 text-accent border-gray-300 rounded focus:ring-accent"
+                            className="w-4 h-4 text-accent border-app-border rounded focus:ring-accent"
                         />
-                        <span className="text-sm font-medium text-slate-700">Include optional installment</span>
+                        <span className="text-sm font-medium text-app-text">Include optional installment</span>
                     </label>
-                    <p className="text-xs text-slate-500 mb-2">Add one extra installment at the end (e.g. On Possession). It will receive the remainder so total installments equal the agreement value.</p>
+                    <p className="text-xs text-app-muted mb-2">Add one extra installment at the end (e.g. On Possession). It will receive the remainder so total installments equal the agreement value.</p>
                     {optionalInstallment && (
                         <Input
                             label="Optional installment name"

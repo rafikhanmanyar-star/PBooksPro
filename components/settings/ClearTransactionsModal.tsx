@@ -48,21 +48,21 @@ const ClearTransactionsModal: React.FC<ClearTransactionsModalProps> = ({
       <div className="p-6">
         {/* Warning Header */}
         <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-rose-600 text-2xl">
+          <div className="w-12 h-12 rounded-full bg-rose-100 flex items-center justify-center text-ds-danger text-2xl">
             {ICONS.alertTriangle}
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Clear All Transactions</h2>
-            <p className="text-sm text-slate-600">This action cannot be undone</p>
+            <h2 className="text-xl font-bold text-app-text">Clear All Transactions</h2>
+            <p className="text-sm text-app-muted">This action cannot be undone</p>
           </div>
         </div>
 
         {/* Warning Message */}
         <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 mb-6">
-          <p className="text-rose-800 font-semibold mb-3">
+          <p className="text-ds-danger font-semibold mb-3">
             ⚠️ This will permanently delete:
           </p>
-          <ul className="space-y-1 text-sm text-rose-700 ml-4">
+          <ul className="space-y-1 text-sm text-ds-danger ml-4">
             <li>• All transactions</li>
             <li>• All invoices</li>
             <li>• All bills</li>
@@ -90,8 +90,8 @@ const ClearTransactionsModal: React.FC<ClearTransactionsModalProps> = ({
 
         {/* Confirmation Input */}
         <div className="mb-6">
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
-            Type <span className="text-rose-600 font-mono bg-rose-50 px-2 py-0.5 rounded">{REQUIRED_TEXT}</span> to confirm:
+          <label className="block text-sm font-semibold text-app-text mb-2">
+            Type <span className="text-ds-danger font-mono bg-rose-50 px-2 py-0.5 rounded">{REQUIRED_TEXT}</span> to confirm:
           </label>
           <Input
             value={confirmText}
@@ -102,7 +102,7 @@ const ClearTransactionsModal: React.FC<ClearTransactionsModalProps> = ({
             autoFocus
           />
           {confirmText && !isConfirmValid && (
-            <p className="text-xs text-rose-600 mt-1">
+            <p className="text-xs text-ds-danger mt-1">
               Text doesn't match. Please type exactly: {REQUIRED_TEXT}
             </p>
           )}

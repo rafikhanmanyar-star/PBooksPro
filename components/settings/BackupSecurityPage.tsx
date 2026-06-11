@@ -90,7 +90,7 @@ const BackupSecurityPage: React.FC = () => {
 
   if (isLocalOnlyMode()) {
     return (
-      <div className="p-6 text-center text-slate-600">
+      <div className="p-6 text-center text-app-muted">
         Backup Security requires the API server (PostgreSQL mode).
       </div>
     );
@@ -98,7 +98,7 @@ const BackupSecurityPage: React.FC = () => {
 
   if (!canRead) {
     return (
-      <div className="p-6 text-center text-slate-600">
+      <div className="p-6 text-center text-app-muted">
         You do not have permission to view backup security settings.
       </div>
     );
@@ -107,7 +107,7 @@ const BackupSecurityPage: React.FC = () => {
   if (loading && !status) {
     return (
       <div className="p-8 flex justify-center">
-        <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+        <RefreshCw className="w-6 h-6 animate-spin text-app-muted" />
       </div>
     );
   }
@@ -115,23 +115,23 @@ const BackupSecurityPage: React.FC = () => {
   return (
     <div className="p-4 sm:p-6 space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-          <Shield className="w-6 h-6 text-indigo-600" />
+        <h2 className="text-xl font-semibold text-app-text flex items-center gap-2">
+          <Shield className="w-6 h-6 text-ds-primary" />
           Backup Security
         </h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <p className="text-sm text-app-muted mt-1">
           AES-256-GCM encryption at rest and before cloud upload. Restore is restricted to Super Admin
           and Company Admin with authorization tokens.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 rounded-xl border border-slate-200 bg-white">
-          <div className="text-xs uppercase text-slate-500 font-medium mb-1">Algorithm</div>
+        <div className="p-4 rounded-xl border border-app-border bg-app-card">
+          <div className="text-xs uppercase text-app-muted font-medium mb-1">Algorithm</div>
           <div className="text-lg font-semibold">{status?.encryptionAlgorithm ?? 'AES-256-GCM'}</div>
         </div>
-        <div className="p-4 rounded-xl border border-slate-200 bg-white">
-          <div className="text-xs uppercase text-slate-500 font-medium mb-1">Server Key</div>
+        <div className="p-4 rounded-xl border border-app-border bg-app-card">
+          <div className="text-xs uppercase text-app-muted font-medium mb-1">Server Key</div>
           <div className="flex items-center gap-2">
             {status?.serverKeyConfigured ? (
               <CheckCircle className="w-5 h-5 text-emerald-500" />
@@ -141,11 +141,11 @@ const BackupSecurityPage: React.FC = () => {
             <span>{status?.serverKeyConfigured ? 'Configured' : 'Not configured'}</span>
           </div>
         </div>
-        <div className="p-4 rounded-xl border border-slate-200 bg-white">
-          <div className="text-xs uppercase text-slate-500 font-medium mb-1">Key Version</div>
+        <div className="p-4 rounded-xl border border-app-border bg-app-card">
+          <div className="text-xs uppercase text-app-muted font-medium mb-1">Key Version</div>
           <div className="text-lg font-semibold">v{settings?.key_version ?? 1}</div>
           {settings?.key_rotated_at && (
-            <div className="text-xs text-slate-400 mt-1">
+            <div className="text-xs text-app-muted mt-1">
               Rotated {new Date(settings.key_rotated_at).toLocaleString()}
             </div>
           )}
@@ -160,11 +160,11 @@ const BackupSecurityPage: React.FC = () => {
               : 'border-amber-200 bg-amber-50/50'
           }`}
         >
-          <div className="flex items-center gap-2 font-medium text-slate-800">
+          <div className="flex items-center gap-2 font-medium text-app-text">
             <Lock className="w-5 h-5" />
             Restore authorization
           </div>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-sm text-app-muted mt-1">
             {restorePolicy.canRestore
               ? `Your role (${restorePolicy.role}) may restore backups.`
               : 'Your role cannot restore backups. Only Super Admin and Company Admin can restore.'}
@@ -175,9 +175,9 @@ const BackupSecurityPage: React.FC = () => {
       )}
 
       {canManage && settings && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
-            <Key className="w-5 h-5 text-indigo-500" />
+        <section className="rounded-xl border border-app-border bg-app-card p-4 space-y-4">
+          <h3 className="font-semibold text-app-text flex items-center gap-2">
+            <Key className="w-5 h-5 text-ds-primary" />
             Encryption &amp; key management
           </h3>
 
@@ -209,12 +209,12 @@ const BackupSecurityPage: React.FC = () => {
           </label>
 
           <div>
-            <label className="block text-sm text-slate-600 mb-1">Minimum backup password length</label>
+            <label className="block text-sm text-app-muted mb-1">Minimum backup password length</label>
             <input
               type="number"
               min={8}
               max={128}
-              className="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="w-32 border border-app-border rounded-lg px-3 py-2 text-sm"
               value={settings.min_backup_password_length}
               onChange={(e) =>
                 setSettings({
@@ -234,17 +234,17 @@ const BackupSecurityPage: React.FC = () => {
             </Button>
           </div>
 
-          <p className="text-xs text-slate-400">
-            Set <code className="bg-slate-100 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> and{' '}
-            <code className="bg-slate-100 px-1 rounded">BACKUP_STORAGE_MASTER_KEY</code> in the API
+          <p className="text-xs text-app-muted">
+            Set <code className="bg-app-surface-2 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> and{' '}
+            <code className="bg-app-surface-2 px-1 rounded">BACKUP_STORAGE_MASTER_KEY</code> in the API
             server environment. Formats: {status?.formats.join(', ')}.
           </p>
         </section>
       )}
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="font-semibold text-slate-800 mb-2">Audit trail</h3>
-        <p className="text-sm text-slate-600">
+      <section className="rounded-xl border border-app-border bg-app-card p-4">
+        <h3 className="font-semibold text-app-text mb-2">Audit trail</h3>
+        <p className="text-sm text-app-muted">
           Backup events are logged to the enterprise audit trail (module: backups): created,
           downloaded, restored, and deleted. View them under Settings → Audit Trail, filtered by
           module &quot;backups&quot;.

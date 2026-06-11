@@ -48,14 +48,14 @@ function formatDateTime(iso: string | null | undefined): string {
 }
 
 function healthColor(label: string): string {
-  if (label === 'healthy') return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-  if (label === 'degraded') return 'text-amber-600 bg-amber-50 border-amber-200';
+  if (label === 'healthy') return 'text-ds-success bg-emerald-50 border-emerald-200';
+  if (label === 'degraded') return 'text-ds-warning bg-amber-50 border-amber-200';
   return 'text-red-600 bg-red-50 border-red-200';
 }
 
 function severityBadge(severity: string): string {
   if (severity === 'critical') return 'bg-red-100 text-red-700';
-  if (severity === 'warning') return 'bg-amber-100 text-amber-700';
+  if (severity === 'warning') return 'bg-amber-100 text-ds-warning';
   return 'bg-blue-100 text-blue-700';
 }
 
@@ -67,8 +67,8 @@ type WidgetProps = {
 };
 
 const Widget: React.FC<WidgetProps> = ({ title, icon, children, className = '' }) => (
-  <div className={`p-4 rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>
-    <div className="flex items-center gap-2 mb-2 text-slate-500 text-xs font-medium uppercase tracking-wide">
+  <div className={`p-4 rounded-xl border border-app-border bg-app-card shadow-ds-card ${className}`}>
+    <div className="flex items-center gap-2 mb-2 text-app-muted text-xs font-medium uppercase tracking-wide">
       {icon}
       <span>{title}</span>
     </div>
@@ -139,7 +139,7 @@ const DisasterRecoveryCenter: React.FC = () => {
 
   if (isLocalOnlyMode()) {
     return (
-      <div className="p-6 text-center text-slate-600">
+      <div className="p-6 text-center text-app-muted">
         Disaster Recovery Center requires the API server (PostgreSQL mode).
       </div>
     );
@@ -147,7 +147,7 @@ const DisasterRecoveryCenter: React.FC = () => {
 
   if (!canRead) {
     return (
-      <div className="p-6 text-center text-slate-600">
+      <div className="p-6 text-center text-app-muted">
         You do not have permission to view disaster recovery.
       </div>
     );
@@ -156,7 +156,7 @@ const DisasterRecoveryCenter: React.FC = () => {
   if (loading && !dashboard) {
     return (
       <div className="p-8 flex justify-center">
-        <RefreshCw className="w-6 h-6 animate-spin text-slate-400" />
+        <RefreshCw className="w-6 h-6 animate-spin text-app-muted" />
       </div>
     );
   }
@@ -167,11 +167,11 @@ const DisasterRecoveryCenter: React.FC = () => {
     <div className="p-4 sm:p-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-slate-800 flex items-center gap-2">
-            <Shield className="w-6 h-6 text-indigo-600" />
+          <h2 className="text-xl font-semibold text-app-text flex items-center gap-2">
+            <Shield className="w-6 h-6 text-ds-primary" />
             Disaster Recovery Center
           </h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-app-muted mt-1">
             Monitor backup health, run integrity checks, simulate restores, and manage alerts.
           </p>
         </div>
@@ -243,10 +243,10 @@ const DisasterRecoveryCenter: React.FC = () => {
         <Widget title="Last Backup" icon={<Database className="w-4 h-4" />}>
           {dashboard?.lastBackup ? (
             <>
-              <div className="text-lg font-semibold text-slate-800">
+              <div className="text-lg font-semibold text-app-text">
                 {formatDateTime(dashboard.lastBackup.at)}
               </div>
-              <div className="text-sm text-slate-500 mt-1">
+              <div className="text-sm text-app-muted mt-1">
                 {dashboard.lastBackup.jobName ?? 'Unknown job'}
               </div>
               <div className="mt-2 flex items-center gap-1 text-sm">
@@ -259,45 +259,45 @@ const DisasterRecoveryCenter: React.FC = () => {
               </div>
             </>
           ) : (
-            <div className="text-slate-500">No backups yet</div>
+            <div className="text-app-muted">No backups yet</div>
           )}
         </Widget>
 
         <Widget title="Last Successful Backup" icon={<CheckCircle className="w-4 h-4" />}>
           {dashboard?.lastSuccessfulBackup ? (
             <>
-              <div className="text-lg font-semibold text-slate-800">
+              <div className="text-lg font-semibold text-app-text">
                 {formatDateTime(dashboard.lastSuccessfulBackup.at)}
               </div>
-              <div className="text-sm text-slate-500 mt-1">
+              <div className="text-sm text-app-muted mt-1">
                 {dashboard.lastSuccessfulBackup.jobName ?? '—'}
               </div>
             </>
           ) : (
-            <div className="text-slate-500">None recorded</div>
+            <div className="text-app-muted">None recorded</div>
           )}
         </Widget>
 
         <Widget title="Last Restore Test" icon={<Play className="w-4 h-4" />}>
           {dashboard?.lastRestoreTest ? (
             <>
-              <div className="text-lg font-semibold text-slate-800">
+              <div className="text-lg font-semibold text-app-text">
                 {formatDateTime(dashboard.lastRestoreTest.at)}
               </div>
-              <div className="text-sm text-slate-500 mt-1 capitalize">
+              <div className="text-sm text-app-muted mt-1 capitalize">
                 {dashboard.lastRestoreTest.testType} — {dashboard.lastRestoreTest.status}
               </div>
             </>
           ) : (
-            <div className="text-slate-500">No tests yet</div>
+            <div className="text-app-muted">No tests yet</div>
           )}
         </Widget>
 
         <Widget title="Backup Size" icon={<HardDrive className="w-4 h-4" />}>
-          <div className="text-2xl font-bold text-slate-800">
+          <div className="text-2xl font-bold text-app-text">
             {formatBytes(dashboard?.backupSizeBytes)}
           </div>
-          <div className="text-sm text-slate-500 mt-1">Latest successful dump</div>
+          <div className="text-sm text-app-muted mt-1">Latest successful dump</div>
         </Widget>
 
         <Widget title="Backup Health" icon={<Shield className="w-4 h-4" />}>
@@ -309,7 +309,7 @@ const DisasterRecoveryCenter: React.FC = () => {
                 {health.score}/100
                 <span className="text-sm font-medium capitalize">{health.label}</span>
               </div>
-              <ul className="mt-3 space-y-1 text-xs text-slate-600">
+              <ul className="mt-3 space-y-1 text-xs text-app-muted">
                 {health.factors.map((f) => (
                   <li key={f.id} className="flex justify-between gap-2">
                     <span>{f.label}</span>
@@ -321,15 +321,15 @@ const DisasterRecoveryCenter: React.FC = () => {
               </ul>
             </>
           ) : (
-            <div className="text-slate-500">—</div>
+            <div className="text-app-muted">—</div>
           )}
         </Widget>
 
         <Widget title="Storage Usage" icon={<HardDrive className="w-4 h-4" />}>
-          <div className="text-2xl font-bold text-slate-800">
+          <div className="text-2xl font-bold text-app-text">
             {formatBytes(dashboard?.storageUsage.totalBytes)}
           </div>
-          <div className="text-sm text-slate-500 mt-2 space-y-0.5">
+          <div className="text-sm text-app-muted mt-2 space-y-0.5">
             <div>Local: {formatBytes(dashboard?.storageUsage.localBytes)}</div>
             <div>Offsite: {formatBytes(dashboard?.storageUsage.offsiteBytes)}</div>
             <div>{dashboard?.storageUsage.fileCount ?? 0} local dump file(s)</div>
@@ -338,19 +338,19 @@ const DisasterRecoveryCenter: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
+        <section className="rounded-xl border border-app-border bg-app-card p-4">
+          <h3 className="font-semibold text-app-text flex items-center gap-2 mb-3">
             <AlertTriangle className="w-5 h-5 text-amber-500" />
             Backup Alerts
           </h3>
           {alerts.length === 0 ? (
-            <p className="text-sm text-slate-500">No open alerts.</p>
+            <p className="text-sm text-app-muted">No open alerts.</p>
           ) : (
             <ul className="space-y-2">
               {alerts.map((a) => (
                 <li
                   key={a.id}
-                  className="p-3 rounded-lg border border-slate-100 bg-slate-50/80 text-sm"
+                  className="p-3 rounded-lg border border-app-border bg-app-bg/80 text-sm"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -359,9 +359,9 @@ const DisasterRecoveryCenter: React.FC = () => {
                       >
                         {a.severity}
                       </span>
-                      <div className="font-medium text-slate-800 mt-1">{a.title}</div>
-                      <div className="text-slate-600 mt-0.5">{a.message}</div>
-                      <div className="text-xs text-slate-400 mt-1">{formatDateTime(a.created_at)}</div>
+                      <div className="font-medium text-app-text mt-1">{a.title}</div>
+                      <div className="text-app-muted mt-0.5">{a.message}</div>
+                      <div className="text-xs text-app-muted mt-1">{formatDateTime(a.created_at)}</div>
                     </div>
                     {canManage && (
                       <Button
@@ -385,9 +385,9 @@ const DisasterRecoveryCenter: React.FC = () => {
         </section>
 
         {canManage && notifSettings && (
-          <section className="rounded-xl border border-slate-200 bg-white p-4">
-            <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-3">
-              <Bell className="w-5 h-5 text-indigo-500" />
+          <section className="rounded-xl border border-app-border bg-app-card p-4">
+            <h3 className="font-semibold text-app-text flex items-center gap-2 mb-3">
+              <Bell className="w-5 h-5 text-ds-primary" />
               Email Notifications
             </h3>
             <label className="flex items-center gap-2 text-sm mb-3">
@@ -400,21 +400,21 @@ const DisasterRecoveryCenter: React.FC = () => {
               />
               Enable email alerts
             </label>
-            <label className="block text-sm text-slate-600 mb-1">Recipients (comma-separated)</label>
+            <label className="block text-sm text-app-muted mb-1">Recipients (comma-separated)</label>
             <input
               type="text"
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3"
+              className="w-full border border-app-border rounded-lg px-3 py-2 text-sm mb-3"
               value={emailInput}
               onChange={(e) => setEmailInput(e.target.value)}
               placeholder="admin@example.com, ops@example.com"
             />
-            <label className="block text-sm text-slate-600 mb-1">
+            <label className="block text-sm text-app-muted mb-1">
               Stale backup threshold (hours)
             </label>
             <input
               type="number"
               min={1}
-              className="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3"
+              className="w-32 border border-app-border rounded-lg px-3 py-2 text-sm mb-3"
               value={notifSettings.stale_backup_hours}
               onChange={(e) =>
                 setNotifSettings({
@@ -465,7 +465,7 @@ const DisasterRecoveryCenter: React.FC = () => {
             >
               Save Settings
             </Button>
-            <p className="text-xs text-slate-400 mt-2">
+            <p className="text-xs text-app-muted mt-2">
               Configure DR_SMTP_HOST and related env vars on the API server for delivery.
             </p>
           </section>
@@ -473,15 +473,15 @@ const DisasterRecoveryCenter: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="font-semibold text-slate-800 mb-3">Verification History</h3>
+        <section className="rounded-xl border border-app-border bg-app-card p-4">
+          <h3 className="font-semibold text-app-text mb-3">Verification History</h3>
           {verifications.length === 0 ? (
-            <p className="text-sm text-slate-500">No verifications yet.</p>
+            <p className="text-sm text-app-muted">No verifications yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-slate-500 border-b">
+                  <tr className="text-left text-app-muted border-b">
                     <th className="py-2 pr-2">Date</th>
                     <th className="py-2 pr-2">Status</th>
                     <th className="py-2">Score</th>
@@ -489,7 +489,7 @@ const DisasterRecoveryCenter: React.FC = () => {
                 </thead>
                 <tbody>
                   {verifications.slice(0, 8).map((v) => (
-                    <tr key={v.id} className="border-b border-slate-50">
+                    <tr key={v.id} className="border-b border-app-border">
                       <td className="py-2 pr-2">{formatDateTime(v.completed_at ?? v.started_at)}</td>
                       <td className="py-2 pr-2 capitalize">{v.status}</td>
                       <td className="py-2">{v.integrity_score ?? '—'}</td>
@@ -501,15 +501,15 @@ const DisasterRecoveryCenter: React.FC = () => {
           )}
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="font-semibold text-slate-800 mb-3">Restore Test History</h3>
+        <section className="rounded-xl border border-app-border bg-app-card p-4">
+          <h3 className="font-semibold text-app-text mb-3">Restore Test History</h3>
           {restoreTests.length === 0 ? (
-            <p className="text-sm text-slate-500">No restore tests yet.</p>
+            <p className="text-sm text-app-muted">No restore tests yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-slate-500 border-b">
+                  <tr className="text-left text-app-muted border-b">
                     <th className="py-2 pr-2">Date</th>
                     <th className="py-2 pr-2">Type</th>
                     <th className="py-2">Status</th>
@@ -517,7 +517,7 @@ const DisasterRecoveryCenter: React.FC = () => {
                 </thead>
                 <tbody>
                   {restoreTests.slice(0, 8).map((t) => (
-                    <tr key={t.id} className="border-b border-slate-50">
+                    <tr key={t.id} className="border-b border-app-border">
                       <td className="py-2 pr-2">{formatDateTime(t.completed_at ?? t.started_at)}</td>
                       <td className="py-2 pr-2 capitalize">{t.test_type}</td>
                       <td className="py-2 capitalize">{t.status}</td>
@@ -530,23 +530,23 @@ const DisasterRecoveryCenter: React.FC = () => {
         </section>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="font-semibold text-slate-800 mb-3">Disaster Recovery Reports</h3>
+      <section className="rounded-xl border border-app-border bg-app-card p-4">
+        <h3 className="font-semibold text-app-text mb-3">Disaster Recovery Reports</h3>
         {reports.length === 0 ? (
-          <p className="text-sm text-slate-500">Generate a report to see DR status snapshots.</p>
+          <p className="text-sm text-app-muted">Generate a report to see DR status snapshots.</p>
         ) : (
           <ul className="space-y-2">
             {reports.slice(0, 5).map((r) => {
               const recs = (r.summary.recommendations as string[] | undefined) ?? [];
               return (
-                <li key={r.id} className="p-3 rounded-lg border border-slate-100 text-sm">
+                <li key={r.id} className="p-3 rounded-lg border border-app-border text-sm">
                   <div className="flex justify-between gap-2">
                     <span className="font-medium capitalize">{r.report_type.replace('_', ' ')}</span>
-                    <span className="text-slate-500">{formatDateTime(r.generated_at)}</span>
+                    <span className="text-app-muted">{formatDateTime(r.generated_at)}</span>
                   </div>
-                  <div className="text-slate-600 mt-1">Health score: {r.health_score}/100</div>
+                  <div className="text-app-muted mt-1">Health score: {r.health_score}/100</div>
                   {recs.length > 0 && (
-                    <ul className="mt-2 list-disc list-inside text-slate-500 text-xs">
+                    <ul className="mt-2 list-disc list-inside text-app-muted text-xs">
                       {recs.map((rec, i) => (
                         <li key={i}>{rec}</li>
                       ))}

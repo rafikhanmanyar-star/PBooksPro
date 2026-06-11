@@ -80,7 +80,7 @@ const BudgetRow: React.FC<{
                     <input
                         type="text"
                         inputMode="decimal"
-                        className={`ds-input-field block w-full pl-8 pr-3 py-1.5 text-sm font-medium rounded-md transition-all duration-ds text-right shadow-sm
+                        className={`ds-input-field block w-full pl-8 pr-3 py-1.5 text-sm font-medium rounded-md transition-all duration-ds text-right shadow-ds-card
                             ${!projectId ? 'cursor-not-allowed bg-app-toolbar text-app-muted opacity-80' : 'text-app-text group-hover:border-primary/40'}`}
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
@@ -387,7 +387,7 @@ const BudgetManagement: React.FC = () => {
                             placeholder="Search categories..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="ds-input-field block w-full pl-9 pr-4 py-2 text-sm rounded-xl shadow-sm placeholder:text-app-muted"
+                            className="ds-input-field block w-full pl-9 pr-4 py-2 text-sm rounded-xl shadow-ds-card placeholder:text-app-muted"
                         />
                         {searchQuery && (
                             <button

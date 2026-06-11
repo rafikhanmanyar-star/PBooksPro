@@ -739,8 +739,8 @@ const AssetsManagement: React.FC = () => {
                             className={`
                                 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
                                 ${!selectedAssetTypeFilter
-                                    ? 'bg-slate-100 text-slate-900 border-2 border-slate-300'
-                                    : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                    ? 'bg-app-surface-2 text-app-text border-2 border-app-border'
+                                    : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
                                 }
                             `}
                         >
@@ -759,20 +759,20 @@ const AssetsManagement: React.FC = () => {
                                     className={`
                                         flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ml-2
                                         ${isSelected
-                                            ? (type.color === 'indigo' ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-500' :
+                                            ? (type.color === 'indigo' ? 'bg-app-highlight text-ds-primary border-2 border-ds-primary' :
                                                type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
                                                type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
                                                'bg-purple-50 text-purple-700 border-2 border-purple-500')
-                                            : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                            : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
                                         }
                                     `}
                                 >
                                     <div className={`w-4 h-4 ${isSelected ? (
-                                        type.color === 'indigo' ? 'text-indigo-600' :
+                                        type.color === 'indigo' ? 'text-ds-primary' :
                                         type.color === 'blue' ? 'text-blue-600' :
-                                        type.color === 'emerald' ? 'text-emerald-600' :
+                                        type.color === 'emerald' ? 'text-ds-success' :
                                         'text-purple-600'
-                                    ) : 'text-slate-400'}`}>
+                                    ) : 'text-app-muted'}`}>
                                         {type.icon}
                                     </div>
                                     <span>{type.label}</span>
@@ -794,8 +794,8 @@ const AssetsManagement: React.FC = () => {
                         className={`
                             flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-all
                             ${isFormOpen
-                                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                ? 'bg-ds-primary text-white hover:bg-ds-primary-hover'
+                                : 'bg-app-highlight text-ds-primary hover:bg-app-highlight'
                             }
                         `}
                         title={isFormOpen ? 'Close Form' : 'Add New Asset'}
@@ -809,14 +809,14 @@ const AssetsManagement: React.FC = () => {
 
             {/* Add New Asset Form - Collapsible. Stable key so parent re-renders don't remount and steal focus. */}
             {isFormOpen && (
-                <div key="add-asset-form" className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-shrink-0">
+                <div key="add-asset-form" className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-4 flex-shrink-0">
                     <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center">
-                            <div className="w-5 h-5 text-indigo-600">{ICONS.plus}</div>
+                        <div className="w-8 h-8 rounded-lg bg-app-highlight flex items-center justify-center">
+                            <div className="w-5 h-5 text-ds-primary">{ICONS.plus}</div>
                         </div>
                         <div>
-                            <h2 className="text-lg font-bold text-slate-900">Add New Asset</h2>
-                            <p className="text-xs text-slate-500">
+                            <h2 className="text-lg font-bold text-app-text">Add New Asset</h2>
+                            <p className="text-xs text-app-muted">
                                 {selectedAssetTypeFilter
                                     ? `Fill in the details for the new ${getTypeConfig(selectedType).label}.`
                                     : 'Select an asset type below, then fill in the details.'}
@@ -828,7 +828,7 @@ const AssetsManagement: React.FC = () => {
                         {/* Asset Type Selection - only when no type selected from top tabs */}
                         {!selectedAssetTypeFilter && (
                             <div>
-                                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                                <label className="block text-xs font-semibold text-app-text mb-2">
                                     Asset Type <span className="text-red-500">*</span>
                                 </label>
                                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -845,31 +845,31 @@ const AssetsManagement: React.FC = () => {
                                                 className={`
                                                     p-2 rounded-lg border-2 transition-all text-left
                                                     ${isSelected
-                                                        ? (type.color === 'indigo' ? 'border-indigo-500 bg-indigo-50' :
+                                                        ? (type.color === 'indigo' ? 'border-ds-primary bg-app-highlight' :
                                                            type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
                                                            type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
                                                            'border-purple-500 bg-purple-50')
-                                                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                                                        : 'border-app-border bg-app-card hover:border-app-border hover:bg-app-bg'
                                                     }
                                                 `}
                                             >
                                                 <div className={`w-5 h-5 mb-1 ${
                                                     isSelected
-                                                        ? (type.color === 'indigo' ? 'text-indigo-600' :
+                                                        ? (type.color === 'indigo' ? 'text-ds-primary' :
                                                            type.color === 'blue' ? 'text-blue-600' :
-                                                           type.color === 'emerald' ? 'text-emerald-600' :
+                                                           type.color === 'emerald' ? 'text-ds-success' :
                                                            'text-purple-600')
-                                                        : 'text-slate-400'
+                                                        : 'text-app-muted'
                                                 }`}>
                                                     {type.icon}
                                                 </div>
                                                 <div className={`font-semibold text-xs ${
                                                     isSelected
-                                                        ? (type.color === 'indigo' ? 'text-indigo-700' :
+                                                        ? (type.color === 'indigo' ? 'text-ds-primary' :
                                                            type.color === 'blue' ? 'text-blue-700' :
                                                            type.color === 'emerald' ? 'text-emerald-700' :
                                                            'text-purple-700')
-                                                        : 'text-slate-700'
+                                                        : 'text-app-text'
                                                 }`}>
                                                     {type.label}
                                                 </div>
@@ -892,18 +892,18 @@ const AssetsManagement: React.FC = () => {
                                 required
                                 autoFocus
                                 autoComplete="off"
-                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                className="text-sm border-app-border border-2 focus:border-ds-primary"
                             />
                         </div>
                         
                         {selectedType === 'project' && (
                             <>
                             <div className="sm:col-span-2 lg:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
+                                <label className="block text-sm font-medium text-app-text mb-1.5">Status</label>
                                 <select
                                     value={projectStatus}
                                     onChange={(e) => setProjectStatus(e.target.value as any)}
-                                    className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                    className="block w-full px-3 py-2 border-2 border-app-border rounded-lg shadow-ds-card text-sm focus:outline-none focus:border-ds-primary"
                                     aria-label="Project status"
                                 >
                                     <option value="Active">Active</option>
@@ -918,15 +918,15 @@ const AssetsManagement: React.FC = () => {
                                     value={projectLocation}
                                     onChange={(e) => setProjectLocation(e.target.value)}
                                     placeholder="Site / address"
-                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                    className="text-sm border-app-border border-2 focus:border-ds-primary"
                                 />
                             </div>
                             <div className="sm:col-span-2 lg:col-span-1">
-                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Project type</label>
+                                <label className="block text-sm font-medium text-app-text mb-1.5">Project type</label>
                                 <select
                                     value={projectAssetType}
                                     onChange={(e) => setProjectAssetType(e.target.value)}
-                                    className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                    className="block w-full px-3 py-2 border-2 border-app-border rounded-lg shadow-ds-card text-sm focus:outline-none focus:border-ds-primary"
                                     aria-label="Project asset type"
                                 >
                                     <option value="">— Select —</option>
@@ -993,14 +993,14 @@ const AssetsManagement: React.FC = () => {
                         
                         {(selectedType === 'project' || selectedType === 'building') && (
                             <div className="sm:col-span-2 lg:col-span-1">
-                                <label htmlFor="asset-color-picker" className="block text-sm font-medium text-gray-700 mb-1.5">Color</label>
+                                <label htmlFor="asset-color-picker" className="block text-sm font-medium text-app-text mb-1.5">Color</label>
                                 <div className="flex items-center gap-2">
                                     <input
                                         id="asset-color-picker"
                                         type="color"
                                         value={color}
                                         onChange={(e) => setColor(e.target.value)}
-                                        className="h-10 w-20 rounded-md cursor-pointer border-2 border-slate-300"
+                                        className="h-10 w-20 rounded-md cursor-pointer border-2 border-app-border"
                                         title="Color"
                                         aria-label="Color"
                                     />
@@ -1019,18 +1019,18 @@ const AssetsManagement: React.FC = () => {
                                     value={monthlyServiceCharge}
                                     onChange={(e) => setMonthlyServiceCharge(e.target.value)}
                                     placeholder="0.00"
-                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                    className="text-sm border-app-border border-2 focus:border-ds-primary"
                                 />
                             )}
                             
                             {selectedType === 'unit' && (
                                 <>
                                     <div className="sm:col-span-2 lg:col-span-1">
-                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Status</label>
+                                        <label className="block text-sm font-medium text-app-text mb-1.5">Status</label>
                                         <select
                                             value={unitStatus}
                                             onChange={(e) => setUnitStatus(e.target.value as UnitOccupancyStatus)}
-                                            className="block w-full px-3 py-2 border-2 border-slate-300 rounded-lg shadow-sm text-sm focus:outline-none focus:border-indigo-500"
+                                            className="block w-full px-3 py-2 border-2 border-app-border rounded-lg shadow-ds-card text-sm focus:outline-none focus:border-ds-primary"
                                             aria-label="Unit status"
                                         >
                                             <option value="available">Available</option>
@@ -1044,14 +1044,14 @@ const AssetsManagement: React.FC = () => {
                                         value={unitType}
                                         onChange={(e) => setUnitType(e.target.value)}
                                         placeholder="Unit type"
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                        className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
                                     <Input
                                         label="Size"
                                         value={unitSize}
                                         onChange={(e) => setUnitSize(e.target.value)}
                                         placeholder="e.g. 1200 sq ft"
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                        className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
                                     <Input
                                         label="Area (sq ft)"
@@ -1059,14 +1059,14 @@ const AssetsManagement: React.FC = () => {
                                         value={area}
                                         onChange={(e) => setArea(e.target.value)}
                                         placeholder="Area"
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                        className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
                                     <Input
                                         label="Floor"
                                         value={floor}
                                         onChange={(e) => setFloor(e.target.value)}
                                         placeholder="Floor number"
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                        className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
                                     <Input
                                         label="Sale Price"
@@ -1074,7 +1074,7 @@ const AssetsManagement: React.FC = () => {
                                         value={salePrice}
                                         onChange={(e) => setSalePrice(e.target.value)}
                                         placeholder="0.00"
-                                        className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                        className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
                                 </>
                             )}
@@ -1090,7 +1090,7 @@ const AssetsManagement: React.FC = () => {
                                 onChange={(e) => setDescription(e.target.value)}
                                 placeholder="Additional details..."
                                 rows={1}
-                                className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
+                                className="text-sm !border-app-border !border-2 focus:!border-ds-primary"
                             />
                         </div>
                         <div className="flex items-end gap-2">
@@ -1109,7 +1109,7 @@ const AssetsManagement: React.FC = () => {
                                 loading={isSubmitting}
                                 loadingText="Saving..."
                                 className={`flex-1 text-sm py-2 ${
-                                    activeTypeConfig.color === 'indigo' ? 'bg-indigo-600 hover:bg-indigo-700' :
+                                    activeTypeConfig.color === 'indigo' ? 'bg-ds-primary hover:bg-ds-primary-hover' :
                                     activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
                                     activeTypeConfig.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' :
                                     'bg-purple-600 hover:bg-purple-700'
@@ -1124,23 +1124,23 @@ const AssetsManagement: React.FC = () => {
             )}
 
             {/* Data Grid - Full Width */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex-1 min-h-0 flex flex-col">
                 {/* Search Bar */}
-                <div className="p-4 border-b border-slate-200 flex-shrink-0">
+                <div className="p-4 border-b border-app-border flex-shrink-0">
                     <div className="relative">
                         <Input
                             value={gridSearchQuery}
                             onChange={(e) => setGridSearchQuery(e.target.value)}
                             placeholder={selectedAssetTypeFilter ? `Search ${activeTypeConfig.label.toLowerCase()}s...` : "Search all assets..."}
-                            className="w-full bg-white border-slate-200 shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg pl-10"
+                            className="w-full bg-app-card border-app-border shadow-ds-card focus:ring-2 focus:ring-ds-primary/20 transition-all rounded-lg pl-10"
                         />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         {gridSearchQuery && (
                             <button
                                 onClick={() => setGridSearchQuery('')}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-app-muted hover:text-app-muted"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -1148,24 +1148,24 @@ const AssetsManagement: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                    <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-slate-50 sticky top-0 z-10">
+                <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-app-border scrollbar-track-transparent">
+                    <table className="min-w-full divide-y divide-app-border">
+                        <thead className="bg-app-bg sticky top-0 z-10">
                             <tr>
                                 {getColumns().map((col) => (
                                     <th
                                         key={col.key}
-                                        className={`px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${
+                                        className={`px-4 py-2 text-left text-xs font-semibold text-app-muted uppercase tracking-wider ${
                                             col.key === 'actions' || col.key === 'balance' ? 'text-right' : ''
                                         } ${
-                                            col.key !== 'actions' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                            col.key !== 'actions' ? 'cursor-pointer hover:bg-app-surface-2' : ''
                                         }`}
                                         onClick={() => col.key !== 'actions' && handleSort(col.key)}
                                     >
                                         <div className="flex items-center gap-1">
                                             {col.label}
                                             {sortConfig?.key === col.key && (
-                                                <div className="w-3 h-3 text-indigo-600">
+                                                <div className="w-3 h-3 text-ds-primary">
                                                     {sortConfig.direction === 'asc' ? ICONS.arrowUp : ICONS.arrowDown}
                                                 </div>
                                             )}
@@ -1174,10 +1174,10 @@ const AssetsManagement: React.FC = () => {
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-50">
+                        <tbody className="bg-app-card divide-y divide-app-border">
                             {gridEntities.length === 0 ? (
                                 <tr>
-                                    <td colSpan={getColumns().length} className="px-4 py-8 text-center text-slate-400">
+                                    <td colSpan={getColumns().length} className="px-4 py-8 text-center text-app-muted">
                                         {gridSearchQuery 
                                             ? `No assets found matching your search.` 
                                             : `No assets found. Add your first asset above!`
@@ -1188,7 +1188,7 @@ const AssetsManagement: React.FC = () => {
                                 gridEntities.map((entity) => (
                                     <tr
                                         key={entity.id}
-                                        className="hover:bg-indigo-50/30 transition-colors group"
+                                        className="hover:bg-app-highlight/30 transition-colors group"
                                     >
                                         {getColumns().map((col) => {
                                             if (col.key === 'actions') {
@@ -1198,14 +1198,14 @@ const AssetsManagement: React.FC = () => {
                                                         <div className={`flex justify-end gap-1 transition-opacity ${isProperty ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleEdit(entity); }}
-                                                                className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1 rounded transition-colors"
+                                                                className="text-ds-primary hover:text-app-text bg-app-highlight hover:bg-app-highlight p-1 rounded transition-colors"
                                                                 title="Edit"
                                                             >
                                                                 <div className="w-3.5 h-3.5">{ICONS.edit}</div>
                                                             </button>
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleDelete(entity); }}
-                                                                className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
+                                                                className="text-ds-danger hover:text-ds-danger bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
                                                                 title="Delete"
                                                             >
                                                                 <div className="w-3.5 h-3.5">{ICONS.trash}</div>
@@ -1219,7 +1219,7 @@ const AssetsManagement: React.FC = () => {
                                                 const balance = balances.get(entity.id) || 0;
                                                 return (
                                                     <td key={col.key} className="px-4 py-2 whitespace-nowrap text-right text-xs font-semibold">
-                                                        <span className={balance >= 0 ? 'text-slate-700' : 'text-rose-600'}>
+                                                        <span className={balance >= 0 ? 'text-app-text' : 'text-ds-danger'}>
                                                             {CURRENCY} {balance.toLocaleString()}
                                                         </span>
                                                     </td>
@@ -1232,7 +1232,7 @@ const AssetsManagement: React.FC = () => {
                                                     <td key={col.key} className="px-4 py-2 whitespace-nowrap text-xs">
                                                         <span className={`
                                                             px-2 py-1 rounded-full text-xs font-medium
-                                                            ${entity.entityType === 'project' ? 'bg-indigo-100 text-indigo-700' :
+                                                            ${entity.entityType === 'project' ? 'bg-app-highlight text-ds-primary' :
                                                              entity.entityType === 'building' ? 'bg-blue-100 text-blue-700' :
                                                              entity.entityType === 'property' ? 'bg-emerald-100 text-emerald-700' :
                                                              'bg-purple-100 text-purple-700'}
@@ -1245,9 +1245,9 @@ const AssetsManagement: React.FC = () => {
                                             
                                             const value = entity[col.key];
                                             return (
-                                                <td key={col.key} className="px-4 py-2 whitespace-nowrap text-xs text-slate-600">
+                                                <td key={col.key} className="px-4 py-2 whitespace-nowrap text-xs text-app-muted">
                                                     {col.key === 'name' ? (
-                                                        <div className="font-semibold text-slate-900">{value}</div>
+                                                        <div className="font-semibold text-app-text">{value}</div>
                                                     ) : value || '-'}
                                                 </td>
                                             );

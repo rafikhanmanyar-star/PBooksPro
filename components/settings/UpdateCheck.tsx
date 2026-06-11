@@ -164,8 +164,8 @@ const UpdateCheck: React.FC = () => {
   }, [error, errorDetails, currentVersion, status, showToast, isElectronUpdate]);
 
   return (
-    <div className="p-4 border border-slate-200 rounded-lg bg-slate-50/50" data-update-section>
-      <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+    <div className="p-4 border border-app-border rounded-lg bg-app-bg/50" data-update-section>
+      <h4 className="font-bold text-app-text mb-3 flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
         </svg>
@@ -173,10 +173,10 @@ const UpdateCheck: React.FC = () => {
       </h4>
 
       <div className="space-y-4">
-        <div className="text-sm text-slate-600">
+        <div className="text-sm text-app-muted">
           <span className="font-medium">Current Version:</span> {currentVersion || 'Unknown'}
           {isElectronUpdate && (
-            <span className="ml-2 text-xs text-slate-400">(Desktop)</span>
+            <span className="ml-2 text-xs text-app-muted">(Desktop)</span>
           )}
         </div>
 
@@ -187,7 +187,7 @@ const UpdateCheck: React.FC = () => {
         )}
 
         {status === 'checking' && (
-          <div className="flex items-center gap-2 text-sm text-slate-600">
+          <div className="flex items-center gap-2 text-sm text-app-muted">
             <RefreshCw className="w-4 h-4 animate-spin" />
             <span>Checking for updates...</span>
           </div>
@@ -196,7 +196,7 @@ const UpdateCheck: React.FC = () => {
         {status === 'available' && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
-              <Download className="w-4 h-4 text-emerald-600" />
+              <Download className="w-4 h-4 text-ds-success" />
               <span className="font-medium text-emerald-700">
                 {electronUpdateInfo
                   ? `Version ${electronUpdateInfo.version} is available`
@@ -219,17 +219,17 @@ const UpdateCheck: React.FC = () => {
 
         {status === 'downloading' && electronDownloadProgress && (
           <div className="space-y-2">
-            <div className="flex items-center gap-2 text-sm text-slate-600">
+            <div className="flex items-center gap-2 text-sm text-app-muted">
               <ArrowDownToLine className="w-4 h-4 animate-bounce" />
               <span>Downloading update...</span>
             </div>
-            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+            <div className="w-full h-2 bg-app-surface-2 rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 transition-all duration-300 ease-out"
+                className="h-full bg-gradient-to-r from-ds-primary to-purple-600 transition-all duration-300 ease-out"
                 style={{ width: `${electronDownloadProgress.percent}%` }}
               />
             </div>
-            <p className="text-center text-xs font-medium text-indigo-600">
+            <p className="text-center text-xs font-medium text-ds-primary">
               {electronDownloadProgress.percent.toFixed(1)}% complete
             </p>
           </div>
@@ -238,7 +238,7 @@ const UpdateCheck: React.FC = () => {
         {status === 'downloaded' && (
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
-              <CheckCircle className="w-4 h-4 text-emerald-600" />
+              <CheckCircle className="w-4 h-4 text-ds-success" />
               <span className="font-medium text-emerald-700">
                 {electronUpdateInfo
                   ? `Version ${electronUpdateInfo.version} downloaded. Ready to install.`
@@ -253,8 +253,8 @@ const UpdateCheck: React.FC = () => {
         )}
 
         {status === 'not-available' && (
-          <div className="flex items-center gap-2 text-sm text-slate-600">
-            <CheckCircle className="w-4 h-4 text-emerald-600" />
+          <div className="flex items-center gap-2 text-sm text-app-muted">
+            <CheckCircle className="w-4 h-4 text-ds-success" />
             <span>You're running the latest version.</span>
           </div>
         )}
@@ -262,11 +262,11 @@ const UpdateCheck: React.FC = () => {
         {status === 'error' && (
           <div className="space-y-3">
             {unavailableReleasesUrl || (error && (error.includes('development build') || error.includes('not available in this build'))) ? (
-              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3">
+              <div className="bg-app-bg border border-app-border rounded-lg p-3">
                 <div className="flex items-start gap-2 mb-2">
-                  <CheckCircle className="w-4 h-4 text-slate-600 flex-shrink-0 mt-0.5" />
+                  <CheckCircle className="w-4 h-4 text-app-muted flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <div className="text-sm text-slate-700">
+                    <div className="text-sm text-app-text">
                       {error || 'Updates are only available in the installed app.'}
                     </div>
                   </div>
@@ -295,13 +295,13 @@ const UpdateCheck: React.FC = () => {
             ) : (
               <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
                 <div className="flex items-start gap-2 mb-2">
-                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0 mt-0.5" />
+                  <AlertCircle className="w-4 h-4 text-ds-danger flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <div className="text-sm font-medium text-rose-800 mb-1">
+                    <div className="text-sm font-medium text-ds-danger mb-1">
                       {error || 'An error occurred while checking for updates.'}
                     </div>
                     {errorDetails && (
-                      <pre className="text-xs text-rose-700 bg-rose-100 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
+                      <pre className="text-xs text-ds-danger bg-rose-100 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
                         {errorDetails}
                       </pre>
                     )}

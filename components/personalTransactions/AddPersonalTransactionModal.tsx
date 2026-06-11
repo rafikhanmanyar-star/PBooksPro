@@ -347,7 +347,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
         return (
           <div className="space-y-4">
             <div>
-              <label htmlFor="add-txn-type" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="add-txn-type" className="block text-sm font-medium text-app-text mb-1">
                 Type
               </label>
               <select
@@ -360,7 +360,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
                   setCategorySearch('');
                   setError('');
                 }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                className="w-full border border-app-border rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                 aria-label="Transaction type"
                 autoFocus
               >
@@ -369,14 +369,14 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               </select>
             </div>
             <div>
-              <label htmlFor="add-txn-account" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="add-txn-account" className="block text-sm font-medium text-app-text mb-1">
                 Account
               </label>
               <select
                 id="add-txn-account"
                 value={accountId}
                 onChange={(e) => { setAccountId(e.target.value); setError(''); }}
-                className="w-full border border-gray-300 rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                className="w-full border border-app-border rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                 aria-label="Account"
               >
                 <option value="">Select account</option>
@@ -397,7 +397,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
         return (
           <div className="space-y-4 relative">
             <div>
-              <label htmlFor="add-txn-category" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="add-txn-category" className="block text-sm font-medium text-app-text mb-1">
                 Category
               </label>
               <input
@@ -414,19 +414,19 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
                 onBlur={() => setTimeout(() => setCategoryDropdownOpen(false), 200)}
                 onKeyDown={handleCategoryInputKeyDown}
                 placeholder="Type to search or add new category"
-                className="w-full border border-gray-300 rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                className="w-full border border-app-border rounded-lg px-3 py-3 text-base focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                 autoFocus
                 autoComplete="off"
               />
             </div>
             {categoryDropdownOpen && (
               <div
-                className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+                className="absolute z-10 w-full mt-1 bg-app-card border border-app-border rounded-lg shadow-lg max-h-48 overflow-y-auto"
                 role="listbox"
                 aria-activedescendant={categoryHighlightedIndex >= 0 ? `cat-opt-${categoryHighlightedIndex}` : undefined}
               >
                 {filteredCategories.length === 0 && !showAddNewOption && (
-                  <div className="px-3 py-2 text-sm text-gray-500">
+                  <div className="px-3 py-2 text-sm text-app-muted">
                     {categorySearch.trim() ? 'No match. Type to add as new.' : 'Type to search categories.'}
                   </div>
                 )}
@@ -436,7 +436,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
                     id={`cat-opt-${idx}`}
                     role="option"
                     aria-selected={categoryId === cat.id}
-                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer ${categoryHighlightedIndex === idx ? 'bg-green-100 text-green-900' : categoryId === cat.id ? 'bg-green-50 text-green-800' : 'hover:bg-gray-100'}`}
+                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer ${categoryHighlightedIndex === idx ? 'bg-green-100 text-green-900' : categoryId === cat.id ? 'bg-green-50 text-green-800' : 'hover:bg-app-table-hover'}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       setCategoryId(cat.id);
@@ -452,7 +452,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
                   <div
                     id={`cat-opt-${filteredCategories.length}`}
                     role="option"
-                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer font-medium border-t border-gray-100 ${categoryHighlightedIndex === filteredCategories.length ? 'bg-green-100 text-green-900' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
+                    className={`w-full text-left px-3 py-2.5 text-sm cursor-pointer font-medium border-t border-app-border ${categoryHighlightedIndex === filteredCategories.length ? 'bg-green-100 text-green-900' : 'bg-green-50 text-green-700 hover:bg-green-100'}`}
                     onMouseDown={(e) => {
                       e.preventDefault();
                       selectCategoryByIndex(filteredCategories.length);
@@ -464,7 +464,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               </div>
             )}
             <div>
-              <label htmlFor="add-txn-amount" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="add-txn-amount" className="block text-sm font-medium text-app-text mb-1">
                 Amount ({CURRENCY})
               </label>
               <Input
@@ -494,8 +494,8 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               />
             </div>
             <div>
-              <label htmlFor="add-txn-desc" className="block text-sm font-medium text-gray-700 mb-1">
-                Description <span className="text-gray-400 font-normal">(optional)</span>
+              <label htmlFor="add-txn-desc" className="block text-sm font-medium text-app-text mb-1">
+                Description <span className="text-app-muted font-normal">(optional)</span>
               </label>
               <Input
                 id="add-txn-desc"
@@ -510,32 +510,32 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
 
       case 4:
         return (
-          <div className="space-y-4 bg-gray-50 rounded-lg p-4 border border-gray-200">
-            <p className="text-sm font-medium text-gray-700">Review your transaction</p>
+          <div className="space-y-4 bg-app-surface-2 rounded-lg p-4 border border-app-border">
+            <p className="text-sm font-medium text-app-text">Review your transaction</p>
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-gray-600">Type</dt>
+                <dt className="text-app-muted">Type</dt>
                 <dd className="font-medium">{type}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-600">Account</dt>
+                <dt className="text-app-muted">Account</dt>
                 <dd className="font-medium">{accountName || '—'}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-600">Category</dt>
+                <dt className="text-app-muted">Category</dt>
                 <dd className="font-medium">{categoryName || '—'}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-600">Amount</dt>
+                <dt className="text-app-muted">Amount</dt>
                 <dd className="font-medium">{amount ? `${CURRENCY === 'PKR' ? 'Rs ' : '$'}${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '—'}</dd>
               </div>
               <div className="flex justify-between">
-                <dt className="text-gray-600">Date</dt>
+                <dt className="text-app-muted">Date</dt>
                 <dd className="font-medium">{transactionDate || '—'}</dd>
               </div>
               {description.trim() && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-600">Description</dt>
+                  <dt className="text-app-muted">Description</dt>
                   <dd className="font-medium">{description.trim()}</dd>
                 </div>
               )}
@@ -562,7 +562,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
                     ? 'bg-green-600 text-white'
                     : s.id < step
                       ? 'bg-green-100 text-green-700'
-                      : 'bg-gray-200 text-gray-500'
+                      : 'bg-app-surface-2 text-app-muted'
                 }`}
                 title={s.title}
               >
@@ -570,20 +570,20 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               </div>
             ))}
           </div>
-          <span className="text-sm text-gray-500">
+          <span className="text-sm text-app-muted">
             Step {step} of {TOTAL_STEPS}
           </span>
         </div>
-        <div className="text-sm font-medium text-gray-700">
+        <div className="text-sm font-medium text-app-text">
           {STEPS[step - 1].title}
         </div>
 
         {transactionLineParts.length > 0 && (
           <div
-            className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 font-mono"
+            className="text-sm text-app-muted bg-app-surface-2 border border-app-border rounded-lg px-3 py-2 font-mono"
             title="Transaction so far"
           >
-            <span className="text-gray-500 mr-2">Transaction:</span>
+            <span className="text-app-muted mr-2">Transaction:</span>
             {transactionLineParts.join(' • ')}
           </div>
         )}
@@ -596,7 +596,7 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
 
         {renderStepContent()}
 
-        <div className="flex gap-2 justify-between pt-2 border-t border-gray-200">
+        <div className="flex gap-2 justify-between pt-2 border-t border-app-border">
           <div>
             {step > 1 ? (
               <Button type="button" variant="secondary" onClick={handleBack} disabled={saving}>

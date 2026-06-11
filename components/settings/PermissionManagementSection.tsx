@@ -39,11 +39,11 @@ const PermissionManagementSection: React.FC = () => {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-400">Loading permission matrix…</p>;
+    return <p className="text-sm text-app-muted">Loading permission matrix…</p>;
   }
 
   if (!matrix) {
-    return <p className="text-sm text-slate-500">Permission matrix unavailable.</p>;
+    return <p className="text-sm text-app-muted">Permission matrix unavailable.</p>;
   }
 
   const permKeys = matrix.permissions.map((p) => p.key);
@@ -51,19 +51,19 @@ const PermissionManagementSection: React.FC = () => {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Permission Management</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-lg font-semibold text-app-text">Permission Management</h2>
+        <p className="text-sm text-app-muted mt-1">
           Enterprise RBAC matrix. Assign roles in User Management; permissions are enforced on the server for every API call.
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <div className="overflow-x-auto rounded-lg border border-app-border">
         <table className="min-w-full text-xs">
-          <thead className="bg-slate-50 text-left">
+          <thead className="bg-app-bg text-left">
             <tr>
-              <th className="px-3 py-2 font-medium text-slate-600 sticky left-0 bg-slate-50">Permission</th>
+              <th className="px-3 py-2 font-medium text-app-muted sticky left-0 bg-app-bg">Permission</th>
               {matrix.roles.map((r) => (
-                <th key={r.role} className="px-2 py-2 font-medium text-slate-600 text-center whitespace-nowrap">
+                <th key={r.role} className="px-2 py-2 font-medium text-app-muted text-center whitespace-nowrap">
                   {r.label}
                 </th>
               ))}
@@ -71,8 +71,8 @@ const PermissionManagementSection: React.FC = () => {
           </thead>
           <tbody>
             {permKeys.map((perm) => (
-              <tr key={perm} className="border-t border-slate-100">
-                <td className="px-3 py-2 text-slate-700 sticky left-0 bg-white whitespace-nowrap">
+              <tr key={perm} className="border-t border-app-border">
+                <td className="px-3 py-2 text-app-text sticky left-0 bg-app-card whitespace-nowrap">
                   {PERMISSION_LABELS[perm as Permission] ?? perm}
                 </td>
                 {matrix.roles.map((r) => {
@@ -80,11 +80,11 @@ const PermissionManagementSection: React.FC = () => {
                   return (
                     <td key={`${r.role}-${perm}`} className="px-2 py-2 text-center">
                       {allowed ? (
-                        <span className="text-emerald-600 font-bold" aria-label="allowed">
+                        <span className="text-ds-success font-bold" aria-label="allowed">
                           ✓
                         </span>
                       ) : (
-                        <span className="text-slate-300" aria-label="denied">
+                        <span className="text-app-muted" aria-label="denied">
                           —
                         </span>
                       )}

@@ -131,7 +131,7 @@ const CategoryForm: React.FC<CategoryFormProps> = ({ onSubmit, onCancel, onDelet
                 <option value="finance_cost">Finance costs</option>
                 <option value="tax">Tax</option>
             </Select>
-            <p className="text-xs text-slate-500 -mt-2">
+            <p className="text-xs text-app-muted -mt-2">
                 Maps this category to a Profit &amp; Loss line. Leave as default to classify by Income vs Expense type.
             </p>
 

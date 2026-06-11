@@ -218,22 +218,22 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Import from Excel (paste)" size="xl">
       <div className="space-y-4 max-h-[85vh] overflow-hidden flex flex-col">
-        <p className="text-sm text-gray-600 dark:text-slate-400">
+        <p className="text-sm text-app-muted">
           Paste rows copied from Excel (tab-separated). Use <strong>Parse Data</strong> to preview and fix mappings before
           importing.
         </p>
 
         <div className="flex flex-col gap-2 min-h-0">
-          <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Paste data</label>
+          <label className="text-sm font-medium text-app-text">Paste data</label>
           <textarea
             value={pasteText}
             onChange={(e) => setPasteText(e.target.value)}
             placeholder={PLACEHOLDER}
             rows={6}
-            className="w-full font-mono text-sm border border-gray-300 dark:border-slate-600 rounded-lg p-3 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+            className="w-full font-mono text-sm border border-app-border bg-app-card text-app-text focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
             spellCheck={false}
           />
-          <p className="text-xs text-gray-500 dark:text-slate-500">
+          <p className="text-xs text-app-muted">
             After changing the pasted text, click <strong>Parse Data</strong> again. Large imports preview up to{' '}
             {PREVIEW_LIMIT} rows; all valid rows are still imported.
           </p>
@@ -242,7 +242,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
               Parse Data
             </Button>
             {parsedLines.length > 0 && (
-              <span className="text-sm text-gray-500 self-center">
+              <span className="text-sm text-app-muted self-center">
                 {parsedLines.length} row{parsedLines.length === 1 ? '' : 's'}
                 {hasHeader ? ' (header detected)' : ''}
               </span>
@@ -272,9 +272,9 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
               </div>
             )}
 
-            <div className="flex-1 min-h-0 overflow-auto border border-gray-200 dark:border-slate-600 rounded-lg">
+            <div className="flex-1 min-h-0 overflow-auto border border-app-border rounded-lg">
               <table className="w-full text-xs sm:text-sm">
-                <thead className="bg-gray-100 dark:bg-slate-800 sticky top-0 z-10">
+                <thead className="bg-app-table-header sticky top-0 z-10">
                   <tr>
                     <th className="text-left py-2 px-2 font-semibold">#</th>
                     <th className="text-left py-2 px-2 font-semibold">Date</th>
@@ -297,7 +297,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
                     return (
                     <tr
                       key={r.lineIndex}
-                      className={`border-b border-gray-100 dark:border-slate-700/80 ${statusStyle(r.status)}`}
+                      className={`border-b border-app-border ${statusStyle(r.status)}`}
                     >
                       <td className="py-1.5 px-2 align-top">{r.lineIndex + 1}</td>
                       <td className="py-1.5 px-2 align-top whitespace-nowrap">{r.normalizedDate ?? (r.dateRaw || '—')}</td>
@@ -305,7 +305,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
                         <select
                           value={r.accountId}
                           onChange={(e) => setAccountOverride(r.lineIndex, e.target.value)}
-                          className="w-full max-w-[200px] text-xs border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900"
+                          className="w-full max-w-[200px] text-xs border border-app-border rounded bg-app-card text-app-text"
                           aria-label={`Account row ${r.lineIndex + 1}`}
                         >
                           <option value="">—</option>
@@ -325,7 +325,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
                         <select
                           value={r.personalCategoryId}
                           onChange={(e) => setCategoryOverride(r.lineIndex, e.target.value)}
-                          className="w-full max-w-[200px] text-xs border border-gray-300 dark:border-slate-600 rounded bg-white dark:bg-slate-900"
+                          className="w-full max-w-[200px] text-xs border border-app-border rounded bg-app-card text-app-text"
                           aria-label={`Category row ${r.lineIndex + 1}`}
                         >
                           <option value="">—</option>
@@ -396,7 +396,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
               <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{importError}</div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-slate-700">
+            <div className="flex justify-end gap-2 pt-2 border-t border-app-border">
               <Button type="button" variant="secondary" onClick={onClose} disabled={importing}>
                 Close
               </Button>

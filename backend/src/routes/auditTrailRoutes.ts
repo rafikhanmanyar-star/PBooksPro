@@ -4,6 +4,7 @@ import { requirePermission } from '../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { getPool } from '../db/pool.js';
 import {
+  filterUnifiedAuditRowsForTenant,
   listAuditActions,
   listAuditModules,
   listUnifiedAuditTrail,
@@ -28,7 +29,7 @@ auditTrailRouter.get('/audit/events', requirePermission('audit_logs.read'), asyn
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listUnifiedAuditTrail(client, tenantId, {
+      const rawRows = await listUnifiedAuditTrail(client, tenantId, {
         userId: typeof q.userId === 'string' ? q.userId : undefined,
         startDate: typeof q.startDate === 'string' ? q.startDate.slice(0, 10) : undefined,
         endDate: typeof q.endDate === 'string' ? q.endDate.slice(0, 10) : undefined,
@@ -37,7 +38,16 @@ auditTrailRouter.get('/audit/events', requirePermission('audit_logs.read'), asyn
         limit: Number.isFinite(limit) ? limit : undefined,
         offset: Number.isFinite(offset) ? offset : undefined,
       });
-      sendSuccess(res, { items: rows, count: rows.length });
+      const rows = filterUnifiedAuditRowsForTenant(rawRows, tenantId);
+      if (rows.length !== rawRows.length) {
+        const { logger } = await import('../utils/logger.js');
+        logger.warn('[audit] Dropped cross-tenant audit rows', {
+          tenantId,
+          rawCount: rawRows.length,
+          keptCount: rows.length,
+        });
+      }
+      sendSuccess(res, { items: rows, count: rows.length, tenantId });
     } finally {
       client.release();
     }

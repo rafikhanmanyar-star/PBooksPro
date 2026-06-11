@@ -9,13 +9,13 @@ import ProductTourLauncher from '../tours/ProductTourLauncher';
 // --- MOCK UI ENGINE (For Generating "Screenshots") ---
 
 const MockWindow: React.FC<{ title: string; children: React.ReactNode; className?: string }> = ({ title, children, className = '' }) => (
-    <div className={`bg-slate-50 border-2 border-slate-300 rounded-xl overflow-hidden shadow-sm select-none relative ${className}`}>
-        <div className="bg-white border-b border-slate-200 px-3 py-2 flex justify-between items-center">
+    <div className={`bg-app-bg border-2 border-app-border rounded-xl overflow-hidden shadow-ds-card select-none relative ${className}`}>
+        <div className="bg-app-card border-b border-app-border px-3 py-2 flex justify-between items-center">
             <div className="flex gap-1.5">
-                <div className="w-2 h-2 rounded-full bg-slate-300"></div>
-                <div className="w-2 h-2 rounded-full bg-slate-300"></div>
+                <div className="w-2 h-2 rounded-full bg-app-surface-2"></div>
+                <div className="w-2 h-2 rounded-full bg-app-surface-2"></div>
             </div>
-            <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{title}</div>
+            <div className="text-[10px] font-bold text-app-muted uppercase tracking-wider">{title}</div>
             <div className="w-4"></div>
         </div>
         <div className="p-3 relative">
@@ -25,12 +25,12 @@ const MockWindow: React.FC<{ title: string; children: React.ReactNode; className
 );
 
 const MockButton: React.FC<{ label: string; variant?: 'primary' | 'secondary' | 'danger' | 'floating'; icon?: React.ReactNode; className?: string }> = ({ label, variant = 'primary', icon, className = '' }) => {
-    const base = "flex items-center justify-center gap-1 rounded shadow-sm text-[10px] font-semibold transition-transform";
+    const base = "flex items-center justify-center gap-1 rounded shadow-ds-card text-[10px] font-semibold transition-transform";
     const variants = {
-        primary: "bg-indigo-600 text-white px-3 py-1.5",
-        secondary: "bg-white border border-slate-300 text-slate-700 px-3 py-1.5",
+        primary: "bg-ds-primary text-white px-3 py-1.5",
+        secondary: "bg-app-card border border-app-border text-app-text px-3 py-1.5",
         danger: "bg-rose-600 text-white px-3 py-1.5",
-        floating: "w-8 h-8 rounded-full bg-indigo-600 text-white shadow-lg"
+        floating: "w-8 h-8 rounded-full bg-ds-primary text-white shadow-lg"
     };
     return <div className={`${base} ${variants[variant]} ${className}`}>{icon}{label}</div>;
 };
@@ -65,7 +65,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Getting Started',
         keywords: ['about', 'version', 'info', 'description', 'purpose', 'overview'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p><strong>{APP_NAME}</strong> is a comprehensive financial management system tailored for real estate professionals, project developers, and small business owners. It unifies multiple financial domains into a single, intuitive interface.</p>
                 <p>Key capabilities include:</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
@@ -74,17 +74,17 @@ const HELP_TOPICS: HelpTopic[] = [
                     <li><strong>Project Management:</strong> Advanced costing for construction projects, including installment plans and investor equity tracking.</li>
                     <li><strong>Reports & Analytics:</strong> Comprehensive reporting and KPI dashboard for real-time insights.</li>
                 </ul>
-                <p className="text-xs text-slate-400 mt-4 border-t pt-2">Version <AppVersionDisplay /></p>
+                <p className="text-xs text-app-muted mt-4 border-t pt-2">Version <AppVersionDisplay /></p>
             </div>
         ),
         visual: (
             <MockWindow title="About">
-                <div className="flex flex-col items-center justify-center h-32 text-center bg-slate-50/50">
-                    <div className="w-12 h-12 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-2xl font-bold mb-2 shadow-lg transform -rotate-3">
+                <div className="flex flex-col items-center justify-center h-32 text-center bg-app-bg/50">
+                    <div className="w-12 h-12 bg-ds-primary rounded-lg flex items-center justify-center text-white text-2xl font-bold mb-2 shadow-lg transform -rotate-3">
                         PBP
                     </div>
-                    <div className="font-bold text-slate-800 text-sm">{APP_NAME}</div>
-                    <div className="text-[9px] text-slate-500 font-mono bg-slate-200 px-2 py-0.5 rounded mt-1">v<AppVersionDisplay /></div>
+                    <div className="font-bold text-app-text text-sm">{APP_NAME}</div>
+                    <div className="text-[9px] text-app-muted font-mono bg-app-surface-2 px-2 py-0.5 rounded mt-1">v<AppVersionDisplay /></div>
                 </div>
             </MockWindow>
         )
@@ -95,7 +95,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Getting Started',
         keywords: ['navigation', 'sidebar', 'menu', 'interface', 'layout', 'tabs'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Learn how to navigate the application efficiently.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Sidebar:</strong> Desktop navigation is on the left. Click any module to switch pages.</li>
@@ -115,7 +115,7 @@ const HELP_TOPICS: HelpTopic[] = [
                         <MockButton label="Rental" variant="secondary" className="flex-1" />
                         <MockButton label="Project" variant="secondary" className="flex-1" />
                     </div>
-                    <div className="text-[9px] text-slate-500 text-center">Sidebar Navigation</div>
+                    <div className="text-[9px] text-app-muted text-center">Sidebar Navigation</div>
                 </div>
             </MockWindow>
         )
@@ -126,7 +126,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Getting Started',
         keywords: ['setup', 'initialize', 'first time', 'configuration', 'accounts', 'categories'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Follow these steps to get started:</p>
                 <ol className="list-decimal list-inside space-y-2 pl-2">
                     <li><strong>Login:</strong> Use your credentials. Contact admin if you need an account.</li>
@@ -158,7 +158,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'General Finance',
         keywords: ['transactions', 'ledger', 'income', 'expense', 'double entry', 'journal'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>The General Ledger is the core of your financial tracking. It records all income and expense transactions.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Recording Transactions:</strong> Click "New Transaction" and select Income or Expense. Choose account, category, date, amount, and description.</li>
@@ -175,7 +175,7 @@ const HELP_TOPICS: HelpTopic[] = [
                 <div className="space-y-2">
                     <MockButton label="Income" variant="primary" className="w-full" />
                     <MockButton label="Expense" variant="secondary" className="w-full" />
-                    <div className="text-[9px] text-slate-500 text-center">Transaction Types</div>
+                    <div className="text-[9px] text-app-muted text-center">Transaction Types</div>
                 </div>
             </MockWindow>
         )
@@ -186,7 +186,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'General Finance',
         keywords: ['accounts', 'bank', 'cash', 'credit card', 'balance', 'account types'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Accounts represent your financial institutions and cash sources.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Account Types:</strong> Bank (checking/savings), Cash, Credit Card, Equity, Liability, Asset. Bank and Cash accounts are included in Total Balance KPI.</li>
@@ -214,7 +214,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'General Finance',
         keywords: ['categories', 'budget', 'planning', 'income', 'expense', 'classification'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Categories organize transactions, and budgets help plan and track spending.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Categories:</strong> Settings &gt; Categories. Categories must be Income or Expense type. Common examples: "Rental Income", "Salaries", "Office Rent".</li>
@@ -242,7 +242,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'General Finance',
         keywords: ['loans', 'borrowing', 'lending', 'principal', 'interest', 'repayment'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Track loans you've given or received with detailed repayment tracking.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Loans:</strong> Loan Manager page. Click "New Loan" and select "Given" (you lent) or "Received" (you borrowed).</li>
@@ -258,7 +258,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <MockWindow title="Loan Manager">
                 <div className="space-y-2">
                     <MockButton label="New Loan" variant="primary" className="w-full" />
-                    <div className="text-[9px] text-slate-500 text-center">Track Borrowing & Lending</div>
+                    <div className="text-[9px] text-app-muted text-center">Track Borrowing & Lending</div>
                 </div>
             </MockWindow>
         )
@@ -271,7 +271,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Rental Management',
         keywords: ['rental', 'agreement', 'lease', 'tenant', 'property', 'rent', 'deposit'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Manage tenant leases with automated invoicing and payment tracking.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Agreements:</strong> Rental Management &gt; Agreements tab &gt; New Agreement. Select tenant, property/unit, set rent amount, start/end dates, and security deposit.</li>
@@ -300,7 +300,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Rental Management',
         keywords: ['rental invoice', 'tenant payment', 'rent collection', 'invoice payment', 'recurring'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Track rent collection and tenant payments efficiently.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Invoice Types:</strong> Rental invoices include monthly rent, security deposits, and one-time charges.</li>
@@ -329,7 +329,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Rental Management',
         keywords: ['owner payout', 'owner income', 'distribution', 'property owner', 'payout calculation'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Calculate and distribute rental income to property owners.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Owner Setup:</strong> Properties must have an owner assigned (Contact type: Owner). Set owner percentage if co-owned.</li>
@@ -358,7 +358,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Rental Management',
         keywords: ['properties', 'buildings', 'units', 'property setup', 'building management'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Organize your rental portfolio hierarchically.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Structure:</strong> Buildings contain Properties, Properties contain Units. Units are rented to tenants.</li>
@@ -388,7 +388,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Rental Management',
         keywords: ['broker', 'commission', 'broker fee', 'payout', 'commission tracking'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Track and pay broker commissions for rental agreements.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Broker Assignment:</strong> Assign broker to rental agreements when creating them. Enter broker fee amount.</li>
@@ -419,7 +419,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Project Management',
         keywords: ['projects', 'units', 'project setup', 'construction', 'development'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Organize construction or development projects with unit tracking.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Projects:</strong> Project Management &gt; Projects tab &gt; New Project. Enter name, description, status, and color code.</li>
@@ -449,7 +449,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Project Management',
         keywords: ['project agreement', 'installment', 'down payment', 'sale', 'client', 'payment plan'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Track unit sales with flexible installment payment plans.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Agreements:</strong> Project Management &gt; Agreements tab &gt; New Agreement. Select client, project, unit(s), and selling price.</li>
@@ -480,7 +480,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Project Management',
         keywords: ['bills', 'vendor bills', 'expenses', 'project expenses', 'bill payment'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Manage project-related bills and vendor payments efficiently.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Creating Bills:</strong> Bills tab &gt; New Bill. Enter vendor, amount, date, description, category, and link to project.</li>
@@ -509,7 +509,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Project Management',
         keywords: ['pm cost', 'project management fee', 'pm percentage', 'cost allocation'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Automatically calculate and track Project Management fees based on project expenses.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>PM Configuration:</strong> Set PM fee percentage per project (e.g., 5% of expenses). Configure in project settings.</li>
@@ -539,7 +539,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Project Management',
         keywords: ['investor', 'equity', 'profit', 'distribution', 'capital', 'dividend'],
         content: (
-            <div className="space-y-3 text-slate-600 text-sm">
+            <div className="space-y-3 text-app-muted text-sm">
                 <p>Track investor capital and distribute profits to equity holders.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Equity Accounts:</strong> Create Equity accounts (Account Type: Equity) for each investor. These represent capital contributed.</li>
@@ -569,7 +569,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['dashboard', 'kpi', 'key performance indicator', 'metrics', 'analytics'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Monitor your business performance with real-time KPIs and visual analytics.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>KPI Cards:</strong> Dashboard displays key metrics: Total Balance, Net Income, Accounts Receivable, Accounts Payable, etc.</li>
@@ -598,7 +598,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['reports', 'analytics', 'financial reports', 'ledger reports', 'analysis'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Access comprehensive reports for all aspects of your business.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Rental Reports:</strong> Building Analysis, Property Status, Owner Rental Income, Owner Rental Income Summary, Tenant Ledger, Vendor Ledger, Broker Fees, Service Charges, Security Deposit, Visual Layout.</li>
@@ -627,7 +627,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['import', 'export', 'excel', 'backup'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Import data from Excel or export for backup and analysis.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Supported Data:</strong> Import Contacts, Transactions, Invoices, Bills, Projects, Properties, and more.</li>
@@ -643,7 +643,7 @@ const HELP_TOPICS: HelpTopic[] = [
             <MockWindow title="Import Wizard">
                 <div className="space-y-2">
                     <MockButton label="Upload Excel File" variant="primary" className="w-full" />
-                    <div className="text-[9px] text-slate-500 text-center">Map Columns → Review → Import</div>
+                    <div className="text-[9px] text-app-muted text-center">Map Columns → Review → Import</div>
                 </div>
             </MockWindow>
         )
@@ -654,7 +654,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['settings', 'configuration', 'customization', 'print settings', 'whatsapp', 'branding'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Configure application settings and customize branding.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Print Settings:</strong> Configure Company Name, Logo (upload image), Address, Phone, Email. Appears on all invoices and reports.</li>
@@ -683,7 +683,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['mobile', 'pwa', 'progressive web app'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Use the app on mobile devices and install as a Progressive Web App.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>PWA Installation:</strong> Install app on mobile as Progressive Web App for app-like experience. Browser will prompt or use install option.</li>
@@ -696,10 +696,10 @@ const HELP_TOPICS: HelpTopic[] = [
         visual: (
             <MockWindow title="Mobile App">
                 <div className="space-y-2">
-                    <div className="w-full h-24 bg-slate-200 rounded flex items-center justify-center text-[8px] text-slate-500">
+                    <div className="w-full h-24 bg-app-surface-2 rounded flex items-center justify-center text-[8px] text-app-muted">
                         Mobile View
                     </div>
-                    <div className="text-[9px] text-slate-500 text-center">Optimized for Mobile</div>
+                    <div className="text-[9px] text-app-muted text-center">Optimized for Mobile</div>
                 </div>
             </MockWindow>
         )
@@ -710,7 +710,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['vendors', 'contacts', 'vendor directory', 'contact management', 'suppliers'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Centralized management of all business contacts.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Contact Types:</strong> Vendor, Tenant, Owner, Staff, Broker, Client, Other. Type affects how contact appears in different modules.</li>
@@ -739,7 +739,7 @@ const HELP_TOPICS: HelpTopic[] = [
         category: 'Advanced Tools',
         keywords: ['budget', 'budget planner', 'planning'],
         content: (
-            <div className="space-y-3 text-sm text-slate-600">
+            <div className="space-y-3 text-sm text-app-muted">
                 <p>Plan budgets to stay organized.</p>
                 <ul className="list-disc list-inside space-y-1 pl-2">
                     <li><strong>Budget Planning:</strong> Budget Planner page. Set monthly or annual budgets per category. System compares actual spending vs. budget.</li>
@@ -788,9 +788,9 @@ const HelpSection: React.FC = () => {
 
     return (
         <div className="space-y-8">
-            <section className="rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 sm:p-6">
-                <h3 className="text-lg font-bold text-slate-800 mb-1">Guided product tours</h3>
-                <p className="text-sm text-slate-600 mb-4">Walk through each module with step-by-step highlights. Progress saves automatically.</p>
+            <section className="rounded-xl border border-ds-primary/30 bg-app-highlight/40 p-4 sm:p-6">
+                <h3 className="text-lg font-bold text-app-text mb-1">Guided product tours</h3>
+                <p className="text-sm text-app-muted mb-4">Walk through each module with step-by-step highlights. Progress saves automatically.</p>
                 <ProductTourLauncher />
             </section>
 
@@ -801,21 +801,21 @@ const HelpSection: React.FC = () => {
                     <select
                         value={activeCategory}
                         onChange={(e) => setActiveCategory(e.target.value as any)}
-                        className="w-full p-2 border rounded-lg bg-slate-50 text-slate-700 font-medium"
+                        className="w-full p-2 border rounded-lg bg-app-bg text-app-text font-medium"
                         aria-label="Help category"
                     >
                         {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
                 </div>
                 <div className="hidden lg:block space-y-1">
-                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 px-2">Categories</h3>
+                    <h3 className="text-xs font-bold text-app-muted uppercase tracking-wider mb-2 px-2">Categories</h3>
                     {categories.map(cat => (
                         <button
                             key={cat}
                             onClick={() => setActiveCategory(cat)}
                             className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeCategory === cat
-                                    ? 'bg-indigo-50 text-indigo-700'
-                                    : 'text-slate-600 hover:bg-slate-50'
+                                    ? 'bg-app-highlight text-ds-primary'
+                                    : 'text-app-muted hover:bg-app-bg'
                                 }`}
                         >
                             {cat}
@@ -827,9 +827,9 @@ const HelpSection: React.FC = () => {
             {/* Main Content */}
             <div className="flex-grow flex flex-col">
                 {/* Search Header */}
-                <div className="sticky top-0 bg-white/95 backdrop-blur-sm z-10 pb-4 border-b border-slate-100 mb-4">
+                <div className="sticky top-0 bg-app-card/95 backdrop-blur-sm z-10 pb-4 border-b border-app-border mb-4">
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <div className="w-5 h-5">{ICONS.search}</div>
                         </div>
                         <Input
@@ -845,32 +845,32 @@ const HelpSection: React.FC = () => {
                 <div className="space-y-4">
                     {filteredTopics.length > 0 ? (
                         filteredTopics.map(topic => (
-                            <div key={topic.id} className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden scroll-mt-24" id={topic.id}>
+                            <div key={topic.id} className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden scroll-mt-24" id={topic.id}>
                                 <button
                                     onClick={() => handleTopicClick(topic.id)}
-                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-slate-50 transition-colors"
+                                    className="w-full flex items-center justify-between p-4 text-left hover:bg-app-bg transition-colors"
                                 >
                                     <div className="flex items-center gap-3">
-                                        <div className={`p-2 rounded-lg ${expandedTopicId === topic.id ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-100 text-slate-500'}`}>
+                                        <div className={`p-2 rounded-lg ${expandedTopicId === topic.id ? 'bg-app-highlight text-ds-primary' : 'bg-app-surface-2 text-app-muted'}`}>
                                             <div className="w-5 h-5">{ICONS.fileText}</div>
                                         </div>
                                         <div>
-                                            <h3 className="font-bold text-slate-800">{topic.title}</h3>
+                                            <h3 className="font-bold text-app-text">{topic.title}</h3>
                                             <div className="flex gap-2 mt-1">
-                                                <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{topic.category}</span>
+                                                <span className="text-xs px-2 py-0.5 bg-app-surface-2 text-app-muted rounded-full">{topic.category}</span>
                                             </div>
                                         </div>
                                     </div>
-                                    <div className={`text-slate-400 transition-transform duration-200 ${expandedTopicId === topic.id ? 'rotate-180' : ''}`}>
+                                    <div className={`text-app-muted transition-transform duration-200 ${expandedTopicId === topic.id ? 'rotate-180' : ''}`}>
                                         {ICONS.chevronDown}
                                     </div>
                                 </button>
 
                                 {expandedTopicId === topic.id && (
-                                    <div className="p-4 sm:p-6 border-t border-slate-100 bg-slate-50/30 flex flex-col lg:flex-row gap-6 animate-fade-in-fast">
+                                    <div className="p-4 sm:p-6 border-t border-app-border bg-app-bg/30 flex flex-col lg:flex-row gap-6 animate-fade-in-fast">
                                         <div className="flex-1 order-2 lg:order-1">
-                                            <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                                                <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">i</span>
+                                            <h4 className="font-semibold text-app-text mb-3 flex items-center gap-2">
+                                                <span className="w-6 h-6 rounded-full bg-ds-primary text-white flex items-center justify-center text-xs">i</span>
                                                 Guide
                                             </h4>
                                             {topic.content}
@@ -885,7 +885,7 @@ const HelpSection: React.FC = () => {
                             </div>
                         ))
                     ) : (
-                        <div className="text-center py-12 text-slate-500">
+                        <div className="text-center py-12 text-app-muted">
                             <p className="text-lg font-medium">No topics found.</p>
                             <p className="text-sm">Try adjusting your search or category.</p>
                         </div>

@@ -94,7 +94,7 @@ export const FundAvailabilityPage: React.FC = () => {
     }, [rows, selectedIds]);
 
     return (
-        <div className="flex flex-col h-full min-h-0 overflow-hidden bg-slate-50/30 dark:bg-slate-950/20">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden bg-app-bg">
             <style>{STANDARD_PRINT_STYLES}</style>
 
             <div ref={printRef} className="hidden print:block printable_area px-4 py-4">
@@ -127,8 +127,8 @@ export const FundAvailabilityPage: React.FC = () => {
             <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 no-print">
                 <header className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div>
-                        <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Investor Fund Availability</h1>
-                        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400 max-w-3xl">
+                        <h1 className="text-2xl font-bold tracking-tight text-app-text">Investor Fund Availability</h1>
+                        <p className="mt-1 text-ds-body text-app-muted max-w-3xl">
                             Track distributable funds, investor equity, liquidity, withdrawals, and payout-safe balances across projects. Withdrawals must clear: cash − operating reserve − payables.
                         </p>
                     </div>
@@ -168,31 +168,31 @@ export const FundAvailabilityPage: React.FC = () => {
                 <FundAvailabilityFilterBar state={state} endDate={endDate} onEndDateChange={setEndDate} allRows={summaryQ.data?.rows ?? []} canManageFilters={perm.viewFundAvailability} />
 
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-                    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 p-4 shadow-sm">
-                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Equity vs available cash</h3>
+                    <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                        <h3 className="text-sm font-semibold text-app-text mb-2">Equity vs available cash</h3>
                         <EquityVsCashChart rows={rows} />
                     </section>
-                    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 p-4 shadow-sm">
-                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Portfolio distributable trend</h3>
+                    <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                        <h3 className="text-sm font-semibold text-app-text mb-2">Portfolio distributable trend</h3>
                         <MonthlyDistributableChart points={distTrendQ.data ?? []} />
                     </section>
-                    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 p-4 shadow-sm">
-                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Cash flow trend (all projects)</h3>
+                    <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                        <h3 className="text-sm font-semibold text-app-text mb-2">Cash flow trend (all projects)</h3>
                         <CashFlowTrendChart points={cfTrendQ.data ?? []} />
                     </section>
-                    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 p-4 shadow-sm">
-                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Liquidity health mix</h3>
+                    <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                        <h3 className="text-sm font-semibold text-app-text mb-2">Liquidity health mix</h3>
                         <LiquidityHealthDonut rows={rows} />
                     </section>
-                    <section className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 p-4 shadow-sm xl:col-span-2">
-                        <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Withdrawal history (portfolio)</h3>
+                    <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card xl:col-span-2">
+                        <h3 className="text-sm font-semibold text-app-text mb-2">Withdrawal history (portfolio)</h3>
                         <WithdrawalHistoryChart points={wTrendQ.data ?? []} />
                     </section>
                 </div>
 
-                <section className="rounded-2xl border border-indigo-200/70 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 p-4">
+                <section className="rounded-2xl border border-app-border bg-app-highlight/40 p-4">
                     <div className="flex flex-col md:flex-row md:items-end gap-3">
-                        <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-200 font-semibold text-sm">
+                        <div className="flex items-center gap-2 text-ds-primary font-semibold text-sm">
                             <ShieldCheck className="h-5 w-5" />
                             Withdrawal validation
                         </div>

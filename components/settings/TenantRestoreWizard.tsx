@@ -152,7 +152,7 @@ const TenantRestoreWizard: React.FC = () => {
   if (isLocalOnlyMode()) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <div className="max-w-2xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
           Tenant restore is available in LAN / server mode. Use company backup for local SQLite installs.
         </div>
       </div>
@@ -162,7 +162,7 @@ const TenantRestoreWizard: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
           You need backup permissions to use tenant restore.
         </div>
       </div>
@@ -173,11 +173,11 @@ const TenantRestoreWizard: React.FC = () => {
     <div className="p-4 sm:p-6">
       <div className="max-w-3xl mx-auto space-y-5">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
-            <Building2 className="w-5 h-5 text-indigo-600" />
+          <h3 className="text-lg font-semibold text-app-text flex items-center gap-2">
+            <Building2 className="w-5 h-5 text-ds-primary" />
             Tenant Restore Wizard
           </h3>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-app-muted mt-0.5">
             Restore customers, vendors, accounts, transactions, invoices, projects, bills, and payroll
             for one organization — without replacing the entire database.
           </p>
@@ -187,7 +187,7 @@ const TenantRestoreWizard: React.FC = () => {
           {(['upload', 'options', 'preview', 'done'] as WizardStep[]).map((s, i) => (
             <span
               key={s}
-              className={`px-2 py-1 rounded ${step === s ? 'bg-indigo-100 text-indigo-800 font-medium' : 'bg-slate-100 text-slate-500'}`}
+              className={`px-2 py-1 rounded ${step === s ? 'bg-app-highlight text-app-text font-medium' : 'bg-app-surface-2 text-app-muted'}`}
             >
               {i + 1}. {s === 'upload' ? 'Upload' : s === 'options' ? 'Options' : s === 'preview' ? 'Preview' : 'Done'}
             </span>
@@ -195,10 +195,10 @@ const TenantRestoreWizard: React.FC = () => {
         </div>
 
         {step === 'upload' && (
-          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
-            <Upload className="w-10 h-10 mx-auto text-slate-400 mb-3" />
-            <p className="text-sm text-slate-600 mb-4">Upload a tenant backup file (.json.gz)</p>
-            <label className="inline-flex cursor-pointer items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700">
+          <div className="rounded-xl border border-dashed border-app-border bg-app-bg p-8 text-center">
+            <Upload className="w-10 h-10 mx-auto text-app-muted mb-3" />
+            <p className="text-sm text-app-muted mb-4">Upload a tenant backup file (.json.gz)</p>
+            <label className="inline-flex cursor-pointer items-center gap-2 px-4 py-2 bg-ds-primary text-white rounded-lg text-sm font-medium hover:bg-ds-primary-hover">
               Choose file
               <input
                 type="file"
@@ -211,8 +211,8 @@ const TenantRestoreWizard: React.FC = () => {
         )}
 
         {step === 'options' && file && (
-          <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-            <p className="text-sm text-slate-600">
+          <div className="space-y-4 rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
+            <p className="text-sm text-app-muted">
               File: <strong>{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)
             </p>
 
@@ -257,29 +257,29 @@ const TenantRestoreWizard: React.FC = () => {
             <div
               className={`rounded-lg p-4 border ${preview.canProceed ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}
             >
-              <p className="font-medium text-slate-800 flex items-center gap-2">
+              <p className="font-medium text-app-text flex items-center gap-2">
                 {preview.canProceed ? (
                   <CheckCircle className="w-5 h-5 text-green-600" />
                 ) : (
-                  <AlertTriangle className="w-5 h-5 text-amber-600" />
+                  <AlertTriangle className="w-5 h-5 text-ds-warning" />
                 )}
                 Validation {preview.canProceed ? 'passed' : 'has blocking issues'}
               </p>
-              <p className="text-sm text-slate-600 mt-1">
+              <p className="text-sm text-app-muted mt-1">
                 Source: {preview.sourceTenantName ?? preview.sourceTenantId} · Exported{' '}
                 {new Date(preview.exportedAt).toLocaleString()} · {preview.totalRecords} records
               </p>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-app-muted">
                 Target: {preview.targetTenantName ?? preview.targetTenantId} ({preview.mode.replace('_', ' ')})
               </p>
             </div>
 
             {preview.issues.length > 0 && (
-              <div className="rounded-lg border border-slate-200 overflow-hidden">
-                <div className="px-3 py-2 bg-slate-50 border-b text-xs font-medium text-slate-600 uppercase">
+              <div className="rounded-lg border border-app-border overflow-hidden">
+                <div className="px-3 py-2 bg-app-bg border-b text-xs font-medium text-app-muted uppercase">
                   Validation report
                 </div>
-                <ul className="divide-y divide-slate-100 max-h-48 overflow-y-auto text-sm">
+                <ul className="divide-y divide-app-border max-h-48 overflow-y-auto text-sm">
                   {preview.issues.map((issue, idx) => (
                     <li key={`${issue.code}-${idx}`} className="px-3 py-2 flex gap-2">
                       {issue.severity === 'error' ? (
@@ -289,20 +289,20 @@ const TenantRestoreWizard: React.FC = () => {
                       ) : (
                         <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
                       )}
-                      <span className="text-slate-700">{issue.message}</span>
+                      <span className="text-app-text">{issue.message}</span>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
 
-            <div className="rounded-lg border border-slate-200 overflow-hidden">
-              <div className="px-3 py-2 bg-slate-50 border-b text-xs font-medium text-slate-600 uppercase">
+            <div className="rounded-lg border border-app-border overflow-hidden">
+              <div className="px-3 py-2 bg-app-bg border-b text-xs font-medium text-app-muted uppercase">
                 Restore preview
               </div>
               <table className="min-w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 text-left text-slate-500">
+                  <tr className="border-b border-app-border text-left text-app-muted">
                     <th className="px-3 py-2">Data</th>
                     <th className="px-3 py-2">Total</th>
                     <th className="px-3 py-2">Insert</th>
@@ -311,14 +311,14 @@ const TenantRestoreWizard: React.FC = () => {
                     <th className="px-3 py-2">Conflicts</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-50">
+                <tbody className="divide-y divide-app-border">
                   {preview.tableSummaries.map((row) => (
                     <tr key={row.table}>
                       <td className="px-3 py-2">{TABLE_LABELS[row.table] ?? row.table}</td>
                       <td className="px-3 py-2">{row.total}</td>
                       <td className="px-3 py-2 text-green-700">{row.toInsert}</td>
                       <td className="px-3 py-2 text-blue-700">{row.toUpdate}</td>
-                      <td className="px-3 py-2 text-slate-500">{row.toSkip}</td>
+                      <td className="px-3 py-2 text-app-muted">{row.toSkip}</td>
                       <td className="px-3 py-2 text-red-700">{row.crossTenantConflicts || '—'}</td>
                     </tr>
                   ))}

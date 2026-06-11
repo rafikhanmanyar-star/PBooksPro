@@ -67,7 +67,7 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
     ).map(([id, name]) => ({ id, name }));
 
     return (
-        <div className="sticky top-0 z-30 -mx-1 px-1 py-3 mb-2 bg-slate-50/95 dark:bg-slate-950/90 backdrop-blur border-b border-slate-200/80 dark:border-slate-800">
+        <div className="sticky top-0 z-30 -mx-1 px-1 py-3 mb-2 bg-app-bg/95 backdrop-blur border-b border-app-border">
             <div className="flex flex-wrap items-end gap-2">
                 <div className="min-w-[160px] flex-1">
                     <Input
@@ -131,10 +131,10 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
                 </div>
             </div>
 
-            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-slate-200/80 dark:border-slate-800 pt-3">
+            <div className="mt-3 flex flex-wrap items-end gap-3 border-t border-app-border pt-3">
                 <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Reserve policy</span>
-                    <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-app-muted">Reserve policy</span>
+                    <label className="flex items-center gap-1 text-xs text-app-text">
                         <input
                             type="radio"
                             checked={reservePolicy.mode === 'percent'}
@@ -142,7 +142,7 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
                         />
                         %
                     </label>
-                    <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-300">
+                    <label className="flex items-center gap-1 text-xs text-app-text">
                         <input type="radio" checked={reservePolicy.mode === 'fixed'} onChange={() => setReservePolicy({ mode: 'fixed', amount: 0 })} />
                         Fixed
                     </label>
@@ -177,10 +177,10 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
                 </div>
                 {savedPresets.length > 0 && (
                     <div className="flex items-end gap-2">
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                        <label className="text-xs font-medium text-app-muted">
                             Presets
                             <select
-                                className="mt-1 block w-44 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm py-2 px-2"
+                                className="ds-input-field mt-1 block w-44 text-sm py-2 px-2"
                                 value=""
                                 onChange={(e) => {
                                     const v = e.target.value;

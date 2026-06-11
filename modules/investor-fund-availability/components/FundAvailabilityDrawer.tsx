@@ -10,12 +10,12 @@ import { formatCompactMoney, formatFullMoney, formatRatio } from '../utils/finan
 function HealthBadge({ label }: { label: string }) {
     const c =
         label === 'Healthy'
-            ? 'text-emerald-600 dark:text-emerald-400'
+            ? 'text-ds-success'
             : label === 'Warning'
-              ? 'text-amber-600 dark:text-amber-400'
+              ? 'text-ds-warning'
               : label === 'Blocked'
-                ? 'text-red-600 dark:text-red-400'
-                : 'text-rose-600 dark:text-rose-400';
+                ? 'text-ds-danger'
+                : 'text-ds-danger';
     return <span className={`font-semibold ${c}`}>{label}</span>;
 }
 
@@ -43,25 +43,25 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                         animate={{ x: 0 }}
                         exit={{ x: '100%' }}
                         transition={{ type: 'spring', damping: 28, stiffness: 320 }}
-                        className="absolute top-0 right-0 h-full w-full max-w-xl bg-white dark:bg-slate-950 shadow-2xl border-l border-slate-200 dark:border-slate-800 flex flex-col"
+                        className="absolute top-0 right-0 h-full w-full max-w-xl bg-app-card shadow-2xl border-l border-app-border flex flex-col text-app-text"
                         onClick={(e) => e.stopPropagation()}
                     >
-                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-app-border shrink-0">
                             <div>
-                                <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Fund availability</h2>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">{d?.projectName ?? 'Loading…'}</p>
+                                <h2 className="text-lg font-bold text-app-text">Fund availability</h2>
+                                <p className="text-xs text-app-muted">{d?.projectName ?? 'Loading…'}</p>
                             </div>
-                            <button type="button" className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800" onClick={onClose} aria-label="Close">
+                            <button type="button" className="p-2 rounded-lg hover:bg-app-table-hover text-app-text" onClick={onClose} aria-label="Close">
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
                         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-6 text-sm">
-                            {q.isLoading && <p className="text-slate-500">Loading analytics…</p>}
-                            {q.isError && <p className="text-rose-600">Could not load project details.</p>}
+                            {q.isLoading && <p className="text-app-muted">Loading analytics…</p>}
+                            {q.isError && <p className="text-ds-danger">Could not load project details.</p>}
                             {d && (
                                 <>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Project summary</h3>
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Project summary</h3>
                                         <div className="grid grid-cols-2 gap-2">
                                             <M label="Status" v={d.projectStatus} />
                                             <M label="Completion" v={`${d.completionPct.toFixed(1)}%`} />
@@ -73,8 +73,8 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                                         </div>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Equity breakdown</h3>
-                                        <ul className="space-y-1 text-slate-700 dark:text-slate-300">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Equity breakdown</h3>
+                                        <ul className="space-y-1 text-app-text">
                                             <R label="Capital (deposits)" n={d.equity.capital} />
                                             <R label="Allocated profit" n={d.equity.allocatedProfit} />
                                             <R label="Withdrawals" n={d.equity.withdrawals} />
@@ -82,8 +82,8 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                                         </ul>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Cash & liabilities</h3>
-                                        <ul className="space-y-1 text-slate-700 dark:text-slate-300">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Cash & liabilities</h3>
+                                        <ul className="space-y-1 text-app-text">
                                             <R label="Cash inflow (bank, all-time)" n={d.cashFlow.cashInflow} />
                                             <R label="Cash outflow (bank, all-time)" n={d.cashFlow.cashOutflow} />
                                             <R label="Available cash (running balances)" n={d.cashFlow.availableCash} bold />
@@ -93,22 +93,22 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                                         </ul>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Realized revenue (cash) vs expense</h3>
-                                        <ul className="space-y-1 text-slate-700 dark:text-slate-300">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Realized revenue (cash) vs expense</h3>
+                                        <ul className="space-y-1 text-app-text">
                                             <R label="Invoice payments received" n={d.realizedRevenueCash} />
                                             <R label="Accrued total expense (P/L)" n={d.totalExpense} />
                                             <R label="Cash-based profit (received − expense)" n={d.realizedProfitCash} bold />
                                         </ul>
-                                        <p className="text-[11px] text-slate-500 mt-2">
+                                        <p className="text-[11px] text-app-muted mt-2">
                                             Accrued receivables are intentionally excluded from “realized revenue” here — only cleared customer payments count.
                                         </p>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Distribution history</h3>
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Distribution history</h3>
                                         <div className="max-h-40 overflow-y-auto space-y-1">
-                                            {d.distributionHistory.length === 0 && <p className="text-slate-500">No profit allocations recorded.</p>}
+                                            {d.distributionHistory.length === 0 && <p className="text-app-muted">No profit allocations recorded.</p>}
                                             {d.distributionHistory.slice(-25).map((x) => (
-                                                <div key={x.id} className="flex justify-between gap-2 text-slate-700 dark:text-slate-300 text-xs">
+                                                <div key={x.id} className="flex justify-between gap-2 text-app-text text-xs">
                                                     <span className="truncate">{x.date} — {x.label}</span>
                                                     <span className="tabular-nums shrink-0">{formatCompactMoney(x.amount)}</span>
                                                 </div>
@@ -116,11 +116,11 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                                         </div>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Withdrawal history</h3>
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Withdrawal history</h3>
                                         <div className="max-h-40 overflow-y-auto space-y-1">
-                                            {d.withdrawalHistory.length === 0 && <p className="text-slate-500">No tagged withdrawals.</p>}
+                                            {d.withdrawalHistory.length === 0 && <p className="text-app-muted">No tagged withdrawals.</p>}
                                             {d.withdrawalHistory.slice(0, 25).map((x) => (
-                                                <div key={x.id} className="flex justify-between gap-2 text-slate-700 dark:text-slate-300 text-xs">
+                                                <div key={x.id} className="flex justify-between gap-2 text-app-text text-xs">
                                                     <span className="truncate">
                                                         {x.date} — {x.investorName}
                                                     </span>
@@ -130,8 +130,8 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
                                         </div>
                                     </section>
                                     <section>
-                                        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Liquidity analytics</h3>
-                                        <ul className="space-y-1 text-slate-700 dark:text-slate-300">
+                                        <h3 className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Liquidity analytics</h3>
+                                        <ul className="space-y-1 text-app-text">
                                             <li className="flex justify-between gap-2">
                                                 <span>Liquidity ratio (distributable / equity)</span>
                                                 <span>{formatRatio(d.analytics.liquidityRatio)}</span>
@@ -159,9 +159,9 @@ export const FundAvailabilityDrawer: React.FC<FundAvailabilityDrawerProps> = ({ 
 
 function M({ label, v }: { label: string; v: React.ReactNode }) {
     return (
-        <div className="rounded-lg border border-slate-200/80 dark:border-slate-700/80 p-2 bg-slate-50/50 dark:bg-slate-900/40">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">{label}</div>
-            <div className="text-sm font-semibold text-slate-900 dark:text-slate-50 mt-0.5 break-words">{v}</div>
+        <div className="rounded-lg border border-app-border p-2 bg-app-surface-2">
+            <div className="text-[10px] uppercase tracking-wide text-app-muted">{label}</div>
+            <div className="text-sm font-semibold text-app-text mt-0.5 break-words">{v}</div>
         </div>
     );
 }
@@ -170,7 +170,7 @@ function R({ label, n, bold, plain }: { label: string; n: number; bold?: boolean
     return (
         <li className="flex justify-between gap-2">
             <span>{label}</span>
-            <span className={`tabular-nums ${bold ? 'font-bold text-indigo-700 dark:text-indigo-300' : ''}`}>
+            <span className={`tabular-nums ${bold ? 'font-bold text-ds-primary' : ''}`}>
                 {plain ? String(n) : formatFullMoney(n)}
             </span>
         </li>

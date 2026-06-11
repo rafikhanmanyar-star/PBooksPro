@@ -350,8 +350,8 @@ const ContactsManagement: React.FC = () => {
             text: config.color === 'blue' ? 'text-blue-700' :
                 config.color === 'emerald' ? 'text-emerald-700' :
                     config.color === 'orange' ? 'text-orange-700' :
-                        config.color === 'amber' ? 'text-amber-700' :
-                            config.color === 'rose' ? 'text-rose-700' :
+                        config.color === 'amber' ? 'text-ds-warning' :
+                            config.color === 'rose' ? 'text-ds-danger' :
                                 'text-purple-700'
         };
     };
@@ -361,9 +361,9 @@ const ContactsManagement: React.FC = () => {
     return (
         <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
             {/* Contact Type Filter Tabs - Top Level (for both form and grid) */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-shrink-0">
-                <div className="flex items-center justify-between p-4 border-b border-slate-200 gap-2">
-                    <div className="flex overflow-x-auto scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent flex-1 min-w-0">
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex-shrink-0">
+                <div className="flex items-center justify-between p-4 border-b border-app-border gap-2">
+                    <div className="flex overflow-x-auto scrollbar-thin scrollbar-thumb-app-border scrollbar-track-transparent flex-1 min-w-0">
                         <button
                             onClick={() => {
                                 setSelectedContactTypeFilter(null);
@@ -372,12 +372,12 @@ const ContactsManagement: React.FC = () => {
                             className={`
                                 flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
                                 ${selectedContactTypeFilter === null
-                                    ? 'bg-indigo-50 text-indigo-700 border-2 border-indigo-500'
-                                    : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                    ? 'bg-app-highlight text-ds-primary border-2 border-ds-primary'
+                                    : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
                                 }
                             `}
                         >
-                            <div className={`w-4 h-4 ${selectedContactTypeFilter === null ? 'text-indigo-600' : 'text-slate-400'}`}>
+                            <div className={`w-4 h-4 ${selectedContactTypeFilter === null ? 'text-ds-primary' : 'text-app-muted'}`}>
                                 {ICONS.users}
                             </div>
                             <span>All Contacts</span>
@@ -397,19 +397,19 @@ const ContactsManagement: React.FC = () => {
                                             ? (type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
                                                 type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
                                                     type.color === 'orange' ? 'bg-orange-50 text-orange-700 border-2 border-orange-500' :
-                                                        type.color === 'amber' ? 'bg-amber-50 text-amber-700 border-2 border-amber-500' :
+                                                        type.color === 'amber' ? 'bg-amber-50 text-ds-warning border-2 border-amber-500' :
                                                             'bg-purple-50 text-purple-700 border-2 border-purple-500')
-                                            : 'border-2 border-transparent text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                            : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
                                         }
                                     `}
                                 >
                                     <div className={`w-4 h-4 ${isSelected ? (
                                         type.color === 'blue' ? 'text-blue-600' :
-                                            type.color === 'emerald' ? 'text-emerald-600' :
+                                            type.color === 'emerald' ? 'text-ds-success' :
                                                 type.color === 'orange' ? 'text-orange-600' :
-                                                    type.color === 'amber' ? 'text-amber-600' :
+                                                    type.color === 'amber' ? 'text-ds-warning' :
                                                         'text-purple-600'
-                                    ) : 'text-slate-400'}`}>
+                                    ) : 'text-app-muted'}`}>
                                         {type.icon}
                                     </div>
                                     <span>{type.label}</span>
@@ -431,8 +431,8 @@ const ContactsManagement: React.FC = () => {
                         className={`
                             flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg transition-all
                             ${isFormOpen
-                                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
-                                : 'bg-indigo-100 text-indigo-600 hover:bg-indigo-200'
+                                ? 'bg-ds-primary text-white hover:bg-ds-primary-hover'
+                                : 'bg-app-highlight text-ds-primary hover:bg-app-highlight'
                             }
                         `}
                         title={isFormOpen ? 'Close Form' : 'Add New Contact'}
@@ -446,11 +446,11 @@ const ContactsManagement: React.FC = () => {
 
             {/* Add New Contact Form - Collapsible */}
             {isFormOpen && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex-shrink-0">
+                <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-4 flex-shrink-0">
                     <div className="flex items-center gap-2 mb-3">
                         <div>
-                            <h2 className="text-lg font-bold text-slate-900">Add New Contact</h2>
-                            <p className="text-xs text-slate-500">
+                            <h2 className="text-lg font-bold text-app-text">Add New Contact</h2>
+                            <p className="text-xs text-app-muted">
                                 {selectedContactTypeFilter
                                     ? `Fill in the details for the new ${getTypeConfig(selectedType).label}.`
                                     : 'Fill in the details. Select a contact type from the tabs above if needed.'}
@@ -469,7 +469,7 @@ const ContactsManagement: React.FC = () => {
                                     placeholder="John Doe"
                                     required
                                     autoFocus
-                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                    className="text-sm border-app-border border-2 focus:border-ds-primary"
                                 />
                             </div>
                             <div className="sm:col-span-2 lg:col-span-1">
@@ -479,7 +479,7 @@ const ContactsManagement: React.FC = () => {
                                     value={email}
                                     onChange={(e) => setEmail(e.target.value)}
                                     placeholder="john@example.com (optional)"
-                                    className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                    className="text-sm border-app-border border-2 focus:border-ds-primary"
                                 />
                             </div>
                             <Input
@@ -487,14 +487,14 @@ const ContactsManagement: React.FC = () => {
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
                                 placeholder="+1 (555) 000-0000"
-                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                className="text-sm border-app-border border-2 focus:border-ds-primary"
                             />
                             <Input
                                 label="Company"
                                 value={company}
                                 onChange={(e) => setCompany(e.target.value)}
                                 placeholder="Company name"
-                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                className="text-sm border-app-border border-2 focus:border-ds-primary"
                             />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -503,7 +503,7 @@ const ContactsManagement: React.FC = () => {
                                 value={address}
                                 onChange={(e) => setAddress(e.target.value)}
                                 placeholder="Street address, City, State"
-                                className="text-sm border-slate-300 border-2 focus:border-indigo-500"
+                                className="text-sm border-app-border border-2 focus:border-ds-primary"
                             />
                             <div className="max-w-md">
                                 <Textarea
@@ -512,7 +512,7 @@ const ContactsManagement: React.FC = () => {
                                     onChange={(e) => setNotes(e.target.value)}
                                     placeholder="Additional notes about this contact..."
                                     rows={1}
-                                    className="text-sm !border-slate-300 !border-2 focus:!border-indigo-500"
+                                    className="text-sm !border-app-border !border-2 focus:!border-ds-primary"
                                 />
                             </div>
                         </div>
@@ -546,23 +546,23 @@ const ContactsManagement: React.FC = () => {
             )}
 
             {/* Data Grid - Full Width */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex-1 min-h-0 flex flex-col">
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex-1 min-h-0 flex flex-col">
                 {/* Search Bar */}
-                <div className="p-4 border-b border-slate-200 flex-shrink-0">
+                <div className="p-4 border-b border-app-border flex-shrink-0">
                     <div className="relative">
                         <Input
                             value={gridSearchQuery}
                             onChange={(e) => setGridSearchQuery(e.target.value)}
                             placeholder="Search contacts..."
-                            className="w-full bg-white border-slate-200 shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg pl-10"
+                            className="w-full bg-app-card border-app-border shadow-ds-card focus:ring-2 focus:ring-ds-primary/20 transition-all rounded-lg pl-10"
                         />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         {gridSearchQuery && (
                             <button
                                 onClick={() => setGridSearchQuery('')}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-app-muted hover:text-app-muted"
                             >
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
@@ -570,9 +570,9 @@ const ContactsManagement: React.FC = () => {
                     </div>
                 </div>
 
-                <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent">
-                    <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-slate-50 sticky top-0 z-10">
+                <div className="overflow-x-auto overflow-y-auto flex-1 min-h-0 scrollbar-thin scrollbar-thumb-app-border scrollbar-track-transparent">
+                    <table className="min-w-full divide-y divide-app-border">
+                        <thead className="bg-app-bg sticky top-0 z-10">
                             <tr>
                                 {[
                                     { key: 'name', label: 'Name' },
@@ -586,15 +586,15 @@ const ContactsManagement: React.FC = () => {
                                 ].map((col) => (
                                     <th
                                         key={col.key}
-                                        className={`px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${col.key === 'actions' || col.key === 'balance' ? 'text-right' : ''
-                                            } ${col.key !== 'actions' ? 'cursor-pointer hover:bg-slate-100' : ''
+                                        className={`px-4 py-2 text-left text-xs font-semibold text-app-muted uppercase tracking-wider ${col.key === 'actions' || col.key === 'balance' ? 'text-right' : ''
+                                            } ${col.key !== 'actions' ? 'cursor-pointer hover:bg-app-surface-2' : ''
                                             }`}
                                         onClick={() => col.key !== 'actions' && handleSort(col.key)}
                                     >
                                         <div className="flex items-center gap-1">
                                             {col.label}
                                             {sortConfig?.key === col.key && (
-                                                <div className="w-3 h-3 text-indigo-600">
+                                                <div className="w-3 h-3 text-ds-primary">
                                                     {sortConfig.direction === 'asc' ? ICONS.arrowUp : ICONS.arrowDown}
                                                 </div>
                                             )}
@@ -603,10 +603,10 @@ const ContactsManagement: React.FC = () => {
                                 ))}
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-50">
+                        <tbody className="bg-app-card divide-y divide-app-border">
                             {gridContacts.length === 0 ? (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-8 text-center text-slate-400">
+                                    <td colSpan={8} className="px-4 py-8 text-center text-app-muted">
                                         {gridSearchQuery
                                             ? 'No contacts found matching your search.'
                                             : 'No contacts found. Add your first contact above!'
@@ -623,39 +623,39 @@ const ContactsManagement: React.FC = () => {
                                     return (
                                         <tr
                                             key={contact.id}
-                                            className="hover:bg-indigo-50/30 transition-colors group"
+                                            className="hover:bg-app-highlight/30 transition-colors group"
                                         >
                                             <td className="px-4 py-2 whitespace-nowrap">
-                                                <div className="font-semibold text-sm text-slate-900">{contact.name}</div>
+                                                <div className="font-semibold text-sm text-app-text">{contact.name}</div>
                                             </td>
                                             <td className="px-4 py-2 whitespace-nowrap">
                                                 <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${badgeColors.bg} ${badgeColors.text}`}>
                                                     {typeConfig.label}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-slate-600">
+                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-app-muted">
                                                 {contact.contactNo || '-'}
                                             </td>
-                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-slate-600">
+                                            <td className="px-4 py-2 whitespace-nowrap text-xs text-app-muted">
                                                 {contact.companyName || '-'}
                                             </td>
-                                            <td className="px-4 py-2 text-xs text-slate-600 max-w-xs truncate">
+                                            <td className="px-4 py-2 text-xs text-app-muted max-w-xs truncate">
                                                 {contact.address || '-'}
                                             </td>
-                                            <td className="px-4 py-2 text-xs text-slate-600">
+                                            <td className="px-4 py-2 text-xs text-app-muted">
                                                 <div className="space-y-0.5">
                                                     {contactEmail && (
-                                                        <div className="text-slate-700 truncate max-w-xs">{contactEmail}</div>
+                                                        <div className="text-app-text truncate max-w-xs">{contactEmail}</div>
                                                     )}
                                                     {notesOnly && (
-                                                        <div className="text-slate-500 text-xs truncate max-w-xs">
+                                                        <div className="text-app-muted text-xs truncate max-w-xs">
                                                             {notesOnly}
                                                         </div>
                                                     )}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2 whitespace-nowrap text-right text-xs font-semibold">
-                                                <span className={(balances.get(contact.id) || 0) >= 0 ? 'text-slate-700' : 'text-rose-600'}>
+                                                <span className={(balances.get(contact.id) || 0) >= 0 ? 'text-app-text' : 'text-ds-danger'}>
                                                     {CURRENCY} {(balances.get(contact.id) || 0).toLocaleString()}
                                                 </span>
                                             </td>
@@ -663,14 +663,14 @@ const ContactsManagement: React.FC = () => {
                                                 <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                     <button
                                                         onClick={() => handleEdit(contact)}
-                                                        className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1 rounded transition-colors"
+                                                        className="text-ds-primary hover:text-app-text bg-app-highlight hover:bg-app-highlight p-1 rounded transition-colors"
                                                         title="Edit"
                                                     >
                                                         <div className="w-3.5 h-3.5">{ICONS.edit}</div>
                                                     </button>
                                                     <button
                                                         onClick={() => handleDelete(contact)}
-                                                        className="text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
+                                                        className="text-ds-danger hover:text-ds-danger bg-rose-50 hover:bg-rose-100 p-1 rounded transition-colors"
                                                         title="Delete"
                                                     >
                                                         <div className="w-3.5 h-3.5">{ICONS.trash}</div>

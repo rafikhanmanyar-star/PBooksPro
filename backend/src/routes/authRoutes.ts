@@ -188,8 +188,8 @@ authRouter.post('/auth/logout', optionalAuthMiddleware, async (req, res) => {
       const client = await pool.connect();
       try {
         const emailRow = await client.query<{ email: string | null }>(
-          `SELECT email FROM users WHERE id = $1 AND tenant_id = $2`,
-          [authed.userId, authed.tenantId]
+          `SELECT email FROM users WHERE id = $1`,
+          [authed.userId]
         );
         await recordLogoutEvent(client, {
           tenantId: authed.tenantId,
@@ -320,16 +320,19 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
     const loginEligible = filterLoginEligibleAccounts(matched);
 
     if (loginEligible.length === 0) {
-      const failClient = await pool.connect();
-      try {
-        await recordLoginEvent(failClient, {
-          tenantId: candidates[0]?.tenantId ?? 'unknown',
-          email: loginIdentifier,
-          status: 'failed',
-          ctx,
-        });
-      } finally {
-        failClient.release();
+      const failTenantId = candidates[0]?.tenantId;
+      if (failTenantId) {
+        const failClient = await pool.connect();
+        try {
+          await recordLoginEvent(failClient, {
+            tenantId: failTenantId,
+            email: loginIdentifier,
+            status: 'failed',
+            ctx,
+          });
+        } finally {
+          failClient.release();
+        }
       }
       sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
       return;
@@ -441,8 +444,8 @@ authRouter.post('/auth/select-company', loginLimiter, optionalAuthMiddleware, as
       account = await userHasTenantAccess(pool, match.userId, companyId);
     } else if (authed.userId && authed.tenantId) {
       const identityRow = await pool.query<{ email: string | null; username: string }>(
-        `SELECT email, username FROM users WHERE id = $1 AND tenant_id = $2`,
-        [authed.userId, authed.tenantId]
+        `SELECT email, username FROM users WHERE id = $1`,
+        [authed.userId]
       );
       const loginIdentifier =
         identityRow.rows[0]?.email?.trim() || identityRow.rows[0]?.username?.trim() || '';

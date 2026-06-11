@@ -147,7 +147,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
     };
 
     const SortIcon = ({ colKey }: { colKey: keyof TransactionLogEntry }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === colKey ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -158,15 +158,15 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                 <div className="flex flex-col gap-3 p-1">
                     {/* Filters */}
                     <div className="flex flex-wrap items-center gap-2">
-                        <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <div className="flex bg-app-surface-2 p-1 rounded-lg">
                             {(['today', 'thisMonth', 'lastMonth', 'custom'] as const).map(type => (
                                 <button
                                     key={type}
                                     onClick={() => handleRangeChange(type)}
                                     className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all whitespace-nowrap capitalize ${
                                         dateRange === type 
-                                        ? 'bg-white text-accent shadow-sm font-bold' 
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/60'
+                                        ? 'bg-app-card text-accent shadow-ds-card font-bold' 
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-surface-2/60'
                                     }`}
                                 >
                                     {type === 'today' ? 'Today' : type === 'thisMonth' ? 'This Month' : type === 'lastMonth' ? 'Last Month' : 'Custom'}
@@ -176,7 +176,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                         {dateRange === 'custom' && (
                             <div className="flex items-center gap-2">
                                 <DatePicker value={startDate} onChange={(d) => handleCustomDateChange(fromPickerDateToYyyyMmDd(d), endDate)} />
-                                <span className="text-slate-400">-</span>
+                                <span className="text-app-muted">-</span>
                                 <DatePicker value={endDate} onChange={(d) => handleCustomDateChange(startDate, fromPickerDateToYyyyMmDd(d))} />
                             </div>
                         )}
@@ -202,45 +202,45 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                 </div>
 
                 {/* Grid */}
-                <div className="flex-grow overflow-auto border rounded-lg shadow-inner bg-white" id="log-table-container">
-                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-slate-50 sticky top-0 shadow-sm">
+                <div className="flex-grow overflow-auto border rounded-lg shadow-inner bg-app-card" id="log-table-container">
+                    <table className="min-w-full divide-y divide-app-border text-sm">
+                        <thead className="bg-app-bg sticky top-0 shadow-ds-card">
                             <tr>
-                                <th onClick={() => handleSort('timestamp')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Time <SortIcon colKey="timestamp"/></th>
-                                <th onClick={() => handleSort('userLabel')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">User <SortIcon colKey="userLabel"/></th>
-                                <th onClick={() => handleSort('action')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Action <SortIcon colKey="action"/></th>
-                                <th onClick={() => handleSort('entityType')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Entity <SortIcon colKey="entityType"/></th>
-                                <th onClick={() => handleSort('description')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Description <SortIcon colKey="description"/></th>
-                                <th className="px-4 py-3 text-right font-semibold text-slate-600">Restore</th>
+                                <th onClick={() => handleSort('timestamp')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">Time <SortIcon colKey="timestamp"/></th>
+                                <th onClick={() => handleSort('userLabel')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">User <SortIcon colKey="userLabel"/></th>
+                                <th onClick={() => handleSort('action')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">Action <SortIcon colKey="action"/></th>
+                                <th onClick={() => handleSort('entityType')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">Entity <SortIcon colKey="entityType"/></th>
+                                <th onClick={() => handleSort('description')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none">Description <SortIcon colKey="description"/></th>
+                                <th className="px-4 py-3 text-right font-semibold text-app-muted">Restore</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <tbody className="divide-y divide-app-border">
                             {filteredLogs.length > 0 ? filteredLogs.map(log => (
-                                <tr key={log.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-4 py-2 whitespace-nowrap text-slate-500 text-xs">
+                                <tr key={log.id} className="hover:bg-app-bg transition-colors">
+                                    <td className="px-4 py-2 whitespace-nowrap text-app-muted text-xs">
                                         {new Date(log.timestamp).toLocaleString()}
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 font-medium text-xs">
+                                    <td className="px-4 py-2 whitespace-nowrap text-app-text font-medium text-xs">
                                         {log.userLabel || 'System'}
                                     </td>
                                     <td className="px-4 py-2 whitespace-nowrap">
                                         <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
-                                            log.action === 'DELETE' ? 'bg-rose-100 text-rose-700' :
+                                            log.action === 'DELETE' ? 'bg-rose-100 text-ds-danger' :
                                             log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
-                                            log.action === 'RESTORE' ? 'bg-indigo-100 text-indigo-700' :
-                                            log.action === 'CLEAR_ALL' ? 'bg-slate-800 text-white' :
-                                            'bg-amber-100 text-amber-700'
+                                            log.action === 'RESTORE' ? 'bg-app-highlight text-ds-primary' :
+                                            log.action === 'CLEAR_ALL' ? 'bg-app-text text-white' :
+                                            'bg-amber-100 text-ds-warning'
                                         }`}>
                                             {log.action}
                                         </span>
                                     </td>
-                                    <td className="px-4 py-2 whitespace-nowrap text-slate-700 font-medium">{log.entityType}</td>
-                                    <td className="px-4 py-2 text-slate-600 max-w-xs truncate" title={log.description}>{log.description}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap text-app-text font-medium">{log.entityType}</td>
+                                    <td className="px-4 py-2 text-app-muted max-w-xs truncate" title={log.description}>{log.description}</td>
                                     <td className="px-4 py-2 text-right">
                                         {log.action === 'DELETE' && log.entityType === 'Transaction' && (
                                             <button 
                                                 onClick={() => handleRestore(log)} 
-                                                className="text-indigo-600 hover:text-indigo-800 text-xs font-semibold hover:underline"
+                                                className="text-ds-primary hover:text-app-text text-xs font-semibold hover:underline"
                                             >
                                                 Restore
                                             </button>
@@ -249,7 +249,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan={6} className="px-4 py-8 text-center text-slate-500">No logs found.</td>
+                                    <td colSpan={6} className="px-4 py-8 text-center text-app-muted">No logs found.</td>
                                 </tr>
                             )}
                         </tbody>

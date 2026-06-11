@@ -171,12 +171,12 @@ const SettingsDetailPage: React.FC<SettingsDetailPageProps> = ({ goBack: propGoB
     return (
         <div className="w-full min-h-full flex flex-col">
             <div className="flex items-center gap-2 mb-3 md:mb-4 flex-shrink-0">
-                <button onClick={goBack} className="p-1 rounded-full hover:bg-slate-100 text-slate-600 transition-colors" aria-label="Go back">
+                <button onClick={goBack} className="p-1 rounded-full hover:bg-app-surface-2 text-app-muted transition-colors" aria-label="Go back">
                     <div className="w-6 h-6">{ICONS.chevronLeft}</div>
                 </button>
-                <h2 className="text-2xl font-bold">{getTitle()}</h2>
+                <h2 className="text-2xl font-bold text-app-text">{getTitle()}</h2>
             </div>
-            <div className="bg-white rounded-lg shadow-lg border border-slate-200/80 p-6 md:p-8 w-full max-w-4xl mx-auto">
+            <div className="bg-app-card rounded-lg shadow-ds-card border border-app-border p-6 md:p-8 w-full max-w-4xl mx-auto">
                 {renderForm()}
             </div>
         </div>

@@ -7,10 +7,12 @@ import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDate } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import { useAuth } from '../../context/AuthContext';
 
 type UserOption = { id: string; name: string; username: string };
 
 const EnterpriseAuditViewer: React.FC = () => {
+  const { tenant } = useAuth();
   const { showNotification } = useNotification();
   const [items, setItems] = useState<AuditTrailItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,7 +42,7 @@ const EnterpriseAuditViewer: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode()) {
+    if (isLocalOnlyMode() || !tenant?.id) {
       setLoading(false);
       setItems([]);
       return;
@@ -55,27 +57,33 @@ const EnterpriseAuditViewer: React.FC = () => {
         action: action || undefined,
         limit: 300,
       });
+      if (res.tenantId && res.tenantId !== tenant.id) {
+        setItems([]);
+        showNotification('Audit trail response did not match the active organization. Please refresh.', 'error');
+        return;
+      }
       setItems(res.items);
     } catch (e) {
       showNotification(e instanceof Error ? e.message : 'Failed to load audit trail.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [userId, startDate, endDate, module, action, showNotification]);
+  }, [tenant?.id, userId, startDate, endDate, module, action, showNotification]);
 
   useEffect(() => {
     void loadFilters();
   }, [loadFilters]);
 
   useEffect(() => {
+    setItems([]);
     void load();
-  }, [load]);
+  }, [load, tenant?.id]);
 
   const rows = useMemo(() => items, [items]);
 
   if (isLocalOnlyMode()) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+      <div className="rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
         Enterprise audit trail is available in LAN / server mode. Local-only installs use the transaction log in Data Management.
       </div>
     );
@@ -84,13 +92,13 @@ const EnterpriseAuditViewer: React.FC = () => {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Enterprise Audit Trail</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-lg font-semibold text-app-text">Enterprise Audit Trail</h2>
+        <p className="text-sm text-app-muted mt-1">
           Immutable record of sign-ins, user changes, role changes, and financial postings. Records cannot be edited or deleted.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-lg border border-slate-200 bg-slate-50">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 p-4 rounded-lg border border-app-border bg-app-bg">
         <Select label="User" value={userId} onChange={(e) => setUserId(e.target.value)}>
           <option value="">All users</option>
           {users.map((u) => (
@@ -100,11 +108,11 @@ const EnterpriseAuditViewer: React.FC = () => {
           ))}
         </Select>
         <div>
-          <label className="block text-xs text-slate-500 mb-1">From date</label>
+          <label className="block text-xs text-app-muted mb-1">From date</label>
           <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs text-slate-500 mb-1">To date</label>
+          <label className="block text-xs text-app-muted mb-1">To date</label>
           <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
         </div>
         <Select label="Module" value={module} onChange={(e) => setModule(e.target.value)}>
@@ -132,13 +140,13 @@ const EnterpriseAuditViewer: React.FC = () => {
       </div>
 
       {loading ? (
-        <p className="text-sm text-slate-400">Loading audit events…</p>
+        <p className="text-sm text-app-muted">Loading audit events…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-slate-500">No audit events match your filters.</p>
+        <p className="text-sm text-app-muted">No audit events match your filters.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-lg border border-app-border">
           <table className="min-w-full text-xs">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-app-bg text-left text-app-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">Time</th>
                 <th className="px-3 py-2 font-medium">User</th>
@@ -150,21 +158,21 @@ const EnterpriseAuditViewer: React.FC = () => {
             </thead>
             <tbody>
               {rows.map((row) => (
-                <tr key={`${row.source}-${row.id}-${row.action}`} className="border-t border-slate-100 align-top">
-                  <td className="px-3 py-2 whitespace-nowrap text-slate-600">
+                <tr key={`${row.source}-${row.id}-${row.action}`} className="border-t border-app-border align-top">
+                  <td className="px-3 py-2 whitespace-nowrap text-app-muted">
                     {formatDate(row.occurredAt, true)}
                   </td>
-                  <td className="px-3 py-2 text-slate-700">
+                  <td className="px-3 py-2 text-app-text">
                     {row.email || row.userId?.slice(0, 12) || '—'}
                   </td>
                   <td className="px-3 py-2">{row.module}</td>
                   <td className="px-3 py-2">
-                    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                    <span className="inline-flex rounded-full bg-app-surface-2 px-2 py-0.5 font-medium text-app-text">
                       {row.action}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-600 max-w-md">{row.summary || '—'}</td>
-                  <td className="px-3 py-2 font-mono text-slate-500">{row.ipAddress || '—'}</td>
+                  <td className="px-3 py-2 text-app-muted max-w-md">{row.summary || '—'}</td>
+                  <td className="px-3 py-2 font-mono text-app-muted">{row.ipAddress || '—'}</td>
                 </tr>
               ))}
             </tbody>

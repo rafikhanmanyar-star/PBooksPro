@@ -493,7 +493,7 @@ const PrintTemplateForm: React.FC = () => {
         <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-800">Company Details</h3>
+                    <h3 className="text-lg font-semibold text-app-text">Company Details</h3>
                     <Input
                         label="Company Name"
                         value={settings.companyName}
@@ -516,10 +516,10 @@ const PrintTemplateForm: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-slate-800">Logo & Branding</h3>
+                    <h3 className="text-lg font-semibold text-app-text">Logo & Branding</h3>
                     <div className="flex items-start gap-4">
                         <div className="flex-grow">
-                            <label className="block text-sm font-medium text-slate-600 mb-1">Company Logo</label>
+                            <label className="block text-sm font-medium text-app-muted mb-1">Company Logo</label>
                             <div className="flex items-center gap-2">
                                 <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} size="sm">
                                     Upload Logo
@@ -545,12 +545,12 @@ const PrintTemplateForm: React.FC = () => {
                                         onChange={e => handleChange('showLogo', e.target.checked)}
                                         className="rounded text-accent focus:ring-accent"
                                     />
-                                    <span className="text-sm text-slate-700">Show logo on reports</span>
+                                    <span className="text-sm text-app-text">Show logo on reports</span>
                                 </label>
                             </div>
                         </div>
                         {settings.logoUrl && (
-                            <div className="border p-1 rounded bg-white shadow-sm">
+                            <div className="border p-1 rounded bg-app-card shadow-ds-card">
                                 <img src={settings.logoUrl} alt="Logo Preview" className="h-20 w-auto object-contain" />
                             </div>
                         )}
@@ -559,7 +559,7 @@ const PrintTemplateForm: React.FC = () => {
             </div>
 
             <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-slate-800">Header & Footer</h3>
+                <h3 className="text-lg font-semibold text-app-text">Header & Footer</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input
                         label="Custom Header Text (Optional)"
@@ -581,15 +581,15 @@ const PrintTemplateForm: React.FC = () => {
                                 onChange={e => handleChange('showDatePrinted', e.target.checked)}
                                 className="rounded text-accent focus:ring-accent"
                             />
-                            <span className="text-sm text-slate-700">Show "Printed on [Date]" in footer</span>
+                            <span className="text-sm text-app-text">Show "Printed on [Date]" in footer</span>
                         </label>
                     </div>
                 </div>
             </div>
 
             <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-slate-800">Form print layout (Invoices, POs, Bills)</h3>
-                <p className="text-sm text-slate-500">Optional: font, colors, and page options for printed forms.</p>
+                <h3 className="text-lg font-semibold text-app-text">Form print layout (Invoices, POs, Bills)</h3>
+                <p className="text-sm text-app-muted">Optional: font, colors, and page options for printed forms.</p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <Input label="Tax ID / Registration (Optional)" value={settings.taxId ?? ''} onChange={e => handleChange('taxId', e.target.value)} placeholder="e.g. NTN 123456" />
                     <Input label="Font family (print-safe)" value={settings.fontFamily ?? ''} onChange={e => handleChange('fontFamily', e.target.value)} placeholder="e.g. Georgia, Times New Roman" />
@@ -604,19 +604,19 @@ const PrintTemplateForm: React.FC = () => {
             </div>
 
             <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-slate-800">Print templates</h3>
-                <p className="text-sm text-slate-500">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
-                <ul className="space-y-2 text-sm text-slate-700">
+                <h3 className="text-lg font-semibold text-app-text">Print templates</h3>
+                <p className="text-sm text-app-muted">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
+                <ul className="space-y-2 text-sm text-app-text">
                     <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-indigo-600">POPrintTemplate</span>
+                        <span className="font-mono font-semibold text-ds-primary">POPrintTemplate</span>
                         <span>— Purchase orders (Buyer Dashboard: open a PO, then Print)</span>
                     </li>
                     <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-indigo-600">InvoicePrintTemplate</span>
+                        <span className="font-mono font-semibold text-ds-primary">InvoicePrintTemplate</span>
                         <span>— P2P invoices (used when printing from invoice views)</span>
                     </li>
                     <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-indigo-600">BillPrintTemplate</span>
+                        <span className="font-mono font-semibold text-ds-primary">BillPrintTemplate</span>
                         <span>— Bills (used when printing from bill views)</span>
                     </li>
                 </ul>
@@ -624,18 +624,18 @@ const PrintTemplateForm: React.FC = () => {
 
             <div className="space-y-4 border-t pt-4">
                 <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-slate-800">Invoice HTML Template</h3>
-                    <Button variant="ghost" size="sm" onClick={handleResetInvoiceTemplate} className="text-rose-600 hover:bg-rose-50">Reset to Default</Button>
+                    <h3 className="text-lg font-semibold text-app-text">Invoice HTML Template</h3>
+                    <Button variant="ghost" size="sm" onClick={handleResetInvoiceTemplate} className="text-ds-danger hover:bg-rose-50">Reset to Default</Button>
                 </div>
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-app-muted">
                     Customize the HTML structure used when printing invoices.
                     Supported placeholders:
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyName}`}</code>,
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{companyAddress}`}</code>,
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{invoiceNumber}`}</code>,
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{contactName}`}</code>,
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{amount}`}</code>,
-                    <code className="bg-slate-100 px-1 rounded text-xs">{`{logoImg}`}</code>, etc.
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{companyName}`}</code>,
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{companyAddress}`}</code>,
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{invoiceNumber}`}</code>,
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{contactName}`}</code>,
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{amount}`}</code>,
+                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{logoImg}`}</code>, etc.
                 </p>
                 <Textarea
                     label=""

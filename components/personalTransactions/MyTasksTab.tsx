@@ -197,32 +197,32 @@ const MyTasksTab: React.FC = () => {
     <div className="space-y-8 max-w-6xl mx-auto">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-100">My Tasks</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Track deadlines, progress, and your monthly calendar.</p>
+          <h1 className="text-xl font-bold text-app-text">My Tasks</h1>
+          <p className="text-sm text-app-muted">Track deadlines, progress, and your monthly calendar.</p>
         </div>
         <button
           type="button"
           onClick={() => openCreate()}
-          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700"
+          className="inline-flex items-center justify-center px-4 py-2 rounded-lg bg-ds-primary text-white text-sm font-medium hover:bg-ds-primary-hover"
         >
           + New task
         </button>
       </div>
 
       {listError && (
-        <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30 px-3 py-2 rounded-lg">{listError}</div>
+        <div className="text-sm text-ds-danger bg-app-highlight px-3 py-2 rounded-lg">{listError}</div>
       )}
 
       {overdue.length > 0 && (
-        <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/80 dark:bg-amber-950/20 px-4 py-3">
-          <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-2">Overdue</p>
-          <ul className="text-sm space-y-1 text-amber-900 dark:text-amber-100">
+        <div className="rounded-xl border border-app-border bg-app-highlight/40 px-4 py-3">
+          <p className="text-sm font-semibold text-ds-warning mb-2">Overdue</p>
+          <ul className="text-sm space-y-1 text-app-text">
             {overdue.map((x) => (
               <li key={x.id}>
                 <button type="button" className="underline hover:no-underline text-left" onClick={() => openEdit(x)}>
                   {x.title}
                 </button>
-                <span className="text-amber-700 dark:text-amber-300"> — due {x.targetDate}</span>
+                <span className="text-app-muted"> — due {x.targetDate}</span>
               </li>
             ))}
           </ul>
@@ -230,21 +230,21 @@ const MyTasksTab: React.FC = () => {
       )}
 
       <section>
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Calendar</h2>
-        <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900/40 p-4">
+        <h2 className="text-sm font-bold uppercase tracking-wide text-app-muted mb-3">Calendar</h2>
+        <div className="rounded-xl border border-app-border dark:border-app-border bg-app-card p-4">
           <div className="flex items-center justify-between mb-4">
-            <button type="button" onClick={goPrevMonth} className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-sm">
+            <button type="button" onClick={goPrevMonth} className="px-2 py-1 rounded-lg border border-app-border dark:border-app-border text-sm">
               ←
             </button>
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+            <span className="text-sm font-semibold text-app-text">
               {monthStart.format('MMMM YYYY')}
             </span>
-            <button type="button" onClick={goNextMonth} className="px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-600 text-sm">
+            <button type="button" onClick={goNextMonth} className="px-2 py-1 rounded-lg border border-app-border dark:border-app-border text-sm">
               →
             </button>
           </div>
-          {calLoading && <p className="text-xs text-slate-500 mb-2">Loading month…</p>}
-          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-slate-500 mb-1">
+          {calLoading && <p className="text-xs text-app-muted mb-2">Loading month…</p>}
+          <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-semibold text-app-muted mb-1">
             {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
               <div key={d}>{d}</div>
             ))}
@@ -252,7 +252,7 @@ const MyTasksTab: React.FC = () => {
           <div className="grid grid-cols-7 gap-1">
             {cells.map((cell, idx) => {
               if (!cell.ymd) {
-                return <div key={`e-${idx}`} className="min-h-[72px] rounded-lg bg-slate-50/50 dark:bg-slate-800/20" />;
+                return <div key={`e-${idx}`} className="min-h-[72px] rounded-lg bg-app-surface-2/40" />;
               }
               const isToday = cell.ymd === tday;
               const dayTasks = calendarData[cell.ymd] || [];
@@ -261,13 +261,13 @@ const MyTasksTab: React.FC = () => {
                   key={cell.ymd}
                   className={`min-h-[72px] rounded-lg border p-1 text-left cursor-pointer transition-colors ${
                     isToday
-                      ? 'border-indigo-500 ring-1 ring-indigo-400 bg-indigo-50/50 dark:bg-indigo-950/30'
-                      : 'border-slate-100 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                      ? 'border-ds-primary ring-1 ring-ds-primary/40 bg-app-highlight'
+                      : 'border-app-border dark:border-app-border hover:bg-app-table-hover'
                   }`}
                   onClick={() => openCreate(cell.ymd ?? undefined)}
                   title="Click to add task for this date"
                 >
-                  <div className="text-[11px] font-medium text-slate-600 dark:text-slate-300 mb-0.5">{cell.day}</div>
+                  <div className="text-[11px] font-medium text-app-muted mb-0.5">{cell.day}</div>
                   <div className="space-y-0.5 overflow-hidden max-h-[52px]">
                     {dayTasks.map((tsk) => (
                       <button
@@ -291,19 +291,19 @@ const MyTasksTab: React.FC = () => {
       </section>
 
       <section>
-        <h2 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Task list</h2>
+        <h2 className="text-sm font-bold uppercase tracking-wide text-app-muted mb-3">Task list</h2>
         <div className="flex flex-wrap gap-2 mb-3">
           <input
             type="search"
             placeholder="Search title or notes…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 min-w-[160px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm"
+            className="flex-1 min-w-[160px] rounded-lg border border-app-border dark:border-app-border bg-app-card px-3 py-1.5 text-sm"
           />
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm"
+            className="rounded-lg border border-app-border dark:border-app-border bg-app-card px-2 py-1.5 text-sm"
           >
             <option value="all">All statuses</option>
             <option value="pending">Pending</option>
@@ -314,7 +314,7 @@ const MyTasksTab: React.FC = () => {
           <select
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
-            className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1.5 text-sm"
+            className="rounded-lg border border-app-border dark:border-app-border bg-app-card px-2 py-1.5 text-sm"
           >
             <option value="all">All priorities</option>
             <option value="low">Low</option>
@@ -323,9 +323,9 @@ const MyTasksTab: React.FC = () => {
           </select>
         </div>
 
-        <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="overflow-x-auto rounded-xl border border-app-border dark:border-app-border">
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800/80 text-left text-xs uppercase text-slate-500">
+            <thead className="bg-app-surface-2 text-left text-xs uppercase text-app-muted">
               <tr>
                 <th className="px-3 py-2">Title</th>
                 <th className="px-3 py-2">Target</th>
@@ -335,10 +335,10 @@ const MyTasksTab: React.FC = () => {
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+            <tbody className="divide-y divide-app-border">
               {filteredList.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                  <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100 max-w-[220px] truncate">{row.title}</td>
+                <tr key={row.id} className="hover:bg-app-table-hover">
+                  <td className="px-3 py-2 font-medium text-app-text max-w-[220px] truncate">{row.title}</td>
                   <td className="px-3 py-2 whitespace-nowrap">
                     {row.targetDate}
                     {row.targetDate < tday && row.status !== 'completed' && row.status !== 'cancelled' && (
@@ -351,10 +351,10 @@ const MyTasksTab: React.FC = () => {
                   <td className="px-3 py-2">{row.progress}%</td>
                   <td className="px-3 py-2 capitalize">{row.priority}</td>
                   <td className="px-3 py-2 text-right space-x-2">
-                    <button type="button" className="text-indigo-600 hover:underline text-xs" onClick={() => openEdit(row)}>
+                    <button type="button" className="text-ds-primary hover:underline text-xs" onClick={() => openEdit(row)}>
                       Edit
                     </button>
-                    <button type="button" className="text-red-600 hover:underline text-xs" onClick={() => void handleDelete(row.id)}>
+                    <button type="button" className="text-ds-danger hover:underline text-xs" onClick={() => void handleDelete(row.id)}>
                       Delete
                     </button>
                   </td>
@@ -362,7 +362,7 @@ const MyTasksTab: React.FC = () => {
               ))}
               {filteredList.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-3 py-8 text-center text-app-muted">
                     No tasks match your filters.
                   </td>
                 </tr>

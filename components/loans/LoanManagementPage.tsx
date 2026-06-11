@@ -275,7 +275,7 @@ const LoanManagementPage: React.FC = () => {
       <style>{STANDARD_PRINT_STYLES}</style>
 
       {/* Summary cards + Analysis Report + New Loan (same row) */}
-      <div className="flex-shrink-0 flex flex-wrap items-stretch gap-2 p-3 bg-white border-b border-slate-200 no-print">
+      <div className="flex-shrink-0 flex flex-wrap items-stretch gap-2 p-3 bg-app-card border-b border-app-border no-print">
         <div className="flex flex-wrap items-stretch gap-2 flex-1 min-w-0">
           {(
             [
@@ -284,35 +284,35 @@ const LoanManagementPage: React.FC = () => {
                 label: 'All',
                 sub: 'Net loan',
                 value: formatSignedPKR(loanDashboardStats.netLoan),
-                valueClass: 'text-slate-800',
+                valueClass: 'text-app-text',
               },
               {
                 key: 'to_receive' as const,
                 label: 'To Receive',
                 sub: 'Total to receive',
                 value: formatPKR(loanDashboardStats.totalToReceive),
-                valueClass: 'text-emerald-700',
+                valueClass: 'text-ds-success',
               },
               {
                 key: 'to_return' as const,
                 label: 'To Return',
                 sub: 'Total to return',
                 value: formatPKR(loanDashboardStats.totalToReturn),
-                valueClass: 'text-rose-700',
+                valueClass: 'text-ds-danger',
               },
               {
                 key: 'overdue' as const,
                 label: 'Overdue',
                 sub: 'Total overdue',
                 value: formatPKR(loanDashboardStats.totalOverdue),
-                valueClass: 'text-red-700',
+                valueClass: 'text-ds-danger',
               },
               {
                 key: 'completed' as const,
                 label: 'Completed',
                 sub: 'Settled loans',
                 value: String(loanDashboardStats.completedCount),
-                valueClass: 'text-slate-800',
+                valueClass: 'text-app-text',
               },
             ] as const
           ).map(card => (
@@ -325,13 +325,13 @@ const LoanManagementPage: React.FC = () => {
                 flex flex-col items-start justify-center min-w-[100px] flex-1 sm:flex-none sm:min-w-[112px]
                 px-3 py-2 rounded-xl border text-left transition-all
                 ${quickFilter === card.key
-                  ? 'border-blue-600 bg-blue-50 shadow-sm ring-1 ring-blue-200'
-                  : 'border-slate-200 bg-slate-50/80 hover:bg-slate-100 hover:border-slate-300'}
+                  ? 'border-ds-primary bg-app-highlight shadow-ds-card ring-1 ring-ds-primary/30'
+                  : 'border-app-border bg-app-surface-2 hover:bg-app-table-hover hover:border-app-border'}
               `}
             >
-              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{card.label}</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-app-muted">{card.label}</span>
               <span className={`text-sm font-bold tabular-nums mt-0.5 ${card.valueClass}`}>{card.value}</span>
-              <span className="text-[10px] text-slate-400 mt-0.5 leading-tight">{card.sub}</span>
+              <span className="text-[10px] text-app-muted mt-0.5 leading-tight">{card.sub}</span>
             </button>
           ))}
         </div>

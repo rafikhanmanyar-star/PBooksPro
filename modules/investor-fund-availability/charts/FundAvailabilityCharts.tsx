@@ -18,6 +18,7 @@ import {
     YAxis,
 } from 'recharts';
 import type { FundAvailabilityRow } from '../types/fundAvailability.types';
+import { useChartTheme } from '../../../components/analytics/chartTheme';
 import { formatCompactMoney } from '../utils/financialFormat';
 
 const COL = {
@@ -30,25 +31,25 @@ const COL = {
     withdraw: '#fb7185',
 };
 
-function useDarkChart() {
-    return typeof document !== 'undefined' && document.documentElement.classList.contains('dark');
-}
-
 function ChartTooltip({
     active,
     payload,
     label,
-    dark,
 }: {
     active?: boolean;
     payload?: { value: number; name: string; color?: string }[];
     label?: string;
-    dark: boolean;
 }) {
+    const theme = useChartTheme();
     if (!active || !payload?.length) return null;
     return (
         <div
-            className={`rounded-lg border px-3 py-2 text-xs shadow-lg ${dark ? 'border-slate-600 bg-slate-900 text-slate-100' : 'border-slate-200 bg-white text-slate-800'}`}
+            className="rounded-lg border px-3 py-2 text-xs shadow-lg"
+            style={{
+                borderColor: theme.tooltipBorder,
+                backgroundColor: theme.tooltipBg,
+                color: theme.tooltipText,
+            }}
         >
             {label != null && <div className="font-semibold mb-1">{label}</div>}
             {payload.map((p) => (
@@ -63,14 +64,14 @@ function ChartTooltip({
 
 function EmptyChart({ label }: { label: string }) {
     return (
-        <div className="flex h-64 min-h-[256px] items-center justify-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 text-sm text-slate-500 px-6 text-center">
+        <div className="flex h-64 min-h-[256px] items-center justify-center rounded-ds-lg border border-dashed border-app-border bg-app-surface-2 text-ds-body text-app-muted px-6 text-center">
             {label}
         </div>
     );
 }
 
 export const EquityVsCashChart: React.FC<{ rows: FundAvailabilityRow[] }> = ({ rows }) => {
-    const dark = useDarkChart();
+    const theme = useChartTheme();
     const data = useMemo(() => {
         const sorted = [...rows].sort((a, b) => b.investorEquity - a.investorEquity).slice(0, 12);
         return sorted.map((r) => ({
@@ -84,10 +85,10 @@ export const EquityVsCashChart: React.FC<{ rows: FundAvailabilityRow[] }> = ({ r
         <div className="h-72 w-full min-h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 32 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} vertical={false} />
-                    <XAxis dataKey="name" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={52} />
-                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
-                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} vertical={false} />
+                    <XAxis dataKey="name" tick={{ fill: theme.tick, fontSize: 10 }} interval={0} angle={-20} textAnchor="end" height={52} />
+                    <YAxis tick={{ fill: theme.tick, fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Legend />
                     <Bar dataKey="Equity" fill={COL.equity} radius={[4, 4, 0, 0]} maxBarSize={36} />
                     <Bar dataKey="Available cash" fill={COL.cash} radius={[4, 4, 0, 0]} maxBarSize={36} />
@@ -100,7 +101,7 @@ export const EquityVsCashChart: React.FC<{ rows: FundAvailabilityRow[] }> = ({ r
 export const MonthlyDistributableChart: React.FC<{
     points: { label: string; distributable: number }[];
 }> = ({ points }) => {
-    const dark = useDarkChart();
+    const theme = useChartTheme();
     if (!points.length) return <EmptyChart label="No distribution trend for this range." />;
     return (
         <div className="h-64 w-full min-h-[256px]">
@@ -112,10 +113,10 @@ export const MonthlyDistributableChart: React.FC<{
                             <stop offset="100%" stopColor={COL.dist} stopOpacity={0} />
                         </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} />
-                    <XAxis dataKey="label" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} />
-                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
-                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
+                    <XAxis dataKey="label" tick={{ fill: theme.tick, fontSize: 11 }} />
+                    <YAxis tick={{ fill: theme.tick, fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Area type="monotone" dataKey="distributable" name="Distributable" stroke={COL.dist} fill="url(#distFill)" strokeWidth={2} />
                 </AreaChart>
             </ResponsiveContainer>
@@ -126,16 +127,16 @@ export const MonthlyDistributableChart: React.FC<{
 export const CashFlowTrendChart: React.FC<{
     points: { label: string; inflow: number; outflow: number; net: number }[];
 }> = ({ points }) => {
-    const dark = useDarkChart();
+    const theme = useChartTheme();
     if (!points.length) return <EmptyChart label="No cash movement in this window." />;
     return (
         <div className="h-64 w-full min-h-[256px]">
             <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} />
-                    <XAxis dataKey="label" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} />
-                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
-                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
+                    <XAxis dataKey="label" tick={{ fill: theme.tick, fontSize: 11 }} />
+                    <YAxis tick={{ fill: theme.tick, fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Legend />
                     <Bar dataKey="inflow" name="Inflow" fill={COL.inflow} radius={[3, 3, 0, 0]} maxBarSize={28} />
                     <Bar dataKey="outflow" name="Outflow" fill={COL.outflow} radius={[3, 3, 0, 0]} maxBarSize={28} />
@@ -147,7 +148,7 @@ export const CashFlowTrendChart: React.FC<{
 };
 
 export const LiquidityHealthDonut: React.FC<{ rows: FundAvailabilityRow[] }> = ({ rows }) => {
-    const dark = useDarkChart();
+    const theme = useChartTheme();
     const data = useMemo(() => {
         let h = 0,
             w = 0,
@@ -177,7 +178,7 @@ export const LiquidityHealthDonut: React.FC<{ rows: FundAvailabilityRow[] }> = (
                             <Cell key={i} fill={e.color} />
                         ))}
                     </Pie>
-                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Legend />
                 </PieChart>
             </ResponsiveContainer>
@@ -188,17 +189,17 @@ export const LiquidityHealthDonut: React.FC<{ rows: FundAvailabilityRow[] }> = (
 export const WithdrawalHistoryChart: React.FC<{
     points: { label: string; amount: number }[];
 }> = ({ points }) => {
-    const dark = useDarkChart();
+    const theme = useChartTheme();
     const any = points.some((p) => p.amount > 0);
     if (!any) return <EmptyChart label="No investor withdrawals recorded in this period." />;
     return (
         <div className="h-64 w-full min-h-[256px]">
             <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={points} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#334155' : '#e2e8f0'} />
-                    <XAxis dataKey="label" tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} />
-                    <YAxis tick={{ fill: dark ? '#94a3b8' : '#64748b', fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
-                    <Tooltip content={<ChartTooltip dark={dark} />} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
+                    <XAxis dataKey="label" tick={{ fill: theme.tick, fontSize: 11 }} />
+                    <YAxis tick={{ fill: theme.tick, fontSize: 11 }} tickFormatter={(v) => formatCompactMoney(Number(v))} width={76} />
+                    <Tooltip content={<ChartTooltip />} />
                     <Line type="monotone" dataKey="amount" name="Withdrawals" stroke={COL.withdraw} strokeWidth={2} dot />
                 </LineChart>
             </ResponsiveContainer>

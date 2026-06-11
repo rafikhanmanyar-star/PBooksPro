@@ -124,7 +124,7 @@ const BackupStorageSettingsPage: React.FC = () => {
   if (isLocalOnlyMode()) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <div className="max-w-2xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
           Offsite storage settings are available in LAN / server mode with PostgreSQL.
         </div>
       </div>
@@ -134,7 +134,7 @@ const BackupStorageSettingsPage: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
           You do not have permission to view backup storage settings.
         </div>
       </div>
@@ -142,18 +142,18 @@ const BackupStorageSettingsPage: React.FC = () => {
   }
 
   if (loading) {
-    return <p className="p-6 text-sm text-slate-500">Loading storage settings…</p>;
+    return <p className="p-6 text-sm text-app-muted">Loading storage settings…</p>;
   }
 
   return (
     <div className="p-4 sm:p-6">
       <div className="max-w-2xl mx-auto space-y-5">
         <div>
-          <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+          <h3 className="text-lg font-semibold text-app-text flex items-center gap-2">
             <Cloud className="w-5 h-5 text-sky-600" />
             Offsite Storage
           </h3>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <p className="text-sm text-app-muted mt-0.5">
             Configure cloud backup storage. Files are encrypted (AES-256-GCM) before upload and verified by checksum.
           </p>
         </div>
@@ -161,13 +161,13 @@ const BackupStorageSettingsPage: React.FC = () => {
         <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-emerald-900 flex gap-2">
           <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <div>
-            Set <code className="bg-white/70 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> and{' '}
-            <code className="bg-white/70 px-1 rounded">BACKUP_STORAGE_MASTER_KEY</code> on the API server.
+            Set <code className="bg-app-card/70 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> and{' '}
+            <code className="bg-app-card/70 px-1 rounded">BACKUP_STORAGE_MASTER_KEY</code> on the API server.
             Credentials stored in the database are encrypted at rest.
           </div>
         </div>
 
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="space-y-4 rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
           <Select
             label="Storage provider"
             value={provider}
@@ -224,7 +224,7 @@ const BackupStorageSettingsPage: React.FC = () => {
                 placeholder={endpointHint}
               />
               {endpointHint && (
-                <p className="text-xs text-slate-500 mt-1 flex items-start gap-1">
+                <p className="text-xs text-app-muted mt-1 flex items-start gap-1">
                   <KeyRound className="w-3 h-3 mt-0.5 flex-shrink-0" />
                   {endpointHint}
                 </p>
@@ -232,24 +232,24 @@ const BackupStorageSettingsPage: React.FC = () => {
             </div>
           )}
 
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-app-text">
             <input
               type="checkbox"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
               disabled={!canManage}
-              className="rounded border-slate-300"
+              className="rounded border-app-border"
             />
             Enable offsite uploads
           </label>
 
-          <label className="flex items-center gap-2 text-sm text-slate-700">
+          <label className="flex items-center gap-2 text-sm text-app-text">
             <input
               type="checkbox"
               checked={autoUpload}
               onChange={(e) => setAutoUpload(e.target.checked)}
               disabled={!canManage}
-              className="rounded border-slate-300"
+              className="rounded border-app-border"
             />
             Upload automatically after each scheduled backup
           </label>

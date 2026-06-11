@@ -66,11 +66,11 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
     };
 
     return (
-        <div className="sticky top-0 z-30 -mx-1 px-1 py-3 mb-2 bg-slate-50/95 dark:bg-slate-950/90 backdrop-blur border-b border-slate-200/80 dark:border-slate-800">
+        <div className="sticky top-0 z-30 -mx-1 px-1 py-3 mb-2 bg-app-bg/95 backdrop-blur border-b border-app-border">
             <motion.div
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 bg-gradient-to-r from-indigo-50/90 to-white/90 dark:from-indigo-950/40 dark:to-slate-900/60 px-3 py-3 shadow-sm"
+                className="mb-3 flex flex-wrap items-end gap-3 rounded-xl border border-app-border bg-app-card px-3 py-3 shadow-ds-card"
             >
                 <div className="w-full sm:min-w-[280px] sm:flex-1 max-w-xl">
                     <ComboBox
@@ -159,10 +159,10 @@ export const ProfitabilityFilterBar: React.FC<ProfitabilityFilterBarProps> = ({
                 </div>
                 {savedPresets.length > 0 && (
                     <div className="flex items-end gap-2">
-                        <label className="text-xs font-medium text-slate-600 dark:text-slate-400">
+                        <label className="text-xs font-medium text-app-muted">
                             Presets
                             <select
-                                className="mt-1 block w-44 rounded-md border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm py-2 px-2"
+                                className="ds-input-field mt-1 block w-44 text-sm py-2 px-2"
                                 value=""
                                 onChange={(e) => {
                                     const v = e.target.value;

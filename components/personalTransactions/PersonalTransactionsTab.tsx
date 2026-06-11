@@ -8,6 +8,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer } from 'recharts';
+import { CHART_COLORS, useChartTheme } from '../analytics/chartTheme';
 import Button from '../ui/Button';
 import { CURRENCY, ICONS } from '../../constants';
 import {
@@ -180,6 +181,7 @@ const PersonalTransactionsTab: React.FC = () => {
   const [chartShowExpense, setChartShowExpense] = useState(true);
   const [widths, setWidths] = useState<Record<Exclude<ColId, 'actions'>, number>>(() => ({ ...DEFAULT_WIDTHS }));
   const resizeRef = useRef<{ colId: keyof typeof DEFAULT_WIDTHS; startX: number; startW: number } | null>(null);
+  const chartTheme = useChartTheme();
 
   useEffect(() => {
     const onCategoriesChanged = () => setRefreshKey((k) => k + 1);
@@ -417,20 +419,20 @@ const PersonalTransactionsTab: React.FC = () => {
 
       <div className="flex-shrink-0 flex flex-col xl:flex-row xl:items-center gap-4 mb-6">
         <div className="shrink-0 min-w-0">
-          <h1 className="text-2xl font-bold text-gray-900">Transactions</h1>
-          <p className="text-sm text-gray-500 mt-0.5">View and manage all your income and expenses.</p>
+          <h1 className="text-2xl font-bold text-app-text">Transactions</h1>
+          <p className="text-sm text-app-muted mt-0.5">View and manage all your income and expenses.</p>
         </div>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 flex-1 min-w-0 xl:justify-end">
-          <div className="w-full sm:flex-1 min-w-0 max-w-full xl:max-w-[min(100%,28rem)] border border-gray-200 rounded-lg bg-white px-2 pt-1 pb-0.5 shadow-sm">
+          <div className="w-full sm:flex-1 min-w-0 max-w-full xl:max-w-[min(100%,28rem)] border border-app-border rounded-lg bg-app-card px-2 pt-1 pb-0.5 shadow-ds-card">
             <div className="flex flex-col gap-1 px-1 mb-0.5">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">
                 Monthly income vs expenses (last 12 months)
               </p>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer select-none">
+                <label className="inline-flex items-center gap-1.5 text-xs text-app-text cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    className="rounded border-app-border text-ds-success focus:ring-green-500"
                     checked={chartShowIncome}
                     onChange={(e) => {
                       const next = e.target.checked;
@@ -439,14 +441,14 @@ const PersonalTransactionsTab: React.FC = () => {
                     }}
                   />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-green-600 shrink-0" aria-hidden />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-ds-success shrink-0" aria-hidden />
                     Income
                   </span>
                 </label>
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-700 cursor-pointer select-none">
+                <label className="inline-flex items-center gap-1.5 text-xs text-app-text cursor-pointer select-none">
                   <input
                     type="checkbox"
-                    className="rounded border-gray-300 text-red-600 focus:ring-red-500"
+                    className="rounded border-app-border text-ds-danger focus:ring-red-500"
                     checked={chartShowExpense}
                     onChange={(e) => {
                       const next = e.target.checked;
@@ -455,7 +457,7 @@ const PersonalTransactionsTab: React.FC = () => {
                     }}
                   />
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-sm bg-red-600 shrink-0" aria-hidden />
+                    <span className="w-2.5 h-2.5 rounded-sm bg-ds-danger shrink-0" aria-hidden />
                     Expenses
                   </span>
                 </label>
@@ -464,15 +466,15 @@ const PersonalTransactionsTab: React.FC = () => {
             <div className="h-[120px] w-full min-w-0">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={monthlyBarChartData} margin={{ top: 2, right: 4, left: 0, bottom: 0 }} barGap={2}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke={chartTheme.grid} vertical={false} />
                   <XAxis
                     dataKey="label"
-                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    tick={{ fontSize: 9, fill: chartTheme.tick }}
                     interval={0}
                     height={36}
                   />
                   <YAxis
-                    tick={{ fontSize: 9, fill: '#6b7280' }}
+                    tick={{ fontSize: 9, fill: chartTheme.tick }}
                     width={44}
                     tickFormatter={(v) => {
                       if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
@@ -485,14 +487,20 @@ const PersonalTransactionsTab: React.FC = () => {
                       const n = typeof value === 'number' ? value : Number(value);
                       return `${sym}${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                     }}
-                    labelStyle={{ fontSize: 12 }}
-                    contentStyle={{ fontSize: 12, borderRadius: 8 }}
+                    labelStyle={{ fontSize: 12, color: chartTheme.tooltipText }}
+                    contentStyle={{
+                      fontSize: 12,
+                      borderRadius: 8,
+                      backgroundColor: chartTheme.tooltipBg,
+                      borderColor: chartTheme.tooltipBorder,
+                      color: chartTheme.tooltipText,
+                    }}
                   />
                   {chartShowIncome && (
-                    <Bar dataKey="income" name="Income" fill="#16a34a" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                    <Bar dataKey="income" name="Income" fill={CHART_COLORS.income} radius={[3, 3, 0, 0]} maxBarSize={14} />
                   )}
                   {chartShowExpense && (
-                    <Bar dataKey="expense" name="Expenses" fill="#dc2626" radius={[3, 3, 0, 0]} maxBarSize={14} />
+                    <Bar dataKey="expense" name="Expenses" fill={CHART_COLORS.expense} radius={[3, 3, 0, 0]} maxBarSize={14} />
                   )}
                 </BarChart>
               </ResponsiveContainer>
@@ -510,45 +518,45 @@ const PersonalTransactionsTab: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Total Transactions</p>
-          <p className="text-xl font-bold text-gray-900 mt-1">{summary.totalCount}</p>
-          <p className="text-xs text-green-600 mt-1">In selected period</p>
+        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+          <p className="text-xs font-medium text-app-muted uppercase tracking-wide">Total Transactions</p>
+          <p className="text-xl font-bold text-app-text mt-1">{summary.totalCount}</p>
+          <p className="text-xs text-ds-success mt-1">In selected period</p>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Income</p>
-          <p className="text-xl font-bold text-green-600 mt-1">
+        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+          <p className="text-xs font-medium text-app-muted uppercase tracking-wide">Income</p>
+          <p className="text-xl font-bold text-ds-success mt-1">
             {sym}
             {summary.income.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Expenses</p>
-          <p className="text-xl font-bold text-gray-900 mt-1">
+        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+          <p className="text-xs font-medium text-app-muted uppercase tracking-wide">Expenses</p>
+          <p className="text-xl font-bold text-app-text mt-1">
             {sym}
             {summary.expenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
         </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-col">
-          <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Net</p>
+        <div className="bg-app-surface-2 border border-app-border rounded-lg p-4 flex flex-col">
+          <p className="text-xs font-medium text-app-muted uppercase tracking-wide">Net</p>
           <p
             className={`text-xl font-bold mt-1 ${
-              summary.net >= 0 ? 'text-green-600' : 'text-red-600'
+              summary.net >= 0 ? 'text-ds-success' : 'text-ds-danger'
             }`}
           >
             {sym}
             {summary.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </p>
-          <p className="text-xs text-gray-500 mt-1">in selected period</p>
+          <p className="text-xs text-app-muted mt-1">in selected period</p>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-lg shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Transactions</h2>
+      <div className="flex-1 min-h-0 flex flex-col bg-app-card border border-app-border rounded-lg shadow-ds-card">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 border-b border-app-border">
+          <h2 className="text-lg font-semibold text-app-text">Transactions</h2>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative flex-1 sm:flex-initial min-w-[140px]">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-app-muted">
                 {React.cloneElement(ICONS.search as React.ReactElement<any>, { width: 16, height: 16 })}
               </span>
               <input
@@ -556,11 +564,11 @@ const PersonalTransactionsTab: React.FC = () => {
                 placeholder="Search..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-app-border rounded-lg focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
               />
             </div>
             <div
-              className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-0.5 shadow-sm"
+              className="inline-flex rounded-lg border border-app-border bg-app-surface-2 p-0.5 shadow-sm"
               role="group"
               aria-label="Period filter"
             >
@@ -580,8 +588,8 @@ const PersonalTransactionsTab: React.FC = () => {
                   }}
                   className={`px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md transition-colors whitespace-nowrap ${
                     periodFilter === id
-                      ? 'bg-white text-blue-700 shadow-sm ring-1 ring-gray-200'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-app-card text-ds-primary shadow-ds-card ring-1 ring-app-border'
+                      : 'text-app-muted hover:text-app-text'
                   }`}
                 >
                   {label}
@@ -594,7 +602,7 @@ const PersonalTransactionsTab: React.FC = () => {
                 setCategoryFilterId(e.target.value);
                 setPage(1);
               }}
-              className="py-2 px-3 text-sm border border-gray-300 rounded-lg bg-gray-50 focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+              className="py-2 px-3 text-sm border border-app-border rounded-lg bg-app-surface-2 focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
               aria-label="Category filter"
             >
               <option value="">Categories</option>
@@ -607,7 +615,7 @@ const PersonalTransactionsTab: React.FC = () => {
             <button
               type="button"
               onClick={handleExportReport}
-              className="p-2 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+              className="p-2 border border-app-border rounded-lg text-app-muted hover:bg-app-surface-2"
               title="Download"
               aria-label="Download report"
             >
@@ -617,7 +625,7 @@ const PersonalTransactionsTab: React.FC = () => {
               {React.cloneElement(ICONS.upload as React.ReactElement<any>, { width: 18, height: 18 })}
               Import from Excel
             </Button>
-            <Button onClick={openAdd} className="bg-blue-600 hover:bg-blue-700 focus:ring-blue-500">
+            <Button onClick={openAdd}>
               {React.cloneElement(ICONS.plus as React.ReactElement<any>, { width: 18, height: 18 })}
               Add Transaction
             </Button>
@@ -626,7 +634,7 @@ const PersonalTransactionsTab: React.FC = () => {
 
         <div className="flex-1 overflow-auto min-h-[200px]">
           <div
-            className="grid sticky top-0 z-10 border-b border-gray-200 bg-gray-50 text-xs font-semibold text-gray-700"
+            className="grid sticky top-0 z-10 border-b border-app-border bg-app-table-header text-xs font-semibold text-app-muted"
             style={{ gridTemplateColumns: gridTemplate }}
           >
             {(
@@ -647,7 +655,7 @@ const PersonalTransactionsTab: React.FC = () => {
                 return (
                   <div
                     key={col.id}
-                    className="relative flex items-center gap-1 px-2 py-1.5 border-r border-gray-100 last:border-r-0 select-none"
+                    className="relative flex items-center gap-1 px-2 py-1.5 border-r border-app-border last:border-r-0 select-none"
                   >
                     <span className="truncate">{col.label}</span>
                   </div>
@@ -657,7 +665,7 @@ const PersonalTransactionsTab: React.FC = () => {
                 <div
                   key={col.id}
                   role="columnheader"
-                  className={`relative flex items-center gap-1 px-2 py-1.5 border-r border-gray-100 select-none cursor-pointer hover:bg-gray-100 min-w-0 ${
+                  className={`relative flex items-center gap-1 px-2 py-1.5 border-r border-app-border select-none cursor-pointer hover:bg-app-table-hover min-w-0 ${
                     alignRight ? 'justify-end text-right' : ''
                   }`}
                   onClick={() => toggleSort(col.id)}
@@ -670,7 +678,7 @@ const PersonalTransactionsTab: React.FC = () => {
                   tabIndex={0}
                 >
                   <span className="truncate">{col.label}</span>
-                  {active && <span className="text-gray-500 shrink-0">{sort.dir === 'asc' ? '▲' : '▼'}</span>}
+                  {active && <span className="text-app-muted shrink-0">{sort.dir === 'asc' ? '▲' : '▼'}</span>}
                   <div
                     role="separator"
                     aria-orientation="vertical"
@@ -685,49 +693,49 @@ const PersonalTransactionsTab: React.FC = () => {
           </div>
 
           {paginatedRows.length === 0 ? (
-            <div className="py-12 text-center text-gray-500 text-sm">No transactions found.</div>
+            <div className="py-12 text-center text-app-muted text-sm">No transactions found.</div>
           ) : (
             paginatedRows.map((row, index) => (
               <div
                 key={row.id}
-                className={`grid text-xs border-b border-gray-100 items-center min-h-[32px] ${
-                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
-                } hover:bg-gray-50`}
+                className={`grid text-xs border-b border-app-border items-center min-h-[32px] ${
+                  index % 2 === 0 ? 'bg-app-card' : 'bg-app-surface-2/40'
+                } hover:bg-app-surface-2`}
                 style={{ gridTemplateColumns: gridTemplate }}
               >
-                <div className="px-2 py-1 text-gray-700 border-r border-gray-100 min-w-0 truncate" title={row.dateDisplay}>
+                <div className="px-2 py-1 text-app-text border-r border-app-border min-w-0 truncate" title={row.dateDisplay}>
                   {row.dateDisplay}
                 </div>
-                <div className="px-2 py-1 text-gray-800 border-r border-gray-100 min-w-0 truncate" title={row.category}>
+                <div className="px-2 py-1 text-app-text border-r border-app-border min-w-0 truncate" title={row.category}>
                   {row.category}
                 </div>
-                <div className="px-2 py-1 text-gray-600 border-r border-gray-100 min-w-0 truncate" title={row.notes}>
+                <div className="px-2 py-1 text-app-muted border-r border-app-border min-w-0 truncate" title={row.notes}>
                   {row.notes}
                 </div>
-                <div className="px-2 py-1 text-right text-green-700 tabular-nums border-r border-gray-100">
+                <div className="px-2 py-1 text-right text-ds-success tabular-nums border-r border-app-border">
                   {formatColumnMoneyPositive(row.income)}
                 </div>
-                <div className="px-2 py-1 text-right text-red-600 tabular-nums border-r border-gray-100">
+                <div className="px-2 py-1 text-right text-ds-danger tabular-nums border-r border-app-border">
                   {formatColumnMoneyPositive(row.expense)}
                 </div>
                 <div
-                  className={`px-2 py-1 text-right tabular-nums border-r border-gray-100 font-medium ${
-                    row.runningBalance >= 0 ? 'text-green-700' : 'text-red-600'
+                  className={`px-2 py-1 text-right tabular-nums border-r border-app-border font-medium ${
+                    row.runningBalance >= 0 ? 'text-ds-success' : 'text-ds-danger'
                   }`}
                 >
                   {formatSignedMoney(row.runningBalance)}
                 </div>
-                <div className="px-1 py-0.5 flex items-center justify-end gap-1 border-r border-gray-100 last:border-r-0">
+                <div className="px-1 py-0.5 flex items-center justify-end gap-1 border-r border-app-border last:border-r-0">
                   <button
                     type="button"
-                    className="px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-50 rounded"
+                    className="px-2 py-0.5 text-xs font-medium text-ds-primary hover:bg-app-highlight rounded"
                     onClick={() => openEdit(row.raw)}
                   >
                     Edit
                   </button>
                   <button
                     type="button"
-                    className="px-2 py-0.5 text-xs font-medium text-red-700 hover:bg-red-50 rounded"
+                    className="px-2 py-0.5 text-xs font-medium text-ds-danger hover:bg-app-highlight rounded"
                     onClick={() => void handleDelete(row.raw)}
                   >
                     Delete
@@ -738,8 +746,8 @@ const PersonalTransactionsTab: React.FC = () => {
           )}
         </div>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-2 border-t border-gray-200 bg-gray-50/50 rounded-b-lg">
-          <div className="text-sm text-gray-600">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-4 py-2 border-t border-app-border bg-app-surface-2/50 rounded-b-lg">
+          <div className="text-sm text-app-muted">
             Show data{' '}
             <select
               value={pageSize}
@@ -747,7 +755,7 @@ const PersonalTransactionsTab: React.FC = () => {
                 setPageSize(Number(e.target.value));
                 setPage(1);
               }}
-              className="mx-1 py-1 px-2 border border-gray-300 rounded bg-white text-gray-900"
+              className="mx-1 py-1 px-2 border border-app-border rounded bg-app-card text-app-text"
               aria-label="Page size"
             >
               {PAGE_SIZES.map((n) => (
@@ -763,7 +771,7 @@ const PersonalTransactionsTab: React.FC = () => {
               type="button"
               onClick={() => setPage(1)}
               disabled={page <= 1}
-              className="p-2 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded border border-app-border bg-app-card text-app-text disabled:opacity-50 disabled:cursor-not-allowed hover:bg-app-surface-2"
               title="First"
             >
               «
@@ -772,7 +780,7 @@ const PersonalTransactionsTab: React.FC = () => {
               type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="p-2 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded border border-app-border bg-app-card text-app-text disabled:opacity-50 disabled:cursor-not-allowed hover:bg-app-surface-2"
               title="Previous"
             >
               ‹
@@ -786,7 +794,7 @@ const PersonalTransactionsTab: React.FC = () => {
                   type="button"
                   onClick={() => setPage(n)}
                   className={`min-w-[2rem] py-1.5 px-2 rounded border text-sm font-medium ${
-                    page === n ? 'border-blue-600 bg-blue-600 text-white' : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+                    page === n ? 'border-ds-primary bg-ds-primary text-white' : 'border-app-border bg-app-card text-app-text hover:bg-app-surface-2'
                   }`}
                 >
                   {n}
@@ -797,7 +805,7 @@ const PersonalTransactionsTab: React.FC = () => {
               type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="p-2 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded border border-app-border bg-app-card text-app-text disabled:opacity-50 disabled:cursor-not-allowed hover:bg-app-surface-2"
               title="Next"
             >
               ›
@@ -806,7 +814,7 @@ const PersonalTransactionsTab: React.FC = () => {
               type="button"
               onClick={() => setPage(totalPages)}
               disabled={page >= totalPages}
-              className="p-2 rounded border border-gray-300 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+              className="p-2 rounded border border-app-border bg-app-card text-app-text disabled:opacity-50 disabled:cursor-not-allowed hover:bg-app-surface-2"
               title="Last"
             >
               »

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw, X, Clock } from 'lucide-react';
 import { versionService } from '../../services/versionService';
+import { useFeatures } from '../../hooks/useFeatures';
 
 interface VersionUpdateNotificationProps {
   onUpdateRequested?: () => void;
@@ -9,12 +10,19 @@ interface VersionUpdateNotificationProps {
 export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps> = ({ 
   onUpdateRequested 
 }) => {
+  const { features } = useFeatures();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [serverVersion, setServerVersion] = useState<string>('');
   const [clientVersion, setClientVersion] = useState<string>('');
   const [dismissedUntil, setDismissedUntil] = useState<Date | null>(null);
 
   useEffect(() => {
+    if (!features.applicationUpdates) {
+      versionService.stopPeriodicCheck();
+      setUpdateAvailable(false);
+      return;
+    }
+
     // Check if notification was dismissed
     const dismissed = localStorage.getItem('version_update_dismissed_until');
     if (dismissed) {
@@ -48,7 +56,11 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
     return () => {
       versionService.stopPeriodicCheck();
     };
-  }, []);
+  }, [features.applicationUpdates]);
+
+  if (!features.applicationUpdates) {
+    return null;
+  }
 
   const handleUpdateNow = () => {
     if (onUpdateRequested) {
@@ -68,7 +80,7 @@ export const VersionUpdateNotification: React.FC<VersionUpdateNotificationProps>
     setUpdateAvailable(false);
   };
 
-  if (!updateAvailable || (dismissedUntil && new Date() < dismissedUntil)) {
+  if (!features.applicationUpdates || !updateAvailable || (dismissedUntil && new Date() < dismissedUntil)) {
     return null;
   }
 

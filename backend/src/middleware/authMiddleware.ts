@@ -68,12 +68,12 @@ export async function authMiddleware(
       organization_status: string;
       rejection_reason: string | null;
     }>(
-      `SELECT u.id, u.tenant_id, ut.role, u.is_active,
+      `SELECT u.id, ut.tenant_id, ut.role, u.is_active,
               COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
-       FROM users u
-       JOIN user_tenants ut ON ut.user_id = u.id AND ut.tenant_id = u.tenant_id
-       JOIN tenants t ON t.id = u.tenant_id
-       WHERE u.id = $1 AND u.tenant_id = $2`,
+       FROM user_tenants ut
+       INNER JOIN users u ON u.id = ut.user_id
+       INNER JOIN tenants t ON t.id = ut.tenant_id
+       WHERE ut.user_id = $1 AND ut.tenant_id = $2`,
       [payload.sub, payload.tenantId]
     );
     if (r.rows.length === 0 || !r.rows[0].is_active) {
@@ -98,7 +98,7 @@ export async function authMiddleware(
       return;
     }
     req.userId = user.id;
-    req.tenantId = user.tenant_id;
+    req.tenantId = payload.tenantId;
     req.role = user.role;
 
     if (isDemoEnvironmentEnabled() && isDemoMasterTenant(req.tenantId)) {
@@ -172,17 +172,17 @@ export async function optionalAuthMiddleware(
       role: string;
       is_active: boolean;
     }>(
-      `SELECT u.id, u.tenant_id, ut.role, u.is_active
-       FROM users u
-       JOIN user_tenants ut ON ut.user_id = u.id AND ut.tenant_id = u.tenant_id
-       WHERE u.id = $1 AND u.tenant_id = $2`,
+      `SELECT u.id, ut.tenant_id, ut.role, u.is_active
+       FROM user_tenants ut
+       INNER JOIN users u ON u.id = ut.user_id
+       WHERE ut.user_id = $1 AND ut.tenant_id = $2`,
       [payload.sub, payload.tenantId]
     );
     if (r.rows.length > 0 && r.rows[0].is_active) {
       const user = r.rows[0];
       if (!isTokenRoleStale(payload.role, user.role)) {
         req.userId = user.id;
-        req.tenantId = user.tenant_id;
+        req.tenantId = payload.tenantId;
         req.role = user.role;
       }
     }
