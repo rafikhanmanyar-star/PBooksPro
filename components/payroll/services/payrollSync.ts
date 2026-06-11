@@ -5,6 +5,7 @@
 
 import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
+import { mapWithConcurrency } from '../../../utils/mapWithConcurrency';
 import { storageService } from './storageService';
 import { normalizeEmployee, normalizePayrollRun, normalizePayslip } from '../types';
 
@@ -48,7 +49,7 @@ export async function syncPayrollFromServer(tenantId: string, options?: SyncPayr
     storageService.setPayslips(tenantId, allPayslips);
   } else {
     const runIdSet = new Set(targetRunIds);
-    const freshLists = await Promise.all(targetRunIds.map((id) => payrollApi.getPayslipsByRun(id)));
+    const freshLists = await mapWithConcurrency(targetRunIds, 4, (id) => payrollApi.getPayslipsByRun(id));
     const fresh = freshLists.flat().map((p) => normalizePayslip(p as any));
     const existing = storageService.getPayslips(tenantId);
     const kept = existing.filter((p) => !runIdSet.has(p.payroll_run_id));

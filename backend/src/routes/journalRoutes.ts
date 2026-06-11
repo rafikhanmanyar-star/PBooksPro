@@ -6,12 +6,11 @@ import { requireLedgerRole } from '../middleware/authMiddleware.js';
 import { requirePermission } from '../middleware/rbacMiddleware.js';
 import { withTransaction } from '../db/pool.js';
 import {
-  createJournalEntry,
   getGeneralLedgerReport,
   getJournalWithLines,
   isJournalReversed,
-  reverseJournalEntry,
 } from '../services/journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import { getTrialBalanceReportPayload } from '../services/trialBalanceReportService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
@@ -54,7 +53,11 @@ journalRouter.post('/transactions/journal', requireLedgerRole, async (req: Authe
   const createdBy = body.createdBy ?? req.userId ?? null;
   try {
     const result = await withTransaction((client) =>
-      createJournalEntry(client, tenantId, { ...body, createdBy })
+      createFinancialPostingService(tenantId).postManualJournal(
+        client,
+        { ...body, createdBy },
+        { actorUserId: req.userId }
+      )
     );
     emitEntityEvent(tenantId, 'created', 'payment', {
       data: { journalEntryId: result.journalEntryId },
@@ -178,7 +181,12 @@ journalRouter.post('/transactions/journal/:id/reverse', requireLedgerRole, async
   const createdBy = req.userId ?? null;
   try {
     const result = await withTransaction((client) =>
-      reverseJournalEntry(client, tenantId, id, parsed.data.reason, createdBy)
+      createFinancialPostingService(tenantId).reverseJournal(
+        client,
+        id,
+        parsed.data.reason,
+        createdBy
+      )
     );
     emitEntityEvent(tenantId, 'updated', 'payment', {
       data: { originalJournalEntryId: id, reversalJournalEntryId: result.reversalJournalEntryId },

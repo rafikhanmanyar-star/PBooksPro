@@ -16,6 +16,33 @@ import { notifyDuplicateRecordIfApplicable } from '../dbErrorNotification';
 let lastServerUnreachableDispatch = 0;
 const SERVER_UNREACHABLE_DEBOUNCE_MS = 4000;
 
+const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
+const BULK_STATE_REQUEST_TIMEOUT_MS = 600_000;
+const STATE_REQUEST_TIMEOUT_MS = 300_000;
+const PAYROLL_REQUEST_TIMEOUT_MS = 180_000;
+
+/** Longer timeouts for bulk sync / payroll endpoints that can exceed the default 2 minutes. */
+function getRequestTimeoutMs(endpoint: string): number {
+  if (endpoint.includes('/state/bulk-chunked') || endpoint.includes('/state/bulk')) {
+    return BULK_STATE_REQUEST_TIMEOUT_MS;
+  }
+  if (endpoint.includes('/state/')) {
+    return STATE_REQUEST_TIMEOUT_MS;
+  }
+  if (endpoint.includes('/payroll/')) {
+    return PAYROLL_REQUEST_TIMEOUT_MS;
+  }
+  return DEFAULT_REQUEST_TIMEOUT_MS;
+}
+
+function isRequestTimeoutError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'TimeoutError') return true;
+  if (error instanceof Error) {
+    return error.name === 'TimeoutError' || error.name === 'AbortError' || error.message.includes('timed out');
+  }
+  return false;
+}
+
 export interface ApiError {
   error: string;
   message?: string;
@@ -362,7 +389,9 @@ export class ApiClient {
         headers,
       };
       if (!fetchOpts.signal && typeof AbortSignal !== 'undefined' && typeof (AbortSignal as unknown as { timeout?: (ms: number) => AbortSignal }).timeout === 'function') {
-        fetchInit.signal = (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(120_000);
+        fetchInit.signal = (AbortSignal as unknown as { timeout: (ms: number) => AbortSignal }).timeout(
+          getRequestTimeoutMs(endpoint)
+        );
       }
       const response = await fetch(url, fetchInit);
 
@@ -628,7 +657,7 @@ export class ApiClient {
         }
       }
 
-      if (error instanceof Error && error.name === 'AbortError') {
+      if (isRequestTimeoutError(error)) {
         throw {
           error: 'Timeout',
           message: 'Cannot connect to server. The request timed out — please try again.',

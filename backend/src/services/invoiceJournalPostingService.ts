@@ -4,7 +4,8 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
-import { insertJournalEntry, reverseJournalEntry, type CreateJournalBody } from './journalService.js';
+import { type CreateJournalBody } from './journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { InvoiceRow } from './invoicesService.js';
 
 export const INVOICE_JOURNAL_SOURCE_MODULE = 'invoice';
@@ -52,7 +53,7 @@ export function buildJournalLinesFromInvoice(row: InvoiceRow): JournalLineInput[
   ];
 }
 
-function buildJournalBodyFromInvoice(row: InvoiceRow, lines: JournalLineInput[]): CreateJournalBody {
+export function buildJournalBodyFromInvoice(row: InvoiceRow, lines: JournalLineInput[]): CreateJournalBody {
   const desc =
     (row.description && String(row.description).trim()) ||
     `Invoice ${row.invoice_number} (${row.invoice_type})`;
@@ -87,17 +88,6 @@ async function findActiveJournalEntryIdForInvoice(
   return r.rows[0]?.id ?? null;
 }
 
-async function reverseExistingInvoiceJournalIfAny(
-  client: pg.PoolClient,
-  tenantId: string,
-  invoiceId: string,
-  actorUserId: string | null
-): Promise<void> {
-  const existingId = await findActiveJournalEntryIdForInvoice(client, tenantId, invoiceId);
-  if (!existingId) return;
-  await reverseJournalEntry(client, tenantId, existingId, 'Invoice updated or removed', actorUserId);
-}
-
 export async function syncInvoiceJournalMirror(
   client: pg.PoolClient,
   tenantId: string,
@@ -105,22 +95,7 @@ export async function syncInvoiceJournalMirror(
   actorUserId: string | null,
   options?: { replaceExisting?: boolean }
 ): Promise<{ journalEntryId: string | null }> {
-  if (shouldSkipInvoiceJournalMirror(row)) {
-    await reverseExistingInvoiceJournalIfAny(client, tenantId, row.id, actorUserId);
-    return { journalEntryId: null };
-  }
-
-  const replace = options?.replaceExisting !== false;
-  if (replace) {
-    await reverseExistingInvoiceJournalIfAny(client, tenantId, row.id, actorUserId);
-  }
-
-  const lines = buildJournalLinesFromInvoice(row);
-  if (!lines) return { journalEntryId: null };
-
-  const body = buildJournalBodyFromInvoice(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
-  return { journalEntryId };
+  return createFinancialPostingService(tenantId).postFromInvoice(client, row, actorUserId, options);
 }
 
 export async function reverseInvoiceJournalMirror(
@@ -129,7 +104,7 @@ export async function reverseInvoiceJournalMirror(
   invoiceId: string,
   actorUserId: string | null
 ): Promise<void> {
-  await reverseExistingInvoiceJournalIfAny(client, tenantId, invoiceId, actorUserId);
+  await createFinancialPostingService(tenantId).reverseInvoiceMirror(client, invoiceId, actorUserId);
 }
 
 export async function ensureInvoiceJournalMirror(
@@ -147,6 +122,8 @@ export async function ensureInvoiceJournalMirror(
   const lines = buildJournalLinesFromInvoice(row);
   if (!lines) return { journalEntryId: null, skipped: 'no_lines' };
   const body = buildJournalBodyFromInvoice(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, body, {
+    actorUserId,
+  });
   return { journalEntryId, skipped: null };
 }

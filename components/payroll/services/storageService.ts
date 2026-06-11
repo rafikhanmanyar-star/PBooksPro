@@ -8,6 +8,7 @@
 
 import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
+import { mapWithConcurrency } from '../../../utils/mapWithConcurrency';
 import { persistPayrollRunsToDb, persistPayrollToDbInOrder, deletePayslipFromDb, deletePayrollRunFromDb, persistPayrollDepartmentsToDb, persistPayrollGradesToDb, persistPayrollEmployeesToDb } from './payrollDb';
 import {
   PayrollEmployee,
@@ -676,7 +677,7 @@ export const storageService = {
       this.setDeductionTypes(tenantId, dt);
 
       const serverRunIds = new Set(runs.map((r) => r.id));
-      const payslipLists = await Promise.all(runs.map((r) => payrollApi.getPayslipsByRun(r.id)));
+      const payslipLists = await mapWithConcurrency(runs, 4, (r) => payrollApi.getPayslipsByRun(r.id));
       const serverPayslips = payslipLists.flat().map((p) => normalizePayslip(p));
       const existing = this.getPayslips(tenantId);
       const keepLocal = existing.filter((p: Payslip) => !serverRunIds.has(p.payroll_run_id));

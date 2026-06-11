@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from './invoiceJournalPostingService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 
 export type InvoiceRow = {
   id: string;
@@ -195,12 +196,28 @@ export async function getInvoiceByIdIncludingDeleted(
 async function finalizeInvoiceSaveFromLedger(
   client: pg.PoolClient,
   tenantId: string,
-  invoiceId: string
+  invoiceId: string,
+  opts?: { action?: 'create' | 'update'; actorUserId?: string | null }
 ): Promise<InvoiceRow> {
   await recalculateInvoicePaymentAggregates(client, tenantId, invoiceId);
   const row = await getInvoiceById(client, tenantId, invoiceId);
   if (!row) throw new Error('Invoice not found after save.');
   await syncInvoiceJournalMirror(client, tenantId, row, row.user_id);
+  const action = opts?.action ?? 'update';
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: opts?.actorUserId ?? row.user_id,
+    module: 'invoices',
+    entityType: 'invoice',
+    entityId: row.id,
+    action,
+    summary:
+      action === 'create'
+        ? `Invoice ${row.invoice_number} created`
+        : `Invoice ${row.invoice_number} updated`,
+    newValue: rowToInvoiceApi(row),
+    version: row.version,
+  });
   return row;
 }
 

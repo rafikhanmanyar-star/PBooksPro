@@ -5,11 +5,8 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
-import {
-  insertJournalEntry,
-  reverseJournalEntry,
-  type CreateJournalBody,
-} from './journalService.js';
+import { type CreateJournalBody } from './journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { TransactionRow } from './transactionsService.js';
 import { isVendorSettlementCashMirrorReference } from '../constants/vendorSettlement.js';
 
@@ -123,7 +120,7 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   return null;
 }
 
-function buildJournalBodyFromTransaction(row: TransactionRow, lines: JournalLineInput[]): CreateJournalBody {
+export function buildJournalBodyFromTransaction(row: TransactionRow, lines: JournalLineInput[]): CreateJournalBody {
   const desc =
     (row.description && String(row.description).trim()) ||
     `${row.type} ${Number(row.amount)}`;
@@ -137,23 +134,6 @@ function buildJournalBodyFromTransaction(row: TransactionRow, lines: JournalLine
     projectId: txProjectId(row),
     lines,
   };
-}
-
-async function reverseExistingTransactionJournalIfAny(
-  client: pg.PoolClient,
-  tenantId: string,
-  transactionId: string,
-  actorUserId: string | null
-): Promise<void> {
-  const existingId = await findActiveJournalEntryIdForTransaction(client, tenantId, transactionId);
-  if (!existingId) return;
-  await reverseJournalEntry(
-    client,
-    tenantId,
-    existingId,
-    'Transaction updated or removed',
-    actorUserId
-  );
 }
 
 /**
@@ -170,18 +150,7 @@ export async function syncTransactionJournalMirror(
   if (shouldSkipTransactionJournalMirror(row)) {
     return { journalEntryId: null };
   }
-
-  const replace = options?.replaceExisting !== false;
-  if (replace) {
-    await reverseExistingTransactionJournalIfAny(client, tenantId, row.id, actorUserId);
-  }
-
-  const lines = buildJournalLinesFromTransaction(row);
-  if (!lines) return { journalEntryId: null };
-
-  const body = buildJournalBodyFromTransaction(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
-  return { journalEntryId };
+  return createFinancialPostingService(tenantId).postFromTransaction(client, row, actorUserId, options);
 }
 
 /** Reverse journal mirror when a transaction is soft-deleted. */
@@ -191,7 +160,11 @@ export async function reverseTransactionJournalMirror(
   transactionId: string,
   actorUserId: string | null
 ): Promise<void> {
-  await reverseExistingTransactionJournalIfAny(client, tenantId, transactionId, actorUserId);
+  await createFinancialPostingService(tenantId).reverseTransactionMirror(
+    client,
+    transactionId,
+    actorUserId
+  );
 }
 
 /** True when a non-reversed journal entry already mirrors this transaction. */
@@ -225,6 +198,8 @@ export async function ensureTransactionJournalMirror(
     return { journalEntryId: null, skipped: 'no_lines' };
   }
   const body = buildJournalBodyFromTransaction(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, body, {
+    actorUserId,
+  });
   return { journalEntryId, skipped: null };
 }

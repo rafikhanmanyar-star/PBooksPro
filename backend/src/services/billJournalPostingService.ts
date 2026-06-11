@@ -4,7 +4,8 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
-import { insertJournalEntry, reverseJournalEntry, type CreateJournalBody } from './journalService.js';
+import { type CreateJournalBody } from './journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { BillRow } from './billsService.js';
 
 export const BILL_JOURNAL_SOURCE_MODULE = 'bill';
@@ -42,7 +43,7 @@ export function buildJournalLinesFromBill(row: BillRow): JournalLineInput[] | nu
   ];
 }
 
-function buildJournalBodyFromBill(row: BillRow, lines: JournalLineInput[]): CreateJournalBody {
+export function buildJournalBodyFromBill(row: BillRow, lines: JournalLineInput[]): CreateJournalBody {
   const desc =
     (row.description && String(row.description).trim()) ||
     `Bill ${row.bill_number}`;
@@ -77,17 +78,6 @@ async function findActiveJournalEntryIdForBill(
   return r.rows[0]?.id ?? null;
 }
 
-async function reverseExistingBillJournalIfAny(
-  client: pg.PoolClient,
-  tenantId: string,
-  billId: string,
-  actorUserId: string | null
-): Promise<void> {
-  const existingId = await findActiveJournalEntryIdForBill(client, tenantId, billId);
-  if (!existingId) return;
-  await reverseJournalEntry(client, tenantId, existingId, 'Bill updated or removed', actorUserId);
-}
-
 export async function syncBillJournalMirror(
   client: pg.PoolClient,
   tenantId: string,
@@ -95,22 +85,7 @@ export async function syncBillJournalMirror(
   actorUserId: string | null,
   options?: { replaceExisting?: boolean }
 ): Promise<{ journalEntryId: string | null }> {
-  if (shouldSkipBillJournalMirror(row)) {
-    await reverseExistingBillJournalIfAny(client, tenantId, row.id, actorUserId);
-    return { journalEntryId: null };
-  }
-
-  const replace = options?.replaceExisting !== false;
-  if (replace) {
-    await reverseExistingBillJournalIfAny(client, tenantId, row.id, actorUserId);
-  }
-
-  const lines = buildJournalLinesFromBill(row);
-  if (!lines) return { journalEntryId: null };
-
-  const body = buildJournalBodyFromBill(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
-  return { journalEntryId };
+  return createFinancialPostingService(tenantId).postFromBill(client, row, actorUserId, options);
 }
 
 export async function reverseBillJournalMirror(
@@ -119,7 +94,7 @@ export async function reverseBillJournalMirror(
   billId: string,
   actorUserId: string | null
 ): Promise<void> {
-  await reverseExistingBillJournalIfAny(client, tenantId, billId, actorUserId);
+  await createFinancialPostingService(tenantId).reverseBillMirror(client, billId, actorUserId);
 }
 
 export async function ensureBillJournalMirror(
@@ -137,6 +112,9 @@ export async function ensureBillJournalMirror(
   const lines = buildJournalLinesFromBill(row);
   if (!lines) return { journalEntryId: null, skipped: 'no_lines' };
   const body = buildJournalBodyFromBill(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, body, {
+    actorUserId,
+    emitRealtime: true,
+  });
   return { journalEntryId, skipped: null };
 }

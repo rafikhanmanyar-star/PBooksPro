@@ -1,5 +1,5 @@
 /**
- * AUTO-GENERATED — do not edit. Source: services/financialEngine/trialBalanceCore.ts
+ * AUTO-GENERATED — do not edit. Source: shared/financial-core/trialBalanceCore.ts
  * Regenerate: node scripts/ensure-shared-financial-cores.mjs
  */
 

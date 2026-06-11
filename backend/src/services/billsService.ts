@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPostingService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 
 export type BillRow = {
   id: string;
@@ -229,12 +230,25 @@ export async function getBillByIdIncludingDeleted(
 async function finalizeBillSaveFromLedger(
   client: pg.PoolClient,
   tenantId: string,
-  billId: string
+  billId: string,
+  opts?: { action?: 'create' | 'update'; actorUserId?: string | null }
 ): Promise<BillRow> {
   await recalculateBillPaymentAggregates(client, tenantId, billId);
   const row = await getBillById(client, tenantId, billId);
   if (!row) throw new Error('Bill not found after save.');
   await syncBillJournalMirror(client, tenantId, row, row.user_id);
+  const action = opts?.action ?? 'update';
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: opts?.actorUserId ?? row.user_id,
+    module: 'bills',
+    entityType: 'bill',
+    entityId: row.id,
+    action,
+    summary: action === 'create' ? `Bill ${row.bill_number} created` : `Bill ${row.bill_number} updated`,
+    newValue: rowToBillApi(row),
+    version: row.version,
+  });
   return row;
 }
 
@@ -515,8 +529,12 @@ async function upsertBillByTenantAndBillNumber(
     return { row: stale, conflict: true, wasInsert: false };
   }
 
-  const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id);
-  return { row: finalized, conflict: false, wasInsert: hadRowBefore.rows.length === 0 };
+  const wasInsert = hadRowBefore.rows.length === 0;
+  const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
+    action: wasInsert ? 'create' : 'update',
+    actorUserId,
+  });
+  return { row: finalized, conflict: false, wasInsert };
 }
 
 export async function upsertBill(
@@ -615,7 +633,10 @@ export async function upsertBill(
     );
     const row = u.rows[0];
     if (!row) throw new Error('Bill upsert failed.');
-    const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id);
+    const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
+      action: 'update',
+      actorUserId,
+    });
     return { row: finalized, conflict: false, wasInsert: false };
   } catch (e) {
     if (!isDuplicateBillNumberConstraint(e)) throw e;

@@ -97,7 +97,7 @@ export function getDefaultApiRootUrl(): string {
 export function getDefaultApiBaseUrl(): string {
   const env = import.meta.env.VITE_API_URL as string | undefined;
   if (env?.trim()) return normalizeApiBaseUrl(env);
-  return `${getDefaultApiRootUrl()}/api`;
+  return `${getDefaultApiRootUrl()}/api/v1`;
 }
 
 /** Persisted LAN server root (no /api), cleared when it targets the wrong port for this build. */
@@ -129,7 +129,9 @@ function readStoredApiBaseUrl(): string | null {
 
 function normalizeApiBaseUrl(url: string): string {
   const u = url.trim().replace(/\/?$/, '');
-  return u.endsWith('/api') ? u : `${u}/api`;
+  if (u.endsWith('/api/v1')) return u;
+  if (u.endsWith('/api')) return `${u}/v1`;
+  return `${u}/api/v1`;
 }
 
 function isRemoteApiUrl(url: string): boolean {
@@ -159,9 +161,9 @@ export function isCloudHostedApi(): boolean {
   return isRemoteApiUrl(getApiBaseUrl());
 }
 
-/** Strip `/api` suffix to get server root (e.g. `http://192.168.1.10:3000`). */
+/** Strip `/api` or `/api/v1` suffix to get server root (e.g. `http://192.168.1.10:3000`). */
 export function getApiRootUrl(): string {
-  return getApiBaseUrl().replace(/\/api\/?$/i, '');
+  return getApiBaseUrl().replace(/\/api(\/v1)?\/?$/i, '');
 }
 
 /**
@@ -181,7 +183,7 @@ export function getApiBaseUrl(): string {
       return getDefaultApiBaseUrl();
     }
     const port = isStagingEnvironment() ? STAGING_LAN_API_PORT : DEFAULT_LAN_API_PORT;
-    return `${protocol}//${hostname}:${port}/api`;
+    return `${protocol}//${hostname}:${port}/api/v1`;
   }
   return getDefaultApiBaseUrl();
 }
@@ -193,7 +195,7 @@ export function getWsServerUrl(): string {
   const env = import.meta.env.VITE_WS_URL as string | undefined;
   if (env) return env.replace(/\/?$/, '');
   const api = getApiBaseUrl();
-  return api.replace(/\/api\/?$/, '');
+  return api.replace(/\/api(\/v1)?\/?$/, '');
 }
 
 /**

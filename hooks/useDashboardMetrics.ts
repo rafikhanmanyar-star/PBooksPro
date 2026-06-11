@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { dashboardMetricsApi } from '../services/api/dashboardMetricsApi';
+import { dashboardSnapshotsApi } from '../services/api/dashboardSnapshotsApi';
+import { isLocalOnlyMode } from '../config/apiUrl';
 import { useDashboardFiltersStore } from '../stores/dashboardFiltersStore';
 import type { DashboardFilters } from '../types/dashboardMetrics.types';
 
@@ -46,6 +48,17 @@ export function useDashboardMetricsWithFilters(filters: DashboardFilters, enable
     queryFn: () => dashboardMetricsApi.getMetrics(filters),
     enabled,
     staleTime: STALE_MS,
+  });
+}
+
+export function useDashboardSnapshots(date?: string, enabled = true) {
+  return useQuery({
+    queryKey: [...dashboardMetricsQueryKeys.root, 'snapshots', date ?? 'today'] as const,
+    queryFn: () => dashboardSnapshotsApi.getSnapshots(date),
+    enabled: enabled && !isLocalOnlyMode(),
+    staleTime: STALE_MS,
+    refetchInterval: REFETCH_MS,
+    refetchIntervalInBackground: false,
   });
 }
 

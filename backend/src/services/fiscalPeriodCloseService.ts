@@ -12,7 +12,7 @@ import {
   SYS_INCOME_SUMMARY,
   SYS_RETAINED_EARNINGS,
 } from '../constants/fiscalAccounts.js';
-import { insertJournalEntry } from './journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import { getProfitLossReportJson } from './profitLossReportService.js';
 import {
   getAccountingPeriodById,
@@ -201,20 +201,15 @@ export async function closeAccountingPeriod(
   let closingJournalEntryId: string | null = null;
   if (closingLines.length >= 2) {
     const ref = `PERIOD-CLOSE-${startDate}-${endDate}`;
-    const { journalEntryId } = await insertJournalEntry(
-      client,
-      tenantId,
-      {
-        entryDate: endDate,
-        reference: ref,
-        description: `Fiscal period close ${startDate} to ${endDate}`,
-        sourceModule: FISCAL_CLOSE_SOURCE_MODULE,
-        sourceId: periodId,
-        createdBy: options.actorUserId,
-        lines: closingLines,
-      },
-      undefined
-    );
+    const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, {
+      entryDate: endDate,
+      reference: ref,
+      description: `Fiscal period close ${startDate} to ${endDate}`,
+      sourceModule: FISCAL_CLOSE_SOURCE_MODULE,
+      sourceId: periodId,
+      createdBy: options.actorUserId,
+      lines: closingLines,
+    }, { actorUserId: options.actorUserId });
     closingJournalEntryId = journalEntryId;
   }
 
@@ -233,7 +228,7 @@ export async function closeAccountingPeriod(
     const transferLines = buildYearEndTransferLines(cyeBal);
     if (transferLines.length >= 2) {
       const ref = `YEAR-END-${endDate.slice(0, 4)}`;
-      const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+      const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, {
         entryDate: endDate,
         reference: ref,
         description: `Transfer current year earnings to retained earnings (${endDate.slice(0, 4)})`,
@@ -241,7 +236,7 @@ export async function closeAccountingPeriod(
         sourceId: periodId,
         createdBy: options.actorUserId,
         lines: transferLines,
-      });
+      }, { actorUserId: options.actorUserId });
       yearEndTransferJournalEntryId = journalEntryId;
     }
   }
