@@ -321,52 +321,23 @@ export async function settleVendorBillsBatchWithAdvances(
   }
 
   for (const [aid, totalDec] of globalAdvanceUse.entries()) {
-    await client.query(
-      `UPDATE contractor_advances SET remaining_amount = remaining_amount - $1::numeric, updated_at = NOW()
-       WHERE tenant_id = $2 AND id = $3`,
-      [roundMoney(totalDec), tenantId, aid]
-    );
+    await advanceRepo.adjustRemaining(client, aid, -roundMoney(totalDec));
   }
 
   for (const aid of touchedAdvanceIds) {
     const usages = advanceClearedAgainstBills.get(aid);
     if (!usages?.length) continue;
     const clearedLine = `Cleared against bills: ${usages.map((u) => `${u.billNumber} (${moneyLabel(u.amount)})`).join(', ')}.`;
-    await client.query(
-      `UPDATE contractor_advances SET
-         description =
-           CASE
-             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
-             ELSE trim(description) || ' ' || $3::text
-           END,
-         updated_at = NOW()
-       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-      [tenantId, aid, clearedLine]
-    );
+    await advanceRepo.appendDescriptionNote(client, aid, clearedLine);
   }
 
   for (const aid of touchedAdvanceIds) {
-    const remR = await client.query<{ remaining_amount: string }>(
-      `SELECT remaining_amount::text AS remaining_amount
-       FROM contractor_advances WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-      [tenantId, aid]
-    );
-    const rem = roundMoney(Number(remR.rows[0]?.remaining_amount ?? NaN));
+    const rawRem = await advanceRepo.getRemainingAmount(client, aid);
+    const rem = rawRem == null ? NaN : roundMoney(rawRem);
     if (!Number.isFinite(rem)) continue;
     if (rem > MONEY_EPS) continue;
 
-    await client.query(
-      `UPDATE contractor_advances SET
-         description =
-           CASE
-             WHEN trim(COALESCE(description, '')) ILIKE '%Fully applied (remaining prepaid: 0)%' THEN description
-             WHEN trim(COALESCE(description, '')) = '' THEN 'Fully applied (remaining prepaid: 0).'
-             ELSE trim(description) || ' Fully applied (remaining prepaid: 0).'
-           END,
-         updated_at = NOW()
-       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-      [tenantId, aid]
-    );
+    await advanceRepo.markFullyAppliedInDescription(client, aid);
   }
 
   for (const { billId, journalEntryId } of journalEntries) {

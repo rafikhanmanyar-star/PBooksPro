@@ -316,10 +316,7 @@ export async function createContractorAdvance(
     ],
   });
 
-  await client.query(
-    `UPDATE contractor_advances SET advance_journal_entry_id = $1, updated_at = NOW() WHERE id = $2 AND tenant_id = $3`,
-    [journalEntryId, id, tenantId]
-  );
+  await new ContractorAdvanceRepository(tenantId).setAdvanceJournalEntryId(client, id, journalEntryId);
 
   const row = await new ContractorAdvanceRepository(tenantId).getById(client, id);
   if (!row) throw new Error('Advance not found after create.');
@@ -495,11 +492,7 @@ export async function approveContractorBill(
        VALUES ($1, $2, $3, $4, $5)`,
       [adjRowId, tenantId, billId, advanceIdAgg, rounded]
     );
-    await client.query(
-      `UPDATE contractor_advances SET remaining_amount = remaining_amount - $1::numeric, updated_at = NOW()
-       WHERE tenant_id = $2 AND id = $3`,
-      [rounded, tenantId, advanceIdAgg]
-    );
+    await new ContractorAdvanceRepository(tenantId).adjustRemaining(client, advanceIdAgg, -rounded);
   }
 
   const entryDate = opts?.entryDate?.trim() ? opts.entryDate.trim() : bill.bill_date;
