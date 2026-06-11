@@ -6,25 +6,13 @@ import type pg from 'pg';
 import { logSubscriptionEvent } from './subscriptionEventService.js';
 import { expireTrialsAndCanceled } from './subscriptionService.js';
 import { retryFailedWebhookDeliveries } from './paddleWebhookProcessor.js';
+import {
+  getPastDueGraceDays,
+  gracePeriodEndsAt,
+  isWithinPastDueGrace,
+} from './subscriptionGraceUtils.js';
 
-export function getPastDueGraceDays(): number {
-  const raw = process.env.PAST_DUE_GRACE_DAYS;
-  const n = raw ? Number(raw) : 7;
-  return Number.isFinite(n) && n >= 0 ? Math.floor(n) : 7;
-}
-
-export function gracePeriodEndsAt(pastDueAt: string | null | undefined): string | null {
-  if (!pastDueAt) return null;
-  const end = new Date(pastDueAt);
-  end.setDate(end.getDate() + getPastDueGraceDays());
-  return end.toISOString();
-}
-
-export function isWithinPastDueGrace(pastDueAt: string | null | undefined): boolean {
-  const endsAt = gracePeriodEndsAt(pastDueAt);
-  if (!endsAt) return false;
-  return Date.now() < new Date(endsAt).getTime();
-}
+export { getPastDueGraceDays, gracePeriodEndsAt, isWithinPastDueGrace };
 
 export async function applyPendingPlanChanges(client: pg.PoolClient): Promise<number> {
   const { rows } = await client.query<{

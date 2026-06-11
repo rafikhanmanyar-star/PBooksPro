@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
-import { getPastDueGraceDays, gracePeriodEndsAt } from '../../../services/billing/subscriptionLifecycleService.js';
+import { getPastDueGraceDays, gracePeriodEndsAt } from '../../../services/billing/subscriptionGraceUtils.js';
 
 export type AdminSubscriptionRow = {
   subscriptionId: string;
