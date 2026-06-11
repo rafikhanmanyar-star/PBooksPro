@@ -613,7 +613,7 @@ const ApiLoginScreen: React.FC = () => {
 
   const displayError = error || authError;
 
-  const cloudSignup =
+  const cloudHosted =
     isCloudHostedApi() || isCloudApiUrl(rootUrl()) || isCloudApiUrl(getDefaultApiRootUrl());
   const canSubmitRegistration = !isLoading && legalAccepted && legalAcceptances.length > 0;
   const registrationBlockers: string[] = [];
@@ -765,7 +765,7 @@ const ApiLoginScreen: React.FC = () => {
               >
                 {displayError && <AuthErrorBanner message={displayError} />}
 
-                {!websiteDemoEntry && (
+                {!websiteDemoEntry && !cloudHosted && (
                   <div>
                     <FieldLabel htmlFor="api-server">API server (host and port)</FieldLabel>
                     <IconField icon={Server}>
@@ -965,9 +965,9 @@ const ApiLoginScreen: React.FC = () => {
                 icon={Building2}
                 title="Create organization"
                 subtitle={
-                  cloudSignup && organizationApprovalRequired
+                  cloudHosted && organizationApprovalRequired
                     ? 'Submit your organization for approval. You can sign in after a platform administrator approves your request.'
-                    : cloudSignup
+                    : cloudHosted
                       ? 'Register your organization on PBooks Pro cloud'
                       : 'Register a new tenant on your API server'
                 }
@@ -985,7 +985,7 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 )}
 
-                {!cloudSignup && (
+                {!cloudHosted && (
                   <div className="md:col-span-2">
                     <FieldLabel htmlFor="reg-server">API server (host and port)</FieldLabel>
                     <IconField icon={Server}>
@@ -1003,7 +1003,7 @@ const ApiLoginScreen: React.FC = () => {
                   </div>
                 )}
 
-                {cloudSignup && organizationApprovalRequired && (
+                {cloudHosted && organizationApprovalRequired && (
                   <div className="md:col-span-2 rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                     Your registration will be reviewed in the admin portal. You will receive an email when your organization is approved.
                   </div>
@@ -1213,7 +1213,7 @@ const ApiLoginScreen: React.FC = () => {
                         <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
                         Creating organization…
                       </>
-                    ) : cloudSignup && organizationApprovalRequired ? (
+                    ) : cloudHosted && organizationApprovalRequired ? (
                       'Submit for approval'
                     ) : (
                       'Create organization'
