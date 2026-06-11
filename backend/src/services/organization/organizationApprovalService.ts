@@ -132,9 +132,10 @@ async function logOrganizationStatusChange(
     reason?: string | null;
   }
 ): Promise<void> {
+  // Platform admins live in admin_users, not tenant users — audit_events.user_id FK targets users(id).
   await appendAuditEvent(client, {
     tenantId: input.tenantId,
-    userId: input.adminUserId,
+    userId: null,
     email: input.adminEmail ?? undefined,
     module: 'system',
     action: input.action,
@@ -142,7 +143,11 @@ async function logOrganizationStatusChange(
     entityId: input.tenantId,
     summary: input.summary,
     oldValue: { status: input.previousStatus },
-    newValue: { status: input.newStatus, reason: input.reason ?? null },
+    newValue: {
+      status: input.newStatus,
+      reason: input.reason ?? null,
+      platformAdminId: input.adminUserId,
+    },
   });
 }
 
@@ -303,7 +308,9 @@ export async function approveOrganization(
     [tenantId, adminUserId]
   );
 
-  await startTrialSubscription(client, tenantId);
+  await startTrialSubscription(client, tenantId).catch((err) => {
+    console.warn('[organizationApproval] Trial subscription not started on approve:', err);
+  });
   await getOrCreateOnboarding(client, tenantId);
 
   await logOrganizationStatusChange(client, {
