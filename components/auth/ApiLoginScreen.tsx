@@ -28,7 +28,6 @@ import type { LegalAcceptanceInput } from '../../services/api/legalApi';
 import { getApiRootUrl, getAppDisplayName, isStagingEnvironment, getDefaultApiRootUrl, isCloudHostedApi, isCloudApiUrl } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
-import RegistrationCaptcha from '../ui/RegistrationCaptcha';
 import { requestElectronWebContentsFocus } from '../../utils/electronFocusRecovery';
 import { useNotification } from '../../context/NotificationContext';
 import { DEMO_PUBLIC_TENANT_ID } from '../../config/demoEnvironment';
@@ -339,14 +338,7 @@ const ApiLoginScreen: React.FC = () => {
   const [registeredTenantId, setRegisteredTenantId] = useState<string | null>(null);
   const [registeredReference, setRegisteredReference] = useState<string | null>(null);
   const [registrationPendingApproval, setRegistrationPendingApproval] = useState(false);
-  const [captchaConfig, setCaptchaConfig] = useState<{
-    provider: 'turnstile' | 'recaptcha';
-    siteKey: string;
-  } | null>(null);
-  const [captchaRequired, setCaptchaRequired] = useState(false);
-  const [captchaLoadFailed, setCaptchaLoadFailed] = useState(false);
   const [organizationApprovalRequired, setOrganizationApprovalRequired] = useState(true);
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [legalAcceptances, setLegalAcceptances] = useState<LegalAcceptanceInput[]>([]);
   const [mfaPhase, setMfaPhase] = useState<'challenge' | 'setup' | null>(null);
@@ -411,28 +403,16 @@ const ApiLoginScreen: React.FC = () => {
       apiClient.setBaseUrl(trimmed);
       void apiClient
         .get<{
-          captcha?: { provider: 'turnstile' | 'recaptcha'; siteKey: string | null } | null;
-          captchaRequired?: boolean;
           organizationApprovalRequired?: boolean;
         }>('/auth/public-config')
         .then((cfg) => {
           setOrganizationApprovalRequired(cfg.organizationApprovalRequired !== false);
-          setCaptchaRequired(!!cfg.captchaRequired);
-          if (cfg.captcha?.siteKey) {
-            setCaptchaConfig({
-              provider: cfg.captcha.provider,
-              siteKey: cfg.captcha.siteKey,
-            });
-          } else {
-            setCaptchaConfig(null);
-          }
         })
         .catch(() => {
-          setCaptchaConfig(null);
-          setCaptchaRequired(false);
+          setOrganizationApprovalRequired(true);
         });
     } catch {
-      setCaptchaConfig(null);
+      /* invalid URL while typing */
     }
   }, [serverUrl]);
 
@@ -598,10 +578,6 @@ const ApiLoginScreen: React.FC = () => {
       setError('You must accept the Terms of Service and Privacy Policy.');
       return;
     }
-    if (captchaRequired && captchaConfig && !captchaToken) {
-      setError('Please complete the CAPTCHA verification.');
-      return;
-    }
     try {
       apiClient.setBaseUrl(rootUrl());
       const result = await registerTenant({
@@ -614,7 +590,6 @@ const ApiLoginScreen: React.FC = () => {
         adminPassword,
         requestedTenantId: requestedTenantId.trim() || undefined,
         legalAcceptances,
-        captchaToken: captchaToken ?? undefined,
       });
       setRegisteredTenantId(result.tenantId);
       setRegisteredReference(result.registrationReference ?? null);
@@ -640,36 +615,16 @@ const ApiLoginScreen: React.FC = () => {
 
   const cloudSignup =
     isCloudHostedApi() || isCloudApiUrl(rootUrl()) || isCloudApiUrl(getDefaultApiRootUrl());
-  const showRegistrationCaptcha = captchaRequired;
-  const captchaMisconfigured = captchaRequired && !captchaConfig;
-  const captchaBlocksSubmit = captchaRequired && !!captchaConfig && !captchaToken && !captchaLoadFailed;
-  const canSubmitRegistration =
-    !isLoading &&
-    legalAccepted &&
-    legalAcceptances.length > 0 &&
-    !captchaBlocksSubmit &&
-    !captchaMisconfigured &&
-    !(captchaRequired && captchaLoadFailed);
+  const canSubmitRegistration = !isLoading && legalAccepted && legalAcceptances.length > 0;
   const registrationBlockers: string[] = [];
   if (!legalAccepted || legalAcceptances.length === 0) {
     registrationBlockers.push('Accept the Terms of Service and Privacy Policy');
-  }
-  if (captchaMisconfigured) {
-    registrationBlockers.push('Registration security check is misconfigured — contact support');
-  }
-  if (captchaBlocksSubmit) {
-    registrationBlockers.push('Complete the CAPTCHA verification');
-  }
-  if (captchaRequired && captchaLoadFailed) {
-    registrationBlockers.push('CAPTCHA failed to load — refresh the page or contact support');
   }
 
   const goToRegister = () => {
     setError(null);
     setLegalAccepted(false);
     setLegalAcceptances([]);
-    setCaptchaToken(null);
-    setCaptchaLoadFailed(false);
     setView('register');
   };
 
@@ -1051,17 +1006,6 @@ const ApiLoginScreen: React.FC = () => {
                 {cloudSignup && organizationApprovalRequired && (
                   <div className="md:col-span-2 rounded-ds-md border border-amber-200/80 bg-amber-50/90 px-3 py-2.5 text-ds-small text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
                     Your registration will be reviewed in the admin portal. You will receive an email when your organization is approved.
-                  </div>
-                )}
-
-                {showRegistrationCaptcha && (
-                  <div className="md:col-span-2">
-                    <RegistrationCaptcha
-                      config={captchaConfig}
-                      onToken={setCaptchaToken}
-                      onLoadError={setCaptchaLoadFailed}
-                      disabled={isLoading}
-                    />
                   </div>
                 )}
 
