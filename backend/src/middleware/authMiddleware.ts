@@ -17,6 +17,8 @@ export type AuthedRequest = Request & {
   userId?: string;
   tenantId?: string;
   role?: string;
+  username?: string;
+  name?: string;
 };
 
 function normalizeRole(role: string | undefined): string {
@@ -40,6 +42,8 @@ type AuthCacheEntry = {
   userId: string;
   tenantId: string;
   role: string;
+  username: string;
+  name: string;
   organizationStatus: string;
   rejectionReason: string | null;
   expiresAt: number;
@@ -103,6 +107,8 @@ export async function authMiddleware(
       id: string;
       tenant_id: string;
       role: string;
+      username: string;
+      name: string;
       is_active: boolean;
       organization_status: string;
       rejection_reason: string | null;
@@ -113,6 +119,8 @@ export async function authMiddleware(
         id: cached.userId,
         tenant_id: cached.tenantId,
         role: cached.role,
+        username: cached.username,
+        name: cached.name,
         is_active: true,
         organization_status: cached.organizationStatus,
         rejection_reason: cached.rejectionReason,
@@ -123,11 +131,13 @@ export async function authMiddleware(
         id: string;
         tenant_id: string;
         role: string;
+        username: string;
+        name: string;
         is_active: boolean;
         organization_status: string;
         rejection_reason: string | null;
       }>(
-        `SELECT u.id, ut.tenant_id, ut.role, u.is_active,
+        `SELECT u.id, ut.tenant_id, ut.role, u.username, u.name, u.is_active,
                 COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
          FROM user_tenants ut
          INNER JOIN users u ON u.id = ut.user_id
@@ -156,6 +166,8 @@ export async function authMiddleware(
         userId: user.id,
         tenantId: user.tenant_id,
         role: user.role,
+        username: user.username,
+        name: user.name,
         organizationStatus: user.organization_status,
         rejectionReason: user.rejection_reason,
       });
@@ -169,6 +181,8 @@ export async function authMiddleware(
     req.userId = user.id;
     req.tenantId = payload.tenantId;
     req.role = user.role;
+    req.username = user.username;
+    req.name = user.name;
 
     if (isDemoEnvironmentEnabled() && isDemoMasterTenant(req.tenantId)) {
       sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for interactive access.');
