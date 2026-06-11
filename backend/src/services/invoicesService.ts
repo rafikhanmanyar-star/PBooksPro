@@ -273,7 +273,7 @@ export async function createInvoice(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `inv_${randomUUID().replace(/-/g, '')}`;
 
-  await new InvoiceRepository(tenantId).insert(
+  await new InvoiceRepository(tenantId).insertInvoice(
     client,
     id,
     invoiceWriteFieldsFromPick(p),
@@ -344,7 +344,7 @@ export async function softDeleteInvoice(
   }
 
   const invoiceRepo = new InvoiceRepository(tenantId);
-  const deleted = await invoiceRepo.softDelete(client, id);
+  const deleted = await invoiceRepo.markDeleted(client, id);
   if (!deleted) return { ok: false, conflict: false };
 
   await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);

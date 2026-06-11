@@ -183,7 +183,7 @@ export class InvoiceRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
-  async softDelete(client: pg.PoolClient, id: string): Promise<boolean> {
+  async markDeleted(client: pg.PoolClient, id: string): Promise<boolean> {
     const r = await client.query(
       `UPDATE invoices SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,

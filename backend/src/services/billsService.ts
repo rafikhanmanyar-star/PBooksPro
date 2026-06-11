@@ -293,7 +293,7 @@ export async function createBill(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
-  return new BillRepository(tenantId).insert(
+  return new BillRepository(tenantId).insertBill(
     client,
     id,
     billWriteFieldsFromPick(p),
@@ -496,7 +496,7 @@ export async function softDeleteBill(
   }
 
   const billRepo = new BillRepository(tenantId);
-  const deleted = await billRepo.softDelete(client, id);
+  const deleted = await billRepo.markDeleted(client, id);
   if (!deleted) return { ok: false, conflict: false };
 
   await reverseBillJournalMirror(client, tenantId, id, actorUserId ?? null);
