@@ -52,12 +52,6 @@ import {
   registerPendingOrganization,
 } from '../services/organization/organizationApprovalService.js';
 import { isOrganizationApprovalEnabled } from '../constants/organizationStatus.js';
-import {
-  publicCaptchaProvider,
-  publicCaptchaRequired,
-  publicCaptchaSiteKey,
-  verifyRegistrationCaptcha,
-} from '../utils/captchaVerification.js';
 
 export const authRouter = Router();
 
@@ -530,17 +524,13 @@ authRouter.post('/auth/select-company', loginLimiter, optionalAuthMiddleware, as
 });
 
 authRouter.get('/auth/public-config', publicIntrospectionLimiter, (_req, res) => {
-  const captchaRequired = publicCaptchaRequired();
-  const captchaProvider = captchaRequired ? publicCaptchaProvider() : null;
   sendSuccess(res, {
     selfSignupEnabled: isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
     trialSignupEnabled:
       isEnvFlagEnabled('ALLOW_TRIAL_SIGNUP') || isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
     organizationApprovalRequired: isOrganizationApprovalEnabled(),
-    captchaRequired,
-    captcha: captchaProvider
-      ? { provider: captchaProvider, siteKey: publicCaptchaSiteKey() }
-      : null,
+    captchaRequired: false,
+    captcha: null,
   });
 });
 
@@ -577,14 +567,7 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
     legalAcceptances,
     referralCode,
     inviteToken,
-    captchaToken,
   } = parsed.data;
-
-  const captchaResult = await verifyRegistrationCaptcha(captchaToken, clientIpFromRequest(req));
-  if (!captchaResult.ok) {
-    sendFailure(res, 400, 'CAPTCHA_FAILED', captchaResult.message);
-    return;
-  }
 
   const passwordError = validatePassword(adminPassword);
   if (passwordError) {
