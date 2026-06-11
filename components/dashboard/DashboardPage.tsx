@@ -7,7 +7,13 @@ import Button from '../ui/Button';
 import { formatRoundedNumber } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import SubscriptionStatusWidget from '../billing/SubscriptionStatusWidget';
-import { useDashboardActivity, useDashboardCharts, useDashboardMetrics } from '../../hooks/useDashboardMetrics';
+import {
+  useDashboardActivity,
+  useDashboardCharts,
+  useDashboardMetrics,
+  useDashboardSnapshots,
+} from '../../hooks/useDashboardMetrics';
+import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   DashboardFilterBar,
   DASHBOARD_METRIC_ICONS,
@@ -45,6 +51,10 @@ const DashboardPage: React.FC = () => {
   const [customizeMode, setCustomizeMode] = useState(false);
   const [chartYear] = useState(() => new Date().getFullYear());
   const metricsQuery = useDashboardMetrics(isAuthenticated && isAdmin && isDashboardActive);
+  const snapshotsQuery = useDashboardSnapshots(
+    undefined,
+    isAuthenticated && isAdmin && isDashboardActive && !isLocalOnlyMode()
+  );
   const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin && isDashboardActive);
   const activityQuery = useDashboardActivity(5, isAuthenticated && isDashboardActive);
 

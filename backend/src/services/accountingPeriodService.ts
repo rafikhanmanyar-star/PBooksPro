@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 
-export type AccountingPeriodStatus = 'open' | 'closed';
+export type AccountingPeriodStatus = 'open' | 'closed' | 'locked';
 
 export type AccountingPeriodRow = {
   id: string;
@@ -52,28 +52,44 @@ export function rowToAccountingPeriodApi(row: AccountingPeriodRow): AccountingPe
   };
 }
 
-/** Block posting when entry_date falls in a closed period (unless explicitly allowed). */
+/** Block posting when entry_date falls in a closed/locked period (unless explicitly allowed). */
 export async function assertAccountingPeriodOpen(
   client: pg.PoolClient,
   tenantId: string,
   entryDate: string,
-  options?: { allowClosedPeriod?: boolean }
+  options?: {
+    allowClosedPeriod?: boolean;
+    overrideLockedPeriod?: boolean;
+    actorRole?: string;
+  }
 ): Promise<void> {
   if (options?.allowClosedPeriod) return;
   const d = entryDate.slice(0, 10);
-  const r = await client.query<{ id: string; start_date: string; end_date: string }>(
-    `SELECT id, start_date::text, end_date::text FROM accounting_periods
-     WHERE tenant_id = $1 AND status = 'closed'
+  const r = await client.query<{ id: string; start_date: string; end_date: string; status: string }>(
+    `SELECT id, start_date::text, end_date::text, status FROM accounting_periods
+     WHERE tenant_id = $1 AND status IN ('closed', 'locked')
        AND $2::date >= start_date AND $2::date <= end_date
      LIMIT 1`,
     [tenantId, d]
   );
-  if (r.rows.length > 0) {
-    const p = r.rows[0];
+  if (r.rows.length === 0) return;
+
+  const p = r.rows[0];
+  if (
+    p.status === 'locked' &&
+    options?.overrideLockedPeriod &&
+    options.actorRole === 'super_admin'
+  ) {
+    return;
+  }
+  if (p.status === 'locked') {
     throw new Error(
-      `Accounting period ${ymd(p.start_date)} – ${ymd(p.end_date)} is closed. Reopen the period or choose an open period date.`
+      `Accounting period ${ymd(p.start_date)} – ${ymd(p.end_date)} is locked. Super Admin override required.`
     );
   }
+  throw new Error(
+    `Accounting period ${ymd(p.start_date)} – ${ymd(p.end_date)} is closed. Reopen the period or choose an open period date.`
+  );
 }
 
 export async function listAccountingPeriods(

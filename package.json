@@ -76,6 +76,7 @@
     "audit:theme": "node scripts/audit-theme-compliance.mjs",
     "audit:theme:strict": "node scripts/audit-theme-compliance.mjs --fail-on-warn",
     "verify:financial-engine": "node scripts/verify-financial-engine.mjs",
+    "verify:sql-guard": "node scripts/check-services-sql-guard.mjs",
     "typecheck:strict-financial": "tsc -p tsconfig.strict-financial.json --noEmit",
     "typecheck:c2": "tsc -p tsconfig.strict-all.json --noEmit",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",

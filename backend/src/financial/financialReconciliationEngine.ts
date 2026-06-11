@@ -1,5 +1,5 @@
 /**
- * AUTO-GENERATED — do not edit. Source: services/financialEngine/financialReconciliationEngine.ts
+ * AUTO-GENERATED — do not edit. Source: shared/financial-core/financialReconciliationEngine.ts
  * Regenerate: node scripts/ensure-shared-financial-cores.mjs
  */
 

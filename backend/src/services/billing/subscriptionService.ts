@@ -492,6 +492,90 @@ export async function reactivateSubscription(
   return updated;
 }
 
+/** Latest subscription row for a tenant (any status), for admin/manual reconciliation. */
+export async function getLatestSubscription(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<SubscriptionRow | null> {
+  const { rows } = await client.query(
+    `SELECT s.*, p.plan_code, p.name AS plan_name
+     FROM subscriptions s
+     INNER JOIN billing_plans p ON p.id = s.plan_id
+     WHERE s.tenant_id = $1
+     ORDER BY s.updated_at DESC
+     LIMIT 1`,
+    [tenantId]
+  );
+  return rows.length ? mapSub(rows[0]) : null;
+}
+
+/**
+ * Align subscriptions with a manual license applied from the admin portal (tenants table).
+ */
+export async function syncManualLicenseToSubscription(
+  client: pg.PoolClient,
+  tenantId: string,
+  licenseType: 'monthly' | 'yearly',
+  expiryDate: Date
+): Promise<SubscriptionRow> {
+  const billingCycle = licenseType === 'yearly' ? 'annual' : 'monthly';
+  const plan = await getBillingPlanByCode(client, 'professional');
+  if (!plan) {
+    throw new Error('Professional billing plan is not configured.');
+  }
+
+  const renewalIso = expiryDate.toISOString();
+  const now = new Date();
+  const existing = await getLatestSubscription(client, tenantId);
+
+  let subscriptionId: string;
+
+  if (existing) {
+    subscriptionId = existing.id;
+    await client.query(
+      `UPDATE subscriptions SET
+         plan_id = $2,
+         status = 'active',
+         billing_cycle = $3,
+         renewal_date = $4,
+         trial_end_date = NULL,
+         canceled_at = NULL,
+         cancel_at_period_end = FALSE,
+         pending_plan_id = NULL,
+         past_due_at = NULL,
+         updated_at = NOW()
+       WHERE id = $1`,
+      [subscriptionId, plan.id, billingCycle, renewalIso]
+    );
+  } else {
+    subscriptionId = randomUUID();
+    await client.query(
+      `INSERT INTO subscriptions (
+         id, tenant_id, plan_id, status, billing_cycle, start_date, renewal_date
+       ) VALUES ($1, $2, $3, 'active', $4, $5, $6)`,
+      [subscriptionId, tenantId, plan.id, billingCycle, now.toISOString(), renewalIso]
+    );
+  }
+
+  await logSubscriptionEvent(client, {
+    tenantId,
+    eventType: 'manual_license_applied',
+    eventSource: 'admin',
+    payload: {
+      subscriptionId,
+      licenseType,
+      expiryDate: renewalIso,
+      planCode: plan.plan_code,
+    },
+  });
+
+  const sub = await getSubscriptionById(client, subscriptionId);
+  if (!sub) {
+    throw new Error('Failed to sync manual license to subscription.');
+  }
+  return sub;
+}
+
 export async function expireTrialsAndCanceled(client: pg.PoolClient): Promise<number> {
   const r1 = await client.query(
     `UPDATE subscriptions SET status = 'expired', updated_at = NOW()

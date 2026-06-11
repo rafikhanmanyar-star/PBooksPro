@@ -4,7 +4,7 @@ import { DatabaseService } from './adminPortalDb.js';
 
 const SECRET_SALT = process.env.LICENSE_SECRET_SALT || 'PBOOKSPRO_SECURE_SALT_2024';
 
-export type ModuleKey = 'real_estate' | 'rental' | 'shop';
+export type ModuleKey = 'real_estate' | 'rental';
 
 /** Default modules included when tenant has active paid license but no tenant_modules rows (e.g. base yearly/monthly). */
 export const DEFAULT_LICENSE_MODULES: ModuleKey[] = ['real_estate', 'rental'];
@@ -160,7 +160,9 @@ export class LicenseService {
       "SELECT module_key FROM tenant_modules WHERE tenant_id = $1 AND status = 'active'",
       [tenantId]
     );
-    const fromDb = modules.map((m: { module_key: string }) => m.module_key);
+    const fromDb = modules
+      .map((m: { module_key: string }) => m.module_key)
+      .filter((key: string) => DEFAULT_LICENSE_MODULES.includes(key as ModuleKey));
     if (fromDb.length > 0) return fromDb;
 
     const tenants = await this.db.query(
@@ -185,6 +187,10 @@ export class LicenseService {
     status: 'active' | 'expired' | 'suspended' | 'inactive',
     expiresAt?: Date | null
   ): Promise<void> {
+    if (!DEFAULT_LICENSE_MODULES.includes(moduleKey as ModuleKey)) {
+      throw new Error(`Unknown or removed module: ${moduleKey}`);
+    }
+
     await this.db.query(
       `INSERT INTO tenant_modules (tenant_id, module_key, status, expires_at, updated_at)
        VALUES ($1, $2, $3, $4, NOW())

@@ -3,6 +3,8 @@ import { Router } from 'express';
 import { AdminRequest } from '../middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../adminPortalDb.js';
 import { LicenseService } from '../licenseService.js';
+import { getPool } from '../../db/pool.js';
+import { syncManualLicenseToSubscription } from '../../services/billing/subscriptionService.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -105,17 +107,32 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     }
 
-    await db.query(
-      `UPDATE tenants 
-       SET license_type = $1,
-           license_status = 'active',
-           license_expiry_date = $2,
-           last_renewal_date = $3,
-           next_renewal_date = $2,
-           updated_at = NOW()
-       WHERE id = $4`,
-      [licenseType, expiryDate, now, tenantId]
-    );
+    const pool = getPool();
+    const pgClient = await pool.connect();
+    try {
+      await pgClient.query('BEGIN');
+
+      await pgClient.query(
+        `UPDATE tenants 
+         SET license_type = $1,
+             license_status = 'active',
+             license_expiry_date = $2,
+             last_renewal_date = $3,
+             next_renewal_date = $2,
+             updated_at = NOW()
+         WHERE id = $4`,
+        [licenseType, expiryDate, now, tenantId]
+      );
+
+      await syncManualLicenseToSubscription(pgClient, tenantId, licenseType, expiryDate);
+
+      await pgClient.query('COMMIT');
+    } catch (syncError) {
+      await pgClient.query('ROLLBACK');
+      throw syncError;
+    } finally {
+      pgClient.release();
+    }
 
     // Get current license status to determine from_status for history
     const currentStatus = await licenseService.checkLicenseStatus(tenantId);

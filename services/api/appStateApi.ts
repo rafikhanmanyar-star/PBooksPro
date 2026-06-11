@@ -775,7 +775,13 @@ export class AppStateApiService {
         }
 
         // Yield to main thread every chunk to keep UI responsive
-        await new Promise(resolve => setTimeout(resolve, 0));
+        await new Promise<void>((resolve) => {
+          if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => resolve());
+          } else {
+            setTimeout(resolve, 16);
+          }
+        });
       }
 
       logger.logCategory('sync', `✅ Loaded ${Object.values(accumulated).reduce((sum, arr) => sum + arr.length, 0)} records in chunks`);

@@ -189,7 +189,7 @@ export async function getConnectedClientsSnapshot(): Promise<{
  * Low-level emit to all sockets in a tenant room (after DB commit).
  */
 export function emitEvent(
-  eventName: 'entity_created' | 'entity_updated' | 'entity_deleted',
+  eventName: 'entity_created' | 'entity_updated' | 'entity_deleted' | 'financial.posted',
   tenantId: string,
   payload: Omit<RealtimePayload, 'tenantId' | 'ts'> & { tenantId?: string; ts?: string }
 ): void {
@@ -200,6 +200,24 @@ export function emitEvent(
     ts: payload.ts ?? new Date().toISOString(),
   };
   io.to(tenantRoom(tenantId)).emit(eventName, body);
+}
+
+export type FinancialPostedPayload = {
+  journalEntryId: string;
+  sourceModule: string;
+  sourceId?: string | null;
+  sourceUserId?: string;
+};
+
+/** Emitted when a journal entry is posted via FinancialPostingService. */
+export function emitFinancialPosted(tenantId: string, payload: FinancialPostedPayload): void {
+  emitEvent('financial.posted', tenantId, {
+    type: 'payment',
+    action: 'created',
+    data: payload,
+    id: payload.journalEntryId,
+    sourceUserId: payload.sourceUserId,
+  });
 }
 
 export function emitEntityEvent(

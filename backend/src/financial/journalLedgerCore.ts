@@ -1,5 +1,5 @@
 /**
- * AUTO-GENERATED — do not edit. Source: services/financialEngine/journalLedgerCore.ts
+ * AUTO-GENERATED — do not edit. Source: shared/financial-core/journalLedgerCore.ts
  * Regenerate: node scripts/ensure-shared-financial-cores.mjs
  */
 

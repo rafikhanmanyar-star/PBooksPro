@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
+import { LICENSE_MODULES } from '../../../../shared/licenseModules';
 import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box } from 'lucide-react';
 
 interface Tenant {
@@ -288,11 +289,7 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const [updatingModule, setUpdatingModule] = useState<string | null>(null);
   const [isRenewing, setIsRenewing] = useState(false);
 
-  const MODULES = [
-    { key: 'real_estate', label: 'Real Estate Developer & Constructor' },
-    { key: 'rental', label: 'Real Estate Rental Management' },
-    { key: 'shop', label: 'My Shop (POS, Inventory, Multi-store)' },
-  ];
+  const MODULES = LICENSE_MODULES;
 
   // Form fields
   const [formData, setFormData] = useState({

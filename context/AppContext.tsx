@@ -31,6 +31,7 @@ import {
 } from '../utils/rentalSecurityDepositSettlement';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
 import { toLocalDateString } from '../utils/dateUtils';
+import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
     resolveOwnerForPropertyOnDate,
 } from '../services/propertyOwnershipService';
@@ -1845,13 +1846,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             setStoredState(prev => ({ ...prev, ...merged } as AppState));
 
             if (currentTenantId && roleHasPermission(auth.user?.role, 'payroll.read')) {
-                try {
-                    const { storageService } = await import('../components/payroll/services/storageService');
-                    storageService.init(currentTenantId);
-                    void storageService.syncPayrollListsFromApi(currentTenantId);
-                } catch (pe) {
-                    logger.warnCategory('sync', 'payroll list sync failed', pe);
-                }
+                const tenantForPayroll = currentTenantId;
+                scheduleAfterNextPaint(() => {
+                    void (async () => {
+                        try {
+                            const { storageService } = await import('../components/payroll/services/storageService');
+                            storageService.init(tenantForPayroll);
+                            await storageService.syncPayrollListsFromApi(tenantForPayroll);
+                        } catch (pe) {
+                            logger.warnCategory('sync', 'payroll list sync failed', pe);
+                        }
+                    })();
+                });
             }
 
             logger.logCategory('sync', '✅ refreshFromApi: merged server state', {
