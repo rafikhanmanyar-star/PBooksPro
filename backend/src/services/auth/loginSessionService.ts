@@ -13,6 +13,7 @@ import {
   toCompanySummaries,
   resolvePreferredCompanyId,
 } from './userTenantService.js';
+import { markUserLoggedIn, upsertUserSession } from './userSessionService.js';
 
 export type LoginUserPayload = {
   id: string;
@@ -94,6 +95,8 @@ export async function completeLoginForAccount(
     }));
 
   await recordTenantSelection(client, account.userId, account.tenantId);
+  await upsertUserSession(client, account.userId, account.tenantId, loginEventId);
+  await markUserLoggedIn(client, account.userId, account.tenantId);
 
   const user = formatUserPayload(account);
   const company = formatCompanyPayload(account);

@@ -46,6 +46,101 @@ async function mergePlCategoryMappings(
   }
 }
 
+export type ProfitLossReportJson = {
+  from: string;
+  to: string;
+  projectId: string;
+  revenue: unknown[];
+  cost_of_sales: unknown[];
+  gross_profit: number;
+  operating_expenses: unknown[];
+  operating_profit: number;
+  other_income: unknown[];
+  finance_cost: unknown[];
+  profit_before_tax: number;
+  tax: unknown[];
+  net_profit: number;
+  total_revenue: number;
+  validation: unknown;
+};
+
+export type PreparedProfitLossState = {
+  state: Record<string, unknown>;
+};
+
+/** Load tenant financial state once; reuse for multiple P&L date ranges in the same request. */
+export async function prepareProfitLossState(
+  client: pg.PoolClient,
+  tenantId: string,
+  asOfDate: string
+): Promise<PreparedProfitLossState> {
+  const stateIn = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
+  const categories = await mergePlCategoryMappings(
+    client,
+    tenantId,
+    stateIn.categories as Record<string, unknown>[]
+  );
+  return { state: { ...stateIn, categories } as Record<string, unknown> };
+}
+
+function formatProfitLossResult(
+  r: Record<string, unknown>,
+  from: string,
+  to: string,
+  selectedProjectId: string
+): ProfitLossReportJson {
+  return {
+    from,
+    to,
+    projectId: selectedProjectId,
+    revenue: r.revenue as unknown[],
+    cost_of_sales: r.cost_of_sales as unknown[],
+    gross_profit: r.gross_profit as number,
+    operating_expenses: r.operating_expenses as unknown[],
+    operating_profit: r.operating_profit as number,
+    other_income: r.other_income as unknown[],
+    finance_cost: r.finance_cost as unknown[],
+    profit_before_tax: r.profit_before_tax as number,
+    tax: r.tax as unknown[],
+    net_profit: r.net_profit as number,
+    total_revenue: r.totalRevenue as number,
+    validation: r.validation,
+  };
+}
+
+/** Run P&L engine against preloaded state (no extra DB reads). */
+export async function computeProfitLossFromPrepared(
+  prepared: PreparedProfitLossState,
+  from: string,
+  to: string,
+  selectedProjectId: string
+): Promise<ProfitLossReportJson> {
+  const { computeProfitLossReport } = await loadProfitLossEngine();
+  const r = computeProfitLossReport(prepared.state, {
+    startDate: from,
+    endDate: to,
+    selectedProjectId,
+  }) as Record<string, unknown>;
+  return formatProfitLossResult(r, from, to, selectedProjectId);
+}
+
+export function extractPlRevenueAndExpenses(pl: Pick<ProfitLossReportJson, 'total_revenue' | 'net_profit' | 'cost_of_sales' | 'operating_expenses' | 'finance_cost' | 'tax'>): {
+  revenue: number;
+  expenses: number;
+} {
+  const revenue = Number(pl.total_revenue ?? 0);
+  const net = Number(pl.net_profit ?? 0);
+  const expenseItems = [
+    ...(Array.isArray(pl.cost_of_sales) ? pl.cost_of_sales : []),
+    ...(Array.isArray(pl.operating_expenses) ? pl.operating_expenses : []),
+    ...(Array.isArray(pl.finance_cost) ? pl.finance_cost : []),
+    ...(Array.isArray(pl.tax) ? pl.tax : []),
+  ] as { amount?: number }[];
+  const expensesFromLines = expenseItems.reduce((s, row) => s + Number(row.amount ?? 0), 0);
+  const expenses = expensesFromLines > 0 ? expensesFromLines : Math.max(0, revenue - net);
+  return { revenue, expenses };
+}
+
 export async function getProfitLossReportJson(
   client: pg.PoolClient,
   tenantId: string,
@@ -53,44 +148,6 @@ export async function getProfitLossReportJson(
   to: string,
   selectedProjectId: string
 ) {
-  const stateIn = await loadBalanceSheetStateInput(client, tenantId, to);
-  const categories = await mergePlCategoryMappings(client, tenantId, stateIn.categories as Record<string, unknown>[]);
-  const state = { ...stateIn, categories } as Record<string, unknown>;
-  const { computeProfitLossReport } = await loadProfitLossEngine();
-  const r = computeProfitLossReport(state, {
-    startDate: from,
-    endDate: to,
-    selectedProjectId,
-  }) as {
-    revenue: unknown[];
-    cost_of_sales: unknown[];
-    gross_profit: number;
-    operating_expenses: unknown[];
-    operating_profit: number;
-    other_income: unknown[];
-    finance_cost: unknown[];
-    profit_before_tax: number;
-    tax: number;
-    net_profit: number;
-    totalRevenue: number;
-    validation: unknown;
-  };
-
-  return {
-    from,
-    to,
-    projectId: selectedProjectId,
-    revenue: r.revenue,
-    cost_of_sales: r.cost_of_sales,
-    gross_profit: r.gross_profit,
-    operating_expenses: r.operating_expenses,
-    operating_profit: r.operating_profit,
-    other_income: r.other_income,
-    finance_cost: r.finance_cost,
-    profit_before_tax: r.profit_before_tax,
-    tax: r.tax,
-    net_profit: r.net_profit,
-    total_revenue: r.totalRevenue,
-    validation: r.validation,
-  };
+  const prepared = await prepareProfitLossState(client, tenantId, to);
+  return computeProfitLossFromPrepared(prepared, from, to, selectedProjectId);
 }

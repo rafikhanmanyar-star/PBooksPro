@@ -3,6 +3,7 @@ import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool } from '../db/pool.js';
 import { getOnlineUserIds, recordPresence } from '../services/presenceService.js';
+import { touchUserSession } from '../services/auth/userSessionService.js';
 import { getLicenseStatusForTenant, validateTenantLicense } from '../services/billing/licenseEnforcementService.js';
 import { runSubscriptionMaintenance } from '../services/billing/subscriptionLifecycleService.js';
 
@@ -14,7 +15,12 @@ export const optionalFeatureRouter = Router();
 optionalFeatureRouter.post('/auth/heartbeat', (req: AuthedRequest, res) => {
   const tid = req.tenantId;
   const uid = req.userId;
-  if (tid && uid) recordPresence(tid, uid);
+  if (tid && uid) {
+    recordPresence(tid, uid);
+    void touchUserSession(uid, tid).catch((err) => {
+      console.warn('[heartbeat] Failed to persist session activity:', err instanceof Error ? err.message : err);
+    });
+  }
   sendSuccess(res, { ok: true });
 });
 

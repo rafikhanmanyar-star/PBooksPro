@@ -17,6 +17,11 @@ import Modal from '../ui/Modal';
 import Input from '../ui/Input';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
+import {
+    verifyInvoicesPersistedToServer,
+    formatBulkInvoicePersistMessage,
+} from '../../utils/invoiceBulkPersistVerify';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { formatDate, fixRecurringNextDueWhenDayOneIsLastDayOfMonth, getDayOfNextMonthLocal, getNextRecurringDueDate, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate, toLocalDateString } from '../../utils/dateUtils';
 import Select from '../ui/Select';
 
@@ -32,7 +37,7 @@ const RecurringInvoicesList: React.FC = () => {
     const categories = useCategories();
     const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
     const dispatch = useDispatchOnly();
-    const { showToast, showConfirm } = useNotification();
+    const { showToast, showConfirm, showAlert } = useNotification();
 
     // --- State ---
     const [templateToEdit, setTemplateToEdit] = useState<RecurringInvoiceTemplate | null>(null);
@@ -220,6 +225,7 @@ const RecurringInvoicesList: React.FC = () => {
 
         setIsGenerating(true);
         let totalCreated = 0;
+        const createdIds: string[] = [];
         let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
         for (const template of dueTemplates) {
@@ -263,6 +269,7 @@ const RecurringInvoicesList: React.FC = () => {
                     padding
                 );
                 dispatch({ type: 'ADD_INVOICE', payload: invoice });
+                createdIds.push(invoice.id);
 
                 maxNum++;
                 count++;
@@ -290,10 +297,20 @@ const RecurringInvoicesList: React.FC = () => {
                 type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
                 payload: { ...rentalInvoiceSettings, nextNumber: maxNum }
             });
-            showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+            if (isAccountingBackedByRemoteApi()) {
+                const persistResult = await verifyInvoicesPersistedToServer(createdIds);
+                const persistWarning = formatBulkInvoicePersistMessage(persistResult);
+                if (persistWarning) {
+                    await showAlert(persistWarning, { title: 'Some invoices not saved' });
+                } else {
+                    showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+                }
+            } else {
+                showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+            }
         }
         setIsGenerating(false);
-    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast, effectiveNextDue]);
+    }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast, showAlert, effectiveNextDue]);
 
     // --- Generate for a single template (from row or modal) ---
     const handleGenerateSingle = useCallback(async (template: RecurringInvoiceTemplate) => {

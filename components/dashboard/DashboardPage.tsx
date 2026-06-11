@@ -34,17 +34,19 @@ const KPI_GROUP_LABELS: Record<DashboardKpiGroupId, string> = {
 
 const DashboardPage: React.FC = () => {
   const currentUser = useStateSelector((s) => s.currentUser);
+  const currentPage = useStateSelector((s) => s.currentPage);
   const projects = useStateSelector((s) => s.projects);
   const { isAuthenticated } = useAuth();
   const { allKpis, openDrilldown } = useKpis();
   const isAdmin = currentUser?.role === 'Admin';
+  const isDashboardActive = currentPage === 'dashboard';
 
   const [greeting, setGreeting] = useState('');
   const [customizeMode, setCustomizeMode] = useState(false);
   const [chartYear] = useState(() => new Date().getFullYear());
-  const metricsQuery = useDashboardMetrics(isAuthenticated && isAdmin);
-  const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin);
-  const activityQuery = useDashboardActivity(5, isAuthenticated);
+  const metricsQuery = useDashboardMetrics(isAuthenticated && isAdmin && isDashboardActive);
+  const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin && isDashboardActive);
+  const activityQuery = useDashboardActivity(5, isAuthenticated && isDashboardActive);
 
   const kpiGroupOrder = useDashboardPreferencesStore((s) => s.kpiGroupOrder);
   const setKpiGroupOrder = useDashboardPreferencesStore((s) => s.setKpiGroupOrder);

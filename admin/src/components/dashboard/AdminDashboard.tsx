@@ -65,8 +65,12 @@ const AdminDashboard: React.FC = () => {
     loadOrgRequestStats();
     loadSystemMetrics();
 
-    // Refresh system metrics every 30 seconds
-    const interval = setInterval(loadSystemMetrics, 30000);
+    const tick = () => {
+      if (document.visibilityState === 'visible') {
+        void loadSystemMetrics();
+      }
+    };
+    const interval = setInterval(tick, 60_000);
     return () => clearInterval(interval);
   }, []);
 

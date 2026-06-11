@@ -203,6 +203,11 @@ authRouter.post('/auth/logout', optionalAuthMiddleware, async (req, res) => {
           loginEventId: loginEventId ?? null,
           ctx,
         });
+        const { deleteUserSession, markUserLoggedOut } = await import(
+          '../services/auth/userSessionService.js'
+        );
+        await deleteUserSession(client, authed.userId, authed.tenantId);
+        await markUserLoggedOut(client, authed.userId, authed.tenantId);
       } finally {
         client.release();
       }

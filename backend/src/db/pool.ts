@@ -36,8 +36,13 @@ export function getPool(): pg.Pool {
       );
     }
     const max = Math.min(Math.max(parseInt(process.env.PG_POOL_MAX || '20', 10) || 20, 2), 100);
+    const idleTimeoutMillis = Math.min(
+      Math.max(parseInt(process.env.PG_POOL_IDLE_MS || '30000', 10) || 30_000, 5_000),
+      300_000
+    );
     const ssl = resolvePoolSsl(url);
-    pool = new Pool(ssl ? { connectionString: url, max, ssl } : { connectionString: url, max });
+    const base: pg.PoolConfig = { connectionString: url, max, idleTimeoutMillis };
+    pool = new Pool(ssl ? { ...base, ssl } : base);
   }
   return pool;
 }
