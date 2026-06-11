@@ -174,8 +174,8 @@ const BillTreeSidebar: React.FC<{
     const expandableIds = useMemo(() => collectExpandableParentIds(sortedNodes), [sortedNodes]);
 
     const SortIcon = ({ column }: { column: 'name' | 'balance' }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-orange-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted/50 ml-1 text-[10px]">↕</span>;
+        return <span className="text-ds-primary ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
     const toggleExpanded = (id: string) => {
@@ -201,16 +201,16 @@ const BillTreeSidebar: React.FC<{
         const isSelected = selectedId === node.id && (node.type === 'group' || selectedParentId === parentId);
 
         return (
-            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-slate-200/80 pl-3' : ''}>
+            <div key={node.id} className={level > 0 ? 'ml-4 border-l border-app-border pl-3' : ''}>
                 <div
-                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected ? 'bg-orange-500/10 text-orange-700' : 'hover:bg-slate-100/80 text-slate-700 hover:text-slate-900'
+                    className={`group flex items-center gap-2 py-1.5 px-2 rounded-lg -mx-0.5 transition-all cursor-pointer ${isSelected ? 'bg-app-table-selected text-ds-primary' : 'hover:bg-app-table-hover text-app-text'
                         }`}
                     onClick={() => onSelect(node.id, node.type, parentId)}
                 >
                     {hasChildren ? (
                         <button
                             onClick={(e) => { e.stopPropagation(); toggleExpanded(node.id); }}
-                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
+                            className={`flex-shrink-0 w-5 h-5 flex items-center justify-center text-app-muted hover:text-app-text transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}
                         >
                             <div className="w-3.5 h-3.5">{ICONS.chevronRight}</div>
                         </button>
@@ -224,14 +224,14 @@ const BillTreeSidebar: React.FC<{
                                 e.stopPropagation();
                                 onViewVendor(node.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-indigo-600 transition-all rounded hover:bg-indigo-50 mr-1"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-app-muted hover:text-ds-primary transition-all rounded hover:bg-app-table-hover mr-1"
                             title="View in Vendor Directory"
                         >
                             <div className="w-3.5 h-3.5">{ICONS.addressBook}</div>
                         </button>
                     )}
                     {node.balance > 0 && (
-                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-orange-500 text-white border-orange-600' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                        <span className={`text-[10px] font-bold tabular-nums px-1.5 py-0.5 rounded border flex-shrink-0 ${isSelected ? 'bg-ds-danger text-ds-on-primary border-ds-danger' : 'bg-app-error-bg text-ds-danger border-app-border'}`}>
                             {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                         </span>
                     )}
@@ -246,16 +246,16 @@ const BillTreeSidebar: React.FC<{
     };
 
     if (!nodes || nodes.length === 0) {
-        return <div className="text-xs text-slate-400 italic p-2">No directories match your search</div>;
+        return <div className="text-xs text-app-muted italic p-2">No directories match your search</div>;
     }
 
     return (
         <div className="flex flex-col h-full">
             {/* Sort Header */}
-            <div className="flex items-center justify-between px-2 py-1.5 border-b border-slate-100 mb-1 bg-slate-50/50 rounded-md gap-1">
+            <div className="flex items-center justify-between px-2 py-1.5 border-b border-app-border mb-1 bg-app-toolbar rounded-md gap-1">
                 <button
                     onClick={() => handleSort('name')}
-                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
+                    className="flex items-center text-[10px] font-bold text-app-muted uppercase tracking-wider hover:text-app-text transition-colors"
                 >
                     Entity <SortIcon column="name" />
                 </button>
@@ -269,7 +269,7 @@ const BillTreeSidebar: React.FC<{
                 />
                 <button
                     onClick={() => handleSort('balance')}
-                    className="flex items-center text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-900 transition-colors"
+                    className="flex items-center text-[10px] font-bold text-app-muted uppercase tracking-wider hover:text-app-text transition-colors"
                 >
                     Payable <SortIcon column="balance" />
                 </button>
@@ -883,8 +883,23 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
 
     const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-indigo-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted/50 ml-1 text-[10px]">↕</span>;
+        return <span className="text-ds-primary ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+    };
+
+    const billStatusBadgeClass = (status: string) => {
+        switch (status) {
+            case 'Paid':
+                return 'ds-badge-paid';
+            case 'Unpaid':
+                return 'ds-badge-unpaid';
+            case 'Partially Paid':
+                return 'ds-badge-partial';
+            case 'Overdue':
+                return 'ds-badge-overdue';
+            default:
+                return 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-app-surface-2 text-app-muted border border-app-border';
+        }
     };
 
     const handleViewVendor = (vendorId: string) => {
@@ -1034,23 +1049,21 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     };
 
     const getStatusBadge = (status: string) => {
-        const colors: Record<string, string> = {
-            'Paid': 'bg-emerald-100 text-emerald-800',
-            'Unpaid': 'bg-rose-100 text-rose-800',
-            'Partially Paid': 'bg-amber-100 text-amber-800',
-            'Overdue': 'bg-red-100 text-red-900',
-            'Draft': 'bg-slate-100 text-slate-800'
-        };
-        return <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${colors[status] || 'bg-gray-100'}`}>{status}</span>;
+        return <span className={billStatusBadgeClass(status)}>{status}</span>;
     };
 
+    const thClass =
+        'px-3 py-2.5 text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover border-b border-app-border transition-colors';
+    const thClassRight = `${thClass} text-right`;
+    const thClassCenter = `${thClass} text-center`;
+
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
+        <div className="flex flex-col h-full bg-app-bg p-4 sm:p-6 gap-4 sm:gap-6">
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
                 <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Project Bills & Payments</h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage vendor invoices, project expenses, and payment disbursements.</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-app-text tracking-tight">Project Bills & Payments</h1>
+                    <p className="text-xs sm:text-sm text-app-muted mt-1">Manage vendor invoices, project expenses, and payment disbursements.</p>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                     <Button
@@ -1059,7 +1072,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                             dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.PROJECT_BILLS });
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
-                        className="!px-4 !py-2 !rounded-xl !text-sm !border-slate-200 hover:!border-indigo-300 hover:!text-indigo-600 !bg-white transition-all shadow-sm"
+                        className="!px-4 !py-2 !rounded-xl !text-sm"
                     >
                         <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div> Bulk Import
                     </Button>
@@ -1075,7 +1088,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                       : 'Select a vendor under Directories to record an advance.'
                             }
                             onClick={() => setIsAdvanceModalOpen(true)}
-                            className="!px-4 !py-2 !rounded-xl !text-sm !border-amber-200 hover:!border-amber-300 !bg-amber-50 hover:!bg-amber-100 !text-amber-900 disabled:opacity-50"
+                            className="!px-4 !py-2 !rounded-xl !text-sm !border-ds-warning/40 !text-ds-warning hover:!bg-app-table-hover disabled:opacity-50"
                         >
                             <div className="w-4 h-4 mr-2">{ICONS.wallet}</div>
                             Supplier advance
@@ -1083,7 +1096,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     )}
                     <Button
                         onClick={() => { setDuplicateBillData(null); setBillToEdit(null); setIsCreateModalOpen(true); }}
-                        className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
+                        className="!px-4 !py-2 !rounded-xl !text-sm"
                     >
                         <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Bill
                     </Button>
@@ -1091,11 +1104,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             </div>
 
             {/* Top Control Bar */}
-            <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between flex-shrink-0">
+            <div className="bg-app-card p-3 rounded-xl border border-app-border shadow-ds-card flex flex-col md:flex-row gap-4 items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3 flex-1 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
                     {/* Search */}
                     <div className="relative min-w-[200px]">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         <input
@@ -1103,22 +1116,22 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                             placeholder="Search bill #, vendor, project..."
                             value={searchQuery}
                             onChange={(e) => setSearchQuery(e.target.value)}
-                            className="pl-9 pr-4 py-1.5 w-full text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all placeholder:text-slate-400"
+                            className="ds-input-field pl-9 pr-4 py-1.5 w-full text-sm"
                         />
                         {searchQuery && (
-                            <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500">
+                            <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-ds-danger">
                                 <div className="w-4 h-4">{ICONS.x}</div>
                             </button>
                         )}
                     </div>
 
-                    <div className="w-px h-6 bg-slate-200 hidden md:block"></div>
+                    <div className="w-px h-6 bg-app-border hidden md:block"></div>
 
                     {/* Quick Filters */}
                     <Select
                         value={typeFilter}
                         onChange={(e) => setTypeFilter(e.target.value as TypeFilter)}
-                        className="!w-40 !py-1.5 !text-xs !border-slate-200 !bg-slate-50/50 !font-medium"
+                        className="!w-40 !py-1.5 !text-xs !font-medium"
                         hideIcon={true}
                     >
                         <option value="All">All Transactions</option>
@@ -1135,7 +1148,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                 handleRangeChange(e.target.value as DateRangeOption);
                             }
                         }}
-                        className="!w-32 !py-1.5 !text-xs !border-slate-200 !bg-slate-50/50 !font-medium"
+                        className="!w-32 !py-1.5 !text-xs !font-medium"
                         hideIcon={true}
                     >
                         <option value="all">All Period</option>
@@ -1147,14 +1160,14 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     {dateRange === 'custom' && (
                         <div className="flex items-center gap-2 animate-fade-in">
                             <DatePicker label="" value={startDate} onChange={(d) => handleCustomDateChange(toLocalDateString(d), endDate)} className="!py-1 !px-2 !text-xs !w-28" />
-                            <span className="text-slate-400 text-xs font-bold">-</span>
+                            <span className="text-app-muted text-xs font-bold">-</span>
                             <DatePicker label="" value={endDate} onChange={(d) => handleCustomDateChange(startDate, toLocalDateString(d))} className="!py-1 !px-2 !text-xs !w-28" />
                         </div>
                     )}
                 </div>
 
-                <div className="flex items-center gap-3 w-full md:w-auto border-t md:border-t-0 md:border-l border-slate-100 pt-3 md:pt-0 pl-0 md:pl-3">
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider whitespace-nowrap">Project Scope:</span>
+                <div className="flex items-center gap-3 w-full md:w-auto border-t md:border-t-0 md:border-l border-app-border pt-3 md:pt-0 pl-0 md:pl-3">
+                    <span className="text-[10px] font-bold text-app-muted uppercase tracking-wider whitespace-nowrap">Project Scope:</span>
                     <ComboBox
                         items={projects}
                         selectedId={projectFilter}
@@ -1173,7 +1186,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                 setBulkPayPresetSnapshot(Array.from(selectedBillIds));
                                 setIsBulkPayModalOpen(true);
                             }}
-                            className="animate-fade-in !py-1 !px-3 !text-xs !bg-emerald-600 hover:!bg-emerald-700 !text-white !rounded-lg !shadow-sm whitespace-nowrap"
+                            className="animate-fade-in !py-1 !px-3 !text-xs !rounded-lg !shadow-sm whitespace-nowrap"
                         >
                             Record Payment ({selectedBillIds.size})
                         </Button>
@@ -1185,15 +1198,15 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             <div ref={containerRef} className="flex-grow flex flex-col md:flex-row overflow-hidden min-h-0">
                 {/* Left: Resizable Tree Sidebar (Directories style) */}
                 <aside
-                    className="hidden md:flex flex-col flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    className="hidden md:flex flex-col flex-shrink-0 bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden"
                     style={{ width: `${sidebarWidth}px` }}
                 >
-                    <div className="flex-shrink-0 p-3 border-b border-slate-100 bg-slate-50/50">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Directories</span>
+                    <div className="flex-shrink-0 p-3 border-b border-app-border bg-app-toolbar">
+                        <span className="text-[10px] font-bold text-app-muted uppercase tracking-widest">Directories</span>
                     </div>
-                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-slate-100">
+                    <div className="flex-shrink-0 px-2 pt-2 pb-1 border-b border-app-border">
                         <div className="relative">
-                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-2 flex items-center pointer-events-none text-app-muted">
                                 <div className="w-3.5 h-3.5">{ICONS.search}</div>
                             </div>
                             <input
@@ -1201,13 +1214,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                 placeholder="Search projects, vendors..."
                                 value={treeSearchQuery}
                                 onChange={(e) => setTreeSearchQuery(e.target.value)}
-                                className="w-full pl-8 pr-6 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50/80 focus:ring-2 focus:ring-orange-500/20 focus:border-orange-400 placeholder:text-slate-400 transition-all"
+                                className="ds-input-field w-full pl-8 pr-6 py-1.5 text-xs"
                             />
                             {treeSearchQuery && (
                                 <button
                                     type="button"
                                     onClick={() => setTreeSearchQuery('')}
-                                    className="absolute inset-y-0 right-2 flex items-center text-slate-400 hover:text-rose-500"
+                                    className="absolute inset-y-0 right-2 flex items-center text-app-muted hover:text-ds-danger"
                                 >
                                     <div className="w-3.5 h-3.5">{ICONS.x}</div>
                                 </button>
@@ -1227,32 +1240,32 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
                 {/* Resize Handle: same as Project Agreements */}
                 <div
-                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-blue-500/10 transition-colors"
+                    className="hidden md:flex items-center justify-center flex-shrink-0 w-2 cursor-col-resize select-none touch-none group hover:bg-ds-primary/10 transition-colors"
                     onMouseDown={startResizing}
                     title="Drag to resize sidebar"
                 >
-                    <div className="w-0.5 h-12 rounded-full bg-slate-200 group-hover:bg-blue-500 group-hover:w-1 transition-all" />
+                    <div className="w-0.5 h-12 rounded-full bg-app-border group-hover:bg-ds-primary group-hover:w-1 transition-all" />
                 </div>
 
                 {/* Right Data Grid (Table) */}
-                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-app-card rounded-xl border border-app-border shadow-ds-card">
                     <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-slate-100 text-xs border-separate border-spacing-0">
-                            <thead className="bg-slate-50 sticky top-0 z-20">
+                        <table className="min-w-full divide-y divide-app-border text-xs border-separate border-spacing-0">
+                            <thead className="bg-app-table-header sticky top-0 z-20">
                                 <tr>
-                                    <th className="px-3 py-2.5 w-10 text-center border-b border-slate-200 bg-slate-50"></th>
-                                    <th onClick={() => handleSort('type')} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Type <SortIcon column="type" /></th>
-                                    <th onClick={() => handleSort('issueDate')} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Date <SortIcon column="issueDate" /></th>
-                                    <th onClick={() => handleSort('billNumber')} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Ref # <SortIcon column="billNumber" /></th>
-                                    <th onClick={() => handleSort('entityName')} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Project <SortIcon column="entityName" /></th>
-                                    <th onClick={() => handleSort('vendorName')} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Vendor <SortIcon column="vendorName" /></th>
-                                    <th onClick={() => handleSort('amount')} className="px-3 py-2.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Amount <SortIcon column="amount" /></th>
-                                    <th onClick={() => handleSort('status')} className="px-3 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Status <SortIcon column="status" /></th>
-                                    <th onClick={() => handleSort('balance')} className="px-3 py-2.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 border-b border-slate-200 transition-colors">Due / Pay <SortIcon column="balance" /></th>
-                                    <th className="px-3 py-2.5 w-10 border-b border-slate-200 bg-slate-50"></th>
+                                    <th className="px-3 py-2.5 w-10 text-center border-b border-app-border bg-app-table-header"></th>
+                                    <th onClick={() => handleSort('type')} className={`${thClass} text-left`}>Type <SortIcon column="type" /></th>
+                                    <th onClick={() => handleSort('issueDate')} className={`${thClass} text-left`}>Date <SortIcon column="issueDate" /></th>
+                                    <th onClick={() => handleSort('billNumber')} className={`${thClass} text-left`}>Ref # <SortIcon column="billNumber" /></th>
+                                    <th onClick={() => handleSort('entityName')} className={`${thClass} text-left`}>Project <SortIcon column="entityName" /></th>
+                                    <th onClick={() => handleSort('vendorName')} className={`${thClass} text-left`}>Vendor <SortIcon column="vendorName" /></th>
+                                    <th onClick={() => handleSort('amount')} className={thClassRight}>Amount <SortIcon column="amount" /></th>
+                                    <th onClick={() => handleSort('status')} className={thClassCenter}>Status <SortIcon column="status" /></th>
+                                    <th onClick={() => handleSort('balance')} className={thClassRight}>Due / Pay <SortIcon column="balance" /></th>
+                                    <th className="px-3 py-2.5 w-10 border-b border-app-border bg-app-table-header"></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100">
+                            <tbody className="divide-y divide-app-border">
                                 {filteredRows.length > 0 ? filteredRows.slice(0, displayLimit).map((row, index) => {
                                     const isBill = row.type === 'bill';
                                     const isPayment = row.type === 'payment';
@@ -1263,14 +1276,14 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
+                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
                                                 onClick={() => handleEdit(bill)}
                                             >
                                                 <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
                                                     <input
                                                         type="checkbox"
                                                         aria-label={`Select bill ${bill.billNumber}`}
-                                                        className="rounded text-indigo-600 focus:ring-indigo-500 border-slate-300 w-3.5 h-3.5 cursor-pointer transition-all"
+                                                        className="rounded text-ds-primary focus:ring-ds-primary border-app-border w-3.5 h-3.5 cursor-pointer transition-all"
                                                         checked={selectedBillIds.has(bill.id)}
                                                         onChange={(e) => {
                                                             e.stopPropagation();
@@ -1284,44 +1297,40 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                     />
                                                 </td>
                                                 <td className="px-3 py-2.5">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-blue-50 text-blue-700 border border-blue-100">Bill</span>
+                                                    <span className="ds-pill-type">Bill</span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{formatDate(row.date)}</td>
                                                 <td className="px-3 py-2.5">
-                                                    <div className="font-mono text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200 inline-block">
+                                                    <div className="font-mono text-[10px] font-medium text-app-muted bg-app-surface-2 px-1.5 py-0.5 rounded-md border border-app-border inline-block">
                                                         {row.billNumber}
                                                     </div>
                                                 </td>
                                                 <td className="px-3 py-2.5">
-                                                    <div className="font-semibold text-slate-800 leading-tight group-hover:text-indigo-600 transition-colors">{row.projectName}</div>
-                                                    <div className="text-[10px] text-slate-400 font-medium uppercase tracking-tight mt-0.5">{row.contractNumber || 'No Contract'}</div>
+                                                    <div className="font-semibold text-app-text leading-tight group-hover:text-ds-primary transition-colors">{row.projectName}</div>
+                                                    <div className="text-[10px] text-app-muted font-medium uppercase tracking-tight mt-0.5">{row.contractNumber || 'No Contract'}</div>
                                                 </td>
                                                 <td className="px-3 py-2.5">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200">
+                                                        <div className="w-6 h-6 rounded-full bg-app-surface-2 flex items-center justify-center text-[10px] font-bold text-app-muted border border-app-border">
                                                             {(row.vendorName || 'U')[0]}
                                                         </div>
-                                                        <span className="text-slate-600 font-medium truncate max-w-[120px]">{row.vendorName}</span>
+                                                        <span className="text-app-text font-medium truncate max-w-[120px]">{row.vendorName}</span>
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
+                                                <td className="px-3 py-2.5 text-right font-semibold text-app-text tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <div className="flex items-center justify-center gap-2">
                                                         {row.status && (
-                                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${row.status === 'Paid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                                                row.status === 'Unpaid' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                                                    row.status === 'Partially Paid' ? 'bg-amber-50 text-amber-700 border border-amber-100' :
-                                                                        'bg-slate-100 text-slate-600 border border-slate-200'
-                                                                }`}>
+                                                            <span className={billStatusBadgeClass(row.status)}>
                                                                 {row.status}
                                                             </span>
                                                         )}
                                                         {bill.paidAmount > 0 && (
                                                             <button
                                                                 onClick={(e) => handleSendWhatsApp(e, bill)}
-                                                                className="text-green-600 hover:text-green-700 p-1 rounded-full hover:bg-green-50 transition-all opacity-0 group-hover:opacity-100"
+                                                                className="text-ds-success hover:text-ds-success p-1 rounded-full hover:bg-app-table-hover transition-all opacity-0 group-hover:opacity-100"
                                                             >
                                                                 <div className="w-3.5 h-3.5">{ICONS.whatsapp}</div>
                                                             </button>
@@ -1330,13 +1339,13 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right">
                                                     <div className="flex items-center justify-end gap-2">
-                                                        <span className={`font-bold tabular-nums ${(row.balance || 0) > 0.01 ? 'text-rose-600' : 'text-slate-400 font-normal'}`}>
+                                                        <span className={`font-bold tabular-nums ${(row.balance || 0) > 0.01 ? 'text-ds-danger' : 'text-app-muted font-normal'}`}>
                                                             {CURRENCY} {Math.abs(row.balance || 0).toLocaleString()}
                                                         </span>
                                                         {(row.balance || 0) > 0.01 && (
                                                             <button
                                                                 onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }}
-                                                                className="text-white bg-indigo-600 hover:bg-indigo-700 px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm"
+                                                                className="text-ds-on-primary bg-ds-primary hover:bg-ds-primary-hover px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm"
                                                             >
                                                                 Pay
                                                             </button>
@@ -1357,7 +1366,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                                     }
                                                                 }
                                                             }}
-                                                            className="text-slate-400 hover:text-indigo-600 transition-colors"
+                                                            className="text-app-muted hover:text-ds-primary transition-colors"
                                                             title="View Document"
                                                         >
                                                             <div className="w-4 h-4">{ICONS.fileText}</div>
@@ -1371,28 +1380,28 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
+                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
                                                 onClick={() => setTransactionToEdit(payment)}
                                             >
                                                 <td className="px-3 py-2.5"></td>
                                                 <td className="px-3 py-2.5">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-emerald-50 text-emerald-700 border border-emerald-100">Payment</span>
+                                                    <span className="ds-pill-type-payment">Payment</span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap italic">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap italic">{formatDate(row.date)}</td>
                                                 <td className="px-3 py-2.5">
-                                                    <div className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5 inline-block">
+                                                    <div className="text-[10px] text-app-muted font-medium px-1.5 py-0.5 inline-block">
                                                         linked to {row.billNumber}
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-500">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-slate-500 italic">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-medium text-emerald-600 tabular-nums">
+                                                <td className="px-3 py-2.5 text-app-muted">{row.projectName}</td>
+                                                <td className="px-3 py-2.5 text-app-muted italic">{row.vendorName}</td>
+                                                <td className="px-3 py-2.5 text-right font-medium text-ds-success tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
-                                                    <span className="text-[10px] font-medium text-slate-400 uppercase tracking-tighter">{account?.name || 'Cash/Bank'}</span>
+                                                    <span className="text-[10px] font-medium text-app-muted uppercase tracking-tighter">{account?.name || 'Cash/Bank'}</span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-right italic text-slate-400 tabular-nums">
+                                                <td className="px-3 py-2.5 text-right italic text-app-muted tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5"></td>
@@ -1406,7 +1415,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className={`cursor-pointer transition-colors group ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-teal-50/80`}
+                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
                                                 onClick={() => {
                                                     const v = bill.vendorId ? vendorMap.get(bill.vendorId) : undefined;
                                                     if (!v || !bill.vendorId) {
@@ -1419,31 +1428,31 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                             >
                                                 <td className="px-3 py-2.5"></td>
                                                 <td className="px-3 py-2.5">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-teal-50 text-teal-800 border border-teal-100">
+                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-app-highlight text-ds-primary border border-app-border">
                                                         Settlement
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5 text-app-text whitespace-nowrap">{formatDate(row.date)}</td>
                                                 <td className="px-3 py-2.5">
-                                                    <div className="text-[10px] text-slate-600 font-medium px-1.5 py-0.5 inline-block">
+                                                    <div className="text-[10px] text-app-muted font-medium px-1.5 py-0.5 inline-block">
                                                         Bill #{row.billNumber}
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-700">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-slate-700">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-teal-800 tabular-nums">
+                                                <td className="px-3 py-2.5 text-app-text">{row.projectName}</td>
+                                                <td className="px-3 py-2.5 text-app-text">{row.vendorName}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-ds-primary tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                    <span className="block text-[9px] font-normal text-slate-500 normal-case tracking-normal">
+                                                    <span className="block text-[9px] font-normal text-app-muted normal-case tracking-normal">
                                                         prepaid {CURRENCY} {advPart.toLocaleString()} · bank {CURRENCY}{' '}
                                                         {vs.cashAmount.toLocaleString()}
                                                     </span>
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-teal-50 text-teal-800 border border-teal-100">
+                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-app-highlight text-ds-primary border border-app-border">
                                                         {row.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-right italic text-slate-500 tabular-nums">
+                                                <td className="px-3 py-2.5 text-right italic text-app-muted tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5"></td>
@@ -1456,51 +1465,43 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         return (
                                             <tr
                                                 key={row.id}
-                                                className={`transition-colors ${
-                                                    fullyApplied
-                                                        ? index % 2 === 0
-                                                            ? 'bg-slate-50/80'
-                                                            : 'bg-slate-100/50'
-                                                        : index % 2 === 0
-                                                          ? 'bg-amber-50/40'
-                                                          : 'bg-amber-50/60'
-                                                } hover:opacity-95`}
+                                                className={`ds-fin-row transition-colors ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''} ${fullyApplied ? '' : 'bg-app-highlight/30'}`}
                                             >
                                                 <td className="px-3 py-2.5 text-center"></td>
                                                 <td className="px-3 py-2.5">
                                                     <span
                                                         className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${
                                                             fullyApplied
-                                                                ? 'bg-slate-200 text-slate-800 border-slate-300'
-                                                                : 'bg-amber-100 text-amber-900 border-amber-200'
+                                                                ? 'bg-app-surface-2 text-app-muted border-app-border'
+                                                                : 'bg-app-highlight text-ds-warning border-app-border'
                                                         }`}
                                                     >
                                                         Advance
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{formatDate(row.date)}</td>
+                                                <td className="px-3 py-2.5 text-app-text whitespace-nowrap">{formatDate(row.date)}</td>
                                                 <td className="px-3 py-2.5">
                                                     <div
                                                         className={`font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md border inline-block ${
                                                             fullyApplied
-                                                                ? 'text-slate-700 bg-slate-100 border-slate-200'
-                                                                : 'text-amber-800 bg-amber-100/80 border border-amber-200'
+                                                                ? 'text-app-muted bg-app-surface-2 border-app-border'
+                                                                : 'text-ds-warning bg-app-highlight border-app-border'
                                                         }`}
                                                     >
                                                         {row.billNumber}
                                                     </div>
                                                 </td>
-                                                <td className="px-3 py-2.5 text-slate-700">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-slate-700">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
+                                                <td className="px-3 py-2.5 text-app-text">{row.projectName}</td>
+                                                <td className="px-3 py-2.5 text-app-text">{row.vendorName}</td>
+                                                <td className="px-3 py-2.5 text-right font-semibold text-app-text tabular-nums">
                                                     {CURRENCY} {(row.amount || 0).toLocaleString()}
                                                 </td>
                                                 <td className="px-3 py-2.5 text-center">
                                                     <span
                                                         className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
                                                             fullyApplied
-                                                                ? 'bg-slate-200 text-slate-800 border-slate-300'
-                                                                : 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                                ? 'bg-app-surface-2 text-app-muted border-app-border'
+                                                                : 'bg-app-highlight text-ds-warning border-app-border'
                                                         }`}
                                                     >
                                                         {fullyApplied ? 'Fully applied' : 'Prepaid'}
@@ -1508,16 +1509,16 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                                 </td>
                                                 <td className="px-3 py-2.5 text-right">
                                                     <div
-                                                        className={`font-bold tabular-nums ${fullyApplied ? 'text-slate-600' : 'text-amber-900'}`}
+                                                        className={`font-bold tabular-nums ${fullyApplied ? 'text-app-muted' : 'text-ds-warning'}`}
                                                     >
                                                         {CURRENCY} {rem.toLocaleString()}
-                                                        <span className="block text-[9px] font-normal text-slate-600 normal-case tracking-normal">
+                                                        <span className="block text-[9px] font-normal text-app-muted normal-case tracking-normal">
                                                             {fullyApplied ? 'remaining prepaid' : 'remaining'}
                                                         </span>
                                                     </div>
                                                     {(adv.description || '').trim() ? (
                                                         <p
-                                                            className="mt-1 text-[10px] text-slate-500 text-left leading-snug max-w-[220px] ml-auto whitespace-normal break-words"
+                                                            className="mt-1 text-[10px] text-app-muted text-left leading-snug max-w-[220px] ml-auto whitespace-normal break-words"
                                                             title={(adv.description || '').trim()}
                                                         >
                                                             {(adv.description || '').trim()}
@@ -1532,8 +1533,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                 }) : (
                                     <tr>
                                         <td colSpan={10} className="px-4 py-20 text-center">
-                                            <div className="flex flex-col items-center justify-center text-slate-400 opacity-60">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                                            <div className="flex flex-col items-center justify-center text-app-muted opacity-60">
+                                                <div className="w-12 h-12 bg-app-surface-2 rounded-full flex items-center justify-center mb-3">
                                                     <div className="w-6 h-6">{ICONS.fileText}</div>
                                                 </div>
                                                 <p className="text-sm font-medium">No records matching your filters</p>
@@ -1547,7 +1548,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                                         <td colSpan={10} className="text-center py-3">
                                             <button
                                                 onClick={() => setDisplayLimit(prev => prev + 200)}
-                                                className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                                                className="text-xs text-ds-primary hover:text-ds-primary-hover font-medium"
                                             >
                                                 Showing {displayLimit} of {filteredRows.length} — Load more
                                             </button>
@@ -1558,37 +1559,37 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                         </table>
                     </div>
                     {/* Compact Summary Footer */}
-                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 backdrop-blur-sm flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    <div className="px-4 py-3 border-t border-app-border bg-app-toolbar flex justify-between items-center text-[10px] font-bold text-app-muted uppercase tracking-widest">
                         <div className="flex items-center gap-6">
                             <div className="flex items-center gap-2">
-                                <span className="text-slate-400">Bills Total:</span>
-                                <span className="text-slate-900 text-xs tabular-nums">
+                                <span className="text-app-muted">Bills Total:</span>
+                                <span className="text-app-text text-xs tabular-nums">
                                     {CURRENCY} {filteredRows.filter(r => r.type === 'bill').reduce((sum, r) => sum + (r.amount || 0), 0).toLocaleString()}
                                 </span>
                             </div>
                             <div className="flex items-center gap-2">
-                                <span className="text-slate-400">Payments:</span>
-                                <span className="text-emerald-600 text-xs tabular-nums">
+                                <span className="text-app-muted">Payments:</span>
+                                <span className="text-ds-success text-xs tabular-nums">
                                     {CURRENCY} {filteredRows.filter(r => r.type === 'payment').reduce((sum, r) => sum + (r.amount || 0), 0).toLocaleString()}
                                 </span>
                             </div>
                             {filteredRows.some((r) => r.type === 'advance') && (
                                 <div className="flex items-center gap-2">
-                                    <span className="text-slate-400">Prepaid:</span>
-                                    <span className="text-amber-800 text-xs tabular-nums">
+                                    <span className="text-app-muted">Prepaid:</span>
+                                    <span className="text-ds-warning text-xs tabular-nums">
                                         {CURRENCY}{' '}
                                         {filteredRows
                                             .filter((r) => r.type === 'advance')
                                             .reduce((sum, r) => sum + Math.max(0, r.balance || 0), 0)
                                             .toLocaleString()}{' '}
-                                        <span className="font-normal text-slate-500 lowercase">remaining (open advances)</span>
+                                        <span className="font-normal text-app-muted lowercase">remaining (open advances)</span>
                                     </span>
                                 </div>
                             )}
                         </div>
                         <div className="flex items-center gap-2">
                             <span>Outstanding Balance:</span>
-                            <span className="text-rose-600 text-xs tabular-nums">
+                            <span className="text-ds-danger text-xs tabular-nums">
                                 {CURRENCY} {filteredRows.filter(r => r.type === 'bill').reduce((sum, r) => sum + (r.balance || 0), 0).toLocaleString()}
                             </span>
                         </div>
