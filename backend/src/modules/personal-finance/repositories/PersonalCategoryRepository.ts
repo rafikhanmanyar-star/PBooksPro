@@ -46,4 +46,48 @@ export class PersonalCategoryRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async insertCategory(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    type: string,
+    sortOrder: number
+  ): Promise<PersonalCategoryRow> {
+    const r = await client.query<PersonalCategoryRow>(
+      `INSERT INTO personal_categories (
+         id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, 1, NULL, NOW(), NOW())
+       RETURNING ${CATEGORY_COLUMNS}`,
+      [id, this.tenantId, name, type, sortOrder]
+    );
+    return r.rows[0]!;
+  }
+
+  async updateActive(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    type: string,
+    sortOrder: number
+  ): Promise<PersonalCategoryRow | null> {
+    const r = await client.query<PersonalCategoryRow>(
+      `UPDATE personal_categories SET
+         name = $2, type = $3, sort_order = $4, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $5 AND deleted_at IS NULL
+       RETURNING ${CATEGORY_COLUMNS}`,
+      [id, name, type, sortOrder, this.tenantId]
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async markDeleted(client: pg.PoolClient, id: string): Promise<PersonalCategoryRow | null> {
+    const r = await client.query<PersonalCategoryRow>(
+      `UPDATE personal_categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING ${CATEGORY_COLUMNS}`,
+      [id, this.tenantId]
+    );
+    return r.rows[0] ?? null;
+  }
 }

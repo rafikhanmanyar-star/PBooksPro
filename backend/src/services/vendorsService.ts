@@ -96,23 +96,15 @@ export async function createVendor(
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
   const isActive = p.isActive !== false;
 
-  const r = await client.query<VendorRow>(
-    `INSERT INTO vendors (id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, NULL, NOW(), NOW())
-     RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.contactNo ?? null,
-      p.companyName ?? null,
-      p.address ?? null,
-      p.description ?? null,
-      isActive,
-      p.userId ?? null,
-    ]
-  );
-  const row = r.rows[0];
+  const row = await new VendorRepository(tenantId).insertVendor(client, id, {
+    name: p.name,
+    contact_no: p.contactNo ?? null,
+    company_name: p.companyName ?? null,
+    address: p.address ?? null,
+    description: p.description ?? null,
+    is_active: isActive,
+    user_id: p.userId ?? null,
+  });
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -147,26 +139,15 @@ export async function updateVendor(
     });
     if (lww.conflict) return { row: null, conflict: true };
 
-    const r = await client.query<VendorRow>(
-      `UPDATE vendors SET
-        name = $3, contact_no = $4, company_name = $5, address = $6, description = $7,
-        is_active = $8, user_id = $9,
-        version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
-      [
-        id,
-        tenantId,
-        p.name,
-        p.contactNo ?? null,
-        p.companyName ?? null,
-        p.address ?? null,
-        p.description ?? null,
-        isActive,
-        p.userId ?? null,
-      ]
-    );
-    const row = r.rows[0] ?? null;
+    const row = await new VendorRepository(tenantId).updateActive(client, id, {
+      name: p.name,
+      contact_no: p.contactNo ?? null,
+      company_name: p.companyName ?? null,
+      address: p.address ?? null,
+      description: p.description ?? null,
+      is_active: isActive,
+      user_id: p.userId ?? null,
+    });
     if (!row) return { row: null, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
@@ -182,26 +163,15 @@ export async function updateVendor(
     return { row, conflict: false };
   }
 
-  const r = await client.query<VendorRow>(
-    `UPDATE vendors SET
-      name = $3, contact_no = $4, company_name = $5, address = $6, description = $7,
-      is_active = $8, user_id = $9,
-      version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.contactNo ?? null,
-      p.companyName ?? null,
-      p.address ?? null,
-      p.description ?? null,
-      isActive,
-      p.userId ?? null,
-    ]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await new VendorRepository(tenantId).updateActive(client, id, {
+    name: p.name,
+    contact_no: p.contactNo ?? null,
+    company_name: p.companyName ?? null,
+    address: p.address ?? null,
+    description: p.description ?? null,
+    is_active: isActive,
+    user_id: p.userId ?? null,
+  });
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -234,14 +204,8 @@ export async function softDeleteVendor(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE vendors SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false };
-    const row = r.rows[0] as VendorRow;
+    const { ok, row } = await new VendorRepository(tenantId).markDeleted(client, id);
+    if (!ok || !row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -255,15 +219,8 @@ export async function softDeleteVendor(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE vendors SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as VendorRow;
+  const { ok, row } = await new VendorRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,

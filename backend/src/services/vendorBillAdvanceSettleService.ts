@@ -20,6 +20,7 @@ import {
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
 import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
 import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
+import { VendorBillAdvanceClearingRepository } from '../modules/vendors/repositories/VendorBillAdvanceClearingRepository.js';
 
 const MONEY_EPS = 0.005;
 
@@ -220,6 +221,7 @@ export async function settleVendorBillsBatchWithAdvances(
     }
   }
 
+  const clearingRepo = new VendorBillAdvanceClearingRepository(tenantId);
   const journalEntries: { billId: string; journalEntryId: string }[] = [];
   const cashExpenseTransactions: TransactionRow[] = [];
   const refBase =
@@ -272,23 +274,25 @@ export async function settleVendorBillsBatchWithAdvances(
     journalEntries.push({ billId, journalEntryId });
 
     for (const [advanceIdAgg, amt] of p.byAdvance.entries()) {
-      const clearingId = newId();
-      await client.query(
-        `INSERT INTO vendor_bill_advance_clearings
-         (id, tenant_id, bill_id, contractor_advance_id, settlement_kind, amount, journal_entry_id)
-         VALUES ($1, $2, $3, $4, 'advance', $5, $6)`,
-        [clearingId, tenantId, billId, advanceIdAgg, roundMoney(amt), journalEntryId]
-      );
+      await clearingRepo.insertClearing(client, {
+        id: newId(),
+        bill_id: billId,
+        contractor_advance_id: advanceIdAgg,
+        settlement_kind: 'advance',
+        amount: roundMoney(amt),
+        journal_entry_id: journalEntryId,
+      });
     }
 
     if (p.cash > MONEY_EPS) {
-      const cashClr = newId();
-      await client.query(
-        `INSERT INTO vendor_bill_advance_clearings
-         (id, tenant_id, bill_id, contractor_advance_id, settlement_kind, amount, journal_entry_id)
-         VALUES ($1, $2, $3, NULL, 'cash', $4, $5)`,
-        [cashClr, tenantId, billId, p.cash, journalEntryId]
-      );
+      await clearingRepo.insertClearing(client, {
+        id: newId(),
+        bill_id: billId,
+        contractor_advance_id: null,
+        settlement_kind: 'cash',
+        amount: p.cash,
+        journal_entry_id: journalEntryId,
+      });
 
       const txRow = await createTransaction(
         client,

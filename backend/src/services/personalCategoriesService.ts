@@ -81,14 +81,13 @@ export async function createPersonalCategory(
       ? body.id.trim()
       : `pc_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<PersonalCategoryRow>(
-    `INSERT INTO personal_categories (
-       id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
-     ) VALUES ($1, $2, $3, $4, $5, 1, NULL, NOW(), NOW())
-     RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, name, type, Number.isFinite(sortOrder) ? sortOrder : 0]
+  const row = await new PersonalCategoryRepository(tenantId).insertCategory(
+    client,
+    id,
+    name,
+    type,
+    Number.isFinite(sortOrder) ? sortOrder : 0
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: userId ?? null,
@@ -132,14 +131,13 @@ export async function updatePersonalCategory(
       ? Number(body.sortOrder ?? body.sort_order)
       : existing.sort_order;
 
-  const r = await client.query<PersonalCategoryRow>(
-    `UPDATE personal_categories SET
-       name = $2, type = $3, sort_order = $4, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $5 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
-    [id, name, type, Number.isFinite(sortOrder) ? sortOrder : 0, tenantId]
+  const row = await new PersonalCategoryRepository(tenantId).updateActive(
+    client,
+    id,
+    name,
+    type,
+    Number.isFinite(sortOrder) ? sortOrder : 0
   );
-  const row = r.rows[0] ?? null;
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -177,13 +175,7 @@ export async function softDeletePersonalCategory(
     if (lww.conflict) throw new Error('Conflict: category was modified by another user.');
   }
 
-  const r = await client.query<PersonalCategoryRow>(
-    `UPDATE personal_categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await new PersonalCategoryRepository(tenantId).markDeleted(client, id);
   if (row) {
     await recordDomainMutation(client, {
       tenantId,

@@ -1,7 +1,10 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../core/recordDomainMutation.js';
-import { PayrollEmployeeRepository } from '../../modules/payroll/repositories/PayrollEmployeeRepository.js';
+import {
+  PayrollEmployeeRepository,
+  type PayrollEmployeeWriteFields,
+} from '../../modules/payroll/repositories/PayrollEmployeeRepository.js';
 import { type PayrollEmployeeLike } from '../../payroll/salaryComputation.js';
 import { dateStr, j, optStr } from './payrollHelpers.js';
 import { rowToEmployeeApi } from './payrollRowMappers.js';
@@ -71,65 +74,31 @@ export async function upsertEmployee(
   const p = pickEmployeePayload(body);
   if (!p.name) throw new Error('name is required.');
 
-  const prior = await new PayrollEmployeeRepository(tenantId).getByIdIncludingDeleted(client, id);
+  const empRepo = new PayrollEmployeeRepository(tenantId);
+  const prior = await empRepo.getByIdIncludingDeleted(client, id);
 
-  const r = await client.query<PayrollEmployeeRow>(
-    `INSERT INTO payroll_employees (
-       id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department, department_id,
-       grade, status, joining_date, termination_date, salary, adjustments, projects, buildings, created_by, updated_by, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::date,$16::date,$17::jsonb,$18::jsonb,$19::jsonb,$20::jsonb,$21,$22,NULL,NOW(),NOW()
-     )
-     ON CONFLICT (id) DO UPDATE SET
-       user_id = COALESCE(EXCLUDED.user_id, payroll_employees.user_id),
-       name = EXCLUDED.name,
-       email = EXCLUDED.email,
-       phone = EXCLUDED.phone,
-       address = EXCLUDED.address,
-       photo = EXCLUDED.photo,
-       employee_code = EXCLUDED.employee_code,
-       designation = EXCLUDED.designation,
-       department = EXCLUDED.department,
-       department_id = EXCLUDED.department_id,
-       grade = EXCLUDED.grade,
-       status = EXCLUDED.status,
-       joining_date = EXCLUDED.joining_date,
-       termination_date = EXCLUDED.termination_date,
-       salary = EXCLUDED.salary,
-       adjustments = EXCLUDED.adjustments,
-       projects = EXCLUDED.projects,
-       buildings = EXCLUDED.buildings,
-       updated_by = EXCLUDED.updated_by,
-       updated_at = NOW()
-     RETURNING id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
-               department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
-               created_by, updated_by, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      optStr(body.user_id ?? body.userId),
-      p.name,
-      p.email,
-      p.phone,
-      p.address,
-      p.photo,
-      p.employee_code,
-      p.designation,
-      p.department,
-      p.department_id,
-      p.grade,
-      p.status,
-      p.joining_date,
-      p.termination_date,
-      JSON.stringify(p.salary),
-      JSON.stringify(p.adjustments),
-      JSON.stringify(p.projects),
-      JSON.stringify(p.buildings),
-      userId,
-      userId,
-    ]
-  );
-  const row = r.rows[0];
+  const fields: PayrollEmployeeWriteFields = {
+    user_id: optStr(body.user_id ?? body.userId),
+    name: p.name,
+    email: p.email,
+    phone: p.phone,
+    address: p.address,
+    photo: p.photo,
+    employee_code: p.employee_code,
+    designation: p.designation,
+    department: p.department,
+    department_id: p.department_id,
+    grade: p.grade,
+    status: p.status,
+    joining_date: p.joining_date,
+    termination_date: p.termination_date,
+    salary: p.salary,
+    adjustments: p.adjustments,
+    projects: p.projects,
+    buildings: p.buildings,
+  };
+
+  const row = await empRepo.upsertEmployee(client, id, fields, userId);
   await recordDomainMutation(client, {
     tenantId,
     userId,
@@ -145,12 +114,9 @@ export async function upsertEmployee(
 }
 
 export async function softDeleteEmployee(client: pg.PoolClient, tenantId: string, id: string): Promise<boolean> {
-  const prior = await new PayrollEmployeeRepository(tenantId).getById(client, id);
-  const u = await client.query(`UPDATE payroll_employees SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`, [
-    id,
-    tenantId,
-  ]);
-  const ok = (u.rowCount ?? 0) > 0;
+  const empRepo = new PayrollEmployeeRepository(tenantId);
+  const prior = await empRepo.getById(client, id);
+  const ok = await empRepo.markDeleted(client, id);
   if (ok && prior) {
     await recordDomainMutation(client, {
       tenantId,

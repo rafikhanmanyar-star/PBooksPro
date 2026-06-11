@@ -93,23 +93,19 @@ export async function createContact(
   if (!p.name.trim()) throw new Error('Contact name is required.');
   if (!p.type.trim()) throw new Error('Contact type is required.');
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
-  const r = await client.query<ContactRow>(
-    `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, NULL, NOW(), NOW())
-     RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.type,
-      p.description ?? null,
-      p.contact_no ?? null,
-      p.company_name ?? null,
-      p.address ?? null,
-      p.user_id ?? actorUserId,
-    ]
+  const row = await new ContactRepository(tenantId).insertContact(
+    client,
+    id,
+    {
+      name: p.name,
+      type: p.type,
+      description: p.description ?? null,
+      contact_no: p.contact_no ?? null,
+      company_name: p.company_name ?? null,
+      address: p.address ?? null,
+    },
+    p.user_id ?? actorUserId
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: actorUserId,
@@ -144,27 +140,17 @@ export async function updateContact(
     });
     if (lww.conflict) return { row: null, conflict: true };
 
-    const r = await client.query<ContactRow>(
-      `UPDATE contacts SET
-        name = $3, type = $4, description = $5, contact_no = $6, company_name = $7, address = $8,
-        version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
-      [
-        id,
-        tenantId,
-        p.name,
-        p.type,
-        p.description ?? null,
-        p.contact_no ?? null,
-        p.company_name ?? null,
-        p.address ?? null,
-      ]
-    );
-    if (r.rows.length === 0) {
+    const row = await new ContactRepository(tenantId).updateActive(client, id, {
+      name: p.name,
+      type: p.type,
+      description: p.description ?? null,
+      contact_no: p.contact_no ?? null,
+      company_name: p.company_name ?? null,
+      address: p.address ?? null,
+    });
+    if (!row) {
       return { row: null, conflict: false };
     }
-    const row = r.rows[0];
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -179,24 +165,14 @@ export async function updateContact(
     return { row, conflict: false };
   }
 
-  const r = await client.query<ContactRow>(
-    `UPDATE contacts SET
-      name = $3, type = $4, description = $5, contact_no = $6, company_name = $7, address = $8,
-      version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.type,
-      p.description ?? null,
-      p.contact_no ?? null,
-      p.company_name ?? null,
-      p.address ?? null,
-    ]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await new ContactRepository(tenantId).updateActive(client, id, {
+    name: p.name,
+    type: p.type,
+    description: p.description ?? null,
+    contact_no: p.contact_no ?? null,
+    company_name: p.company_name ?? null,
+    address: p.address ?? null,
+  });
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -229,17 +205,12 @@ export async function softDeleteContact(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE contacts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3
-       RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const { ok, row } = await new ContactRepository(tenantId).markDeleted(client, id, expectedVersion);
+    if (!ok) {
       if (!before) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
-    const row = r.rows[0] as ContactRow;
+    if (!row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -253,15 +224,8 @@ export async function softDeleteContact(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE contacts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as ContactRow;
+  const { ok, row } = await new ContactRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,

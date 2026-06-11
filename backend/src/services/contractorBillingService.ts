@@ -6,6 +6,7 @@ import { roundMoney } from '../financial/validation.js';
 import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
 import { getContactById } from './contactsService.js';
 import { getVendorById } from './vendorsService.js';
+import { ContactRepository } from '../modules/crm/repositories/ContactRepository.js';
 import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
 import { ContractorBillRepository } from '../modules/vendors/repositories/ContractorBillRepository.js';
 
@@ -178,51 +179,27 @@ export async function resolveContractorPartyToContactId(
     throw new Error('Contact not found or inactive.');
   }
 
-  await client.query(
-    `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, 'Vendor', $4, $5, $6, $7, $8, 1, NULL, NOW(), NOW())
-     ON CONFLICT (id) DO NOTHING`,
-    [
-      partyId,
-      tenantId,
-      vendor.name,
-      vendor.description,
-      vendor.contact_no,
-      vendor.company_name,
-      vendor.address,
-      vendor.user_id,
-    ]
-  );
+  const contactRepo = new ContactRepository(tenantId);
+  const bridgeFields = {
+    name: vendor.name,
+    type: 'Vendor',
+    description: vendor.description,
+    contact_no: vendor.contact_no,
+    company_name: vendor.company_name,
+    address: vendor.address,
+  };
+  await contactRepo.upsertVendorBridgeContact(client, partyId, bridgeFields, vendor.user_id);
 
   const bridged = await getContactById(client, tenantId, partyId);
   if (bridged) return bridged.id;
 
-  const revived = await client.query<{ id: string }>(
-    `UPDATE contacts SET
-       deleted_at = NULL,
-       name = $3,
-       type = 'Vendor',
-       description = COALESCE($4, description),
-       contact_no = COALESCE($5, contact_no),
-       company_name = COALESCE($6, company_name),
-       address = COALESCE($7, address),
-       user_id = COALESCE($8, user_id),
-       version = version + 1,
-       updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id`,
-    [
-      partyId,
-      tenantId,
-      vendor.name,
-      vendor.description,
-      vendor.contact_no,
-      vendor.company_name,
-      vendor.address,
-      vendor.user_id,
-    ]
+  const revivedId = await contactRepo.reviveVendorBridgeContact(
+    client,
+    partyId,
+    bridgeFields,
+    vendor.user_id
   );
-  if (revived.rows[0]?.id) return revived.rows[0].id;
+  if (revivedId) return revivedId;
 
   throw new Error('Contact not found or inactive.');
 }
@@ -271,26 +248,17 @@ export async function createContractorAdvance(
   const id = newId();
   const projectId =
     input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
-  await client.query(
-    `INSERT INTO contractor_advances (
-      id, tenant_id, contractor_contact_id, advance_date, original_amount, remaining_amount,
-      cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by
-    )
-    VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, NULL, $9, $10, $11)`,
-    [
-      id,
-      tenantId,
-      contractorContactId,
-      input.advanceDate,
-      amt,
-      amt,
-      input.cashAccountId,
-      input.advanceAssetAccountId,
-      projectId,
-      input.description ?? null,
-      createdBy,
-    ]
-  );
+  await new ContractorAdvanceRepository(tenantId).insertAdvance(client, {
+    id,
+    contractor_contact_id: contractorContactId,
+    advance_date: input.advanceDate,
+    amount: amt,
+    cash_account_id: input.cashAccountId,
+    advance_asset_account_id: input.advanceAssetAccountId,
+    project_id: projectId,
+    description: input.description ?? null,
+    created_by: createdBy,
+  });
 
   const { journalEntryId } = await new JournalRepository(tenantId).insertEntry(client, {
     entryDate: input.advanceDate,
@@ -359,27 +327,20 @@ export async function createContractorBill(
       : null;
   const projectId =
     input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+  const billRepo = new ContractorBillRepository(tenantId);
   try {
-    await client.query(
-      `INSERT INTO contractor_bills (
-        id, tenant_id, contractor_contact_id, bill_number, bill_date, amount, status, description, project_id,
-        construction_expense_account_id, residual_account_id, created_by
-      )
-      VALUES ($1, $2, $3, $4, $5::date, $6, 'draft', $7, $8, $9, $10, $11)`,
-      [
-        id,
-        tenantId,
-        contractorContactId,
-        bn,
-        input.billDate,
-        amt,
-        input.description ?? null,
-        projectId,
-        input.constructionExpenseAccountId,
-        input.residualAccountId,
-        createdBy,
-      ]
-    );
+    await billRepo.insertBill(client, {
+      id,
+      contractor_contact_id: contractorContactId,
+      bill_number: bn,
+      bill_date: input.billDate,
+      amount: amt,
+      description: input.description ?? null,
+      project_id: projectId,
+      construction_expense_account_id: input.constructionExpenseAccountId,
+      residual_account_id: input.residualAccountId,
+      created_by: createdBy,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (msg.includes('duplicate key') || msg.includes('unique')) {
@@ -487,12 +448,13 @@ export async function approveContractorBill(
   for (const [advanceIdAgg, totalAdj] of byAdvance.entries()) {
     const adjRowId = newId();
     const rounded = roundMoney(totalAdj);
-    await client.query(
-      `INSERT INTO contractor_bill_adjustments (id, tenant_id, contractor_bill_id, contractor_advance_id, amount)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [adjRowId, tenantId, billId, advanceIdAgg, rounded]
-    );
-    await new ContractorAdvanceRepository(tenantId).adjustRemaining(client, advanceIdAgg, -rounded);
+    await billRepo.insertBillAdjustment(client, {
+      id: adjRowId,
+      contractor_bill_id: billId,
+      contractor_advance_id: advanceIdAgg,
+      amount: rounded,
+    });
+    await advanceRepo.adjustRemaining(client, advanceIdAgg, -rounded);
   }
 
   const entryDate = opts?.entryDate?.trim() ? opts.entryDate.trim() : bill.bill_date;
@@ -520,11 +482,7 @@ export async function approveContractorBill(
     lines,
   });
 
-  await client.query(
-    `UPDATE contractor_bills
-     SET status = 'approved', approval_journal_entry_id = $1, updated_at = NOW() WHERE tenant_id = $2 AND id = $3`,
-    [journalEntryId, tenantId, billId]
-  );
+  await billRepo.markApproved(client, billId, journalEntryId);
 
   const updatedBill = await billRepo.getById(client, billId);
   if (!updatedBill) throw new Error('Bill not found after approval.');

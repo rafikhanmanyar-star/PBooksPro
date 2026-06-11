@@ -53,12 +53,7 @@ export async function upsertSetting(
   opts?: { userId?: string | null; skipChangeLog?: boolean }
 ): Promise<void> {
   const json = JSON.stringify(value);
-  await client.query(
-    `INSERT INTO app_settings (tenant_id, key, value, updated_at)
-     VALUES ($1, $2, $3::jsonb, NOW())
-     ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-    [tenantId, key, json]
-  );
+  await new AppSettingsRepository(tenantId).upsertKey(client, key, json);
   if (!opts?.skipChangeLog) {
     const { recordAppSettingChangeLog } = await import('./appStateBulkMutationService.js');
     await recordAppSettingChangeLog(client, tenantId, key, 'update', opts?.userId);
@@ -89,11 +84,7 @@ export async function deleteSetting(
   key: string,
   userId?: string | null
 ): Promise<boolean> {
-  const r = await client.query(`DELETE FROM app_settings WHERE tenant_id = $1 AND key = $2`, [
-    tenantId,
-    key,
-  ]);
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await new AppSettingsRepository(tenantId).deleteKey(client, key);
   if (ok) {
     const { recordAppSettingChangeLog } = await import('./appStateBulkMutationService.js');
     await recordAppSettingChangeLog(client, tenantId, key, 'delete', userId);

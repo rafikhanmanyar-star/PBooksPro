@@ -68,13 +68,11 @@ export async function createBuilding(
   const p = pickBody(body);
   if (!p.name.trim()) throw new Error('Building name is required.');
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
-  const r = await client.query<BuildingRow>(
-    `INSERT INTO buildings (id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5, 1, NULL, NOW(), NOW())
-     RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.name, p.description ?? null, p.color ?? null]
-  );
-  const row = r.rows[0];
+  const row = await new BuildingRepository(tenantId).insertBuilding(client, id, {
+    name: p.name,
+    description: p.description ?? null,
+    color: p.color ?? null,
+  });
   await recordDomainMutation(client, {
     tenantId,
     userId: null,
@@ -108,15 +106,11 @@ export async function updateBuilding(
     });
     if (lww.conflict) return { row: null, conflict: true };
 
-    const r = await client.query<BuildingRow>(
-      `UPDATE buildings SET
-        name = $3, description = $4, color = $5,
-        version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.description ?? null, p.color ?? null]
-    );
-    const row = r.rows[0] ?? null;
+    const row = await new BuildingRepository(tenantId).updateActive(client, id, {
+      name: p.name,
+      description: p.description ?? null,
+      color: p.color ?? null,
+    });
     if (!row) return { row: null, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
@@ -132,15 +126,11 @@ export async function updateBuilding(
     return { row, conflict: false };
   }
 
-  const r = await client.query<BuildingRow>(
-    `UPDATE buildings SET
-      name = $3, description = $4, color = $5,
-      version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.name, p.description ?? null, p.color ?? null]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await new BuildingRepository(tenantId).updateActive(client, id, {
+    name: p.name,
+    description: p.description ?? null,
+    color: p.color ?? null,
+  });
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -191,14 +181,8 @@ export async function softDeleteBuilding(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE buildings SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false };
-    const row = r.rows[0] as BuildingRow;
+    const { ok, row } = await new BuildingRepository(tenantId).markDeleted(client, id);
+    if (!ok || !row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: null,
@@ -212,15 +196,8 @@ export async function softDeleteBuilding(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE buildings SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as BuildingRow;
+  const { ok, row } = await new BuildingRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: null,

@@ -67,4 +67,38 @@ export class VendorBillAdvanceClearingRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async insertClearing(
+    client: pg.PoolClient,
+    input: {
+      id: string;
+      bill_id: string;
+      contractor_advance_id: string | null;
+      settlement_kind: 'advance' | 'cash';
+      amount: number;
+      journal_entry_id: string;
+    }
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO vendor_bill_advance_clearings
+       (id, tenant_id, bill_id, contractor_advance_id, settlement_kind, amount, journal_entry_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        input.id,
+        this.tenantId,
+        input.bill_id,
+        input.contractor_advance_id,
+        input.settlement_kind,
+        input.amount,
+        input.journal_entry_id,
+      ]
+    );
+  }
+
+  async deleteByJournalEntry(client: pg.PoolClient, journalEntryId: string): Promise<void> {
+    await client.query(`DELETE FROM vendor_bill_advance_clearings WHERE tenant_id = $1 AND journal_entry_id = $2`, [
+      this.tenantId,
+      journalEntryId,
+    ]);
+  }
 }

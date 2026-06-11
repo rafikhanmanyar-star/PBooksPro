@@ -113,28 +113,21 @@ export async function createProject(
 
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
 
-  const r = await client.query<ProjectRow>(
-    `INSERT INTO projects (
-      id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, 1, NULL, NOW(), NOW()
-    )
-    RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.location === undefined ? null : p.location,
-      p.project_type ?? null,
-      p.description ?? null,
-      p.color ?? null,
-      p.status ?? 'Active',
-      p.pm_config != null ? JSON.stringify(p.pm_config) : null,
-      p.installment_config != null ? JSON.stringify(p.installment_config) : null,
-      (body.userId ?? body.user_id) as string | null ?? null,
-    ]
+  const row = await new ProjectRepository(tenantId).insertProject(
+    client,
+    id,
+    {
+      name: p.name,
+      location: p.location === undefined ? null : p.location,
+      project_type: p.project_type ?? null,
+      description: p.description ?? null,
+      color: p.color ?? null,
+      status: p.status ?? 'Active',
+      pm_config: p.pm_config != null ? JSON.stringify(p.pm_config) : null,
+      installment_config: p.installment_config != null ? JSON.stringify(p.installment_config) : null,
+    },
+    ((body.userId ?? body.user_id) as string | null) ?? null
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -166,16 +159,17 @@ export async function updateProject(
 
   if (!p.name) throw new Error('Project name is required.');
 
-  const vals = [
-    p.name,
-    p.location === undefined ? null : p.location,
-    p.project_type ?? null,
-    p.description ?? null,
-    p.color ?? null,
-    p.status ?? 'Active',
-    p.pm_config != null ? JSON.stringify(p.pm_config) : null,
-    p.installment_config != null ? JSON.stringify(p.installment_config) : null,
-  ];
+  const projectFields = {
+    name: p.name,
+    location: p.location === undefined ? null : p.location,
+    project_type: p.project_type ?? null,
+    description: p.description ?? null,
+    color: p.color ?? null,
+    status: p.status ?? 'Active',
+    pm_config: p.pm_config != null ? JSON.stringify(p.pm_config) : null,
+    installment_config: p.installment_config != null ? JSON.stringify(p.installment_config) : null,
+  };
+  const projectRepo = new ProjectRepository(tenantId);
 
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -186,23 +180,7 @@ export async function updateProject(
     });
     if (lww.conflict) return { row: existing, conflict: true };
 
-    const r = await client.query<ProjectRow>(
-      `UPDATE projects SET
-        name = $1,
-        location = $2,
-        project_type = $3,
-        description = $4,
-        color = $5,
-        status = $6,
-        pm_config = $7::jsonb,
-        installment_config = $8::jsonb,
-        version = version + 1,
-        updated_at = NOW()
-      WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL
-      RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-      [...vals, id, tenantId]
-    );
-    const row = r.rows[0] ?? null;
+    const row = await projectRepo.updateActive(client, id, projectFields);
     if (!row) return { row: null, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
@@ -218,23 +196,7 @@ export async function updateProject(
     return { row, conflict: false };
   }
 
-  const r = await client.query<ProjectRow>(
-    `UPDATE projects SET
-      name = $1,
-      location = $2,
-      project_type = $3,
-      description = $4,
-      color = $5,
-      status = $6,
-      pm_config = $7::jsonb,
-      installment_config = $8::jsonb,
-      version = version + 1,
-      updated_at = NOW()
-    WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL
-    RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-    [...vals, id, tenantId]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await projectRepo.updateActive(client, id, projectFields);
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -276,14 +238,8 @@ export async function softDeleteProject(
     });
     if (lww.conflict) return { ok: false, conflict: true, hasUnits: false };
 
-    const r = await client.query(
-      `UPDATE projects SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false, hasUnits: false };
-    const row = r.rows[0] as ProjectRow;
+    const { ok, row } = await new ProjectRepository(tenantId).markDeleted(client, id);
+    if (!ok || !row) return { ok: false, conflict: false, hasUnits: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -298,15 +254,8 @@ export async function softDeleteProject(
     return { ok: true, conflict: false, hasUnits: false };
   }
 
-  const r = await client.query(
-    `UPDATE projects SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as ProjectRow;
+  const { ok, row } = await new ProjectRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,

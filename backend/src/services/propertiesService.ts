@@ -109,22 +109,14 @@ export async function createProperty(
   if (!building) throw new Error('Building not found.');
 
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
-  const r = await client.query<PropertyRow>(
-    `INSERT INTO properties (
-      id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NULL, NOW(), NOW())
-    RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.owner_id,
-      p.building_id,
-      p.description ?? null,
-      p.monthly_service_charge !== undefined ? p.monthly_service_charge : null,
-    ]
-  );
-  const row = r.rows[0];
+  const propertyFields = {
+    name: p.name,
+    owner_id: p.owner_id,
+    building_id: p.building_id,
+    description: p.description ?? null,
+    monthly_service_charge: p.monthly_service_charge !== undefined ? p.monthly_service_charge : null,
+  };
+  const row = await new PropertyRepository(tenantId).insertProperty(client, id, propertyFields);
   await recordDomainMutation(client, {
     tenantId,
     userId: null,
@@ -168,15 +160,13 @@ export async function updateProperty(
     });
     if (lww.conflict) return { row: null, conflict: true };
 
-    const r = await client.query<PropertyRow>(
-      `UPDATE properties SET
-        name = $3, owner_id = $4, building_id = $5, description = $6, monthly_service_charge = $7,
-        version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.owner_id, p.building_id, p.description ?? null, mscVal]
-    );
-    const row = r.rows[0] ?? null;
+    const row = await new PropertyRepository(tenantId).updateActive(client, id, {
+      name: p.name,
+      owner_id: p.owner_id,
+      building_id: p.building_id,
+      description: p.description ?? null,
+      monthly_service_charge: mscVal,
+    });
     if (!row) return { row: null, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
@@ -192,15 +182,13 @@ export async function updateProperty(
     return { row, conflict: false };
   }
 
-  const r = await client.query<PropertyRow>(
-    `UPDATE properties SET
-      name = $3, owner_id = $4, building_id = $5, description = $6, monthly_service_charge = $7,
-      version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.name, p.owner_id, p.building_id, p.description ?? null, mscVal]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await new PropertyRepository(tenantId).updateActive(client, id, {
+    name: p.name,
+    owner_id: p.owner_id,
+    building_id: p.building_id,
+    description: p.description ?? null,
+    monthly_service_charge: mscVal,
+  });
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -251,14 +239,8 @@ export async function softDeleteProperty(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE properties SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false };
-    const row = r.rows[0] as PropertyRow;
+    const { ok, row } = await new PropertyRepository(tenantId).markDeleted(client, id);
+    if (!ok || !row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: null,
@@ -272,15 +254,8 @@ export async function softDeleteProperty(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE properties SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as PropertyRow;
+  const { ok, row } = await new PropertyRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: null,
