@@ -1,4 +1,8 @@
 import type pg from 'pg';
+import { PayrollDepartmentRepository } from '../../modules/payroll/repositories/PayrollDepartmentRepository.js';
+import { PayrollEmployeeRepository } from '../../modules/payroll/repositories/PayrollEmployeeRepository.js';
+import { PayrollGradeRepository } from '../../modules/payroll/repositories/PayrollGradeRepository.js';
+import { PayrollRunRepository } from '../../modules/payroll/repositories/PayrollRunRepository.js';
 import { changedSince } from './payrollHelpers.js';
 import {
   type PayrollDepartmentRow,
@@ -16,14 +20,7 @@ export async function listDepartmentsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PayrollDepartmentRow[]> {
-  return changedSince(
-    client,
-    `SELECT id, tenant_id, name, code, description, parent_department_id, head_employee_id, cost_center_code,
-            budget_allocation::text, is_active, created_by, updated_by, deleted_at, created_at, updated_at
-     FROM payroll_departments WHERE tenant_id = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-    tenantId,
-    since
-  );
+  return new PayrollDepartmentRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listGradesChangedSince(
@@ -31,14 +28,7 @@ export async function listGradesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PayrollGradeRow[]> {
-  return changedSince(
-    client,
-    `SELECT id, tenant_id, name, description, min_salary::text, max_salary::text, created_by, updated_by,
-            deleted_at, created_at, updated_at
-     FROM payroll_grades WHERE tenant_id = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-    tenantId,
-    since
-  );
+  return new PayrollGradeRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listEmployeesChangedSince(
@@ -46,15 +36,7 @@ export async function listEmployeesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PayrollEmployeeRow[]> {
-  return changedSince(
-    client,
-    `SELECT id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
-            department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
-            created_by, updated_by, deleted_at, created_at, updated_at
-     FROM payroll_employees WHERE tenant_id = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-    tenantId,
-    since
-  );
+  return new PayrollEmployeeRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listPayrollRunsChangedSince(
@@ -62,14 +44,7 @@ export async function listPayrollRunsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PayrollRunRow[]> {
-  return changedSince(
-    client,
-    `SELECT id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
-            created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at
-     FROM payroll_runs WHERE tenant_id = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-    tenantId,
-    since
-  );
+  return new PayrollRunRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listPayslipsChangedSince(

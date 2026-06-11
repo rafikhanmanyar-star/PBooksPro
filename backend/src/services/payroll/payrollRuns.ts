@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../../core/recordDomainMutation.js';
+import { PayrollRunRepository } from '../../modules/payroll/repositories/PayrollRunRepository.js';
 import {
   computeMonthlyPayslip,
   isPayrollPeriodBeforeJoiningDate,
@@ -10,6 +12,7 @@ import { ExpenseCashValidationBatchContext } from '../../financial/expenseCashVa
 import { createTransaction, rowToTransactionApi } from '../transactionsService.js';
 import { enforceLockForSave } from '../recordLocksService.js';
 import { dateStr, j, numStr, optStr } from './payrollHelpers.js';
+import { rowToPayrollRunApi } from './payrollRowMappers.js';
 import { employeeRowToLike, listEmployees } from './payrollEmployees.js';
 import {
   type BulkPayPayslipLine,
@@ -27,13 +30,7 @@ async function enforcePayrollRunLock(
 }
 
 export async function listPayrollRuns(client: pg.PoolClient, tenantId: string): Promise<PayrollRunRow[]> {
-  const r = await client.query<PayrollRunRow>(
-    `SELECT id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
-            created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at
-     FROM payroll_runs WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY year DESC, month DESC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new PayrollRunRepository(tenantId).listActive(client);
 }
 
 export async function getPayrollRun(
@@ -41,13 +38,7 @@ export async function getPayrollRun(
   tenantId: string,
   id: string
 ): Promise<PayrollRunRow | null> {
-  const r = await client.query<PayrollRunRow>(
-    `SELECT id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
-            created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at
-     FROM payroll_runs WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PayrollRunRepository(tenantId).getById(client, id);
 }
 
 export async function createPayrollRun(
@@ -64,6 +55,14 @@ export async function createPayrollRun(
   const bounds = payPeriodCalendarBounds(month, year);
   const period_start = bounds?.start ?? null;
   const period_end = bounds?.end ?? null;
+
+  const prior = await client.query<PayrollRunRow>(
+    `SELECT id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
+            created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at
+     FROM payroll_runs WHERE tenant_id = $1 AND month = $2 AND year = $3`,
+    [tenantId, month, year]
+  );
+  const priorRow = prior.rows[0] ?? null;
 
   // If this period was soft-deleted, ON CONFLICT must revive the row; otherwise getPayrollRun(process) sees "not found".
   const r = await client.query<PayrollRunRow>(
@@ -84,6 +83,17 @@ export async function createPayrollRun(
   );
   const row = r.rows[0];
   if (!row) throw new Error('Could not create payroll run.');
+  await recordDomainMutation(client, {
+    tenantId,
+    userId,
+    module: 'payroll',
+    entityType: 'payroll_run',
+    entityId: row.id,
+    action: priorRow ? 'update' : 'create',
+    summary: `Payroll run ${row.month} ${row.year} ${priorRow ? 'updated' : 'created'}`,
+    newValue: rowToPayrollRunApi(row),
+    oldValue: priorRow ? rowToPayrollRunApi(priorRow) : undefined,
+  });
   return row;
 }
 
@@ -148,6 +158,7 @@ export async function updatePayrollRun(
   actorUserId?: string | null
 ): Promise<PayrollRunRow | null> {
   await enforceLockForSave(client, tenantId, 'payroll', id, actorUserId);
+  const prior = await getPayrollRun(client, tenantId, id);
   const status = body.status !== undefined ? String(body.status) : undefined;
   const total_amount =
     body.total_amount !== undefined || body.totalAmount !== undefined
@@ -186,7 +197,21 @@ export async function updatePayrollRun(
       paid_at_value ?? null,
     ]
   );
-  return u.rows[0] ?? null;
+  const row = u.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.updated_by ?? row.created_by,
+      module: 'payroll',
+      entityType: 'payroll_run',
+      entityId: row.id,
+      action: 'update',
+      summary: `Payroll run ${row.month} ${row.year} updated`,
+      newValue: rowToPayrollRunApi(row),
+      oldValue: prior ? rowToPayrollRunApi(prior) : undefined,
+    });
+  }
+  return row;
 }
 
 export async function deletePayrollRun(
@@ -196,6 +221,7 @@ export async function deletePayrollRun(
   actorUserId?: string | null
 ): Promise<boolean> {
   await enforcePayrollRunLock(client, tenantId, id, actorUserId);
+  const prior = await getPayrollRun(client, tenantId, id);
   await client.query(
     `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
@@ -204,7 +230,20 @@ export async function deletePayrollRun(
     id,
     tenantId,
   ]);
-  return (u.rowCount ?? 0) > 0;
+  const ok = (u.rowCount ?? 0) > 0;
+  if (ok && prior) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? prior.updated_by ?? prior.created_by,
+      module: 'payroll',
+      entityType: 'payroll_run',
+      entityId: id,
+      action: 'delete',
+      summary: `Payroll run ${prior.month} ${prior.year} deleted`,
+      oldValue: rowToPayrollRunApi(prior),
+    });
+  }
+  return ok;
 }
 
 export async function listPayslipsByRun(

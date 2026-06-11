@@ -39,6 +39,7 @@ import {
 import { listSalesReturnsChangedSince, rowToSalesReturnApi } from './salesReturnsService.js';
 import { listContractsChangedSince, rowToContractApi } from './contractsService.js';
 import { listBudgetsChangedSince, rowToBudgetApi } from './budgetsService.js';
+import { listQuotationsChangedSince, rowToQuotationApi } from './quotationsService.js';
 import {
   listPersonalCategoriesChangedSince,
   rowToPersonalCategoryApi,
@@ -118,6 +119,7 @@ export async function getStateChanges(
     salesReturnRows,
     contractRows,
     budgetRows,
+    quotationRows,
     payrollDepartmentRows,
     payrollGradeRows,
     payrollEmployeeRows,
@@ -151,6 +153,7 @@ export async function getStateChanges(
     listSalesReturnsChangedSince(client, tenantId, since),
     listContractsChangedSince(client, tenantId, since),
     listBudgetsChangedSince(client, tenantId, since),
+    listQuotationsChangedSince(client, tenantId, since),
     listDepartmentsChangedSince(client, tenantId, since),
     listGradesChangedSince(client, tenantId, since),
     listEmployeesChangedSince(client, tenantId, since),
@@ -212,6 +215,7 @@ export async function getStateChanges(
     sales_returns: salesReturnRows.map((r) => rowToSalesReturnApi(r)),
     contracts: contractRows.map((r) => rowToContractApi(r)),
     budgets: budgetRows.map((r) => rowToBudgetApi(r)),
+    quotations: quotationRows.map((r) => rowToQuotationApi(r)),
     payroll_departments: payrollDepartmentRows.map((r) => rowToDepartmentApi(r)),
     payroll_grades: payrollGradeRows.map((r) => rowToGradeApi(r)),
     payroll_employees: payrollEmployeeRows.map((r) => rowToEmployeeApi(r)),

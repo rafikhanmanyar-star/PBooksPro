@@ -412,6 +412,7 @@ import {
 } from './repositories/personalTransactionsApi';
 import { getApiBaseUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
+import { applyChangeLogToMergedState } from './changeLogMerge';
 import { logger } from '../logger';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
@@ -592,6 +593,8 @@ export class AppStateApiService {
       (merged as Record<string, unknown>)[stateKey] = Array.from(map.values());
     }
 
+    applyChangeLogToMergedState(merged, response.changeLog);
+
     if (response.appSettings && typeof response.appSettings === 'object') {
       Object.assign(merged, this.buildSettingsPartialFromFlat(response.appSettings as Record<string, any>));
     }
@@ -683,8 +686,9 @@ export class AppStateApiService {
 
     const totalChanges =
       Object.values(response.entities || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0) +
+      (response.changeLog?.length ?? 0) +
       (response.appSettings && Object.keys(response.appSettings).length > 0 ? 1 : 0);
-    logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} change(s) (incl. app settings when present)`);
+    logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} change(s) (entities + changeLog + app settings when present)`);
     return { merged, serverCursor };
   }
 

@@ -315,6 +315,16 @@ export async function softDeleteRecurringInvoiceTemplate(
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'recurring_invoice_templates',
+      entityType: 'recurring_invoice_template',
+      entityId: id,
+      action: 'delete',
+      summary: `Recurring invoice template ${id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -322,7 +332,20 @@ export async function softDeleteRecurringInvoiceTemplate(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'recurring_invoice_templates',
+      entityType: 'recurring_invoice_template',
+      entityId: id,
+      action: 'delete',
+      summary: `Recurring invoice template ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 export async function listRecurringInvoiceTemplatesChangedSince(
@@ -330,13 +353,5 @@ export async function listRecurringInvoiceTemplatesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<RecurringInvoiceTemplateRow[]> {
-  const r = await client.query<RecurringInvoiceTemplateRow>(
-    `SELECT id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
-            next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,
-            generated_count, last_generated_date, version, deleted_at, created_at, updated_at
-     FROM recurring_invoice_templates WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new RecurringInvoiceTemplateRepository(tenantId).listChangedSince(client, since);
 }
