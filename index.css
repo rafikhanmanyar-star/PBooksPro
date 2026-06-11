@@ -369,7 +369,7 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
 @media print {
   @page {
     size: A4;
-    margin: 15mm;
+    margin: 12.7mm;
   }
   
   * {

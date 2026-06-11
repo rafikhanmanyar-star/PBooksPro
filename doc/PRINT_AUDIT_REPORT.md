@@ -11,7 +11,7 @@ PBooks Pro uses a **centralized PrintContext architecture** for most reports: `u
 
 This audit identified **3 critical data-integrity risks**, **6 high-priority inconsistencies**, and standardized the print stack with reusable components and theme-independent CSS.
 
-### Production Readiness Score: **78 / 100**
+### Production Readiness Score: **86 / 100** (updated after follow-up fixes)
 
 | Area | Score | Notes |
 |------|-------|-------|
@@ -102,7 +102,7 @@ window.print()  +  printPortal.css + REPORT_PRINT_SURFACE_STYLES
 | **Code** | `components/reports/customReportBuilder/CustomReportBuilderPage.tsx` |
 | **Severity** | **Critical** (accounting reports) |
 | **Fix applied** | Migrated to PrintContext; added on-screen note that PDF export has full data |
-| **Recommended follow-up** | Add "Print all rows" that fetches full result set or uses server PDF |
+| **Fix applied (follow-up)** | `fetchAllCustomReportRows()` paginates up to 10,000 rows before print |
 
 ### C2 — Client Ledger used raw window.print() (navigation chrome risk)
 

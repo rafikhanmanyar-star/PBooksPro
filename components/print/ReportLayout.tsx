@@ -45,7 +45,9 @@ export const ReportLayout: React.FC<ReportLayoutProps> = ({ data }) => {
           ? ' custom-report-print'
           : data.elementId === 'fund-availability-print'
             ? ' fund-availability-report-print'
-            : '';
+            : data.elementId === 'dashboard-print-area'
+              ? ' dashboard-report-print'
+              : '';
 
   return (
     <div

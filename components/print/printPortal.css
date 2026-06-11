@@ -6,8 +6,21 @@
  */
 
 /* Hide no-print fragments inside cloned report HTML (preview is screen media, not @media print) */
-.report-print-content .no-print {
+.report-print-content .no-print,
+.print-preview-content .no-print {
   display: none !important;
+}
+
+/* Full-data print table (custom reports) — hidden on screen until print snapshot is ready */
+.report-print-table {
+  display: none !important;
+}
+
+.print-snapshot-active .report-print-table,
+.print-preview-content .report-print-table,
+.report-print-content .report-print-table {
+  display: table !important;
+  width: 100%;
 }
 
 .report-print-content:not(.owner-rental-income-report-print) table {
@@ -65,7 +78,7 @@
 
   @page {
     size: A4;
-    margin: 15mm;
+    margin: 12.7mm;
   }
 
   html,

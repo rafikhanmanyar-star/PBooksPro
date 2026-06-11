@@ -132,11 +132,13 @@ export const FundAvailabilityPage: React.FC = () => {
                     </div>
                 </header>
 
-                {summaryQ.data && <FundAvailabilityKpiStrip summary={summaryQ.data} isFetching={summaryQ.isFetching} />}
+                {summaryQ.data && <div className="no-print"><FundAvailabilityKpiStrip summary={summaryQ.data} isFetching={summaryQ.isFetching} /></div>}
 
+                <div className="no-print">
                 <FundAvailabilityFilterBar state={state} endDate={endDate} onEndDateChange={setEndDate} allRows={summaryQ.data?.rows ?? []} canManageFilters={perm.viewFundAvailability} />
+                </div>
 
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 no-print">
                     <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
                         <h3 className="text-sm font-semibold text-app-text mb-2">Equity vs available cash</h3>
                         <EquityVsCashChart rows={rows} />
@@ -159,7 +161,7 @@ export const FundAvailabilityPage: React.FC = () => {
                     </section>
                 </div>
 
-                <section className="rounded-2xl border border-app-border bg-app-highlight/40 p-4">
+                <section className="rounded-2xl border border-app-border bg-app-highlight/40 p-4 no-print">
                     <div className="flex flex-col md:flex-row md:items-end gap-3">
                         <div className="flex items-center gap-2 text-ds-primary font-semibold text-sm">
                             <ShieldCheck className="h-5 w-5" />

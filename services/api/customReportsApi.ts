@@ -70,6 +70,50 @@ export async function generateCustomReport(body: Record<string, unknown>): Promi
   return apiClient.post<GeneratedReportResponse>('/reports/custom/generate', body);
 }
 
+/** Backend preview mode caps pageSize at 500. */
+const CUSTOM_REPORT_PREVIEW_PAGE_SIZE = 500;
+const CUSTOM_REPORT_MAX_PRINT_ROWS = 10_000;
+
+/**
+ * Fetch all filtered rows for print (paginates through preview API).
+ * Capped at {@link CUSTOM_REPORT_MAX_PRINT_ROWS} rows.
+ */
+export async function fetchAllCustomReportRows(
+  basePayload: Record<string, unknown>,
+  totalCount: number
+): Promise<GeneratedReportResponse> {
+  const target = Math.min(totalCount, CUSTOM_REPORT_MAX_PRINT_ROWS);
+  const allRows: Record<string, unknown>[] = [];
+  let columns: GeneratedReportResponse['columns'] = [];
+  let page = 1;
+
+  while (allRows.length < target) {
+    const data = await generateCustomReport({
+      ...basePayload,
+      page,
+      pageSize: CUSTOM_REPORT_PREVIEW_PAGE_SIZE,
+    });
+    columns = data.columns;
+    allRows.push(...data.rows);
+    if (data.rows.length < CUSTOM_REPORT_PREVIEW_PAGE_SIZE || allRows.length >= data.totalCount) {
+      break;
+    }
+    page += 1;
+    if (page > Math.ceil(CUSTOM_REPORT_MAX_PRINT_ROWS / CUSTOM_REPORT_PREVIEW_PAGE_SIZE)) {
+      break;
+    }
+  }
+
+  const rows = allRows.slice(0, target);
+  return {
+    columns,
+    rows,
+    totalCount: Math.min(totalCount, rows.length),
+    page: 1,
+    pageSize: rows.length,
+  };
+}
+
 export async function fetchCustomReportTemplates(
   module?: string
 ): Promise<CustomReportTemplateApiRow[]> {

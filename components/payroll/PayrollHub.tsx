@@ -71,7 +71,9 @@ import BulkPayPayslipsModal, { BulkPayItem } from './modals/BulkPayPayslipsModal
 import { runSalaryCreationForPeriodAsync } from './services/runSalaryCreation';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 
 const MONTH_LABEL_TO_NUM: Record<string, number> = {
   January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
@@ -125,7 +127,7 @@ const PayrollHub: React.FC = () => {
   const dispatch = useDispatchOnly();
   const { openChat } = useWhatsApp();
   const { showToast, showAlert, showConfirm } = useNotification();
-  const { print: triggerPrint } = usePrintContext();
+  const printReport = usePrintReport();
 
   // Use PayrollContext for preserving state across navigation
   const {
@@ -817,8 +819,8 @@ const PayrollHub: React.FC = () => {
   ]);
 
   const handlePrintCycleTable = useCallback(() => {
-    triggerPrint('REPORT', { elementId: 'payroll-cycle-printable-area' });
-  }, [triggerPrint]);
+    printReport({ elementId: 'payroll-cycle-printable-area' });
+  }, [printReport]);
 
   const handleBackDateSuccess = useCallback((runId: string, payslips: Payslip[], employeeId: string) => {
     storageService.init(tenantId);
@@ -1321,7 +1323,8 @@ const PayrollHub: React.FC = () => {
 
               {/* Right: payslips & payments (printable region for ReportLayout) */}
               <div className="bg-app-card rounded-2xl border border-app-border shadow-ds-card overflow-hidden flex flex-col md:rounded-l-none flex-1 min-w-0 min-h-0">
-                <div id="payroll-cycle-printable-area" className="flex flex-col flex-1 min-h-0 min-w-0">
+                <div id="payroll-cycle-printable-area" className="printable-area print-report-surface flex flex-col flex-1 min-h-0 min-w-0">
+                <ReportHeader reportTitle="Payroll Cycle" />
                 <div className="flex-shrink-0 px-4 py-3 border-b border-app-border bg-app-toolbar/30 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
@@ -1944,6 +1947,7 @@ const PayrollHub: React.FC = () => {
                     </div>
                   </div>
                 )}
+                <ReportFooter />
                 </div>
                 {/* end #payroll-cycle-printable-area */}
               </div>

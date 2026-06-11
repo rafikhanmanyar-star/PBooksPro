@@ -301,7 +301,7 @@ const PayrollReport: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-8 print-full">
         <div className="lg:col-span-2 space-y-4 sm:space-y-8 print-full">
           {/* Bar Chart - Department Distribution */}
-          <div className="bg-app-card p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-app-border shadow-ds-card print-card">
+          <div className="bg-app-card p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-app-border shadow-ds-card print-card no-print">
             <h3 className="text-xs sm:text-sm font-black text-app-muted uppercase tracking-widest mb-4 sm:mb-8">Departmental Cost Distribution</h3>
             <div className="h-[250px] sm:h-[350px]">
               {deptData.length > 0 ? (
@@ -375,7 +375,7 @@ const PayrollReport: React.FC = () => {
                 ))}
               </div>
             </div>
-            <div className="h-[180px] sm:h-[250px] relative">
+            <div className="h-[180px] sm:h-[250px] relative no-print">
               {pieData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <RechartsPieChart>

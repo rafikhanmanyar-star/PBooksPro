@@ -207,7 +207,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({ enabled
   }
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-4 md:space-y-6 no-print">
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <h2 className="text-sm font-bold text-app-text uppercase tracking-wide">Analytics</h2>
         <div className="flex items-center gap-2">

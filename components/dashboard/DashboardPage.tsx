@@ -1,5 +1,8 @@
 import React, { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, LayoutGrid, RefreshCw } from 'lucide-react';
+import { Download, LayoutGrid, Printer, RefreshCw } from 'lucide-react';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useKpis } from '../../context/KPIContext';
 import { useAuth } from '../../context/AuthContext';
@@ -50,6 +53,7 @@ const DashboardPage: React.FC = () => {
   const [greeting, setGreeting] = useState('');
   const [customizeMode, setCustomizeMode] = useState(false);
   const [chartYear] = useState(() => new Date().getFullYear());
+  const printReport = usePrintReport();
   const metricsQuery = useDashboardMetrics(isAuthenticated && isAdmin && isDashboardActive);
   const snapshotsQuery = useDashboardSnapshots(
     undefined,
@@ -165,6 +169,10 @@ const DashboardPage: React.FC = () => {
                 <Download className="w-3.5 h-3.5" />
                 PDF
               </Button>
+              <Button variant="secondary" onClick={() => printReport({ elementId: 'dashboard-print-area' })} className="text-xs gap-1">
+                <Printer className="w-3.5 h-3.5" />
+                Print
+              </Button>
             </>
           )}
         </div>
@@ -179,7 +187,13 @@ const DashboardPage: React.FC = () => {
       )}
 
       {isAdmin && isAuthenticated && (
-        <>
+        <div id="dashboard-print-area" className="printable-area print-report-surface space-y-4 md:space-y-6">
+          <ReportHeader reportTitle="Executive Dashboard" />
+          {metrics?.generatedAt && (
+            <p className="text-center text-xs text-slate-600 -mt-2 report-title-block">
+              Snapshot as of {formatDate(new Date(metrics.generatedAt))}
+            </p>
+          )}
           {customizeMode && (
             <WidgetDragGrid
               items={kpiDragItems}
@@ -223,7 +237,8 @@ const DashboardPage: React.FC = () => {
           >
             <DashboardChartsSection enabled={isAdmin && isAuthenticated} customizeMode={customizeMode} />
           </Suspense>
-        </>
+          <ReportFooter />
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">

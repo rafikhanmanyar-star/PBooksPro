@@ -22,7 +22,9 @@ import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { syncPayrollFromServer } from './services/payrollSync';
 import { usePayrollContext } from '../../context/PayrollContext';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 import { formatCurrency } from './utils/formatters';
 import { toLocalDateString } from '../../utils/dateUtils';
 
@@ -49,7 +51,7 @@ const PaymentHistory: React.FC = () => {
     setSelectedBatch,
     activeSubTab,
   } = usePayrollContext();
-  const { print: triggerPrint } = usePrintContext();
+  const printReport = usePrintReport();
 
   const [history, setHistory] = useState<PayrollRun[]>([]);
   const [isExporting, setIsExporting] = useState(false);
@@ -293,26 +295,28 @@ const PaymentHistory: React.FC = () => {
               </button>
             </div>
             <div className="p-8 space-y-8">
-              <div id="payment-history-printable-area" className="printable-area bg-slate-900 rounded-2xl p-6 text-white space-y-4">
-                <div className="flex justify-between items-center pb-4 border-b border-white/10">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Period</span>
+              <div id="payment-history-printable-area" className="printable-area print-report-surface rounded-2xl border border-app-border bg-white p-6 text-slate-900 space-y-4">
+                <ReportHeader reportTitle="Payroll Payment Record" />
+                <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Period</span>
                   <span className="text-lg font-black">{selectedBatch.month} {selectedBatch.year}</span>
                 </div>
-                <div className="flex justify-between items-center pb-4 border-b border-white/10">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Paid on</span>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Paid on</span>
                   <span className="text-lg font-black">{formatPaidAt(selectedBatch.paid_at)}</span>
                 </div>
-                <div className="flex justify-between items-center pb-4 border-b border-white/10">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Total payout</span>
+                <div className="flex justify-between items-center pb-4 border-b border-slate-200">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total payout</span>
                   <span className="text-2xl font-black">PKR {formatCurrency(selectedBatch.total_amount)}</span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Employees paid</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Employees paid</span>
                   <span className="text-lg font-black">{selectedBatch.employee_count}</span>
                 </div>
+                <ReportFooter />
               </div>
               <button 
-                onClick={() => triggerPrint('REPORT', { elementId: 'payment-history-printable-area' })} 
+                onClick={() => printReport({ elementId: 'payment-history-printable-area' })} 
                 className="w-full py-4 bg-app-card border border-app-border text-app-text font-bold rounded-2xl hover:bg-app-toolbar flex items-center justify-center gap-2"
               >
                 <Printer size={18} /> Print record

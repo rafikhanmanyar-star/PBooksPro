@@ -4,7 +4,7 @@ import {
   AdminLicenseRepository,
   DEFAULT_LICENSE_MODULES,
   type ModuleKey,
-} from '../../modules/admin-portal/repositories/AdminPortalRepository.js';
+} from '../modules/admin-portal/repositories/AdminPortalRepository.js';
 
 export type { ModuleKey };
 export { DEFAULT_LICENSE_MODULES };

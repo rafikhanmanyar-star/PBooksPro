@@ -12,7 +12,9 @@ import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { LoanManagerLayout } from './loanManager/LoanManagerLayout';
 import { LoanSidebar, type LoanSummaryItem } from './loanManager/LoanSidebar';
@@ -53,7 +55,7 @@ const LoanManagementPage: React.FC = () => {
     const { accounts, contacts, transactions, whatsAppMode } = state;
     const dispatch = useDispatchOnly();
   const { showAlert } = useNotification();
-  const { print: triggerPrint } = usePrintContext();
+  const printReport = usePrintReport();
   const { openChat } = useWhatsApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -261,7 +263,7 @@ const LoanManagementPage: React.FC = () => {
   };
 
   const handlePrint = () => {
-    triggerPrint('REPORT', { elementId: 'printable-area' });
+    printReport();
   };
 
   const selectedItem = selectedContactId
@@ -371,7 +373,9 @@ const LoanManagementPage: React.FC = () => {
           }
           detail={
             selectedContactId && selectedSummary ? (
-              <div id="printable-area" className="h-full p-3 md:p-4 printable-area">
+              <div id="printable-area" className="h-full p-3 md:p-4 printable-area print-report-surface flex flex-col min-h-0">
+                <ReportHeader reportTitle="Loan Statement" />
+                <div className="flex-1 min-h-0">
                 <LoanDetailPanel
                   contactName={selectedSummary.contactName}
                   contactNo={selectedSummary.contactNo}
@@ -387,6 +391,8 @@ const LoanManagementPage: React.FC = () => {
                   onExport={handleExport}
                   onPrint={handlePrint}
                 />
+                </div>
+                <ReportFooter />
               </div>
             ) : (
               <div className="h-full p-3 md:p-4">

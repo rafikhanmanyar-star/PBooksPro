@@ -21,6 +21,7 @@ import {
   CUSTOM_REPORT_MODULES,
   fetchCustomReportMetadata,
   generateCustomReport,
+  fetchAllCustomReportRows,
   fetchCustomReportTemplates,
   saveCustomReportTemplate,
   deleteCustomReportTemplate,
@@ -141,6 +142,8 @@ export const CustomReportBuilderPage: React.FC = () => {
   );
 
   const [preview, setPreview] = useState<GeneratedReportResponse | null>(null);
+  const [printSnapshot, setPrintSnapshot] = useState<GeneratedReportResponse | null>(null);
+  const [printLoading, setPrintLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const localOnly = isLocalOnlyMode();
 
@@ -221,6 +224,7 @@ export const CustomReportBuilderPage: React.FC = () => {
       }),
     onSuccess: (data) => {
       setPreview(data);
+      setPrintSnapshot(null);
       setPreviewError(null);
     },
     onError: (e: Error | { message?: string }) => {
@@ -259,6 +263,55 @@ export const CustomReportBuilderPage: React.FC = () => {
     columns: tableColumns,
     getCoreRowModel: getCoreRowModel(),
   });
+
+  const printTableColumns = useMemo(() => {
+    const cols = printSnapshot?.columns ?? preview?.columns ?? [];
+    return cols.map((col) =>
+      columnHelper.accessor(
+        (row) => {
+          const v = row[col.key];
+          if (v !== undefined && v !== null) return v;
+          const lk = col.key.toLowerCase();
+          for (const [k, val] of Object.entries(row)) {
+            if (k.toLowerCase() === lk) return val;
+          }
+          return undefined;
+        },
+        {
+          id: col.key,
+          header: col.label ?? col.key,
+          cell: (info) => {
+            const val = info.getValue();
+            return val === null || val === undefined ? '' : String(val);
+          },
+        }
+      )
+    );
+  }, [printSnapshot, preview, columnHelper]);
+
+  const printTable = useReactTable({
+    data: printSnapshot?.rows ?? preview?.rows ?? [],
+    columns: printTableColumns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  const handlePrintReport = useCallback(async () => {
+    if (!preview) return;
+    setPrintLoading(true);
+    try {
+      let snapshot = preview;
+      if (preview.totalCount > preview.rows.length) {
+        snapshot = await fetchAllCustomReportRows(buildPayload(), preview.totalCount);
+      }
+      setPrintSnapshot(snapshot);
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      printReport({ elementId: 'custom-report-print-area' });
+    } catch (e) {
+      setPreviewError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setPrintLoading(false);
+    }
+  }, [preview, buildPayload, printReport]);
 
   /** Stable key so dynamic column sets remount after each successful preview (avoids stale column-visibility / cell maps). */
   const previewTableMountKey = preview
@@ -486,10 +539,10 @@ export const CustomReportBuilderPage: React.FC = () => {
           <button
             type="button"
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-sm"
-            disabled={!preview}
-            onClick={() => printReport({ elementId: 'custom-report-print-area' })}
+            disabled={!preview || printLoading}
+            onClick={() => void handlePrintReport()}
           >
-            Print
+            {printLoading ? 'Preparing…' : 'Print'}
           </button>
         </div>
       </header>
@@ -982,7 +1035,7 @@ export const CustomReportBuilderPage: React.FC = () => {
 
       <section
         id="custom-report-print-area"
-        className="printable-area flex-1 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/60"
+        className={`printable-area print-report-surface flex-1 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/60${printSnapshot ? ' print-snapshot-active' : ''}`}
         data-print-scroll-container
       >
         <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wide text-slate-500 flex justify-between no-print">
@@ -1024,16 +1077,21 @@ export const CustomReportBuilderPage: React.FC = () => {
         </div>
         <div className="flex-1 overflow-auto scrollbar-thin min-h-[200px] print-report-surface px-3 py-2">
           <ReportHeader reportTitle={templateName || 'Custom Report'} />
-          {preview && (
-            <p className="text-center text-xs text-slate-600 mb-2 no-print">
-              Showing page {page} ({preview.rows.length} of {preview.totalCount} rows). PDF export includes full filtered data.
+          {(printSnapshot ?? preview) && (
+            <p className="text-center text-xs text-slate-600 mb-2 report-title-block">
+              {(printSnapshot ?? preview)!.totalCount} row{(printSnapshot ?? preview)!.totalCount === 1 ? '' : 's'}
+              {printSnapshot && printSnapshot.rows.length < preview!.totalCount
+                ? ` (capped at ${printSnapshot.rows.length.toLocaleString()} for print)`
+                : preview && preview.rows.length < preview.totalCount
+                  ? ` — screen shows page ${page}; print loads all filtered rows`
+                  : ''}
             </p>
           )}
           {runMutation.isPending && (
             <p className="p-4 text-sm text-slate-500 no-print">Running query…</p>
           )}
           {!runMutation.isPending && preview && (
-            <table key={previewTableMountKey} className="min-w-full text-[11px] border-collapse">
+            <table key={previewTableMountKey} className="min-w-full text-[11px] border-collapse no-print">
               <thead className="sticky top-0 z-10 bg-slate-100 dark:bg-slate-800 shadow-sm">
                 {table.getHeaderGroups().map((hg) => (
                   <tr key={hg.id}>
@@ -1056,6 +1114,35 @@ export const CustomReportBuilderPage: React.FC = () => {
                   >
                     {row.getAllCells().map((cell) => (
                       <td key={cell.id} className="px-2 py-1 whitespace-nowrap align-top">
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+          {(printSnapshot ?? preview) && (
+            <table className="min-w-full text-[11px] border-collapse report-print-table">
+              <thead className="bg-slate-100">
+                {printTable.getHeaderGroups().map((hg) => (
+                  <tr key={hg.id}>
+                    {hg.headers.map((header) => (
+                      <th
+                        key={header.id}
+                        className="text-left px-2 py-1.5 border-b border-slate-300 font-semibold"
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                      </th>
+                    ))}
+                  </tr>
+                ))}
+              </thead>
+              <tbody>
+                {printTable.getRowModel().rows.map((row) => (
+                  <tr key={row.id} className="border-b border-slate-100">
+                    {row.getAllCells().map((cell) => (
+                      <td key={cell.id} className="px-2 py-1 align-top">
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     ))}

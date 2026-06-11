@@ -8,7 +8,7 @@ export const OWNER_LEDGER_PRINT_CSS = `
 @media print {
   @page {
     size: A4 portrait;
-    margin: 10mm;
+    margin: 12.7mm;
   }
 
   html, body {
