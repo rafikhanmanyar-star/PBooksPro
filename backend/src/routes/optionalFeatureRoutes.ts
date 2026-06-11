@@ -2,7 +2,12 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { getPool } from '../db/pool.js';
-import { getOnlineUserIds, recordPresence } from '../services/presenceService.js';
+import {
+  getOnlineUserIds,
+  getOnlineUsersFromPresence,
+  recordPresence,
+  type PresenceProfile,
+} from '../services/presenceService.js';
 import { touchUserSession } from '../services/auth/userSessionService.js';
 import { getLicenseStatusForTenant, validateTenantLicense } from '../services/billing/licenseEnforcementService.js';
 import { runSubscriptionMaintenance } from '../services/billing/subscriptionLifecycleService.js';
@@ -12,11 +17,26 @@ import { runSubscriptionMaintenance } from '../services/billing/subscriptionLife
  */
 export const optionalFeatureRouter = Router();
 
+function presenceProfileFromRequest(req: AuthedRequest): PresenceProfile | undefined {
+  if (!req.userId) return undefined;
+  return {
+    username: req.username,
+    name: req.name,
+    role: req.role,
+  };
+}
+
+function touchPresence(req: AuthedRequest): void {
+  const tid = req.tenantId;
+  const uid = req.userId;
+  if (tid && uid) recordPresence(tid, uid, presenceProfileFromRequest(req));
+}
+
 optionalFeatureRouter.post('/auth/heartbeat', (req: AuthedRequest, res) => {
   const tid = req.tenantId;
   const uid = req.userId;
   if (tid && uid) {
-    recordPresence(tid, uid);
+    touchPresence(req);
     void touchUserSession(uid, tid).catch((err) => {
       console.warn('[heartbeat] Failed to persist session activity:', err instanceof Error ? err.message : err);
     });
@@ -63,9 +83,8 @@ optionalFeatureRouter.get('/tenants/license-status', async (req: AuthedRequest, 
 });
 
 optionalFeatureRouter.get('/tenants/online-users-count', (req: AuthedRequest, res) => {
+  touchPresence(req);
   const tid = req.tenantId;
-  const uid = req.userId;
-  if (tid && uid) recordPresence(tid, uid);
   if (!tid) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
@@ -74,50 +93,14 @@ optionalFeatureRouter.get('/tenants/online-users-count', (req: AuthedRequest, re
   res.json({ onlineUsers });
 });
 
-optionalFeatureRouter.get('/tenants/online-users', async (req: AuthedRequest, res) => {
+optionalFeatureRouter.get('/tenants/online-users', (req: AuthedRequest, res) => {
+  touchPresence(req);
   const tid = req.tenantId;
-  const uid = req.userId;
-  if (tid && uid) recordPresence(tid, uid);
   if (!tid) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
-  const ids = getOnlineUserIds(tid);
-  if (ids.length === 0) {
-    res.json([]);
-    return;
-  }
-  try {
-    const pool = getPool();
-    const r = await pool.query<{ id: string; username: string; name: string; role: string; email: string | null }>(
-      `SELECT id, username, name, role, email
-       FROM users
-       WHERE tenant_id = $1 AND id = ANY($2::text[])`,
-      [tid, ids]
-    );
-    const byId = new Map(r.rows.map((row) => [row.id, row]));
-    const list = ids
-      .map((id) => {
-        const row = byId.get(id);
-        if (row) {
-          return {
-            id: row.id,
-            username: row.username,
-            name: row.name,
-            role: row.role,
-            ...(row.email ? { email: row.email } : {}),
-          };
-        }
-        return { id, username: id, name: 'User', role: '' };
-      })
-      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-    res.json(list);
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[online-users]', msg);
-    const fallback = ids.map((id) => ({ id, username: id, name: 'User', role: '' }));
-    res.json(fallback);
-  }
+  res.json(getOnlineUsersFromPresence(tid));
 });
 
 optionalFeatureRouter.get('/whatsapp/unread-count', (_req: AuthedRequest, res) => {

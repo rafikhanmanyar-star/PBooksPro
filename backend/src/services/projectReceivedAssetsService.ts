@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { ProjectReceivedAssetRepository } from '../modules/project-selling/repositories/ProjectReceivedAssetRepository.js';
 
 export type ProjectReceivedAssetRow = {
   id: string;
@@ -102,17 +105,7 @@ export async function listProjectReceivedAssets(
   tenantId: string,
   filters?: { projectId?: string }
 ): Promise<ProjectReceivedAssetRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-                  received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at
-           FROM project_received_assets WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  q += ' ORDER BY received_date DESC, id ASC';
-  const r = await client.query<ProjectReceivedAssetRow>(q, params);
-  return r.rows;
+  return new ProjectReceivedAssetRepository(tenantId).listActive(client, filters);
 }
 
 export async function listProjectReceivedAssetsChangedSince(
@@ -120,14 +113,7 @@ export async function listProjectReceivedAssetsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<ProjectReceivedAssetRow[]> {
-  const r = await client.query<ProjectReceivedAssetRow>(
-    `SELECT id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-            received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at
-     FROM project_received_assets WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new ProjectReceivedAssetRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function getProjectReceivedAssetById(
@@ -135,13 +121,7 @@ export async function getProjectReceivedAssetById(
   tenantId: string,
   id: string
 ): Promise<ProjectReceivedAssetRow | null> {
-  const r = await client.query<ProjectReceivedAssetRow>(
-    `SELECT id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-            received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at
-     FROM project_received_assets WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ProjectReceivedAssetRepository(tenantId).getById(client, id);
 }
 
 export async function getProjectReceivedAssetByIdIncludingDeleted(
@@ -149,13 +129,7 @@ export async function getProjectReceivedAssetByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<ProjectReceivedAssetRow | null> {
-  const r = await client.query<ProjectReceivedAssetRow>(
-    `SELECT id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-            received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at
-     FROM project_received_assets WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ProjectReceivedAssetRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function upsertProjectReceivedAsset(
@@ -172,15 +146,41 @@ export async function upsertProjectReceivedAsset(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `pra_${randomUUID().replace(/-/g, '')}`;
 
-  const existing = await getProjectReceivedAssetByIdIncludingDeleted(client, tenantId, id);
+  const repo = new ProjectReceivedAssetRepository(tenantId);
+  const existing = await repo.getByIdIncludingDeleted(client, id);
   if (!existing) {
     const row = await insertProjectReceivedAsset(client, tenantId, { ...body, id }, actorUserId);
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.user_id,
+      module: 'project_selling',
+      entityType: 'project_received_asset',
+      entityId: row.id,
+      action: 'create',
+      summary: `Project received asset ${row.id} created`,
+      newValue: rowToProjectReceivedAssetApi(row),
+      version: row.version,
+    });
     return { row, conflict: false, wasInsert: true };
   }
 
+  const oldApi = rowToProjectReceivedAssetApi(existing);
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+
+  if (expectedVersion !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== expectedVersion) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'project_received_assets',
+        entityId: id,
+        clientVersion: expectedVersion,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
 
   const vals = [
@@ -210,6 +210,21 @@ export async function upsertProjectReceivedAsset(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
+
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId ?? row.user_id,
+    module: 'project_selling',
+    entityType: 'project_received_asset',
+    entityId: row.id,
+    action: 'update',
+    summary: existing.deleted_at
+      ? `Project received asset ${row.id} restored`
+      : `Project received asset ${row.id} updated`,
+    newValue: rowToProjectReceivedAssetApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false };
 }
 
@@ -259,25 +274,63 @@ export async function softDeleteProjectReceivedAsset(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  userId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const repo = new ProjectReceivedAssetRepository(tenantId);
+  const prior = await repo.getById(client, id);
+  const oldApi = prior ? rowToProjectReceivedAssetApi(prior) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'project_received_assets',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE project_received_assets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
       [id, tenantId, expectedVersion]
     );
     if (r.rowCount === 0) {
-      const exists = await getProjectReceivedAssetById(client, tenantId, id);
+      const exists = await repo.getById(client, id);
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? prior?.user_id ?? null,
+      module: 'project_selling',
+      entityType: 'project_received_asset',
+      entityId: id,
+      action: 'delete',
+      summary: `Project received asset ${id} deleted`,
+      oldValue: oldApi,
+      version: expectedVersion + 1,
+    });
     return { ok: true, conflict: false };
   }
+
   const r = await client.query(
     `UPDATE project_received_assets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? prior?.user_id ?? null,
+      module: 'project_selling',
+      entityType: 'project_received_asset',
+      entityId: id,
+      action: 'delete',
+      summary: `Project received asset ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }

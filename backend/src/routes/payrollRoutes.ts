@@ -847,7 +847,7 @@ payrollRouter.put('/payroll/earning-types', async (req: AuthedRequest, res) => {
   }
   try {
     const types = (req.body as { types?: unknown }).types;
-    const row = await withTransaction((c) => updateTenantConfigEarningTypes(c, tenantId, types));
+    const row = await withTransaction((c) => updateTenantConfigEarningTypes(c, tenantId, types, req.userId));
     emitEntityEvent(tenantId, 'updated', 'payroll_settings', { data: { scope: 'earning_types' }, sourceUserId: req.userId });
     sendSuccess(res, row.earning_types);
   } catch (e) {
@@ -864,7 +864,7 @@ payrollRouter.put('/payroll/deduction-types', async (req: AuthedRequest, res) =>
   }
   try {
     const types = (req.body as { types?: unknown }).types;
-    const row = await withTransaction((c) => updateTenantConfigDeductionTypes(c, tenantId, types));
+    const row = await withTransaction((c) => updateTenantConfigDeductionTypes(c, tenantId, types, req.userId));
     emitEntityEvent(tenantId, 'updated', 'payroll_settings', { data: { scope: 'deduction_types' }, sourceUserId: req.userId });
     sendSuccess(res, row.deduction_types);
   } catch (e) {
@@ -904,7 +904,7 @@ payrollRouter.put('/payroll/settings', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const row = await withTransaction((c) => updatePayrollSettings(c, tenantId, req.body as Record<string, unknown>));
+    const row = await withTransaction((c) => updatePayrollSettings(c, tenantId, req.body as Record<string, unknown>, req.userId));
     emitEntityEvent(tenantId, 'updated', 'payroll_settings', { data: { scope: 'defaults' }, sourceUserId: req.userId });
     sendSuccess(res, {
         defaultAccountId: row.default_account_id,

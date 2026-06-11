@@ -39,6 +39,7 @@ import {
 import { listSalesReturnsChangedSince, rowToSalesReturnApi } from './salesReturnsService.js';
 import { listContractsChangedSince, rowToContractApi } from './contractsService.js';
 import { listBudgetsChangedSince, rowToBudgetApi } from './budgetsService.js';
+import { listQuotationsChangedSince, rowToQuotationApi } from './quotationsService.js';
 import {
   listPersonalCategoriesChangedSince,
   rowToPersonalCategoryApi,
@@ -75,11 +76,14 @@ import {
   rowToTenantConfigApi,
 } from './payrollService.js';
 import { isAdminRole } from '../middleware/authMiddleware.js';
+import { changeLogRowToApi, listChangeLogSince } from './changeLogService.js';
 
 export type StateChangesPayload = {
   since: string;
   updatedAt: string;
   entities: Record<string, unknown[]>;
+  /** Architecture v2 — mutation feed for domains using recordDomainMutation(). */
+  changeLog?: Record<string, unknown>[];
   /** Present when any tenant app_settings row changed since `since` (full map for client merge). */
   appSettings?: Record<string, unknown>;
 };
@@ -115,6 +119,7 @@ export async function getStateChanges(
     salesReturnRows,
     contractRows,
     budgetRows,
+    quotationRows,
     payrollDepartmentRows,
     payrollGradeRows,
     payrollEmployeeRows,
@@ -128,6 +133,7 @@ export async function getStateChanges(
     pmCycleAllocationRows,
     planAmenityRows,
     installmentPlanRows,
+    changeLogRows,
   ] = await Promise.all([
     listVendorsChangedSince(client, tenantId, since),
     listContactsChangedSince(client, tenantId, since),
@@ -147,6 +153,7 @@ export async function getStateChanges(
     listSalesReturnsChangedSince(client, tenantId, since),
     listContractsChangedSince(client, tenantId, since),
     listBudgetsChangedSince(client, tenantId, since),
+    listQuotationsChangedSince(client, tenantId, since),
     listDepartmentsChangedSince(client, tenantId, since),
     listGradesChangedSince(client, tenantId, since),
     listEmployeesChangedSince(client, tenantId, since),
@@ -164,6 +171,7 @@ export async function getStateChanges(
     listPmCycleAllocationsChangedSince(client, tenantId, since),
     listPlanAmenitiesChangedSince(client, tenantId, since),
     listInstallmentPlansChangedSince(client, tenantId, since),
+    listChangeLogSince(client, tenantId, since),
   ]);
 
   /** P&L overrides live in pl_category_mapping; system (global) category rows do not get updated_at bumps. */
@@ -207,6 +215,7 @@ export async function getStateChanges(
     sales_returns: salesReturnRows.map((r) => rowToSalesReturnApi(r)),
     contracts: contractRows.map((r) => rowToContractApi(r)),
     budgets: budgetRows.map((r) => rowToBudgetApi(r)),
+    quotations: quotationRows.map((r) => rowToQuotationApi(r)),
     payroll_departments: payrollDepartmentRows.map((r) => rowToDepartmentApi(r)),
     payroll_grades: payrollGradeRows.map((r) => rowToGradeApi(r)),
     payroll_employees: payrollEmployeeRows.map((r) => rowToEmployeeApi(r)),
@@ -238,6 +247,7 @@ export async function getStateChanges(
     since: sinceIso,
     updatedAt: new Date().toISOString(),
     entities,
+    changeLog: changeLogRows.map((r) => changeLogRowToApi(r)),
     appSettings,
   };
 }

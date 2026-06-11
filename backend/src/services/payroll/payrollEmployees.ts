@@ -1,18 +1,14 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../../core/recordDomainMutation.js';
+import { PayrollEmployeeRepository } from '../../modules/payroll/repositories/PayrollEmployeeRepository.js';
 import { type PayrollEmployeeLike } from '../../payroll/salaryComputation.js';
 import { dateStr, j, optStr } from './payrollHelpers.js';
+import { rowToEmployeeApi } from './payrollRowMappers.js';
 import { type PayrollEmployeeRow } from './payrollTypes.js';
 
 export async function listEmployees(client: pg.PoolClient, tenantId: string): Promise<PayrollEmployeeRow[]> {
-  const r = await client.query<PayrollEmployeeRow>(
-    `SELECT id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
-            department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
-            created_by, updated_by, deleted_at, created_at, updated_at
-     FROM payroll_employees WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new PayrollEmployeeRepository(tenantId).listActive(client);
 }
 
 export async function getEmployee(
@@ -20,14 +16,7 @@ export async function getEmployee(
   tenantId: string,
   id: string
 ): Promise<PayrollEmployeeRow | null> {
-  const r = await client.query<PayrollEmployeeRow>(
-    `SELECT id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
-            department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
-            created_by, updated_by, deleted_at, created_at, updated_at
-     FROM payroll_employees WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PayrollEmployeeRepository(tenantId).getById(client, id);
 }
 
 export async function listEmployeesByDepartment(
@@ -35,14 +24,7 @@ export async function listEmployeesByDepartment(
   tenantId: string,
   departmentId: string
 ): Promise<PayrollEmployeeRow[]> {
-  const r = await client.query<PayrollEmployeeRow>(
-    `SELECT id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
-            department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
-            created_by, updated_by, deleted_at, created_at, updated_at
-     FROM payroll_employees WHERE tenant_id = $1 AND department_id = $2 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId, departmentId]
-  );
-  return r.rows;
+  return new PayrollEmployeeRepository(tenantId).listByDepartment(client, departmentId);
 }
 
 function pickEmployeePayload(body: Record<string, unknown>) {
@@ -88,6 +70,8 @@ export async function upsertEmployee(
       : `pe_${randomUUID().replace(/-/g, '')}`;
   const p = pickEmployeePayload(body);
   if (!p.name) throw new Error('name is required.');
+
+  const prior = await new PayrollEmployeeRepository(tenantId).getByIdIncludingDeleted(client, id);
 
   const r = await client.query<PayrollEmployeeRow>(
     `INSERT INTO payroll_employees (
@@ -145,15 +129,41 @@ export async function upsertEmployee(
       userId,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId,
+    module: 'payroll',
+    entityType: 'payroll_employee',
+    entityId: row.id,
+    action: prior ? 'update' : 'create',
+    summary: `Payroll employee ${row.name} ${prior ? 'updated' : 'created'}`,
+    newValue: rowToEmployeeApi(row),
+    oldValue: prior ? rowToEmployeeApi(prior) : undefined,
+  });
+  return row;
 }
 
 export async function softDeleteEmployee(client: pg.PoolClient, tenantId: string, id: string): Promise<boolean> {
+  const prior = await new PayrollEmployeeRepository(tenantId).getById(client, id);
   const u = await client.query(`UPDATE payroll_employees SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`, [
     id,
     tenantId,
   ]);
-  return (u.rowCount ?? 0) > 0;
+  const ok = (u.rowCount ?? 0) > 0;
+  if (ok && prior) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: prior.updated_by ?? prior.created_by,
+      module: 'payroll',
+      entityType: 'payroll_employee',
+      entityId: id,
+      action: 'delete',
+      summary: `Payroll employee ${prior.name} deleted`,
+      oldValue: rowToEmployeeApi(prior),
+    });
+  }
+  return ok;
 }
 
 export function employeeRowToLike(row: PayrollEmployeeRow): PayrollEmployeeLike {

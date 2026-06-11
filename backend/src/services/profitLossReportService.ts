@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadBalanceSheetStateInput } from './balanceSheetReportService.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 
@@ -12,18 +10,8 @@ type ProfitLossEngineModule = {
   ) => Record<string, unknown>;
 };
 
-let cachedEngine: ProfitLossEngineModule | null = null;
-
 async function loadProfitLossEngine(): Promise<ProfitLossEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'profitLossEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Profit & loss engine bundle missing: ${bundled}. Run: node scripts/ensure-profit-loss-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as ProfitLossEngineModule;
-  return cachedEngine;
+  return loadReportEngine<ProfitLossEngineModule>('profitLoss');
 }
 
 async function mergePlCategoryMappings(

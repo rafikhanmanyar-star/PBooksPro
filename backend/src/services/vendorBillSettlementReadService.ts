@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { roundMoney } from '../financial/validation.js';
+import { VendorBillAdvanceClearingRepository } from '../modules/vendors/repositories/VendorBillAdvanceClearingRepository.js';
 
 const MONEY_EPS = 0.02;
 
@@ -77,34 +78,9 @@ export async function listVendorBillSettlementsForBills(
   const uniq = [...new Set(billIds.map((x) => String(x ?? '').trim()).filter(Boolean))];
   if (uniq.length === 0) return [];
 
-  const clr = await client.query<{
-    bill_id: string;
-    journal_entry_id: string;
-    contractor_advance_id: string | null;
-    amount: string;
-    settlement_kind: string;
-    entry_date: Date;
-  }>(
-    `SELECT
-       vbc.bill_id,
-       vbc.journal_entry_id,
-       vbc.contractor_advance_id,
-       vbc.amount::text,
-       COALESCE(NULLIF(TRIM(vbc.settlement_kind), ''), 'advance') AS settlement_kind,
-       je.entry_date
-     FROM vendor_bill_advance_clearings vbc
-     INNER JOIN journal_entries je
-       ON je.id = vbc.journal_entry_id AND je.tenant_id = vbc.tenant_id
-     WHERE vbc.tenant_id = $1
-       AND vbc.bill_id = ANY($2::text[])
-       AND TRIM(COALESCE(je.source_module, '')) = 'vendor_bill_advance_clearing'
-       AND NOT EXISTS (
-         SELECT 1 FROM journal_reversals jr
-         WHERE jr.tenant_id = vbc.tenant_id
-           AND jr.original_journal_entry_id = vbc.journal_entry_id
-       )
-     ORDER BY vbc.journal_entry_id, vbc.id`,
-    [tenantId, uniq]
+  const clr = await new VendorBillAdvanceClearingRepository(tenantId).listActiveSettlementsForBills(
+    client,
+    uniq
   );
 
   type Group = {
@@ -116,7 +92,7 @@ export async function listVendorBillSettlementsForBills(
   };
   const groups = new Map<string, Group>();
 
-  for (const row of clr.rows) {
+  for (const row of clr) {
     const key = `${row.journal_entry_id}\0${row.bill_id}`;
     let g = groups.get(key);
     if (!g) {

@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { PersonalCategoryRepository } from '../modules/personal-finance/repositories/PersonalCategoryRepository.js';
 
 export type PersonalCategoryRow = {
   id: string;
@@ -30,31 +33,25 @@ export function rowToPersonalCategoryApi(row: PersonalCategoryRow): Record<strin
   return base;
 }
 
+function parseClientVersion(body: Record<string, unknown>, fallback?: number): number | undefined {
+  if (typeof body.version === 'number') return body.version;
+  if (typeof body.version === 'string' && body.version !== '') return parseInt(body.version, 10);
+  return fallback;
+}
+
 export async function listPersonalCategoriesChangedSince(
   client: pg.PoolClient,
   tenantId: string,
   since: Date
 ): Promise<PersonalCategoryRow[]> {
-  const r = await client.query<PersonalCategoryRow>(
-    `SELECT id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
-     FROM personal_categories WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new PersonalCategoryRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listPersonalCategories(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<PersonalCategoryRow[]> {
-  const r = await client.query<PersonalCategoryRow>(
-    `SELECT id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
-     FROM personal_categories WHERE tenant_id = $1 AND deleted_at IS NULL
-     ORDER BY type ASC, sort_order ASC, name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new PersonalCategoryRepository(tenantId).listActive(client);
 }
 
 export async function getPersonalCategoryById(
@@ -62,18 +59,14 @@ export async function getPersonalCategoryById(
   tenantId: string,
   id: string
 ): Promise<PersonalCategoryRow | null> {
-  const r = await client.query<PersonalCategoryRow>(
-    `SELECT id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
-     FROM personal_categories WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PersonalCategoryRepository(tenantId).getById(client, id);
 }
 
 export async function createPersonalCategory(
   client: pg.PoolClient,
   tenantId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  userId?: string | null
 ): Promise<PersonalCategoryRow> {
   const name = String(body.name ?? '').trim();
   const type = String(body.type ?? body.Type ?? '').trim();
@@ -95,28 +88,44 @@ export async function createPersonalCategory(
      RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
     [id, tenantId, name, type, Number.isFinite(sortOrder) ? sortOrder : 0]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: userId ?? null,
+    module: 'personal_finance',
+    entityType: 'personal_category',
+    entityId: row.id,
+    action: 'create',
+    summary: `Personal category ${row.name} created`,
+    newValue: rowToPersonalCategoryApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updatePersonalCategory(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  userId?: string | null
 ): Promise<PersonalCategoryRow | null> {
   const existing = await getPersonalCategoryById(client, tenantId, id);
   if (!existing) return null;
-  const ver =
-    typeof body.version === 'number'
-      ? body.version
-      : typeof body.version === 'string'
-        ? parseInt(body.version, 10)
-        : existing.version;
-  if (ver !== existing.version) throw new Error('Conflict: category was modified by another user.');
+
+  const clientVersion = parseClientVersion(body, existing.version);
+  if (clientVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'personal_categories',
+      entityId: id,
+      clientVersion,
+    });
+    if (lww.conflict) throw new Error('Conflict: category was modified by another user.');
+  }
 
   const name = body.name !== undefined ? String(body.name).trim() : existing.name;
-  const type =
-    body.type !== undefined ? String(body.type) : existing.type;
+  const type = body.type !== undefined ? String(body.type) : existing.type;
   if (type !== 'Income' && type !== 'Expense') throw new Error('type must be Income or Expense.');
   const sortOrder =
     body.sortOrder != null || body.sort_order != null
@@ -130,30 +139,63 @@ export async function updatePersonalCategory(
      RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
     [id, name, type, Number.isFinite(sortOrder) ? sortOrder : 0, tenantId]
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'personal_finance',
+      entityType: 'personal_category',
+      entityId: row.id,
+      action: 'update',
+      summary: `Personal category ${row.name} updated`,
+      newValue: rowToPersonalCategoryApi(row),
+      oldValue: rowToPersonalCategoryApi(existing),
+      version: row.version,
+    });
+  }
+  return row;
 }
 
 export async function softDeletePersonalCategory(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  version?: number
+  version?: number,
+  userId?: string | null
 ): Promise<PersonalCategoryRow | null> {
-  const existing = await client.query<PersonalCategoryRow>(
-    `SELECT id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at
-     FROM personal_categories WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const row = existing.rows[0];
-  if (!row) return null;
-  if (version != null && version !== row.version) {
-    throw new Error('Conflict: category was modified by another user.');
+  const existing = await new PersonalCategoryRepository(tenantId).getById(client, id);
+  if (!existing) return null;
+
+  if (version != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'personal_categories',
+      entityId: id,
+      clientVersion: version,
+    });
+    if (lww.conflict) throw new Error('Conflict: category was modified by another user.');
   }
+
   const r = await client.query<PersonalCategoryRow>(
     `UPDATE personal_categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
      RETURNING id, tenant_id, name, type, sort_order, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'personal_finance',
+      entityType: 'personal_category',
+      entityId: id,
+      action: 'delete',
+      summary: `Personal category ${existing.name} deleted`,
+      oldValue: rowToPersonalCategoryApi(existing),
+      version: row.version,
+    });
+  }
+  return row;
 }

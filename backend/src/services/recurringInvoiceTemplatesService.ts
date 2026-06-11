@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, todayUtcYyyyMmDd } from '../utils/dateOnly.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { RecurringInvoiceTemplateRepository } from '../modules/customers/repositories/RecurringInvoiceTemplateRepository.js';
 
 export type RecurringInvoiceTemplateRow = {
   id: string;
@@ -130,16 +133,7 @@ export async function listRecurringInvoiceTemplates(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<RecurringInvoiceTemplateRow[]> {
-  const r = await client.query<RecurringInvoiceTemplateRow>(
-    `SELECT id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
-            next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,
-            generated_count, last_generated_date, version, deleted_at, created_at, updated_at
-     FROM recurring_invoice_templates
-     WHERE tenant_id = $1 AND deleted_at IS NULL
-     ORDER BY next_due_date ASC, id ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new RecurringInvoiceTemplateRepository(tenantId).listActive(client);
 }
 
 export async function getRecurringInvoiceTemplateById(
@@ -147,15 +141,7 @@ export async function getRecurringInvoiceTemplateById(
   tenantId: string,
   id: string
 ): Promise<RecurringInvoiceTemplateRow | null> {
-  const r = await client.query<RecurringInvoiceTemplateRow>(
-    `SELECT id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
-            next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,
-            generated_count, last_generated_date, version, deleted_at, created_at, updated_at
-     FROM recurring_invoice_templates
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new RecurringInvoiceTemplateRepository(tenantId).getById(client, id);
 }
 
 export async function getRecurringInvoiceTemplateByIdIncludingDeleted(
@@ -163,14 +149,7 @@ export async function getRecurringInvoiceTemplateByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<RecurringInvoiceTemplateRow | null> {
-  const r = await client.query<RecurringInvoiceTemplateRow>(
-    `SELECT id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
-            next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,
-            generated_count, last_generated_date, version, deleted_at, created_at, updated_at
-     FROM recurring_invoice_templates WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new RecurringInvoiceTemplateRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function upsertRecurringInvoiceTemplate(
@@ -226,13 +205,38 @@ export async function upsertRecurringInvoiceTemplate(
     );
     const row = r.rows[0];
     if (!row) throw new Error('Insert recurring template failed.');
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'recurring_invoice_templates',
+      entityType: 'recurring_invoice_template',
+      entityId: row.id,
+      action: 'create',
+      summary: `Recurring invoice template ${row.id} created`,
+      newValue: rowToRecurringInvoiceTemplateApi(row),
+      version: row.version,
+    });
     return { row, conflict: false, wasInsert: true };
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== expectedVersion) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'recurring_invoice_templates',
+        entityId: id,
+        clientVersion: expectedVersion,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
+
+  const oldApi = rowToRecurringInvoiceTemplateApi(existing);
 
   const u = await client.query<RecurringInvoiceTemplateRow>(
     `UPDATE recurring_invoice_templates SET
@@ -268,6 +272,18 @@ export async function upsertRecurringInvoiceTemplate(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Update recurring template failed.');
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'recurring_invoice_templates',
+    entityType: 'recurring_invoice_template',
+    entityId: row.id,
+    action: 'update',
+    summary: `Recurring invoice template ${row.id} updated`,
+    newValue: rowToRecurringInvoiceTemplateApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false };
 }
 
@@ -277,7 +293,18 @@ export async function softDeleteRecurringInvoiceTemplate(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const ex = await getRecurringInvoiceTemplateByIdIncludingDeleted(client, tenantId, id);
+  const oldApi = ex ? rowToRecurringInvoiceTemplateApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'recurring_invoice_templates',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE recurring_invoice_templates SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -288,6 +315,16 @@ export async function softDeleteRecurringInvoiceTemplate(
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'recurring_invoice_templates',
+      entityType: 'recurring_invoice_template',
+      entityId: id,
+      action: 'delete',
+      summary: `Recurring invoice template ${id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -295,7 +332,20 @@ export async function softDeleteRecurringInvoiceTemplate(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'recurring_invoice_templates',
+      entityType: 'recurring_invoice_template',
+      entityId: id,
+      action: 'delete',
+      summary: `Recurring invoice template ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 export async function listRecurringInvoiceTemplatesChangedSince(
@@ -303,13 +353,5 @@ export async function listRecurringInvoiceTemplatesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<RecurringInvoiceTemplateRow[]> {
-  const r = await client.query<RecurringInvoiceTemplateRow>(
-    `SELECT id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
-            next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,
-            generated_count, last_generated_date, version, deleted_at, created_at, updated_at
-     FROM recurring_invoice_templates WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new RecurringInvoiceTemplateRepository(tenantId).listChangedSince(client, since);
 }

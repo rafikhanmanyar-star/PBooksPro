@@ -484,7 +484,13 @@ billsRouter.delete('/bills/:id', async (req: AuthedRequest, res) => {
 
   try {
     const result = await withTransaction((client) =>
-      softDeleteBill(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
+      softDeleteBill(
+        client,
+        tenantId,
+        id,
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined,
+        req.userId ?? null
+      )
     );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
@@ -497,6 +503,10 @@ billsRouter.delete('/bills/:id', async (req: AuthedRequest, res) => {
     emitEntityEvent(tenantId, 'deleted', 'bill', { id, sourceUserId: req.userId });
     sendSuccess(res, { id });
   } catch (e) {
+    if (e instanceof LockGuardError) {
+      sendFailure(res, 409, String(e.code ?? 'CONFLICT'), e.message);
+      return;
+    }
     handleRouteError(res, e);
   }
 });

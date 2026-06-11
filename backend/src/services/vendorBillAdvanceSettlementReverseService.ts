@@ -1,10 +1,15 @@
 import type pg from 'pg';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { isJournalReversed, reverseJournalEntry } from './journalService.js';
-import { recalculateBillPaymentAggregates } from './billsService.js';
+import { getBillById, recalculateBillPaymentAggregates, rowToBillApi } from './billsService.js';
 import { getTransactionById } from './transactionsService.js';
 import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
 import { VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX } from '../constants/vendorSettlement.js';
 import { roundMoney } from '../financial/validation.js';
+import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
+import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
+import { VendorBillAdvanceClearingRepository } from '../modules/vendors/repositories/VendorBillAdvanceClearingRepository.js';
+import { rowAdvanceToApi } from './contractorBillingService.js';
 
 /** Undo one vendor bill prepaid settlement journal: restore advances, drop clearings, remove mirrored cash txn, reverse GL. */
 export async function reverseVendorBillAdvanceSettlement(
@@ -38,31 +43,20 @@ export async function reverseVendorBillAdvanceSettlement(
     throw new Error('Only vendor bill advance settlement journals can be reversed with this action.');
   }
 
-  const clearingRes = await client.query<{
-    id: string;
-    bill_id: string;
-    contractor_advance_id: string | null;
-    amount: string;
-  }>(
-    `SELECT id, bill_id, contractor_advance_id, amount::text
-     FROM vendor_bill_advance_clearings
-     WHERE tenant_id = $1 AND journal_entry_id = $2
-     FOR UPDATE`,
-    [tenantId, jeId]
+  const clearingRows = await new VendorBillAdvanceClearingRepository(tenantId).listByJournalEntryIdForUpdate(
+    client,
+    jeId
   );
-
-  const clearingRows = clearingRes.rows ?? [];
   if (clearingRows.length === 0) {
     throw new Error('No settlement clearings linked to this journal entry (already removed or invalid).');
   }
 
   const billIds = [...new Set(clearingRows.map((r) => String(r.bill_id)))];
   billIds.sort();
+  const billRepo = new BillRepository(tenantId);
   for (const bid of billIds) {
-    await client.query(`SELECT id FROM bills WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`, [
-      tenantId,
-      bid,
-    ]);
+    const locked = await billRepo.getByIdForUpdate(client, bid);
+    if (!locked) throw new Error(`Bill not found: ${bid}`);
   }
 
   const touchedAdvanceIds = [...new Set(clearingRows.map((r) => r.contractor_advance_id).filter(Boolean) as string[])];
@@ -110,6 +104,40 @@ export async function reverseVendorBillAdvanceSettlement(
   }
 
   const { reversalJournalEntryId } = await reverseJournalEntry(client, tenantId, jeId, rreason, actorUserId);
+
+  const advanceRepo = new ContractorAdvanceRepository(tenantId);
+  for (const bid of billIds) {
+    const updatedBill = await getBillById(client, tenantId, bid);
+    if (!updatedBill) continue;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'bills',
+      entityType: 'bill',
+      entityId: bid,
+      action: 'update',
+      auditAction: 'vendor_settlement_reverse',
+      summary: `Bill ${updatedBill.bill_number} settlement reversed`,
+      newValue: { ...rowToBillApi(updatedBill), reversedJournalEntryId: jeId, reversalJournalEntryId },
+      version: updatedBill.version,
+    });
+  }
+
+  for (const aid of touchedAdvanceIds) {
+    const refreshedAdvance = await advanceRepo.getById(client, aid);
+    if (!refreshedAdvance) continue;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'contractors',
+      entityType: 'contractor_advance',
+      entityId: aid,
+      action: 'update',
+      auditAction: 'vendor_settlement_reverse',
+      summary: `Advance ${aid} restored after settlement reversal`,
+      newValue: rowAdvanceToApi(refreshedAdvance),
+    });
+  }
 
   return { billIds, touchedAdvanceIds, deletedTransactionIds, reversalJournalEntryId };
 }

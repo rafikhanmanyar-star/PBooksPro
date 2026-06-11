@@ -412,6 +412,7 @@ import {
 } from './repositories/personalTransactionsApi';
 import { getApiBaseUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
+import { applyChangeLogToMergedState } from './changeLogMerge';
 import { logger } from '../logger';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
@@ -420,6 +421,17 @@ export interface StateChangesResponse {
   since: string;
   updatedAt: string;
   entities: Record<string, unknown[]>;
+  /** Architecture v2 mutation feed (audit + change_log for priority domains). */
+  changeLog?: Array<{
+    id: string;
+    entityType: string;
+    entityId: string;
+    action: string;
+    version: number;
+    changedAt: string;
+    changedBy?: string;
+    payload?: unknown;
+  }>;
   /** When any app_settings row changed since `since`, full key→value map for tenant (merge on client). */
   appSettings?: Record<string, unknown>;
   has_more?: boolean;
@@ -581,6 +593,22 @@ export class AppStateApiService {
       (merged as Record<string, unknown>)[stateKey] = Array.from(map.values());
     }
 
+    applyChangeLogToMergedState(merged, response.changeLog);
+
+    try {
+      const { isLocalOnlyMode } = await import('../../config/apiUrl');
+      const { getCurrentTenantId } = await import('../database/tenantUtils');
+      if (!isLocalOnlyMode()) {
+        const tid = getCurrentTenantId();
+        if (tid && response.changeLog?.length) {
+          const { applyPayrollChangeLogToStorage } = await import('./payrollChangeLogMerge');
+          await applyPayrollChangeLogToStorage(tid, response.changeLog);
+        }
+      }
+    } catch (e) {
+      logger.warnCategory('sync', 'payroll changeLog merge skipped', e);
+    }
+
     if (response.appSettings && typeof response.appSettings === 'object') {
       Object.assign(merged, this.buildSettingsPartialFromFlat(response.appSettings as Record<string, any>));
     }
@@ -672,8 +700,9 @@ export class AppStateApiService {
 
     const totalChanges =
       Object.values(response.entities || {}).reduce((sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0), 0) +
+      (response.changeLog?.length ?? 0) +
       (response.appSettings && Object.keys(response.appSettings).length > 0 ? 1 : 0);
-    logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} change(s) (incl. app settings when present)`);
+    logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} change(s) (entities + changeLog + app settings when present)`);
     return { merged, serverCursor };
   }
 

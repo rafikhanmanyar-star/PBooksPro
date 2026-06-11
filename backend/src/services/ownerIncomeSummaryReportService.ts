@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
 
 type OwnerIncomeSummaryEngineModule = {
@@ -11,18 +9,8 @@ type OwnerIncomeSummaryEngineModule = {
   ) => unknown[];
 };
 
-let cachedEngine: OwnerIncomeSummaryEngineModule | null = null;
-
 async function loadOwnerIncomeSummaryEngine(): Promise<OwnerIncomeSummaryEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'ownerIncomeSummaryReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Owner income summary engine bundle missing: ${bundled}. Run: node scripts/ensure-owner-income-summary-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as OwnerIncomeSummaryEngineModule;
-  return cachedEngine;
+  return loadReportEngine<OwnerIncomeSummaryEngineModule>('ownerIncomeSummary');
 }
 
 export async function getOwnerIncomeSummaryReportJson(

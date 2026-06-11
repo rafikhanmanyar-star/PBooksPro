@@ -2,6 +2,9 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { PersonalTransactionRepository } from '../modules/personal-finance/repositories/PersonalTransactionRepository.js';
 
 export type PersonalTransactionRow = {
   id: string;
@@ -44,33 +47,25 @@ export function rowToPersonalTransactionApi(row: PersonalTransactionRow): Record
   return base;
 }
 
+function parseClientVersion(body: Record<string, unknown>, fallback?: number): number | undefined {
+  if (typeof body.version === 'number') return body.version;
+  if (typeof body.version === 'string' && body.version !== '') return parseInt(body.version, 10);
+  return fallback;
+}
+
 export async function listPersonalTransactionsChangedSince(
   client: pg.PoolClient,
   tenantId: string,
   since: Date
 ): Promise<PersonalTransactionRow[]> {
-  const r = await client.query<PersonalTransactionRow>(
-    `SELECT id, tenant_id, account_id, personal_category_id, type, amount, transaction_date,
-            description, version, deleted_at, created_at, updated_at
-     FROM personal_transactions WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new PersonalTransactionRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listPersonalTransactions(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<PersonalTransactionRow[]> {
-  const r = await client.query<PersonalTransactionRow>(
-    `SELECT id, tenant_id, account_id, personal_category_id, type, amount, transaction_date,
-            description, version, deleted_at, created_at, updated_at
-     FROM personal_transactions WHERE tenant_id = $1 AND deleted_at IS NULL
-     ORDER BY transaction_date DESC, created_at DESC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new PersonalTransactionRepository(tenantId).listActive(client);
 }
 
 export async function getPersonalTransactionById(
@@ -78,13 +73,7 @@ export async function getPersonalTransactionById(
   tenantId: string,
   id: string
 ): Promise<PersonalTransactionRow | null> {
-  const r = await client.query<PersonalTransactionRow>(
-    `SELECT id, tenant_id, account_id, personal_category_id, type, amount, transaction_date,
-            description, version, deleted_at, created_at, updated_at
-     FROM personal_transactions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PersonalTransactionRepository(tenantId).getById(client, id);
 }
 
 async function assertAccountExists(
@@ -121,7 +110,9 @@ function pickAmount(type: string, raw: unknown): number {
 export async function createPersonalTransaction(
   client: pg.PoolClient,
   tenantId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  userId?: string | null,
+  options?: { skipAudit?: boolean }
 ): Promise<PersonalTransactionRow> {
   const accountId = String(body.accountId ?? body.account_id ?? '').trim();
   const personalCategoryId = String(
@@ -162,36 +153,61 @@ export async function createPersonalTransaction(
                description, version, deleted_at, created_at, updated_at`,
     [id, tenantId, accountId, personalCategoryId, type, amount, transactionDate, desc]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  if (!options?.skipAudit) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'personal_finance',
+      entityType: 'personal_transaction',
+      entityId: row.id,
+      action: 'create',
+      summary: `Personal transaction ${row.id} created`,
+      newValue: rowToPersonalTransactionApi(row),
+      version: row.version,
+    });
+  }
+  return row;
 }
 
 /** All-or-nothing: one DB transaction (caller must use withTransaction). */
 export async function bulkCreatePersonalTransactions(
   client: pg.PoolClient,
   tenantId: string,
-  items: Record<string, unknown>[]
+  items: Record<string, unknown>[],
+  userId?: string | null
 ): Promise<{ imported: number }> {
   for (const body of items) {
-    await createPersonalTransaction(client, tenantId, body);
+    await createPersonalTransaction(client, tenantId, body, userId, { skipAudit: true });
   }
-  return { imported: items.length };
+  const imported = items.length;
+  if (imported > 0) {
+    const { recordBulkPersonalTransactionsChangeLog } = await import('./appStateBulkMutationService.js');
+    await recordBulkPersonalTransactionsChangeLog(client, tenantId, imported, userId);
+  }
+  return { imported };
 }
 
 export async function updatePersonalTransaction(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  userId?: string | null
 ): Promise<PersonalTransactionRow | null> {
   const existing = await getPersonalTransactionById(client, tenantId, id);
   if (!existing) return null;
-  const ver =
-    typeof body.version === 'number'
-      ? body.version
-      : typeof body.version === 'string'
-        ? parseInt(body.version, 10)
-        : existing.version;
-  if (ver !== existing.version) throw new Error('Conflict: transaction was modified by another user.');
+
+  const clientVersion = parseClientVersion(body, existing.version);
+  if (clientVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'personal_transactions',
+      entityId: id,
+      clientVersion,
+    });
+    if (lww.conflict) throw new Error('Conflict: transaction was modified by another user.');
+  }
 
   const accountId =
     body.accountId !== undefined || body.account_id !== undefined
@@ -201,8 +217,7 @@ export async function updatePersonalTransaction(
     body.personalCategoryId !== undefined || body.personal_category_id !== undefined
       ? String(body.personalCategoryId ?? body.personal_category_id).trim()
       : existing.personal_category_id;
-  const type =
-    body.type !== undefined ? String(body.type) : existing.type;
+  const type = body.type !== undefined ? String(body.type) : existing.type;
   if (type !== 'Income' && type !== 'Expense') throw new Error('type must be Income or Expense.');
 
   await assertAccountExists(client, tenantId, accountId);
@@ -243,26 +258,44 @@ export async function updatePersonalTransaction(
                description, version, deleted_at, created_at, updated_at`,
     [id, accountId, personalCategoryId, type, amount, dateStr, desc, tenantId]
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'personal_finance',
+      entityType: 'personal_transaction',
+      entityId: row.id,
+      action: 'update',
+      summary: `Personal transaction ${row.id} updated`,
+      newValue: rowToPersonalTransactionApi(row),
+      oldValue: rowToPersonalTransactionApi(existing),
+      version: row.version,
+    });
+  }
+  return row;
 }
 
 export async function softDeletePersonalTransaction(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  version?: number
+  version?: number,
+  userId?: string | null
 ): Promise<PersonalTransactionRow | null> {
-  const existing = await client.query<PersonalTransactionRow>(
-    `SELECT id, tenant_id, account_id, personal_category_id, type, amount, transaction_date,
-            description, version, deleted_at, created_at, updated_at
-     FROM personal_transactions WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const row = existing.rows[0];
-  if (!row) return null;
-  if (version != null && version !== row.version) {
-    throw new Error('Conflict: transaction was modified by another user.');
+  const existing = await new PersonalTransactionRepository(tenantId).getById(client, id);
+  if (!existing) return null;
+
+  if (version != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'personal_transactions',
+      entityId: id,
+      clientVersion: version,
+    });
+    if (lww.conflict) throw new Error('Conflict: transaction was modified by another user.');
   }
+
   const r = await client.query<PersonalTransactionRow>(
     `UPDATE personal_transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
@@ -270,5 +303,19 @@ export async function softDeletePersonalTransaction(
                description, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'personal_finance',
+      entityType: 'personal_transaction',
+      entityId: id,
+      action: 'delete',
+      summary: `Personal transaction ${id} deleted`,
+      oldValue: rowToPersonalTransactionApi(existing),
+      version: row.version,
+    });
+  }
+  return row;
 }

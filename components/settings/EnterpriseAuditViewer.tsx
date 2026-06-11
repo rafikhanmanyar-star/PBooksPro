@@ -5,7 +5,7 @@ import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDateTime } from '../../utils/dateUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 
@@ -160,7 +160,7 @@ const EnterpriseAuditViewer: React.FC = () => {
               {rows.map((row) => (
                 <tr key={`${row.source}-${row.id}-${row.action}`} className="border-t border-app-border align-top">
                   <td className="px-3 py-2 whitespace-nowrap text-app-muted">
-                    {formatDate(row.occurredAt, true)}
+                    {formatDateTime(row.occurredAt)}
                   </td>
                   <td className="px-3 py-2 text-app-text">
                     {row.email || row.userId?.slice(0, 12) || '—'}

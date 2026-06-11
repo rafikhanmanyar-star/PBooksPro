@@ -1,11 +1,12 @@
 import type pg from 'pg';
-import { randomUUID } from 'crypto';
-import { S3CompatibleStorageProvider } from '../../../services/backup/storage/s3CompatibleProvider.js';
-import type { StorageProviderConfig } from '../../../services/backup/storage/types.js';
+import type {
+  OffsiteStorageProvider,
+  StorageProviderConfig,
+} from '../../../services/backup/storage/types.js';
 import { DocumentRepository } from '../repositories/DocumentRepository.js';
-import type { DocumentEntityType } from '../types/index.js';
+import type { DocumentMetadataRow } from '../types/index.js';
 
-function r2ConfigFromEnv(): StorageProviderConfig | null {
+export function r2ConfigFromEnv(): StorageProviderConfig | null {
   const bucket = process.env.R2_BUCKET?.trim();
   const accessKey = process.env.R2_ACCESS_KEY?.trim();
   const secretKey = process.env.R2_SECRET_KEY?.trim();
@@ -24,68 +25,79 @@ function r2ConfigFromEnv(): StorageProviderConfig | null {
   };
 }
 
+export function isR2Configured(): boolean {
+  return r2ConfigFromEnv() != null;
+}
+
 export class DocumentStorageService {
   private readonly tenantId: string;
-  private readonly repo: DocumentRepository;
+  readonly repo: DocumentRepository;
 
-  constructor(tenantId: string) {
+  constructor(tenantId: string, client?: pg.PoolClient) {
     this.tenantId = tenantId;
-    this.repo = new DocumentRepository(tenantId);
+    this.repo = new DocumentRepository(tenantId, client);
   }
 
-  private storage(): S3CompatibleStorageProvider | null {
+  private async storage(): Promise<OffsiteStorageProvider | null> {
     const cfg = r2ConfigFromEnv();
     if (!cfg) return null;
+    const { S3CompatibleStorageProvider } = await import(
+      '../../../services/backup/storage/s3CompatibleProvider.js'
+    );
     return new S3CompatibleStorageProvider('cloudflare_r2', cfg);
   }
 
-  async uploadDocument(
+  buildStorageKey(documentId: string, entityType: string, fileName: string): string {
+    return `${this.tenantId}/${entityType}/${documentId}/${fileName}`;
+  }
+
+  async persistBytes(
     client: pg.PoolClient,
     input: {
-      entityType: DocumentEntityType | string;
-      entityId?: string | null;
+      documentId: string;
+      entityType: string;
       fileName: string;
-      mimeType?: string | null;
       body: Buffer;
-      uploadedBy?: string | null;
     }
-  ): Promise<{ id: string; storageKey: string }> {
-    const id = randomUUID();
-    const storageKey = `${this.tenantId}/${input.entityType}/${id}/${input.fileName}`;
-    const provider = this.storage();
-
+  ): Promise<{ storageKey: string; inlineData: Buffer | null }> {
+    const provider = await this.storage();
     if (provider) {
+      const storageKey = this.buildStorageKey(input.documentId, input.entityType, input.fileName);
       await provider.upload({
         key: storageKey,
         body: input.body,
         metadata: {
           tenant_id: this.tenantId,
           entity_type: input.entityType,
-          entity_id: input.entityId ?? '',
+          document_id: input.documentId,
         },
       });
+      return { storageKey, inlineData: null };
     }
-
-    await this.repo.insertMetadata(client, {
-      id,
-      entity_type: input.entityType,
-      entity_id: input.entityId ?? null,
-      file_name: input.fileName,
-      storage_key: provider ? storageKey : `inline:${id}`,
-      mime_type: input.mimeType ?? null,
-      file_size: input.body.length,
-      uploaded_by: input.uploadedBy ?? null,
-    });
-
-    return { id, storageKey };
+    return { storageKey: `inline:${input.documentId}`, inlineData: input.body };
   }
 
-  async downloadDocument(client: pg.PoolClient, documentId: string): Promise<Buffer | null> {
-    const meta = await this.repo.getById(client, documentId);
-    if (!meta) return null;
-    if (meta.storage_key.startsWith('inline:')) return null;
-    const provider = this.storage();
-    if (!provider) return null;
-    return provider.download(meta.storage_key);
+  async readBytes(client: pg.PoolClient, row: DocumentMetadataRow): Promise<Buffer> {
+    if (row.inline_data && row.inline_data.length > 0) {
+      return Buffer.isBuffer(row.inline_data) ? row.inline_data : Buffer.from(row.inline_data);
+    }
+    if (row.storage_key.startsWith('inline:')) {
+      return Buffer.alloc(0);
+    }
+    const provider = await this.storage();
+    if (!provider) return Buffer.alloc(0);
+    return provider.download(row.storage_key);
+  }
+
+  async deleteObject(row: DocumentMetadataRow): Promise<void> {
+    if (row.storage_key.startsWith('inline:')) return;
+    const provider = await this.storage();
+    if (!provider) return;
+    try {
+      await provider.download(row.storage_key);
+      // Provider has no delete in interface — object remains until lifecycle policy.
+    } catch {
+      /* ignore missing object */
+    }
   }
 }

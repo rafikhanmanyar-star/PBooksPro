@@ -69,7 +69,7 @@ projectExpenseVoucherRouter.post('/project-expense-categories', requirePeVCreate
   }
   try {
     const result = await withTransaction((client) =>
-      upsertProjectExpenseCategory(client, tenantId, req.body as Record<string, unknown>)
+      upsertProjectExpenseCategory(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
@@ -98,7 +98,7 @@ projectExpenseVoucherRouter.put(
     const body = { ...(req.body as Record<string, unknown>), id: req.params.id };
     try {
       const result = await withTransaction((client) =>
-        upsertProjectExpenseCategory(client, tenantId, body)
+        upsertProjectExpenseCategory(client, tenantId, body, req.userId ?? null)
       );
       if (result.conflict) {
         sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
@@ -131,6 +131,7 @@ projectExpenseVoucherRouter.delete(
           client,
           tenantId,
           req.params.id,
+          req.userId ?? null,
           Number.isFinite(expectedVersion) ? expectedVersion : undefined
         )
       );

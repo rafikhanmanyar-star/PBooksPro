@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { ContactRepository } from '../modules/crm/repositories/ContactRepository.js';
 
 export type ContactRow = {
   id: string;
@@ -44,13 +47,7 @@ export async function listContactsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<ContactRow[]> {
-  const r = await client.query<ContactRow>(
-    `SELECT id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at
-     FROM contacts WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new ContactRepository(tenantId).listChangedSince(client, since);
 }
 
 function pickBody(body: Record<string, unknown>) {
@@ -75,12 +72,7 @@ function pickBody(body: Record<string, unknown>) {
 }
 
 export async function listContacts(client: pg.PoolClient, tenantId: string): Promise<ContactRow[]> {
-  const r = await client.query<ContactRow>(
-    `SELECT id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at
-     FROM contacts WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new ContactRepository(tenantId).listActive(client);
 }
 
 export async function getContactById(
@@ -88,12 +80,7 @@ export async function getContactById(
   tenantId: string,
   id: string
 ): Promise<ContactRow | null> {
-  const r = await client.query<ContactRow>(
-    `SELECT id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at
-     FROM contacts WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ContactRepository(tenantId).getById(client, id);
 }
 
 export async function createContact(
@@ -122,7 +109,19 @@ export async function createContact(
       p.user_id ?? actorUserId,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'contacts',
+    entityType: 'contact',
+    entityId: row.id,
+    action: 'create',
+    summary: `Contact ${row.name} created`,
+    newValue: rowToContactApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateContact(
@@ -137,11 +136,19 @@ export async function updateContact(
   if (!p.type.trim()) throw new Error('Contact type is required.');
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contacts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const r = await client.query<ContactRow>(
       `UPDATE contacts SET
         name = $3, type = $4, description = $5, contact_no = $6, company_name = $7, address = $8,
         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $9
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
       [
         id,
@@ -152,15 +159,24 @@ export async function updateContact(
         p.contact_no ?? null,
         p.company_name ?? null,
         p.address ?? null,
-        expectedVersion,
       ]
     );
     if (r.rows.length === 0) {
-      const exists = await getContactById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
+      return { row: null, conflict: false };
     }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'contacts',
+      entityType: 'contact',
+      entityId: row.id,
+      action: 'update',
+      summary: `Contact ${row.name} updated`,
+      newValue: rowToContactApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<ContactRow>(
@@ -180,7 +196,21 @@ export async function updateContact(
       p.address ?? null,
     ]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'contacts',
+      entityType: 'contact',
+      entityId: row.id,
+      action: 'update',
+      summary: `Contact ${row.name} updated`,
+      newValue: rowToContactApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function softDeleteContact(
@@ -189,23 +219,60 @@ export async function softDeleteContact(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getContactById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contacts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE contacts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3
+       RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
       [id, tenantId, expectedVersion]
     );
     if (r.rowCount === 0) {
-      const cur = await getContactById(client, tenantId, id);
-      if (!cur) return { ok: false, conflict: false };
+      if (!before) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    const row = r.rows[0] as ContactRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'contacts',
+      entityType: 'contact',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Contact ${row.name} deleted`,
+      oldValue: before ? rowToContactApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE contacts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as ContactRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'contacts',
+      entityType: 'contact',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Contact ${row.name} deleted`,
+      oldValue: before ? rowToContactApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }

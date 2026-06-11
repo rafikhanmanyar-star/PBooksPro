@@ -61,3 +61,44 @@ export async function assertLwwVersion(
   }
   return { serverVersion: row.version, updatedAt: row.updated_at.toISOString() };
 }
+
+export type ChangeLogRow = {
+  id: string;
+  tenant_id: string;
+  entity_type: string;
+  entity_id: string;
+  action: ChangeLogAction;
+  payload_json: unknown;
+  version: number;
+  changed_at: Date;
+  changed_by: string | null;
+};
+
+export function changeLogRowToApi(row: ChangeLogRow): Record<string, unknown> {
+  return {
+    id: row.id,
+    entityType: row.entity_type,
+    entityId: row.entity_id,
+    action: row.action,
+    version: row.version,
+    changedAt: row.changed_at instanceof Date ? row.changed_at.toISOString() : row.changed_at,
+    changedBy: row.changed_by ?? undefined,
+    payload: row.payload_json ?? undefined,
+  };
+}
+
+/** Incremental sync feed from Architecture v2 change_log table. */
+export async function listChangeLogSince(
+  client: pg.PoolClient,
+  tenantId: string,
+  since: Date
+): Promise<ChangeLogRow[]> {
+  const r = await client.query<ChangeLogRow>(
+    `SELECT id, tenant_id, entity_type, entity_id, action, payload_json, version, changed_at, changed_by
+     FROM change_log
+     WHERE tenant_id = $1 AND changed_at > $2
+     ORDER BY changed_at ASC`,
+    [tenantId, since]
+  );
+  return r.rows;
+}

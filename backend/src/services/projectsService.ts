@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { ProjectRepository } from '../modules/project-selling/repositories/ProjectRepository.js';
 
 export type ProjectRow = {
   id: string;
@@ -89,12 +92,7 @@ function pickBody(body: Record<string, unknown>) {
 }
 
 export async function listProjects(client: pg.PoolClient, tenantId: string): Promise<ProjectRow[]> {
-  const r = await client.query<ProjectRow>(
-    `SELECT id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at
-     FROM projects WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new ProjectRepository(tenantId).listActive(client);
 }
 
 export async function getProjectById(
@@ -102,12 +100,7 @@ export async function getProjectById(
   tenantId: string,
   id: string
 ): Promise<ProjectRow | null> {
-  const r = await client.query<ProjectRow>(
-    `SELECT id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at
-     FROM projects WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ProjectRepository(tenantId).getById(client, id);
 }
 
 export async function createProject(
@@ -141,7 +134,19 @@ export async function createProject(
       (body.userId ?? body.user_id) as string | null ?? null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'projects',
+    entityType: 'project',
+    entityId: row.id,
+    action: 'create',
+    summary: `Project ${row.name} created`,
+    newValue: rowToProjectApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateProject(
@@ -173,6 +178,14 @@ export async function updateProject(
   ];
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'projects',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existing, conflict: true };
+
     const r = await client.query<ProjectRow>(
       `UPDATE projects SET
         name = $1,
@@ -185,14 +198,24 @@ export async function updateProject(
         installment_config = $8::jsonb,
         version = version + 1,
         updated_at = NOW()
-      WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL AND version = $11
+      WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL
       RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
-      [...vals, id, tenantId, expectedVersion]
+      [...vals, id, tenantId]
     );
-    if (r.rowCount === 0) {
-      return { row: existing, conflict: true };
-    }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0] ?? null;
+    if (!row) return { row: null, conflict: false };
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'projects',
+      entityType: 'project',
+      entityId: row.id,
+      action: 'update',
+      summary: `Project ${row.name} updated`,
+      newValue: rowToProjectApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<ProjectRow>(
@@ -211,7 +234,21 @@ export async function updateProject(
     RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
     [...vals, id, tenantId]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'projects',
+      entityType: 'project',
+      entityId: row.id,
+      action: 'update',
+      summary: `Project ${row.name} updated`,
+      newValue: rowToProjectApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function softDeleteProject(
@@ -229,25 +266,60 @@ export async function softDeleteProject(
     return { ok: false, conflict: false, hasUnits: true };
   }
 
+  const before = await getProjectById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'projects',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true, hasUnits: false };
+
     const r = await client.query(
       `UPDATE projects SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const row = await getProjectById(client, tenantId, id);
-      return { ok: false, conflict: !!row, hasUnits: false };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false, hasUnits: false };
+    const row = r.rows[0] as ProjectRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'projects',
+      entityType: 'project',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Project ${row.name} deleted`,
+      oldValue: before ? rowToProjectApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false, hasUnits: false };
   }
 
   const r = await client.query(
     `UPDATE projects SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false, hasUnits: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as ProjectRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'projects',
+      entityType: 'project',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Project ${row.name} deleted`,
+      oldValue: before ? rowToProjectApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false, hasUnits: false };
 }
 
 /** Incremental sync: projects created/updated/deleted since `since` (includes soft-deleted rows). */
@@ -256,11 +328,5 @@ export async function listProjectsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<ProjectRow[]> {
-  const r = await client.query<ProjectRow>(
-    `SELECT id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at
-     FROM projects WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new ProjectRepository(tenantId).listChangedSince(client, since);
 }

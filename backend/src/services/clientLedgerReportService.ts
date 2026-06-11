@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadBalanceSheetStateInput } from './balanceSheetReportService.js';
 import { listContacts, rowToContactApi } from './contactsService.js';
 
@@ -22,18 +20,8 @@ type ClientLedgerEngineModule = {
   };
 };
 
-let cachedEngine: ClientLedgerEngineModule | null = null;
-
 async function loadClientLedgerEngine(): Promise<ClientLedgerEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'clientLedgerReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Client ledger engine bundle missing: ${bundled}. Run: node scripts/ensure-client-ledger-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as ClientLedgerEngineModule;
-  return cachedEngine;
+  return loadReportEngine<ClientLedgerEngineModule>('clientLedger');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

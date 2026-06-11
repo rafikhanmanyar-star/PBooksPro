@@ -645,6 +645,20 @@ export const storageService = {
     mergeById(STORAGE_KEYS.PAYROLL_RUNS, entities.payroll_runs as unknown[] | undefined, (r) => normalizePayrollRun(r), (x) => x.id);
     mergeById(STORAGE_KEYS.PAYSLIPS, entities.payslips as unknown[] | undefined, (r) => normalizePayslip(r), (p) => p.id);
 
+    const normProject = (r: Record<string, unknown>): PayrollProject => ({
+      id: String(r.id),
+      tenant_id: String(r.tenant_id ?? r.tenantId ?? tenantId),
+      name: String(r.name ?? ''),
+      code: String(r.code ?? ''),
+      description: (r.description as string | undefined) ?? undefined,
+      status: (String(r.status ?? 'ACTIVE') as PayrollProject['status']),
+      created_by: (r.created_by ?? r.createdBy) as string | undefined,
+      updated_by: (r.updated_by ?? r.updatedBy) as string | undefined,
+      created_at: (r.created_at ?? r.createdAt) as string | undefined,
+      updated_at: (r.updated_at ?? r.updatedAt) as string | undefined,
+    });
+    mergeById(STORAGE_KEYS.PROJECTS, entities.payroll_projects as unknown[] | undefined, normProject, (p) => p.id);
+
     const cfgRows = entities.payroll_tenant_config as unknown[] | undefined;
     if (Array.isArray(cfgRows) && cfgRows[0] && typeof cfgRows[0] === 'object') {
       const c = cfgRows[0] as Record<string, unknown>;

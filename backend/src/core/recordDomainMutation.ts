@@ -9,7 +9,10 @@ export type DomainMutationInput = {
   module: string;
   entityType: string;
   entityId: string;
+  /** Stored in change_log / sync_queue (create | update | delete). */
   action: ChangeLogAction;
+  /** Optional richer audit_events action (defaults to `action`). */
+  auditAction?: string;
   summary?: string;
   oldValue?: unknown;
   newValue?: unknown;
@@ -22,12 +25,12 @@ export type DomainMutationInput = {
 export async function recordDomainMutation(
   client: pg.PoolClient,
   input: DomainMutationInput
-): Promise<void> {
-  await appendAuditEvent(client, {
+): Promise<string> {
+  const auditEventId = await appendAuditEvent(client, {
     tenantId: input.tenantId,
     userId: input.userId,
     module: input.module,
-    action: input.action,
+    action: input.auditAction ?? input.action,
     entityType: input.entityType,
     entityId: input.entityId,
     summary: input.summary,
@@ -56,4 +59,6 @@ export async function recordDomainMutation(
       version: input.version,
     });
   }
+
+  return auditEventId;
 }

@@ -164,13 +164,9 @@ app.get(
 app.use('/api/admin', adminPortalRouter);
 
 app.use('/api/v1', auditRequestContextMiddleware);
-app.use('/api', auditRequestContextMiddleware);
 
 /** Canonical API (Architecture v2). */
 mountVersionedApi(app, '/api/v1');
-
-/** Deprecated alias — remove after clients migrate to /api/v1. */
-mountVersionedApi(app, '/api');
 
 app.use((err: unknown, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   handleRouteError(res, err, {
@@ -208,7 +204,7 @@ async function start() {
   initRealtime(httpServer);
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(
-      `PBooks API listening on http://0.0.0.0:${PORT}/api/v1 (deprecated alias: /api, WebSocket: same port)`
+      `PBooks API listening on http://0.0.0.0:${PORT}/api/v1 (WebSocket: same port)`
     );
     startDiscoveryUdpBroadcast(PORT);
     startBackupScheduler();

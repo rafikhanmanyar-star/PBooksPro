@@ -5,7 +5,7 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, normalizeApiBaseUrl, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
 import { logger } from '../logger';
 import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
 import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
@@ -20,6 +20,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 const BULK_STATE_REQUEST_TIMEOUT_MS = 600_000;
 const STATE_REQUEST_TIMEOUT_MS = 300_000;
 const PAYROLL_REQUEST_TIMEOUT_MS = 180_000;
+const PRESENCE_REQUEST_TIMEOUT_MS = 15_000;
 
 /** Longer timeouts for bulk sync / payroll endpoints that can exceed the default 2 minutes. */
 function getRequestTimeoutMs(endpoint: string): number {
@@ -31,6 +32,12 @@ function getRequestTimeoutMs(endpoint: string): number {
   }
   if (endpoint.includes('/payroll/')) {
     return PAYROLL_REQUEST_TIMEOUT_MS;
+  }
+  if (
+    endpoint.includes('/tenants/online-users') ||
+    endpoint.includes('/auth/heartbeat')
+  ) {
+    return PRESENCE_REQUEST_TIMEOUT_MS;
   }
   return DEFAULT_REQUEST_TIMEOUT_MS;
 }
@@ -101,9 +108,7 @@ export class ApiClient {
     const trimmed = url.trim();
     if (!trimmed) return;
     let base = trimmed.replace(/\/+$/, '');
-    if (!base.endsWith('/api')) {
-      base = `${base}/api`;
-    }
+    base = normalizeApiBaseUrl(base);
     if (isStagingEnvironment() && /:3000(\/|$)/.test(base)) {
       throw new Error(
         'This is the Staging client — it cannot connect to the production API (port 3000). Use port 3001 (PBooks Pro Staging API Server).'
@@ -658,6 +663,17 @@ export class ApiClient {
       }
 
       if (isRequestTimeoutError(error)) {
+        if (
+          typeof window !== 'undefined' &&
+          this.token &&
+          isLanBackendApi()
+        ) {
+          const now = Date.now();
+          if (now - lastServerUnreachableDispatch > SERVER_UNREACHABLE_DEBOUNCE_MS) {
+            lastServerUnreachableDispatch = now;
+            window.dispatchEvent(new CustomEvent('pbooks:server-unreachable'));
+          }
+        }
         throw {
           error: 'Timeout',
           message: 'Cannot connect to server. The request timed out — please try again.',

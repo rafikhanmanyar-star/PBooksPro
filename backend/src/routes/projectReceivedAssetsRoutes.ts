@@ -95,7 +95,13 @@ projectReceivedAssetsRouter.delete('/project-received-assets/:id', async (req: A
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
   try {
     const result = await withTransaction((client) =>
-      softDeleteProjectReceivedAsset(client, tenantId, id, expectedVersion)
+      softDeleteProjectReceivedAsset(
+        client,
+        tenantId,
+        id,
+        expectedVersion,
+        req.userId
+      )
     );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Version conflict');

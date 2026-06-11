@@ -1,21 +1,25 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
-import { insertJournalEntry } from './journalService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
 import {
   getBillById,
   recalculateBillPaymentAggregates,
   resolveBillRowCategoryIdForExpenseMirror,
+  rowToBillApi,
   type BillRow,
 } from './billsService.js';
 import { createTransaction, type TransactionRow } from './transactionsService.js';
 import { VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX } from '../constants/vendorSettlement.js';
 import {
   type AdjustmentInput,
-  type ContractorAdvanceRow,
   resolveContractorPartyToContactId,
   resolvePartyIdFromVendorBill,
+  rowAdvanceToApi,
 } from './contractorBillingService.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
+import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
 
 const MONEY_EPS = 0.005;
 
@@ -129,11 +133,10 @@ export async function settleVendorBillsBatchWithAdvances(
   if (new Set(billIds).size !== billIds.length) throw new Error('Duplicate bill in settlement batch.');
 
   const sortedLocks = [...new Set(billIds)].sort();
+  const billRepo = new BillRepository(tenantId);
   for (const bid of sortedLocks) {
-    await client.query(
-      `SELECT id FROM bills WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
-      [tenantId, bid]
-    );
+    const locked = await billRepo.getByIdForUpdate(client, bid);
+    if (!locked) throw new Error(`Bill not found: ${bid}`);
   }
 
   const prepared: Prepared[] = [];
@@ -195,18 +198,10 @@ export async function settleVendorBillsBatchWithAdvances(
   let advanceGlAggregate: string | null = null;
 
   const touchedAdvanceIds = [...globalAdvanceUse.keys()].sort((a, b) => a.localeCompare(b));
+  const advanceRepo = new ContractorAdvanceRepository(tenantId);
   if (touchedAdvanceIds.length > 0) {
     for (const aid of touchedAdvanceIds) {
-      const ar = await client.query<ContractorAdvanceRow>(
-        `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
-           cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
-           created_at, updated_at, deleted_at
-         FROM contractor_advances
-         WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
-         FOR UPDATE`,
-        [tenantId, aid]
-      );
-      const row = ar.rows[0];
+      const row = await advanceRepo.getByIdForUpdate(client, aid);
       if (!row) throw new Error(`Advance not found: ${aid}`);
       if (row.contractor_contact_id !== supplierResolved) {
         throw new Error(`Advance ${aid} does not belong to this supplier contact.`);
@@ -264,7 +259,7 @@ export async function settleVendorBillsBatchWithAdvances(
           ? `${bill.description.trim()} — ${buildJournalDescriptionForBill(null, p)}`
           : buildJournalDescriptionForBill(null, p);
 
-    const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+    const { journalEntryId } = await new JournalRepository(tenantId).insertEntry(client, {
       entryDate: input.entryDate.trim(),
       reference: refBase ?? `VB-${bill.bill_number || billId}`,
       description: journalDescription,
@@ -322,17 +317,7 @@ export async function settleVendorBillsBatchWithAdvances(
     await recalculateBillPaymentAggregates(client, tenantId, billId);
 
     const paymentNote = buildBillPaymentRecordNote(p);
-    await client.query(
-      `UPDATE bills SET
-         description =
-           CASE
-             WHEN trim(COALESCE(description, '')) = '' THEN $3::text
-             ELSE trim(description) || E'\n' || $3::text
-           END,
-         version = version + 1, updated_at = NOW()
-       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-      [tenantId, billId, paymentNote]
-    );
+    await billRepo.appendPaymentNote(client, billId, paymentNote);
   }
 
   for (const [aid, totalDec] of globalAdvanceUse.entries()) {
@@ -382,6 +367,39 @@ export async function settleVendorBillsBatchWithAdvances(
        WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
       [tenantId, aid]
     );
+  }
+
+  for (const { billId, journalEntryId } of journalEntries) {
+    const updatedBill = await getBillById(client, tenantId, billId);
+    if (!updatedBill) continue;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'bills',
+      entityType: 'bill',
+      entityId: billId,
+      action: 'update',
+      auditAction: 'vendor_settlement',
+      summary: `Bill ${updatedBill.bill_number} settled with prepaid/cash`,
+      newValue: { ...rowToBillApi(updatedBill), settlementJournalEntryId: journalEntryId },
+      version: updatedBill.version,
+    });
+  }
+
+  for (const aid of touchedAdvanceIds) {
+    const refreshedAdvance = await advanceRepo.getById(client, aid);
+    if (!refreshedAdvance) continue;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'contractors',
+      entityType: 'contractor_advance',
+      entityId: aid,
+      action: 'update',
+      auditAction: 'vendor_settlement',
+      summary: `Advance ${aid} applied to vendor bill settlement`,
+      newValue: rowAdvanceToApi(refreshedAdvance),
+    });
   }
 
   return { journalEntries, touchedAdvanceIds, cashExpenseTransactions };

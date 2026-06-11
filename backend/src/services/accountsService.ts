@@ -1,10 +1,9 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
-import {
-  ACCOUNT_BALANCE_CASE,
-  ACCOUNT_BALANCE_CASE_BY_ID,
-} from '../financial/accountBalanceSql.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { AccountRepository } from '../modules/accounting/repositories/AccountRepository.js';
 
 export type AccountRow = {
   id: string;
@@ -124,6 +123,46 @@ function assertSystemAccountIdentityUnchanged(
   }
 }
 
+function lwwTenantForAccountRow(row: AccountRow, requestTenantId: string): string {
+  return row.tenant_id === GLOBAL_SYSTEM_TENANT_ID ? GLOBAL_SYSTEM_TENANT_ID : requestTenantId;
+}
+
+async function auditAccountMutation(
+  client: pg.PoolClient,
+  tenantId: string,
+  accountId: string,
+  action: 'create' | 'update' | 'delete',
+  opts?: { userId?: string | null; summary?: string; oldValue?: Record<string, unknown> }
+): Promise<void> {
+  if (action === 'delete') {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: opts?.userId ?? null,
+      module: 'accounts',
+      entityType: 'account',
+      entityId: accountId,
+      action,
+      summary: opts?.summary ?? `Account ${accountId} deleted`,
+      oldValue: opts?.oldValue,
+    });
+    return;
+  }
+  const row = await getAccountById(client, tenantId, accountId);
+  if (!row) return;
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: opts?.userId ?? row.user_id,
+    module: 'accounts',
+    entityType: 'account',
+    entityId: accountId,
+    action,
+    summary: opts?.summary ?? `Account ${row.name} ${action}`,
+    newValue: rowToAccountApi(row),
+    oldValue: opts?.oldValue,
+    version: row.version,
+  });
+}
+
 function pickBody(body: Record<string, unknown>) {
   return {
     name: String(body.name ?? '').trim(),
@@ -144,15 +183,7 @@ function pickBody(body: Record<string, unknown>) {
 }
 
 export async function listAccounts(client: pg.PoolClient, tenantId: string): Promise<AccountRow[]> {
-  const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
-            a.bs_position, a.bs_term, a.bs_group_key,
-            a.account_code, a.sub_type, a.is_active
-     FROM accounts a
-     WHERE (a.tenant_id = $1 OR a.tenant_id = $2) AND a.deleted_at IS NULL ORDER BY a.name ASC`,
-    [tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
-  return r.rows;
+  return new AccountRepository(tenantId).listActive(client);
 }
 
 export async function getAccountById(
@@ -160,15 +191,7 @@ export async function getAccountById(
   tenantId: string,
   id: string
 ): Promise<AccountRow | null> {
-  const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
-            a.bs_position, a.bs_term, a.bs_group_key,
-            a.account_code, a.sub_type, a.is_active
-     FROM accounts a
-     WHERE a.id = $1 AND (a.tenant_id = $2 OR a.tenant_id = $3) AND a.deleted_at IS NULL`,
-    [id, tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
-  return r.rows[0] ?? null;
+  return new AccountRepository(tenantId).getById(client, id);
 }
 
 export async function getAccountByIdIncludingDeleted(
@@ -176,15 +199,7 @@ export async function getAccountByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<AccountRow | null> {
-  const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE_BY_ID})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
-            a.bs_position, a.bs_term, a.bs_group_key,
-            a.account_code, a.sub_type, a.is_active
-     FROM accounts a
-     WHERE a.id = $1 AND (a.tenant_id = $2 OR a.tenant_id = $3)`,
-    [id, tenantId, GLOBAL_SYSTEM_TENANT_ID]
-  );
-  return r.rows[0] ?? null;
+  return new AccountRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function createAccount(
@@ -219,7 +234,11 @@ export async function createAccount(
       p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await auditAccountMutation(client, tenantId, row.id, 'create', {
+    userId: actorUserId,
+  });
+  return row;
 }
 
 export async function updateAccount(
@@ -236,6 +255,17 @@ export async function updateAccount(
   const prior = await getAccountByIdIncludingDeleted(client, tenantId, id);
   if (!prior) {
     return { row: null, conflict: false };
+  }
+  const oldApi = rowToAccountApi(prior);
+
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId: lwwTenantForAccountRow(prior, tenantId),
+      table: 'accounts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
   }
 
   if (prior.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
@@ -259,7 +289,9 @@ export async function updateAccount(
         if (!exists) return { row: null, conflict: false };
         return { row: null, conflict: true };
       }
-      return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+      const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+      await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
+      return { row, conflict: false };
     }
 
     const u = await client.query<AccountRow>(
@@ -270,7 +302,9 @@ export async function updateAccount(
       [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored]
     );
     if (!u.rows[0]) return { row: null, conflict: false };
-    return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+    const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+    await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
+    return { row, conflict: false };
   }
 
   const openingStored = resolveOpeningForUpdate(p.opening_balance, prior.opening_balance);
@@ -299,7 +333,9 @@ export async function updateAccount(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+    const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+    await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
+    return { row, conflict: false };
   }
 
   const u = await client.query<AccountRow>(
@@ -311,7 +347,9 @@ export async function updateAccount(
     [id, tenantId, ...vals]
   );
   if (!u.rows[0]) return { row: null, conflict: false };
-  return { row: (await getAccountById(client, tenantId, id)) ?? u.rows[0], conflict: false };
+  const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+  await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
+  return { row, conflict: false };
 }
 
 export async function upsertAccount(
@@ -335,11 +373,20 @@ export async function upsertAccount(
   if (existing.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
     assertSystemAccountIdentityUnchanged(existing, p);
     const expectedVersionGlobal = p.version;
-    if (expectedVersionGlobal !== undefined && existing.version !== expectedVersionGlobal) {
-      const row = await getAccountById(client, tenantId, id);
-      if (!row) throw new Error('System account not found.');
-      return { row, conflict: true, wasInsert: false };
+    if (expectedVersionGlobal !== undefined) {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId: GLOBAL_SYSTEM_TENANT_ID,
+        table: 'accounts',
+        entityId: id,
+        clientVersion: expectedVersionGlobal,
+      });
+      if (lww.conflict) {
+        const row = await getAccountById(client, tenantId, id);
+        if (!row) throw new Error('System account not found.');
+        return { row, conflict: true, wasInsert: false };
+      }
     }
+    const oldApi = rowToAccountApi(existing);
     const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
     const balanceNext = Number.isFinite(p.balance) ? p.balance : numFromRow(existing.balance);
     const u = await client.query<AccountRow>(
@@ -352,15 +399,24 @@ export async function upsertAccount(
     const row = u.rows[0];
     if (!row) throw new Error('System account upsert failed.');
     const withBalance = await getAccountById(client, tenantId, id);
-    return { row: withBalance ?? row, conflict: false, wasInsert: false };
+    const out = withBalance ?? row;
+    await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi, userId: actorUserId });
+    return { row: out, conflict: false, wasInsert: false };
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'accounts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
   }
 
   const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
+  const oldApi = rowToAccountApi(existing);
 
   const vals = [
     p.name,
@@ -385,7 +441,9 @@ export async function upsertAccount(
   const row = u.rows[0];
   if (!row) throw new Error('Account upsert failed.');
   const withBalance = await getAccountById(client, tenantId, id);
-  return { row: withBalance ?? row, conflict: false, wasInsert: false };
+  const out = withBalance ?? row;
+  await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi, userId: actorUserId });
+  return { row: out, conflict: false, wasInsert: false };
 }
 
 export async function softDeleteAccount(
@@ -396,8 +454,17 @@ export async function softDeleteAccount(
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const ex = await getAccountByIdIncludingDeleted(client, tenantId, id);
   if (ex?.tenant_id === GLOBAL_SYSTEM_TENANT_ID) return { ok: false, conflict: false };
+  const oldApi = ex ? rowToAccountApi(ex) : undefined;
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'accounts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE accounts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -408,6 +475,7 @@ export async function softDeleteAccount(
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await auditAccountMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -415,7 +483,11 @@ export async function softDeleteAccount(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await auditAccountMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
+  }
+  return { ok, conflict: false };
 }
 
 export async function listAccountsChangedSince(
@@ -423,13 +495,5 @@ export async function listAccountsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<AccountRow[]> {
-  const r = await client.query<AccountRow>(
-    `SELECT a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
-            a.bs_position, a.bs_term, a.bs_group_key
-     FROM accounts a
-     WHERE (a.tenant_id = $1 OR a.tenant_id = $2) AND a.updated_at > $3
-     ORDER BY a.updated_at ASC`,
-    [tenantId, GLOBAL_SYSTEM_TENANT_ID, since]
-  );
-  return r.rows;
+  return new AccountRepository(tenantId).listChangedSince(client, since);
 }

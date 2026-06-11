@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
 
 type TenantLedgerEngineModule = {
@@ -15,18 +13,8 @@ type TenantLedgerEngineModule = {
   };
 };
 
-let cachedEngine: TenantLedgerEngineModule | null = null;
-
 async function loadTenantLedgerEngine(): Promise<TenantLedgerEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'tenantLedgerReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Tenant ledger engine bundle missing: ${bundled}. Run: node scripts/ensure-tenant-ledger-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as TenantLedgerEngineModule;
-  return cachedEngine;
+  return loadReportEngine<TenantLedgerEngineModule>('tenantLedger');
 }
 
 export async function getTenantLedgerReportJson(

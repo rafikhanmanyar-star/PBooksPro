@@ -105,7 +105,8 @@ pmCycleAllocationsRouter.delete('/pm-cycle-allocations/:id', async (req: AuthedR
         client,
         tenantId,
         id,
-        Number.isFinite(expectedVersion) ? expectedVersion : undefined
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined,
+        req.userId
       )
     );
     if (result.conflict) {

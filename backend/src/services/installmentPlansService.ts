@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { InstallmentPlanRepository } from '../modules/project-selling/repositories/InstallmentPlanRepository.js';
 
 export type InstallmentPlanRow = {
   id: string;
@@ -209,29 +212,12 @@ export function rowToInstallmentPlanApi(row: InstallmentPlanRow): Record<string,
   return base;
 }
 
-const SELECT_IP = `SELECT id, tenant_id, project_id, lead_id, unit_id, net_value::text, status, duration_years,
-  down_payment_percentage::text, frequency, list_price::text, customer_discount::text, floor_discount::text,
-  lump_sum_discount::text, misc_discount::text, down_payment_amount::text, installment_amount::text, total_installments,
-  description, user_id, intro_text, root_id, approval_requested_by, approval_requested_to, approval_requested_at,
-  approval_reviewed_by, approval_reviewed_at, discounts, customer_discount_category_id, floor_discount_category_id,
-  lump_sum_discount_category_id, misc_discount_category_id, selected_amenities, amenities_total::text,
-  created_at, updated_at, version, deleted_at
-  FROM installment_plans`;
-
 export async function listInstallmentPlans(
   client: pg.PoolClient,
   tenantId: string,
   filters?: { projectId?: string }
 ): Promise<InstallmentPlanRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `${SELECT_IP} WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  q += ` ORDER BY updated_at DESC`;
-  const r = await client.query<InstallmentPlanRow>(q, params);
-  return r.rows;
+  return new InstallmentPlanRepository(tenantId).listActive(client, filters);
 }
 
 export async function getInstallmentPlanById(
@@ -239,11 +225,7 @@ export async function getInstallmentPlanById(
   tenantId: string,
   id: string
 ): Promise<InstallmentPlanRow | null> {
-  const r = await client.query<InstallmentPlanRow>(
-    `${SELECT_IP} WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new InstallmentPlanRepository(tenantId).getById(client, id);
 }
 
 async function getInstallmentPlanByIdIncludingDeleted(
@@ -251,8 +233,7 @@ async function getInstallmentPlanByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<InstallmentPlanRow | null> {
-  const r = await client.query<InstallmentPlanRow>(`${SELECT_IP} WHERE id = $1 AND tenant_id = $2`, [id, tenantId]);
-  return r.rows[0] ?? null;
+  return new InstallmentPlanRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function upsertInstallmentPlan(
@@ -329,12 +310,38 @@ export async function upsertInstallmentPlan(
       RETURNING *`,
       insertValues
     );
-    return { row: ins.rows[0], conflict: false, wasInsert: true };
+    const row = ins.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'installment_plans',
+      entityType: 'installment_plan',
+      entityId: row.id,
+      action: 'create',
+      summary: `Installment plan ${row.id} created`,
+      newValue: rowToInstallmentPlanApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false, wasInsert: true };
   }
 
-  if (p.version !== undefined && existing.version !== p.version) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (p.version !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== p.version) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'installment_plans',
+        entityId: id,
+        clientVersion: p.version,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
+
+  const oldApi = rowToInstallmentPlanApi(existing);
 
   const updateSql = `UPDATE installment_plans SET
     project_id = $3, lead_id = $4, unit_id = $5, net_value = $6, status = $7, duration_years = $8,
@@ -352,7 +359,22 @@ export async function upsertInstallmentPlan(
 
   if (existing.deleted_at) {
     const u = await client.query<InstallmentPlanRow>(`${updateSql} RETURNING *`, updateParams);
-    if (u.rows[0]) return { row: u.rows[0], conflict: false, wasInsert: false };
+    if (u.rows[0]) {
+      const row = u.rows[0];
+      await recordDomainMutation(client, {
+        tenantId,
+        userId: row.user_id,
+        module: 'installment_plans',
+        entityType: 'installment_plan',
+        entityId: row.id,
+        action: 'update',
+        summary: `Installment plan ${row.id} restored`,
+        newValue: rowToInstallmentPlanApi(row),
+        oldValue: oldApi,
+        version: row.version,
+      });
+      return { row, conflict: false, wasInsert: false };
+    }
     return { row: existing, conflict: true, wasInsert: false };
   }
 
@@ -360,7 +382,20 @@ export async function upsertInstallmentPlan(
   if (u.rows.length === 0) {
     return { row: existing, conflict: true, wasInsert: false };
   }
-  return { row: u.rows[0], conflict: false, wasInsert: false };
+  const row = u.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'installment_plans',
+    entityType: 'installment_plan',
+    entityId: row.id,
+    action: 'update',
+    summary: `Installment plan ${row.id} updated`,
+    newValue: rowToInstallmentPlanApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
+  return { row, conflict: false, wasInsert: false };
 }
 
 export async function softDeleteInstallmentPlan(
@@ -369,7 +404,18 @@ export async function softDeleteInstallmentPlan(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const ex = await getInstallmentPlanByIdIncludingDeleted(client, tenantId, id);
+  const oldApi = ex ? rowToInstallmentPlanApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'installment_plans',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const u = await client.query(
       `UPDATE installment_plans SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -380,6 +426,16 @@ export async function softDeleteInstallmentPlan(
       if (!ex || ex.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'installment_plans',
+      entityType: 'installment_plan',
+      entityId: id,
+      action: 'delete',
+      summary: `Installment plan ${id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const u = await client.query(
@@ -387,7 +443,20 @@ export async function softDeleteInstallmentPlan(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (u.rowCount ?? 0) > 0, conflict: false };
+  const ok = (u.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'installment_plans',
+      entityType: 'installment_plan',
+      entityId: id,
+      action: 'delete',
+      summary: `Installment plan ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 export async function listInstallmentPlansChangedSince(
@@ -395,9 +464,5 @@ export async function listInstallmentPlansChangedSince(
   tenantId: string,
   since: Date
 ): Promise<InstallmentPlanRow[]> {
-  const r = await client.query<InstallmentPlanRow>(
-    `${SELECT_IP} WHERE tenant_id = $1 AND updated_at > $2 ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new InstallmentPlanRepository(tenantId).listChangedSince(client, since);
 }

@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { ContractRepository } from '../modules/vendors/repositories/ContractRepository.js';
 
 export type ContractRow = {
   id: string;
@@ -160,27 +163,7 @@ export async function listContracts(
   tenantId: string,
   filters?: { status?: string; projectId?: string; vendorId?: string }
 ): Promise<ContractRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-                  start_date, end_date, status, category_ids, expense_category_items,
-                  terms_and_conditions, payment_terms, description, document_path, document_id,
-                  user_id, version, deleted_at, created_at, updated_at
-           FROM contracts WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  if (filters?.vendorId) {
-    params.push(filters.vendorId);
-    q += ` AND vendor_id = $${params.length}`;
-  }
-  q += ' ORDER BY start_date DESC NULLS LAST, contract_number ASC';
-  const r = await client.query<ContractRow>(q, params);
-  return r.rows;
+  return new ContractRepository(tenantId).listActive(client, filters);
 }
 
 export async function listContractsChangedSince(
@@ -188,16 +171,7 @@ export async function listContractsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<ContractRow[]> {
-  const r = await client.query<ContractRow>(
-    `SELECT id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-            start_date, end_date, status, category_ids, expense_category_items,
-            terms_and_conditions, payment_terms, description, document_path, document_id,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM contracts WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new ContractRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function getContractById(
@@ -205,15 +179,7 @@ export async function getContractById(
   tenantId: string,
   id: string
 ): Promise<ContractRow | null> {
-  const r = await client.query<ContractRow>(
-    `SELECT id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-            start_date, end_date, status, category_ids, expense_category_items,
-            terms_and_conditions, payment_terms, description, document_path, document_id,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM contracts WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ContractRepository(tenantId).getById(client, id);
 }
 
 export async function getContractByIdIncludingDeleted(
@@ -221,15 +187,7 @@ export async function getContractByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<ContractRow | null> {
-  const r = await client.query<ContractRow>(
-    `SELECT id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-            start_date, end_date, status, category_ids, expense_category_items,
-            terms_and_conditions, payment_terms, description, document_path, document_id,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM contracts WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new ContractRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function upsertContract(
@@ -254,9 +212,23 @@ export async function upsertContract(
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== expectedVersion) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'contracts',
+        entityId: id,
+        clientVersion: expectedVersion,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
+
+  const oldApi = rowToContractApi(existing);
 
   const vals = [
     p.contract_number,
@@ -296,6 +268,18 @@ export async function upsertContract(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'contracts',
+    entityType: 'contract',
+    entityId: row.id,
+    action: 'update',
+    summary: `Contract ${row.contract_number} updated`,
+    newValue: rowToContractApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false };
 }
 
@@ -356,7 +340,19 @@ async function insertContract(
       uid,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'contracts',
+    entityType: 'contract',
+    entityId: row.id,
+    action: 'create',
+    summary: `Contract ${row.contract_number} created`,
+    newValue: rowToContractApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function softDeleteContract(
@@ -365,7 +361,18 @@ export async function softDeleteContract(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const ex = await getContractByIdIncludingDeleted(client, tenantId, id);
+  const oldApi = ex ? rowToContractApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contracts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE contracts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -376,6 +383,16 @@ export async function softDeleteContract(
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'contracts',
+      entityType: 'contract',
+      entityId: id,
+      action: 'delete',
+      summary: `Contract ${ex?.contract_number ?? id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -383,5 +400,18 @@ export async function softDeleteContract(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'contracts',
+      entityType: 'contract',
+      entityId: id,
+      action: 'delete',
+      summary: `Contract ${ex?.contract_number ?? id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }

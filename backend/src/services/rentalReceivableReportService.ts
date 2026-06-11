@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { listInvoices, rowToInvoiceApi } from './invoicesService.js';
 import { listContacts, rowToContactApi } from './contactsService.js';
 import { listBuildings, rowToBuildingApi } from './buildingsService.js';
@@ -14,18 +12,8 @@ type RentalReceivableEngineModule = {
   ) => unknown[];
 };
 
-let cachedEngine: RentalReceivableEngineModule | null = null;
-
 async function loadRentalReceivableEngine(): Promise<RentalReceivableEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'rentalReceivableReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Rental receivable engine bundle missing: ${bundled}. Run: node scripts/ensure-rental-receivable-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as RentalReceivableEngineModule;
-  return cachedEngine;
+  return loadReportEngine<RentalReceivableEngineModule>('rentalReceivable');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

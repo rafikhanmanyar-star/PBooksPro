@@ -102,28 +102,46 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         }
     }, [user, currentUser]);
 
-    // Fetch online users count and list (skip in local-only)
-    useEffect(() => {
-        const fetchOnlineUsers = async () => {
-            if (!apiClient.getToken()) return;
-            try {
-                const [countResponse, listResponse] = await Promise.all([
-                    apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count'),
-                    apiClient.get<any[]>('/tenants/online-users')
-                ]);
-                setOnlineUsers(countResponse.onlineUsers);
-                setOnlineUsersList(listResponse || []);
-            } catch (error) {
-                console.error('Error fetching online users:', error);
+    const fetchOnlineUsersCount = useCallback(async () => {
+        if (!apiClient.getToken()) return;
+        try {
+            const countResponse = await apiClient.get<{ onlineUsers: number }>('/tenants/online-users-count');
+            setOnlineUsers(countResponse.onlineUsers);
+        } catch (error) {
+            if (import.meta.env.DEV) {
+                console.warn('Online user count unavailable:', error);
             }
-        };
+        }
+    }, []);
 
+    const fetchOnlineUsersList = useCallback(async () => {
+        if (!apiClient.getToken()) return;
+        try {
+            const listResponse = await apiClient.get<any[]>('/tenants/online-users');
+            setOnlineUsersList(listResponse || []);
+        } catch (error) {
+            if (import.meta.env.DEV) {
+                console.warn('Online users list unavailable:', error);
+            }
+        }
+    }, []);
+
+    // Poll online user count only (lightweight; list loads when chat opens).
+    useEffect(() => {
         if (!isLocalOnlyMode() && (user || currentUser)) {
-            fetchOnlineUsers();
-            const interval = setInterval(fetchOnlineUsers, 60000);
+            void fetchOnlineUsersCount();
+            const interval = setInterval(() => {
+                void fetchOnlineUsersCount();
+            }, 60000);
             return () => clearInterval(interval);
         }
-    }, [user, currentUser]);
+    }, [user, currentUser, fetchOnlineUsersCount]);
+
+    useEffect(() => {
+        if (isChatModalOpen && !isLocalOnlyMode()) {
+            void fetchOnlineUsersList();
+        }
+    }, [isChatModalOpen, fetchOnlineUsersList]);
 
     // Check for unread messages
     const checkUnreadMessages = useCallback(() => {
@@ -531,6 +549,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     onClick={() => {
+                                        void fetchOnlineUsersList();
                                         setIsChatModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
@@ -654,7 +673,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     type="button"
-                                    onClick={() => setIsChatModalOpen(true)}
+                                    onClick={() => {
+                                        void fetchOnlineUsersList();
+                                        setIsChatModalOpen(true);
+                                    }}
                                     className={`w-full flex items-center justify-center p-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary relative transition-colors duration-ds ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
                                     title={`Chat (${onlineUsers} online)`}
                                     aria-label="Open chat"
@@ -834,7 +856,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
                                     <button
                                         type="button"
-                                        onClick={() => setIsChatModalOpen(true)}
+                                        onClick={() => {
+                                        void fetchOnlineUsersList();
+                                        setIsChatModalOpen(true);
+                                    }}
                                         className={`w-full px-3 py-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary text-xs font-medium transition-colors duration-ds flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
                                             }`}
                                     >

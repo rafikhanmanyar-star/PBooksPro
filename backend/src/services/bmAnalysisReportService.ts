@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
 
 type BmAnalysisEngineModule = {
@@ -11,18 +9,8 @@ type BmAnalysisEngineModule = {
   ) => { reportData: unknown[]; bmDetailsByBuilding: Record<string, unknown> };
 };
 
-let cachedEngine: BmAnalysisEngineModule | null = null;
-
 async function loadBmAnalysisEngine(): Promise<BmAnalysisEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'bmAnalysisReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `BM analysis engine bundle missing: ${bundled}. Run: node scripts/ensure-bm-analysis-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as BmAnalysisEngineModule;
-  return cachedEngine;
+  return loadReportEngine<BmAnalysisEngineModule>('bmAnalysis');
 }
 
 export async function getBmAnalysisReportJson(

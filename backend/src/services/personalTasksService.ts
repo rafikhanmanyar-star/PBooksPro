@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { PersonalTaskRepository } from '../modules/personal-finance/repositories/PersonalTaskRepository.js';
 
 export type PersonalTaskRow = {
   id: string;
@@ -68,24 +70,6 @@ function normalizePriority(raw: unknown, fallback: string): string {
   return p;
 }
 
-const TASK_COLS = `t.id, t.user_id, t.title, t.description, t.created_date, t.target_date, t.status, t.progress, t.priority, t.created_at, t.updated_at`;
-
-async function getTaskForUser(
-  client: pg.PoolClient,
-  tenantId: string,
-  userId: string,
-  id: string
-): Promise<PersonalTaskRow | null> {
-  const r = await client.query<PersonalTaskRow>(
-    `SELECT ${TASK_COLS}
-     FROM personal_tasks t
-     INNER JOIN users u ON u.id = t.user_id AND u.tenant_id = $2
-     WHERE t.id = $1 AND t.user_id = $3`,
-    [id, tenantId, userId]
-  );
-  return r.rows[0] ?? null;
-}
-
 export async function createPersonalTask(
   client: pg.PoolClient,
   tenantId: string,
@@ -123,6 +107,17 @@ export async function createPersonalTask(
   );
   const row = r.rows[0];
   if (!row) throw new Error('Failed to create task.');
+
+  await recordDomainMutation(client, {
+    tenantId,
+    userId,
+    module: 'personal_finance',
+    entityType: 'personal_task',
+    entityId: row.id,
+    action: 'create',
+    summary: `Personal task ${row.title} created`,
+    newValue: rowToPersonalTaskApi(row),
+  });
   return row;
 }
 
@@ -132,15 +127,7 @@ export async function listPersonalTasksForUser(
   userId: string
 ): Promise<PersonalTaskRow[]> {
   await assertUserInTenant(client, userId, tenantId);
-  const r = await client.query<PersonalTaskRow>(
-    `SELECT ${TASK_COLS}
-     FROM personal_tasks t
-     INNER JOIN users u ON u.id = t.user_id AND u.tenant_id = $1
-     WHERE t.user_id = $2
-     ORDER BY t.target_date ASC, t.created_at DESC`,
-    [tenantId, userId]
-  );
-  return r.rows;
+  return new PersonalTaskRepository(tenantId).listForUser(client, userId);
 }
 
 /** Calendar month YYYY-MM: tasks grouped by target_date (YYYY-MM-DD keys). */
@@ -161,17 +148,10 @@ export async function listPersonalTasksCalendarMonth(
   const lastDay = new Date(y, mo, 0).getDate();
   const end = `${y}-${String(mo).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
-  const r = await client.query<PersonalTaskRow>(
-    `SELECT ${TASK_COLS}
-     FROM personal_tasks t
-     INNER JOIN users u ON u.id = t.user_id AND u.tenant_id = $1
-     WHERE t.user_id = $2 AND t.target_date >= $3::date AND t.target_date <= $4::date
-     ORDER BY t.target_date ASC, t.title ASC`,
-    [tenantId, userId, start, end]
-  );
+  const rows = await new PersonalTaskRepository(tenantId).listCalendarMonth(client, userId, start, end);
 
   const out: Record<string, PersonalTaskRow[]> = {};
-  for (const row of r.rows) {
+  for (const row of rows) {
     const key = formatPgDateToYyyyMmDd(row.target_date);
     if (!out[key]) out[key] = [];
     out[key].push(row);
@@ -185,7 +165,7 @@ export async function getPersonalTaskById(
   userId: string,
   id: string
 ): Promise<PersonalTaskRow | null> {
-  return getTaskForUser(client, tenantId, userId, id);
+  return new PersonalTaskRepository(tenantId).getForUser(client, userId, id);
 }
 
 export async function updatePersonalTask(
@@ -195,7 +175,7 @@ export async function updatePersonalTask(
   id: string,
   body: Record<string, unknown>
 ): Promise<PersonalTaskRow | null> {
-  const existing = await getTaskForUser(client, tenantId, userId, id);
+  const existing = await new PersonalTaskRepository(tenantId).getForUser(client, userId, id);
   if (!existing) return null;
 
   const title =
@@ -242,7 +222,21 @@ export async function updatePersonalTask(
      RETURNING id, user_id, title, description, created_date, target_date, status, progress, priority, created_at, updated_at`,
     [title, description, targetDate, status, progress, priority, id, userId]
   );
-  return r.rows[0] ?? null;
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId,
+      module: 'personal_finance',
+      entityType: 'personal_task',
+      entityId: row.id,
+      action: 'update',
+      summary: `Personal task ${row.title} updated`,
+      newValue: rowToPersonalTaskApi(row),
+      oldValue: rowToPersonalTaskApi(existing),
+    });
+  }
+  return row;
 }
 
 export async function deletePersonalTask(
@@ -251,9 +245,19 @@ export async function deletePersonalTask(
   userId: string,
   id: string
 ): Promise<boolean> {
-  const existing = await getTaskForUser(client, tenantId, userId, id);
+  const existing = await new PersonalTaskRepository(tenantId).getForUser(client, userId, id);
   if (!existing) return false;
   await client.query(`DELETE FROM personal_tasks WHERE id = $1 AND user_id = $2`, [id, userId]);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId,
+    module: 'personal_finance',
+    entityType: 'personal_task',
+    entityId: id,
+    action: 'delete',
+    summary: `Personal task ${existing.title} deleted`,
+    oldValue: rowToPersonalTaskApi(existing),
+  });
   return true;
 }
 
@@ -269,20 +273,12 @@ export async function listUpcomingPersonalTasks(
 ): Promise<PersonalTaskRow[]> {
   await assertUserInTenant(client, userId, tenantId);
   const d = Math.min(365, Math.max(1, Math.floor(days)));
-  const r = await client.query<PersonalTaskRow>(
-    `SELECT ${TASK_COLS}
-     FROM personal_tasks t
-     INNER JOIN users u ON u.id = t.user_id AND u.tenant_id = $1
-     WHERE t.user_id = $2
-       AND t.status NOT IN ('completed', 'cancelled')
-       AND t.target_date <= (CURRENT_DATE + $3::integer)`,
-    [tenantId, userId, d]
-  );
-  r.rows.sort((a, b) => {
+  const rows = await new PersonalTaskRepository(tenantId).listUpcoming(client, userId, d);
+  rows.sort((a, b) => {
     const da = formatPgDateToYyyyMmDd(a.target_date);
     const db = formatPgDateToYyyyMmDd(b.target_date);
     if (da !== db) return da.localeCompare(db);
     return a.title.localeCompare(b.title);
   });
-  return r.rows;
+  return rows;
 }

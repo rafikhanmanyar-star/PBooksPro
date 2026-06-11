@@ -71,7 +71,9 @@ appSettingsRouter.post('/app-settings', async (req: AuthedRequest, res) => {
   }
   const settingKey = body.key;
   try {
-    await withTransaction((client) => upsertSetting(client, tenantId, settingKey, body.value));
+    await withTransaction((client) =>
+      upsertSetting(client, tenantId, settingKey, body.value, { userId: req.userId })
+    );
     emitEntityEvent(tenantId, 'updated', 'settings', {
       data: { key: settingKey },
       sourceUserId: req.userId,
@@ -96,7 +98,7 @@ appSettingsRouter.post('/app-settings/bulk', async (req: AuthedRequest, res) => 
   }
   const settings = body.settings;
   try {
-    await withTransaction((client) => bulkUpsertSettings(client, tenantId, settings));
+    await withTransaction((client) => bulkUpsertSettings(client, tenantId, settings, req.userId));
     emitEntityEvent(tenantId, 'updated', 'settings', { data: { keys: Object.keys(settings) }, sourceUserId: req.userId });
     sendSuccess(res, { ok: true });
   } catch (e) {
@@ -114,7 +116,7 @@ appSettingsRouter.delete('/app-settings/:key', async (req: AuthedRequest, res) =
   const { key } = req.params;
   try {
     const ok = await withTransaction((client) =>
-      deleteSetting(client, tenantId, decodeURIComponent(key))
+      deleteSetting(client, tenantId, decodeURIComponent(key), req.userId)
     );
     if (!ok) {
       sendFailure(res, 404, 'NOT_FOUND', 'Setting not found');

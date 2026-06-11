@@ -99,6 +99,7 @@ import { referralRouter } from './referralRoutes.js';
 import { onboardingRouter } from './onboardingRoutes.js';
 import { systemRouter } from './systemRoutes.js';
 import { appUpdateRouter } from './appUpdateRoutes.js';
+import { dataManagementRouter } from './dataManagementRoutes.js';
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
@@ -422,4 +423,10 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   );
   app.use(prefix, authMiddleware, requireActiveSubscription(), tasksRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), customReportsRouter);
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    dataManagementRouter
+  );
 }

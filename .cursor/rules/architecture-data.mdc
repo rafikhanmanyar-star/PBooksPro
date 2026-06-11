@@ -1,61 +1,41 @@
 ---
-description: Data layer architecture — PostgreSQL migrations, SQLite schema, shared engines
-globs: "{database/migrations/**,services/database/**,shared/**,services/financialEngine/**,components/reports/*Engine.ts}"
+description: Data layer Architecture v2 — shared packages, sync metadata, R2 documents, snapshots
+globs: "{database/migrations/**,services/database/**,shared/**,components/reports/*Engine.ts}"
 alwaysApply: false
 ---
 
-# Data Layer Architecture
+# Data Layer Architecture (v2)
 
-## PostgreSQL (API / LAN mode)
+## PostgreSQL
 
-- Migrations: `database/migrations/NNN_snake_case.sql` (lexicographic order)
-- Runner: `backend/src/migrate.ts` — tracks `schema_migrations`, runs on API startup
-- Pool: `backend/src/db/pool.ts` — `getPool()`, `withTransaction()`
-- All tenant tables: `tenant_id` column + index on `(tenant_id, …)`
+- Migrations: database/migrations/NNN_name.sql
+- Tenant tables: tenant_id + indexes; soft delete via deleted_at + deleted_by
 
-Migration rules:
-- Idempotent where possible (`IF NOT EXISTS`, `IF EXISTS`)
-- Never drop columns/tables without explicit plan and backup
-- Document staging vs production differences in migration or `doc/`
+## v2 Tables (launch scope)
 
-## SQLite (local-only / Electron)
+- accounting_periods.status includes locked
+- document_metadata (R2 storage_key)
+- sync_queue + change_log (LWW sync)
+- analytics_snapshots (dashboard KPIs)
 
-- Schema source: `services/database/schema.ts`
-- Extracted: `electron/schema.sql` via `npm run electron:extract-schema`
-- Runtime: `electron/sqliteBridge.cjs` (better-sqlite3, WAL, multi-company via `companyManager.cjs`)
-- Browser fallback: sql.js + OPFS in `services/database/databaseService.ts`
+## Shared Packages (edit here, not backend copies)
 
-When adding SQLite tables/columns, update `schema.ts` and re-extract — keep aligned with PostgreSQL migrations.
+| Source | Backend copy |
+|--------|----------------|
+| shared/financial-core/ | backend/src/financial/ (AUTO-GENERATED) |
+| shared/report-engines/ | backend/dist/*.mjs via ensure-*-engine.mjs (transitional) |
+| shared/rbac/permissions.ts | backend/src/auth/permissions.ts |
 
-## Shared / Synced Code (source of truth → backend copy)
+Regenerate: npm run build:backend
 
-| Edit here | Auto-generated in backend | Regenerate |
-|-----------|---------------------------|------------|
-| `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` | `npm run build:backend` |
-| `services/financialEngine/*.ts` | `backend/src/financial/*.ts` | `scripts/ensure-shared-financial-cores.mjs` |
-| `shared/payrollLedgerCore.ts` | `backend/src/services/payrollLedgerCore.ts` | same script |
+## SQLite (local-only)
 
-**Never edit AUTO-GENERATED backend files directly.**
+services/database/schema.ts → npm run electron:extract-schema → electron/schema.sql
 
-## Report Engines
+## New Report
 
-Calculation logic lives on the frontend, bundled to backend:
+1. Engine in shared/report-engines/ (no React)
+2. ReportService + route under /api/v1/reports/
+3. RBAC permission in shared/rbac/
 
-```
-components/reports/balanceSheetEngine.ts  →  backend/dist/balanceSheetEngine.mjs
-```
-
-Build runs `scripts/ensure-*-engine.mjs` before `tsc`. New report:
-1. Engine in `components/reports/`
-2. Ensure script in `scripts/`
-3. `*ReportService.ts` in `backend/src/services/`
-4. Route under `/api/reports/` with RBAC permission
-
-Custom/dynamic reports: extend `backend/src/modules/reporting/` (metadata, SQL compiler, validators).
-
-## Multi-Tenant Data Rules
-
-- Every business table has `tenant_id`
-- Services always receive `tenantId` as explicit parameter from `req.tenantId`
-- Realtime: `emitEntityEvent(tenantId, …)` scopes Socket.IO events per org
-- Demo tenants: see `constants/demoEnvironment.ts` for read-only / master-tenant rules
+Full guide: doc/ARCHITECTURE.md §4.

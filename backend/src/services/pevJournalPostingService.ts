@@ -4,8 +4,9 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
-import { insertJournalEntry, reverseJournalEntry, type CreateJournalBody } from './journalService.js';
+import type { CreateJournalBody } from './journalService.js';
 import type { ProjectExpenseVoucherRow } from './projectExpenseVoucherService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 
 export const PEV_JOURNAL_SOURCE_MODULE = 'project_expense_voucher';
 
@@ -55,7 +56,7 @@ function voucherDateYmd(row: ProjectExpenseVoucherRow): string {
   return formatPgDateToYyyyMmDd(row.voucher_date as Date | string);
 }
 
-function buildJournalBodyFromPeV(
+export function buildJournalBodyFromPeV(
   row: ProjectExpenseVoucherRow,
   lines: JournalLineInput[]
 ): CreateJournalBody {
@@ -78,36 +79,6 @@ function buildJournalBodyFromPeV(
   };
 }
 
-async function findActiveJournalEntryIdForPeV(
-  client: pg.PoolClient,
-  tenantId: string,
-  voucherId: string
-): Promise<string | null> {
-  const r = await client.query<{ id: string }>(
-    `SELECT je.id FROM journal_entries je
-     WHERE je.tenant_id = $1 AND je.source_module = $2 AND je.source_id = $3
-       AND NOT EXISTS (
-         SELECT 1 FROM journal_reversals jr
-         WHERE jr.original_journal_entry_id = je.id AND jr.tenant_id = $1
-       )
-     ORDER BY je.created_at DESC, je.id DESC
-     LIMIT 1`,
-    [tenantId, PEV_JOURNAL_SOURCE_MODULE, voucherId]
-  );
-  return r.rows[0]?.id ?? null;
-}
-
-async function reverseExistingPeVJournalIfAny(
-  client: pg.PoolClient,
-  tenantId: string,
-  voucherId: string,
-  actorUserId: string | null
-): Promise<void> {
-  const existingId = await findActiveJournalEntryIdForPeV(client, tenantId, voucherId);
-  if (!existingId) return;
-  await reverseJournalEntry(client, tenantId, existingId, 'Project expense voucher reversed', actorUserId);
-}
-
 export async function syncPeVJournalMirror(
   client: pg.PoolClient,
   tenantId: string,
@@ -116,22 +87,13 @@ export async function syncPeVJournalMirror(
   actorUserId: string | null,
   options?: { replaceExisting?: boolean }
 ): Promise<{ journalEntryId: string | null }> {
-  if (shouldSkipPeVJournalMirror(row)) {
-    await reverseExistingPeVJournalIfAny(client, tenantId, row.id, actorUserId);
-    return { journalEntryId: null };
-  }
-
-  const replace = options?.replaceExisting !== false;
-  if (replace) {
-    await reverseExistingPeVJournalIfAny(client, tenantId, row.id, actorUserId);
-  }
-
-  const lines = buildJournalLinesFromPeV(row, expenseGlAccountId);
-  if (!lines) return { journalEntryId: null };
-
-  const body = buildJournalBodyFromPeV(row, lines);
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
-  return { journalEntryId };
+  return createFinancialPostingService(tenantId).postFromPeV(
+    client,
+    row,
+    expenseGlAccountId,
+    actorUserId,
+    options
+  );
 }
 
 export async function reversePeVJournalMirror(
@@ -140,5 +102,5 @@ export async function reversePeVJournalMirror(
   voucherId: string,
   actorUserId: string | null
 ): Promise<void> {
-  await reverseExistingPeVJournalIfAny(client, tenantId, voucherId, actorUserId);
+  await createFinancialPostingService(tenantId).reversePeVMirror(client, voucherId, actorUserId);
 }

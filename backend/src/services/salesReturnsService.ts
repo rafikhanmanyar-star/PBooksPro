@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { SalesReturnRepository } from '../modules/project-selling/repositories/SalesReturnRepository.js';
 
 export type SalesReturnRow = {
   id: string;
@@ -124,23 +127,7 @@ export async function listSalesReturns(
   tenantId: string,
   filters?: { status?: string; agreementId?: string }
 ): Promise<SalesReturnRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-                  penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-                  processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-                  deleted_at, created_at, updated_at
-           FROM sales_returns WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.agreementId) {
-    params.push(filters.agreementId);
-    q += ` AND agreement_id = $${params.length}`;
-  }
-  q += ' ORDER BY return_date DESC, id ASC';
-  const r = await client.query<SalesReturnRow>(q, params);
-  return r.rows;
+  return new SalesReturnRepository(tenantId).listActive(client, filters);
 }
 
 export async function listSalesReturnsChangedSince(
@@ -148,16 +135,7 @@ export async function listSalesReturnsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<SalesReturnRow[]> {
-  const r = await client.query<SalesReturnRow>(
-    `SELECT id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-            penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-            processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-            deleted_at, created_at, updated_at
-     FROM sales_returns WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new SalesReturnRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function getSalesReturnById(
@@ -165,15 +143,7 @@ export async function getSalesReturnById(
   tenantId: string,
   id: string
 ): Promise<SalesReturnRow | null> {
-  const r = await client.query<SalesReturnRow>(
-    `SELECT id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-            penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-            processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-            deleted_at, created_at, updated_at
-     FROM sales_returns WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new SalesReturnRepository(tenantId).getById(client, id);
 }
 
 async function getSalesReturnByIdIncludingDeleted(
@@ -181,15 +151,7 @@ async function getSalesReturnByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<SalesReturnRow | null> {
-  const r = await client.query<SalesReturnRow>(
-    `SELECT id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-            penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-            processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-            deleted_at, created_at, updated_at
-     FROM sales_returns WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new SalesReturnRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function upsertSalesReturn(
@@ -213,9 +175,23 @@ export async function upsertSalesReturn(
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== expectedVersion) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'sales_returns',
+        entityId: id,
+        clientVersion: expectedVersion,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
+
+  const oldApi = rowToSalesReturnApi(existing);
 
   const u = await client.query<SalesReturnRow>(
     `UPDATE sales_returns SET
@@ -250,6 +226,18 @@ export async function upsertSalesReturn(
   );
   const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'sales_returns',
+    entityType: 'sales_return',
+    entityId: row.id,
+    action: 'update',
+    summary: `Sales return ${row.return_number} updated`,
+    newValue: rowToSalesReturnApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false };
 }
 
@@ -295,7 +283,19 @@ async function insertSalesReturn(
       p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'sales_returns',
+    entityType: 'sales_return',
+    entityId: row.id,
+    action: 'create',
+    summary: `Sales return ${row.return_number} created`,
+    newValue: rowToSalesReturnApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function softDeleteSalesReturn(
@@ -304,7 +304,18 @@ export async function softDeleteSalesReturn(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const ex = await getSalesReturnByIdIncludingDeleted(client, tenantId, id);
+  const oldApi = ex ? rowToSalesReturnApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'sales_returns',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE sales_returns SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -315,6 +326,16 @@ export async function softDeleteSalesReturn(
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'sales_returns',
+      entityType: 'sales_return',
+      entityId: id,
+      action: 'delete',
+      summary: `Sales return ${ex?.return_number ?? id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -322,5 +343,18 @@ export async function softDeleteSalesReturn(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'sales_returns',
+      entityType: 'sales_return',
+      entityId: id,
+      action: 'delete',
+      summary: `Sales return ${ex?.return_number ?? id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }
