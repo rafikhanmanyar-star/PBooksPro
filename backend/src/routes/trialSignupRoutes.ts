@@ -3,6 +3,10 @@ import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import { createTrialSignup, trialSignupEnabled } from '../services/trial/trialSignupService.js';
+import {
+  identityConflictApiDetails,
+  UserIdentityConflictError,
+} from '../services/auth/userIdentityService.js';
 import { consumeTrialExchangeCode, issueTrialExchangeCode } from '../services/trial/trialExchangeStore.js';
 
 export const trialSignupRouter = Router();
@@ -113,6 +117,10 @@ trialSignupRouter.post('/trial/signup', signupLimiter, async (req, res) => {
       201
     );
   } catch (e) {
+    if (e instanceof UserIdentityConflictError) {
+      sendFailure(res, 409, e.code, e.message, identityConflictApiDetails(e.conflicts));
+      return;
+    }
     handleRouteError(res, e, { route: 'POST /trial/signup' });
   }
 });

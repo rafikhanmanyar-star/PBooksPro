@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { _decrementPageChunkLoading, _incrementPageChunkLoading } from '../../context/appStateStore';
 
 type Variant = 'default' | 'ledger';
 
@@ -11,6 +12,14 @@ interface PageRouteSkeletonProps {
  */
 const PageRouteSkeleton: React.FC<PageRouteSkeletonProps> = ({ variant = 'default' }) => {
   const tableRows = variant === 'ledger' ? 12 : 8;
+
+  useEffect(() => {
+    _incrementPageChunkLoading();
+    return () => {
+      _decrementPageChunkLoading();
+    };
+  }, []);
+
   return (
     <div
       className="w-full h-full min-h-[min(100dvh,720px)] flex flex-col p-4 md:p-6 gap-4"

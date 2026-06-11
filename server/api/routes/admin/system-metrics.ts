@@ -236,37 +236,39 @@ router.get('/', async (req: AdminRequest, res) => {
         };
 
         try {
-            // Count active sessions (users who have activity in last 30 minutes)
             const activeSessions = await db.query<{ count: string }>(
-                `SELECT COUNT(DISTINCT user_id) as count 
-         FROM users 
-         WHERE last_login_at > NOW() - INTERVAL '30 minutes'`
-            ).catch(() => [{ count: '0' }]);
+                `SELECT COUNT(DISTINCT user_id) AS count
+                 FROM user_sessions
+                 WHERE last_activity_at > NOW() - INTERVAL '30 minutes'`
+            );
 
             clientMetrics.activeSessions = parseInt(activeSessions[0]?.count || '0', 10);
 
-            // Count total active users (logged in last 24 hours)
             const activeUsers = await db.query<{ count: string }>(
-                `SELECT COUNT(DISTINCT user_id) as count 
-         FROM users 
-         WHERE last_login_at > NOW() - INTERVAL '24 hours'`
-            ).catch(() => [{ count: '0' }]);
+                `SELECT COUNT(DISTINCT user_id) AS count
+                 FROM login_events
+                 WHERE status = 'success'
+                   AND user_id IS NOT NULL
+                   AND login_time > NOW() - INTERVAL '24 hours'`
+            );
 
             clientMetrics.activeUsers = parseInt(activeUsers[0]?.count || '0', 10);
 
-            // Get tenant distribution
             const tenantDist = await db.query<{ tenant_name: string; user_count: string; active_users: string }>(
-                `SELECT 
-          t.name as tenant_name,
-          COUNT(DISTINCT u.user_id) as user_count,
-          COUNT(DISTINCT CASE WHEN u.last_login_at > NOW() - INTERVAL '24 hours' THEN u.user_id END) as active_users
-         FROM tenants t
-         LEFT JOIN users u ON u.tenant_id = t.tenant_id
-         WHERE t.license_status = 'active'
-         GROUP BY t.tenant_id, t.name
-         ORDER BY active_users DESC
-         LIMIT 10`
-            ).catch(() => []);
+                `SELECT
+                   COALESCE(NULLIF(t.company_name, ''), t.name) AS tenant_name,
+                   COUNT(DISTINCT u.id) AS user_count,
+                   COUNT(DISTINCT CASE
+                     WHEN us.last_activity_at > NOW() - INTERVAL '24 hours' THEN us.user_id
+                   END) AS active_users
+                 FROM tenants t
+                 LEFT JOIN users u ON u.tenant_id = t.id AND u.is_active = TRUE
+                 LEFT JOIN user_sessions us ON us.tenant_id = t.id
+                 WHERE t.license_status = 'active'
+                 GROUP BY t.id, t.name, t.company_name
+                 ORDER BY active_users DESC, tenant_name ASC
+                 LIMIT 10`
+            );
 
             clientMetrics.tenantDistribution = tenantDist;
 

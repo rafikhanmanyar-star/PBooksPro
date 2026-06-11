@@ -33,6 +33,45 @@ export function isAdminRole(role: string | undefined): boolean {
   return r === 'admin' || r === 'super_admin';
 }
 
+const AUTH_CACHE_TTL_MS = 45_000;
+const AUTH_CACHE_MAX = 2_000;
+
+type AuthCacheEntry = {
+  userId: string;
+  tenantId: string;
+  role: string;
+  organizationStatus: string;
+  rejectionReason: string | null;
+  expiresAt: number;
+};
+
+const authUserCache = new Map<string, AuthCacheEntry>();
+
+function authCacheKey(userId: string, tenantId: string): string {
+  return `${userId}:${tenantId}`;
+}
+
+function getCachedAuthUser(userId: string, tenantId: string): AuthCacheEntry | null {
+  const hit = authUserCache.get(authCacheKey(userId, tenantId));
+  if (!hit) return null;
+  if (Date.now() >= hit.expiresAt) {
+    authUserCache.delete(authCacheKey(userId, tenantId));
+    return null;
+  }
+  return hit;
+}
+
+function setCachedAuthUser(entry: Omit<AuthCacheEntry, 'expiresAt'>): void {
+  if (authUserCache.size >= AUTH_CACHE_MAX) {
+    const oldest = authUserCache.keys().next().value;
+    if (oldest) authUserCache.delete(oldest);
+  }
+  authUserCache.set(authCacheKey(entry.userId, entry.tenantId), {
+    ...entry,
+    expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
+  });
+}
+
 /** Validates JWT and re-checks user is active with current role from the database. */
 export async function authMiddleware(
   req: AuthedRequest,
@@ -59,41 +98,71 @@ export async function authMiddleware(
   const token = auth.slice(7);
   try {
     const payload = verifyAccessToken(token);
-    const pool = getPool();
-    const r = await pool.query<{
+    const cached = getCachedAuthUser(payload.sub, payload.tenantId);
+    let user: {
       id: string;
       tenant_id: string;
       role: string;
       is_active: boolean;
       organization_status: string;
       rejection_reason: string | null;
-    }>(
-      `SELECT u.id, ut.tenant_id, ut.role, u.is_active,
-              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
-       FROM user_tenants ut
-       INNER JOIN users u ON u.id = ut.user_id
-       INNER JOIN tenants t ON t.id = ut.tenant_id
-       WHERE ut.user_id = $1 AND ut.tenant_id = $2`,
-      [payload.sub, payload.tenantId]
-    );
-    if (r.rows.length === 0 || !r.rows[0].is_active) {
-      void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
-        captureMonitoringEvent({
-          category: 'authentication',
-          severity: 'warn',
-          message: 'Invalid or expired token',
-          code: 'UNAUTHORIZED',
-          route: req.originalUrl,
-          method: req.method,
-          statusCode: 401,
-          requestId: (req as { requestId?: string }).requestId,
+    };
+
+    if (cached) {
+      user = {
+        id: cached.userId,
+        tenant_id: cached.tenantId,
+        role: cached.role,
+        is_active: true,
+        organization_status: cached.organizationStatus,
+        rejection_reason: cached.rejectionReason,
+      };
+    } else {
+      const pool = getPool();
+      const r = await pool.query<{
+        id: string;
+        tenant_id: string;
+        role: string;
+        is_active: boolean;
+        organization_status: string;
+        rejection_reason: string | null;
+      }>(
+        `SELECT u.id, ut.tenant_id, ut.role, u.is_active,
+                COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+         FROM user_tenants ut
+         INNER JOIN users u ON u.id = ut.user_id
+         INNER JOIN tenants t ON t.id = ut.tenant_id
+         WHERE ut.user_id = $1 AND ut.tenant_id = $2`,
+        [payload.sub, payload.tenantId]
+      );
+      if (r.rows.length === 0 || !r.rows[0].is_active) {
+        void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
+          captureMonitoringEvent({
+            category: 'authentication',
+            severity: 'warn',
+            message: 'Invalid or expired token',
+            code: 'UNAUTHORIZED',
+            route: req.originalUrl,
+            method: req.method,
+            statusCode: 401,
+            requestId: (req as { requestId?: string }).requestId,
+          });
         });
+        sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');
+        return;
+      }
+      user = r.rows[0];
+      setCachedAuthUser({
+        userId: user.id,
+        tenantId: user.tenant_id,
+        role: user.role,
+        organizationStatus: user.organization_status,
+        rejectionReason: user.rejection_reason,
       });
-      sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');
-      return;
     }
-    const user = r.rows[0];
+
     if (isTokenRoleStale(payload.role, user.role)) {
+      authUserCache.delete(authCacheKey(user.id, user.tenant_id));
       sendFailure(res, 401, 'TOKEN_STALE', 'Session expired. Please sign in again.');
       return;
     }

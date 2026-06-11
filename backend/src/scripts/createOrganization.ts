@@ -29,6 +29,7 @@ await import('../loadEnv.js');
 
 import { withTransaction } from '../db/pool.js';
 import { ensureUserTenantMembership } from '../services/auth/userTenantService.js';
+import { assertUserIdentityAvailable } from '../services/auth/userIdentityService.js';
 import { requireLegalAcceptances } from '../services/legal/legalAcceptanceService.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import {
@@ -105,13 +106,10 @@ async function main() {
       throw new Error(`Organization id "${row.id}" already exists (status: ${row.status}).`);
     }
 
-    const userExists = await client.query(
-      `SELECT 1 FROM users WHERE tenant_id = $1 AND LOWER(username) = LOWER($2)`,
-      [tenantId, adminUsername.trim()]
-    );
-    if (userExists.rows.length > 0) {
-      throw new Error(`Username "${adminUsername}" already exists for this tenant.`);
-    }
+    await assertUserIdentityAvailable(client, {
+      email: emailVal,
+      username: adminUsername.trim(),
+    });
 
     const reg = await registerPendingOrganization(client, {
       tenantId,

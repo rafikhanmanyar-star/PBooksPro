@@ -15,25 +15,20 @@ export type VendorBillSettlementApiRow = {
   adjustments: { advanceId: string; amount: number }[];
 };
 
-async function readJournalExpenseAndPaymentAccounts(
-  client: pg.PoolClient,
-  _tenantId: string,
-  journalEntryId: string,
+type JournalLineRow = {
+  account_id: string;
+  debit_amount: string | null;
+  credit_amount: string | null;
+  line_number: number;
+};
+
+function readJournalExpenseAndPaymentAccountsFromLines(
+  lines: JournalLineRow[],
+  tenantId: string,
   cashAmount: number,
-  advanceTotal: number
-): Promise<{ expenseAccountId: string; paymentAccountId: string }> {
-  const lr = await client.query<{
-    account_id: string;
-    debit_amount: string | null;
-    credit_amount: string | null;
-    line_number: number;
-  }>(
-    `SELECT account_id, debit_amount::text, credit_amount::text, line_number
-     FROM journal_lines WHERE journal_entry_id = $1
-     ORDER BY line_number ASC`,
-    [journalEntryId]
-  );
-  const lines = lr.rows ?? [];
+  advanceTotal: number,
+  defaultBankAccountId: string
+): { expenseAccountId: string; paymentAccountId: string } {
   const expenseLine = lines.find((l) => roundMoney(Number(l.debit_amount ?? 0)) > 0);
   if (!expenseLine) throw new Error('Could not infer expense account from settlement journal.');
 
@@ -63,13 +58,7 @@ async function readJournalExpenseAndPaymentAccounts(
     if (!paymentAccountId)
       throw new Error('Could not infer payment (bank/cash) account from settlement journal.');
   } else if (cashRounded <= MONEY_EPS) {
-    const ak = await client.query<{ id: string }>(
-      `SELECT id FROM accounts
-       WHERE tenant_id = $1 AND deleted_at IS NULL AND LOWER(TRIM(type)) = 'bank'
-       ORDER BY name ASC LIMIT 1`,
-      [_tenantId]
-    );
-    paymentAccountId = ak.rows[0]?.id ?? '';
+    paymentAccountId = defaultBankAccountId;
   }
 
   return {
@@ -152,26 +141,62 @@ export async function listVendorBillSettlementsForBills(
   }
 
   const out: VendorBillSettlementApiRow[] = [];
+  const groupList = [...groups.values()];
+  if (groupList.length === 0) return out;
 
-  for (const g of groups.values()) {
+  const settlementBillIds = [...new Set(groupList.map((g) => g.billId))];
+  const journalEntryIds = [...new Set(groupList.map((g) => g.journalEntryId))];
+
+  const [billRows, lineRows, bankRow] = await Promise.all([
+    client.query<{ id: string; contact_id: string | null; vendor_id: string | null }>(
+      `SELECT id, contact_id, vendor_id FROM bills
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND id = ANY($2::text[])`,
+      [tenantId, settlementBillIds]
+    ),
+    client.query<JournalLineRow & { journal_entry_id: string }>(
+      `SELECT journal_entry_id, account_id, debit_amount::text, credit_amount::text, line_number
+       FROM journal_lines WHERE journal_entry_id = ANY($1::text[])
+       ORDER BY journal_entry_id, line_number ASC`,
+      [journalEntryIds]
+    ),
+    client.query<{ id: string }>(
+      `SELECT id FROM accounts
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND LOWER(TRIM(type)) = 'bank'
+       ORDER BY name ASC LIMIT 1`,
+      [tenantId]
+    ),
+  ]);
+
+  const billsById = new Map(billRows.rows.map((row) => [row.id, row]));
+  const linesByJournal = new Map<string, JournalLineRow[]>();
+  for (const row of lineRows.rows) {
+    const list = linesByJournal.get(row.journal_entry_id) ?? [];
+    list.push({
+      account_id: row.account_id,
+      debit_amount: row.debit_amount,
+      credit_amount: row.credit_amount,
+      line_number: row.line_number,
+    });
+    linesByJournal.set(row.journal_entry_id, list);
+  }
+  const defaultBankAccountId = bankRow.rows[0]?.id ?? '';
+
+  for (const g of groupList) {
     const advanceSum = roundMoney(g.adjustments.reduce((s, a) => s + a.amount, 0));
     const totalAmount = roundMoney(advanceSum + g.cashAmount);
 
-    const billR = await client.query<{ contact_id: string | null; vendor_id: string | null }>(
-      `SELECT contact_id, vendor_id FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [g.billId, tenantId]
-    );
-    const bill = billR.rows[0];
+    const bill = billsById.get(g.billId);
     if (!bill) continue;
     const supplierContactId = ((bill.contact_id || bill.vendor_id || '') as string).trim();
     if (!supplierContactId) continue;
 
-    const { expenseAccountId, paymentAccountId } = await readJournalExpenseAndPaymentAccounts(
-      client,
+    const lines = linesByJournal.get(g.journalEntryId) ?? [];
+    const { expenseAccountId, paymentAccountId } = readJournalExpenseAndPaymentAccountsFromLines(
+      lines,
       tenantId,
-      g.journalEntryId,
       g.cashAmount,
-      advanceSum
+      advanceSum,
+      defaultBankAccountId
     );
 
     const d = g.entryDate instanceof Date ? g.entryDate : new Date(g.entryDate as unknown as string);

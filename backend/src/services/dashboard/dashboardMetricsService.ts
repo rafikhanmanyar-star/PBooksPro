@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../constants/globalSystemChart.js';
-import { listAccounts } from '../accountsService.js';
+import { listAccounts, type AccountRow } from '../accountsService.js';
 import { getProfitLossReportJson } from '../profitLossReportService.js';
 import {
   computeTrendPercent,
@@ -35,12 +35,7 @@ async function fetchExcludedCategoryIds(client: pg.PoolClient, tenantId: string)
   return r.rows.map((row) => row.id);
 }
 
-async function sumAccountBalances(
-  client: pg.PoolClient,
-  tenantId: string,
-  types: string[]
-): Promise<number> {
-  const accounts = await listAccounts(client, tenantId);
+function sumAccountBalancesFromList(accounts: AccountRow[], types: string[]): number {
   const typeSet = new Set(types.map((t) => t.toLowerCase()));
   return accounts
     .filter(
@@ -52,8 +47,7 @@ async function sumAccountBalances(
     .reduce((s, a) => s + Number(a.balance), 0);
 }
 
-async function securityDepositBalance(client: pg.PoolClient, tenantId: string): Promise<number> {
-  const accounts = await listAccounts(client, tenantId);
+function securityDepositBalanceFromList(accounts: AccountRow[]): number {
   const sec = accounts.find(
     (a) => a.name.toLowerCase() === 'security deposit' && !a.deleted_at
   );
@@ -207,11 +201,15 @@ async function computeSnapshot(
   filters: DashboardFilters
 ): Promise<RawMetricSnapshot> {
   const { from, to, projectId } = filters;
-  const excludedIds = await fetchExcludedCategoryIds(client, tenantId);
+  const [accounts, excludedIds] = await Promise.all([
+    listAccounts(client, tenantId),
+    fetchExcludedCategoryIds(client, tenantId),
+  ]);
+  const totalCashBalance = sumAccountBalancesFromList(accounts, ['bank', 'cash']);
+  const bankBalance = sumAccountBalancesFromList(accounts, ['bank']);
+  const securityDepositsHeld = securityDepositBalanceFromList(accounts);
 
   const [
-    totalCashBalance,
-    bankBalance,
     accountsReceivable,
     accountsPayable,
     pl,
@@ -222,7 +220,6 @@ async function computeSnapshot(
     collectionStats,
     activeRentalProperties,
     occupancyStats,
-    securityDepositsHeld,
     newCustomers,
     newVendors,
     newRentalAgreements,
@@ -230,8 +227,6 @@ async function computeSnapshot(
     newReceipts,
     newPayments,
   ] = await Promise.all([
-    sumAccountBalances(client, tenantId, ['bank', 'cash']),
-    sumAccountBalances(client, tenantId, ['bank']),
     sumAccountsReceivable(client, tenantId, filters),
     sumAccountsPayable(client, tenantId, filters),
     plTotals(client, tenantId, from, to, projectId),
@@ -285,7 +280,6 @@ async function computeSnapshot(
           WHERE p.tenant_id = $1 AND p.deleted_at IS NULL) AS total`,
       [tenantId]
     ),
-    securityDepositBalance(client, tenantId),
     countInPeriod(
       client,
       `SELECT COUNT(*)::text AS c FROM contacts
@@ -432,12 +426,13 @@ export async function getDashboardMetricsJson(
   tenantId: string,
   filters: DashboardFilters
 ): Promise<DashboardMetricsResponse> {
-  const current = await computeSnapshot(client, tenantId, filters);
   const cmpRange = resolveComparisonRange(filters);
-  let previous: RawMetricSnapshot | undefined;
-  if (cmpRange) {
-    previous = await computeSnapshot(client, tenantId, { ...filters, from: cmpRange.from, to: cmpRange.to });
-  }
+  const [current, previous] = await Promise.all([
+    computeSnapshot(client, tenantId, filters),
+    cmpRange
+      ? computeSnapshot(client, tenantId, { ...filters, from: cmpRange.from, to: cmpRange.to })
+      : Promise.resolve(undefined as RawMetricSnapshot | undefined),
+  ]);
   const groups = snapshotToMetrics(current, previous);
   return {
     filters,

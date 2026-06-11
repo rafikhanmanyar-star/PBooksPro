@@ -1,6 +1,11 @@
 import { useDispatchOnly, useInvoices, useCategories, useRentalAgreements, useStateSelector } from '../hooks/useSelectiveState';
 import { useMemo, useCallback, useState } from 'react';
 import { useNotification } from '../context/NotificationContext';
+import {
+  verifyInvoicesPersistedToServer,
+  formatBulkInvoicePersistMessage,
+} from '../utils/invoiceBulkPersistVerify';
+import { isAccountingBackedByRemoteApi } from '../config/apiUrl';
 import { RecurringInvoiceTemplate, Invoice, InvoiceType, InvoiceStatus } from '../types';
 import {
   fixRecurringNextDueWhenDayOneIsLastDayOfMonth,
@@ -15,7 +20,7 @@ export function useGenerateDueInvoices() {
   const rentalAgreements = useRentalAgreements();
   const rentalInvoiceSettings = useStateSelector((s) => s.rentalInvoiceSettings);
   const dispatch = useDispatchOnly();
-  const { showToast, showConfirm } = useNotification();
+  const { showToast, showConfirm, showAlert } = useNotification();
   const [isGenerating, setIsGenerating] = useState(false);
 
   const templates = useMemo(() => recurringInvoiceTemplates || [], [recurringInvoiceTemplates]);
@@ -107,6 +112,7 @@ export function useGenerateDueInvoices() {
 
     setIsGenerating(true);
     let totalCreated = 0;
+    const createdIds: string[] = [];
     let { maxNum, prefix, padding } = getNextInvoiceNumber();
 
     const rentalAgreementsList = rentalAgreements || [];
@@ -151,6 +157,7 @@ export function useGenerateDueInvoices() {
           padding
         );
         dispatch({ type: 'ADD_INVOICE', payload: invoice });
+        createdIds.push(invoice.id);
         maxNum++;
         count++;
         totalCreated++;
@@ -174,10 +181,20 @@ export function useGenerateDueInvoices() {
       dispatch({
         type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
         payload: { ...rentalInvoiceSettings, nextNumber: maxNum } });
-      showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+      if (isAccountingBackedByRemoteApi()) {
+        const persistResult = await verifyInvoicesPersistedToServer(createdIds);
+        const persistWarning = formatBulkInvoicePersistMessage(persistResult);
+        if (persistWarning) {
+          await showAlert(persistWarning, { title: 'Some invoices not saved' });
+        } else {
+          showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+        }
+      } else {
+        showToast(`Generated ${totalCreated} invoice${totalCreated > 1 ? 's' : ''} successfully.`, 'success');
+      }
     }
     setIsGenerating(false);
-  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast]);
+  }, [templates, todayStr, today, getNextInvoiceNumber, generateSingleInvoice, dispatch, rentalInvoiceSettings, rentalAgreements, showConfirm, showToast, showAlert]);
 
   return { overdueCount: overdueTemplates.length, handleGenerateAllDue, isGenerating };
 }

@@ -32,3 +32,22 @@ export function getOnlineUserIds(tenantId: string): string[] {
   if (m.size === 0) tenantPresence.delete(tenantId);
   return online;
 }
+
+/** Count users with a recent heartbeat across all tenants (same API process). */
+export function getGlobalOnlineUserCount(): number {
+  const now = Date.now();
+  let total = 0;
+  for (const [tenantId, m] of tenantPresence) {
+    let tenantOnline = 0;
+    for (const [uid, ts] of m) {
+      if (now - ts <= PRESENCE_TTL_MS) {
+        tenantOnline++;
+      } else {
+        m.delete(uid);
+      }
+    }
+    total += tenantOnline;
+    if (m.size === 0) tenantPresence.delete(tenantId);
+  }
+  return total;
+}

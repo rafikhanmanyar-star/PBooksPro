@@ -10,7 +10,14 @@
  */
 
 import { useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
-import { _getAppState, _getAppDispatch, _getInitialDataLoading, _subscribeAppState } from '../context/appStateStore';
+import {
+    _getAppState,
+    _getAppDispatch,
+    _getInitialDataLoading,
+    _getAppDataLoading,
+    _getPageChunkLoading,
+    _subscribeAppState,
+} from '../context/appStateStore';
 import { AppState, AppAction } from '../types';
 
 /**
@@ -579,6 +586,18 @@ export function useDispatchOnly(): React.Dispatch<AppAction> {
  */
 export function useInitialDataLoading(): boolean {
     const getSnapshot = useCallback(() => _getInitialDataLoading(), []);
+    return useSyncExternalStore(_subscribeAppState, getSnapshot);
+}
+
+/** True while SQLite/API hydration or lazy page chunks are still loading. */
+export function useAppDataLoading(): boolean {
+    const getSnapshot = useCallback(() => _getAppDataLoading(), []);
+    return useSyncExternalStore(_subscribeAppState, getSnapshot);
+}
+
+/** True while a lazy route chunk is loading (Suspense fallback mounted). */
+export function usePageChunkLoading(): boolean {
+    const getSnapshot = useCallback(() => _getPageChunkLoading(), []);
     return useSyncExternalStore(_subscribeAppState, getSnapshot);
 }
 

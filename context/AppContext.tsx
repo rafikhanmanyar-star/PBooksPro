@@ -56,7 +56,9 @@ import {
   _setAppState,
   _setAppDispatch,
   _setInitialDataLoading,
+  _setApiHydrationLoading,
   enqueueTransactionApiSave,
+  enqueueInvoiceApiSave,
   RENTAL_ROLLUP_SYNC_INVALIDATE_MIN_MS,
   getRentalRollupLastInvalidateAfterSyncAt,
   setRentalRollupLastInvalidateAfterSyncAt,
@@ -129,8 +131,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const setStoredState = useFallback ? setFallbackState : setDbState;
     // Single saver contract: persist only via hook’s saveNow (see doc/DB_STATE_LOADER_SAVER_CONTRACT.md)
     const saveNow = dbStateHelpers?.saveNow;
+    const dbIsLoading = dbStateHelpers?.isLoading ?? false;
     const markDbLoadCompleteRef = useRef(dbStateHelpers?.markDbLoadComplete);
     markDbLoadCompleteRef.current = dbStateHelpers?.markDbLoadComplete;
+
+    useEffect(() => {
+        setIsInitialDataLoading(!isInitializing && dbIsLoading);
+    }, [isInitializing, dbIsLoading]);
 
     // Use a ref to track storedState to avoid initialization issues in dependency arrays
     // Initialize ref with initialState to ensure it's always defined
@@ -609,6 +616,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * Also sync invoice/bill paid amounts after payment transactions (applyTransactionEffect is local-only).
      * Skip when action came from server merge ( _isRemote ) to avoid feedback loops.
      */
+    const lastInvoiceSaveErrorNoticeAtRef = useRef(0);
     const dispatch = useCallback(
         (action: AppAction) => {
             // LAN/API: allow REST sync when AuthContext says logged in OR a JWT is present (header uses token; context can lag).
@@ -1230,9 +1238,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 const inv = a.payload as Invoice;
                 if (!inv?.id) return;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
-                    getAppStateApiService()
-                        .saveInvoice(inv)
-                        .then((saved) => {
+                    void enqueueInvoiceApiSave(async () => {
+                        try {
+                            const saved = await getAppStateApiService().saveInvoice(inv);
                             if (saved && typeof saved.version === 'number') {
                                 dispatch({
                                     type: 'UPDATE_INVOICE',
@@ -1240,10 +1248,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     _isRemote: true,
                                 } as AppAction);
                             }
-                        })
-                        .catch((err) => {
+                        } catch (err) {
                             logger.warnCategory('sync', '⚠️ Failed to persist invoice to API:', err);
-                        });
+                            const now = Date.now();
+                            if (now - lastInvoiceSaveErrorNoticeAtRef.current > 10_000) {
+                                lastInvoiceSaveErrorNoticeAtRef.current = now;
+                                notifyDatabaseError(new Error(formatApiErrorMessage(err)), {
+                                    title: 'Could not save to server',
+                                    context:
+                                        'This invoice was not written to PostgreSQL. Other users cannot see it until it is saved successfully.',
+                                });
+                            }
+                        }
+                    });
                 });
             } else if (a.type === 'ADD_BILL' || a.type === 'UPDATE_BILL') {
                 const bill = a.payload as Bill;
@@ -1756,6 +1773,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      */
     const refreshFromApi = useCallback(async (_onCriticalLoaded?: () => void) => {
         if (!isAuthenticated || isLocalOnlyMode()) return;
+        let hydrationStarted = false;
         try {
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
             const base = stateRef.current;
@@ -1785,6 +1803,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             let merged: AppState;
             let nextSyncCursor: string;
+
+            if (!baselineHasCoreData) {
+                hydrationStarted = true;
+                _setApiHydrationLoading(true);
+            }
 
             if (lastSync && cursorMatchesTenant && baselineHasCoreData) {
                 try {
@@ -1869,6 +1892,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             _onCriticalLoaded?.();
         } catch (e) {
             logger.warnCategory('sync', '⚠️ refreshFromApi failed:', e);
+        } finally {
+            if (hydrationStarted) {
+                _setApiHydrationLoading(false);
+            }
         }
     }, [isAuthenticated, dispatch, setStoredState, currentTenantId, auth.user?.role]);
 
@@ -1938,6 +1965,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             tenantId?: string;
             type?: string;
             action?: 'created' | 'updated' | 'deleted';
+            id?: string;
             data?: unknown;
         }) => {
             if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
@@ -1946,9 +1974,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id) {
                 return;
             }
-            /* Apply bill/invoice patches immediately so other sessions see paid status without waiting for debounced full refresh (multi-user). */
+            /* Apply bill/invoice patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
             const d = payload?.data;
-            if (
+            if (payload.type === 'bill' && payload.action === 'deleted' && typeof payload.id === 'string') {
+                baseDispatch({
+                    type: 'DELETE_BILL',
+                    payload: payload.id,
+                    _isRemote: true,
+                } as AppAction);
+            } else if (payload.type === 'invoice' && payload.action === 'deleted') {
+                const deletedId =
+                    typeof payload.id === 'string'
+                        ? payload.id
+                        : d &&
+                            typeof d === 'object' &&
+                            d !== null &&
+                            'id' in d &&
+                            typeof (d as { id: unknown }).id === 'string'
+                          ? (d as { id: string }).id
+                          : undefined;
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_INVOICE',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (
                 payload.action !== 'deleted' &&
                 d &&
                 typeof d === 'object' &&
@@ -1963,9 +2015,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         _isRemote: true,
                     } as AppAction);
                 } else if (payload.type === 'invoice') {
+                    const inv = d as Invoice;
+                    const exists = latestStateRef.current.invoices.some((i) => i.id === inv.id);
                     baseDispatch({
-                        type: 'UPDATE_INVOICE',
-                        payload: d as Invoice,
+                        type: exists ? 'UPDATE_INVOICE' : 'ADD_INVOICE',
+                        payload: inv,
                         _isRemote: true,
                     } as AppAction);
                 }

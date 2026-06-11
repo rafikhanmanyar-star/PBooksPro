@@ -4,7 +4,7 @@ import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
 import { Page, TransactionType } from './types';
-import { useStateSelector, useDispatchOnly, useInitialDataLoading } from './hooks/useSelectiveState';
+import { useStateSelector, useDispatchOnly, useInitialDataLoading, useAppDataLoading } from './hooks/useSelectiveState';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProgressDisplay from './components/ui/ProgressDisplay';
 import CustomKeyboard from './components/ui/CustomKeyboard';
@@ -50,6 +50,7 @@ import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
 import LoadingShell from './components/ui/LoadingShell';
 import PageRouteSkeleton from './components/ui/PageRouteSkeleton';
+import PageDataLoadingOverlay from './components/ui/PageDataLoadingOverlay';
 import { OfflineProvider } from './context/OfflineContext';
 import MobileOfflineWarning from './components/ui/MobileOfflineWarning';
 import { ContactsApiRepository } from './services/api/repositories/contactsApi';
@@ -120,6 +121,7 @@ const App: React.FC = () => {
   const currentUserRole = useStateSelector(s => s.currentUser?.role);
   const dispatch = useDispatchOnly();
   const isInitialDataLoading = useInitialDataLoading();
+  const isAppDataLoading = useAppDataLoading();
   const { isOpen: isCustomKeyboardOpen, closeKeyboard } = useKeyboard();
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
@@ -319,49 +321,6 @@ const App: React.FC = () => {
       window.removeEventListener('popstate', applySettingsRoute);
     };
   }, [isAuthenticated, dispatch]);
-
-  // Delay showing loading overlay for quick navigations, but ensure minimum display time
-  useEffect(() => {
-    if (isPending) {
-      // Clear any existing timeouts
-      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-      if (minLoadingTimeRef.current) {
-        clearTimeout(minLoadingTimeRef.current);
-        minLoadingTimeRef.current = null;
-      }
-
-      // Show loading after small delay
-      loadingTimeoutRef.current = setTimeout(() => {
-        setShowLoadingOverlay(true);
-      }, 100); // Reduced from 150ms to 100ms for faster feedback
-
-      return () => {
-        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-      };
-    } else {
-      // Clear the show timeout if navigation completes before it triggers
-      if (loadingTimeoutRef.current) {
-        clearTimeout(loadingTimeoutRef.current);
-        loadingTimeoutRef.current = null;
-      }
-
-      // When navigation completes, ensure loading shows for minimum time (300ms) for better UX
-      if (showLoadingOverlay) {
-        // Already showing, wait minimum time before hiding
-        minLoadingTimeRef.current = setTimeout(() => {
-          setShowLoadingOverlay(false);
-          minLoadingTimeRef.current = null;
-        }, 300); // Minimum display time
-      }
-
-      return () => {
-        if (minLoadingTimeRef.current) {
-          clearTimeout(minLoadingTimeRef.current);
-          minLoadingTimeRef.current = null;
-        }
-      };
-    }
-  }, [isPending, showLoadingOverlay]);
 
   // Preload pages for instant navigation
   usePagePreloader();
@@ -643,6 +602,56 @@ const App: React.FC = () => {
     });
   }, [activeGroup]);
 
+  const isPageGroupMounting = !visitedGroups.has(activeGroup);
+  const isPageDataNotReady = isAppDataLoading || isPageGroupMounting;
+
+  // Show loading alert on navigation when route data or lazy chunks are not ready yet
+  useEffect(() => {
+    if (isPageDataNotReady) {
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      setShowLoadingOverlay(true);
+      return;
+    }
+
+    if (isPending) {
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+      if (minLoadingTimeRef.current) {
+        clearTimeout(minLoadingTimeRef.current);
+        minLoadingTimeRef.current = null;
+      }
+
+      loadingTimeoutRef.current = setTimeout(() => {
+        setShowLoadingOverlay(true);
+      }, 100);
+
+      return () => {
+        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+      };
+    }
+
+    if (loadingTimeoutRef.current) {
+      clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = null;
+    }
+
+    if (showLoadingOverlay) {
+      minLoadingTimeRef.current = setTimeout(() => {
+        setShowLoadingOverlay(false);
+        minLoadingTimeRef.current = null;
+      }, 300);
+    }
+
+    return () => {
+      if (minLoadingTimeRef.current) {
+        clearTimeout(minLoadingTimeRef.current);
+        minLoadingTimeRef.current = null;
+      }
+    };
+  }, [isPending, showLoadingOverlay, isPageDataNotReady]);
+
   // Redundant SW check removed as it is now handled in PWAContext/Header
 
   const getPageTitle = (page: Page): string => {
@@ -868,7 +877,7 @@ const App: React.FC = () => {
         >
           <DemoExploreBanner />
           <TrialUpgradeBanner />
-          <Header title={getPageTitle(currentPage)} isNavigating={isPending} />
+          <Header title={getPageTitle(currentPage)} isNavigating={isPending || isPageDataNotReady} />
 
           <StabilityBanner />
 
@@ -899,26 +908,8 @@ const App: React.FC = () => {
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
 
-            {/* Loading Overlay - Shows when navigating between pages (excluded for PROJECT, RENTAL, INVESTMENT, and PM_CONFIG groups to avoid duplicates with Suspense) */}
-            {showLoadingOverlay && activeGroup !== 'PROJECT' && activeGroup !== 'PROJECT_SELLING' && activeGroup !== 'RENTAL' && activeGroup !== 'INVESTMENT' && activeGroup !== 'PM_CONFIG' && activeGroup !== 'PERSONAL_TRANSACTIONS' && activeGroup !== 'PAYROLL' && activeGroup !== 'ACCOUNTING' && (
-              <div className="absolute inset-0 bg-app-bg/90 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-200 animate-fade-in pointer-events-none" aria-hidden="true">
-                <div className="flex flex-col items-center gap-4">
-                  <div className="relative">
-                    <div className="w-16 h-16 border-4 border-gray-200 border-t-green-600 rounded-full animate-spin"></div>
-                    <div className="absolute inset-0 w-16 h-16 border-4 border-transparent border-r-green-400 rounded-full animate-spin" style={{ animationDirection: 'reverse', animationDuration: '1.5s' }}></div>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-gray-700 text-base font-semibold mb-1">Loading Records</p>
-                    <p className="text-gray-500 text-sm">{getPageTitle(currentPage)}</p>
-                  </div>
-                  {/* Progress dots animation */}
-                  <div className="flex gap-1.5 mt-2">
-                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
-                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                    <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                  </div>
-                </div>
-              </div>
+            {showLoadingOverlay && (
+              <PageDataLoadingOverlay pageTitle={getPageTitle(currentPage)} />
             )}
           </main>
 

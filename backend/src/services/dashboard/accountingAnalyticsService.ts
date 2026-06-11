@@ -2,7 +2,13 @@ import type pg from 'pg';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../constants/globalSystemChart.js';
 import { listAccounts } from '../accountsService.js';
 import { getBalanceSheetReportJson } from '../balanceSheetReportService.js';
-import { getProfitLossReportJson } from '../profitLossReportService.js';
+import {
+  computeProfitLossFromPrepared,
+  extractPlRevenueAndExpenses,
+  getProfitLossReportJson,
+  prepareProfitLossState,
+  type ProfitLossReportJson,
+} from '../profitLossReportService.js';
 import { parseDateOnly, toDateOnlyString } from './dashboardMetricsHelpers.js';
 import type {
   AccountingAnalyticsFilters,
@@ -44,18 +50,8 @@ async function excludedCategoryIds(client: pg.PoolClient, tenantId: string): Pro
   return r.rows.map((row) => row.id);
 }
 
-function plExpenseTotal(pl: Awaited<ReturnType<typeof getProfitLossReportJson>>): number {
-  const expenseItems = [
-    ...(Array.isArray(pl.cost_of_sales) ? pl.cost_of_sales : []),
-    ...(Array.isArray(pl.operating_expenses) ? pl.operating_expenses : []),
-    ...(Array.isArray(pl.finance_cost) ? pl.finance_cost : []),
-    ...(Array.isArray(pl.tax) ? pl.tax : []),
-  ] as { amount?: number }[];
-  const fromLines = expenseItems.reduce((s, row) => s + Number(row.amount ?? 0), 0);
-  if (fromLines > 0) return fromLines;
-  const revenue = Number(pl.total_revenue ?? 0);
-  const net = Number(pl.net_profit ?? 0);
-  return Math.max(0, revenue - net);
+function plExpenseTotal(pl: Pick<ProfitLossReportJson, 'total_revenue' | 'net_profit' | 'cost_of_sales' | 'operating_expenses' | 'finance_cost' | 'tax'>): number {
+  return extractPlRevenueAndExpenses(pl).expenses;
 }
 
 export async function getAccountingAnalyticsJson(
@@ -87,14 +83,16 @@ export async function getAccountingAnalyticsJson(
     { id: 'netProfit', label: 'Net Profit (period)', value: netProfit, format: 'currency' },
   ];
 
+  const prepared = await prepareProfitLossState(client, tenantId, `${year}-12-31`);
   const incomeVsExpenseTrend = await Promise.all(
     monthRangeForYear(year).map(async (m) => {
-      const monthPl = await getProfitLossReportJson(client, tenantId, m.from, m.to, project);
+      const monthPl = await computeProfitLossFromPrepared(prepared, m.from, m.to, project);
+      const { revenue, expenses } = extractPlRevenueAndExpenses(monthPl);
       return {
         month: m.key,
         label: m.label,
-        income: Number(monthPl.total_revenue ?? 0),
-        expenses: plExpenseTotal(monthPl),
+        income: revenue,
+        expenses,
       };
     })
   );

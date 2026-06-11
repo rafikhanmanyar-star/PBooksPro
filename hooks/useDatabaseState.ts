@@ -11,6 +11,7 @@ import { getDatabaseService } from '../services/database/databaseService';
 import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { isMobileDevice } from '../utils/platformDetection';
+import { _setAppDataLoading } from '../context/appStateStore';
 
 /** Local-only: no debounce — every state push schedules an immediate save (critical path uses saveNow anyway). */
 const PERSIST_DEBOUNCE_MS = isLocalOnlyMode() ? 0 : 2000;
@@ -387,7 +388,11 @@ export function useDatabaseState<T extends AppState>(
         hasLoadedFromDbRef.current = true;
     }, []);
 
-    return [storedValue, setValue, { saveNow, markDbLoadComplete }];
+    useEffect(() => {
+        _setAppDataLoading(isLoading);
+    }, [isLoading]);
+
+    return [storedValue, setValue, { saveNow, markDbLoadComplete, isLoading }];
 }
 
 export type UseDatabaseStateResult<T> = [
@@ -396,6 +401,7 @@ export type UseDatabaseStateResult<T> = [
     {
         saveNow: (value?: T, options?: { disableSyncQueueing?: boolean }) => Promise<void>;
         markDbLoadComplete: () => void;
+        isLoading: boolean;
     }
 ];
 export default useDatabaseState;

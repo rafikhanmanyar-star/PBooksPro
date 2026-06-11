@@ -86,6 +86,8 @@ interface SystemMetrics {
     };
 }
 
+const METRICS_REFRESH_MS = 60_000;
+
 const SystemMonitoring: React.FC = () => {
     const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
     const [loading, setLoading] = useState(true);
@@ -95,10 +97,15 @@ const SystemMonitoring: React.FC = () => {
     useEffect(() => {
         loadMetrics();
 
-        if (autoRefresh) {
-            const interval = setInterval(loadMetrics, 10000); // Refresh every 10 seconds
-            return () => clearInterval(interval);
-        }
+        if (!autoRefresh) return;
+
+        const tick = () => {
+            if (document.visibilityState === 'visible') {
+                void loadMetrics();
+            }
+        };
+        const interval = setInterval(tick, METRICS_REFRESH_MS);
+        return () => clearInterval(interval);
     }, [autoRefresh]);
 
     const loadMetrics = async () => {
@@ -182,7 +189,7 @@ const SystemMonitoring: React.FC = () => {
                             checked={autoRefresh}
                             onChange={(e) => setAutoRefresh(e.target.checked)}
                         />
-                        Auto-refresh (10s)
+                        Auto-refresh (60s)
                     </label>
                     <button
                         onClick={loadMetrics}
