@@ -70,9 +70,11 @@ export type DemoSeedIds = {
   inv001: string;
   inv002: string;
   inv003: string;
+  inv004: string;
   invProj001: string;
   invProj002: string;
   invProj003: string;
+  invProj004: string;
   buyerImran: string;
   paHorizon: string;
   con001: string;
@@ -82,6 +84,14 @@ export type DemoSeedIds = {
   bill002: string;
   bill003: string;
   bill004: string;
+  bill005: string;
+  bill006: string;
+  bill007: string;
+  bill008: string;
+  bill009: string;
+  bill010: string;
+  bill011: string;
+  bill012: string;
   accOperating: string;
   accEscrow: string;
   catMaterials: string;
@@ -126,9 +136,11 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     inv001: `${p}-inv-001`,
     inv002: `${p}-inv-002`,
     inv003: `${p}-inv-003`,
+    inv004: `${p}-inv-004`,
     invProj001: `${p}-inv-proj-001`,
     invProj002: `${p}-inv-proj-002`,
     invProj003: `${p}-inv-proj-003`,
+    invProj004: `${p}-inv-proj-004`,
     buyerImran: `${p}-buyer-imran`,
     paHorizon: `${p}-pa-horizon`,
     con001: `${p}-con-001`,
@@ -138,6 +150,14 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     bill002: `${p}-bill-cmt-001`,
     bill003: `${p}-bill-elc-001`,
     bill004: `${p}-bill-stl-002`,
+    bill005: `${p}-bill-cmt-002`,
+    bill006: `${p}-bill-cmt-003`,
+    bill007: `${p}-bill-cmt-004`,
+    bill008: `${p}-bill-elc-002`,
+    bill009: `${p}-bill-stl-003`,
+    bill010: `${p}-bill-stl-004`,
+    bill011: `${p}-bill-elc-003`,
+    bill012: `${p}-bill-elc-004`,
     accOperating: `${p}-acc-operating`,
     accEscrow: `${p}-acc-escrow`,
     catMaterials: `${p}-cat-materials`,
@@ -520,6 +540,24 @@ export async function seedDemoBusinessData(
   );
 
   await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, property_id, agreement_id, rental_month, building_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 75000, 75000, 'Paid', $5, $6, 'Rental', $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.inv004,
+      tenantId,
+      'INV-RENT-004',
+      ids.tenantAhmed,
+      monthStart(1),
+      monthStart(1),
+      ids.prop101,
+      ids.agr101,
+      rentalMonth(1),
+      ids.bldSkyline,
+    ]
+  );
+
+  await client.query(
     `INSERT INTO project_agreements (id, tenant_id, agreement_number, client_id, project_id, unit_ids, selling_price, issue_date, description, status, version, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, 8500000, $7, $8, 'Active', 1, NOW(), NOW())
      ON CONFLICT (id) DO UPDATE SET selling_price = EXCLUDED.selling_price, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL`,
@@ -600,6 +638,25 @@ export async function seedDemoBusinessData(
     ]
   );
 
+  const projInv4Date = `${y}-08-15`;
+  await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, description, project_id, unit_id, agreement_id, category_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 1600000, 800000, 'Partially Paid', $5, $5, 'Installment', $6, $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.invProj004,
+      tenantId,
+      'P-INV-004',
+      ids.buyerImran,
+      projInv4Date,
+      'Installment 4/5 — Unit A-101',
+      ids.projHorizon,
+      ids.unitH1,
+      ids.paHorizon,
+      SYS_UNIT_SELL,
+    ]
+  );
+
   const contracts: Array<[string, string, string, string, number, string]> = [
     [ids.con001, 'CON-2024-001', 'Structural Steel Package', ids.vendorSteel, 1850000, 'Active'],
     [ids.con002, 'CON-2024-002', 'Cement Supply Agreement', ids.vendorCement, 920000, 'Active'],
@@ -614,32 +671,27 @@ export async function seedDemoBusinessData(
     );
   }
 
-  const bills: Array<[string, string, string, string, number, number, string, string]> = [
-    [ids.bill001, 'BILL-STL-001', ids.vendorSteel, 'Steel procurement — Phase II', 185000, 185000, 'Paid', ids.con001],
-    [ids.bill002, 'BILL-CMT-001', ids.vendorCement, 'Cement delivery — Phase II', 92000, 0, 'Unpaid', ids.con002],
-    [ids.bill003, 'BILL-ELC-001', ids.vendorElectric, 'Electrical fittings — Phase II', 34000, 34000, 'Paid', ids.con003],
-    [ids.bill004, 'BILL-STL-002', ids.vendorSteel, 'Second steel delivery — Phase II', 120000, 60000, 'Partially Paid', ids.con001],
+  type BillSeed = [string, string, string, string, number, number, string, string, string, string];
+  const bills: BillSeed[] = [
+    [ids.bill001, 'BILL-STL-001', ids.vendorSteel, 'Steel procurement — Phase II', 185000, 185000, 'Paid', ids.con001, ids.projHorizon, ids.catMaterials],
+    [ids.bill004, 'BILL-STL-002', ids.vendorSteel, 'Second steel delivery — Phase II', 120000, 60000, 'Partially Paid', ids.con001, ids.projHorizon, ids.catMaterials],
+    [ids.bill009, 'BILL-STL-003', ids.vendorSteel, 'Steel reinforcement — Riverside', 95000, 95000, 'Paid', ids.con003, ids.projRiverside, ids.catMaterials],
+    [ids.bill010, 'BILL-STL-004', ids.vendorSteel, 'Structural steel — Horizon podium', 78000, 0, 'Unpaid', ids.con001, ids.projHorizon, ids.catMaterials],
+    [ids.bill002, 'BILL-CMT-001', ids.vendorCement, 'Cement delivery — Phase II', 92000, 0, 'Unpaid', ids.con002, ids.projHorizon, ids.catCement],
+    [ids.bill005, 'BILL-CMT-002', ids.vendorCement, 'Ready-mix concrete — Horizon', 68000, 68000, 'Paid', ids.con002, ids.projHorizon, ids.catCement],
+    [ids.bill006, 'BILL-CMT-003', ids.vendorCement, 'Foundation cement — Riverside', 54000, 54000, 'Paid', ids.con002, ids.projRiverside, ids.catCement],
+    [ids.bill007, 'BILL-CMT-004', ids.vendorCement, 'Block work cement — Horizon', 41000, 20000, 'Partially Paid', ids.con002, ids.projHorizon, ids.catCement],
+    [ids.bill003, 'BILL-ELC-001', ids.vendorElectric, 'Electrical fittings — Phase II', 34000, 34000, 'Paid', ids.con003, ids.projHorizon, ids.catElectrical],
+    [ids.bill008, 'BILL-ELC-002', ids.vendorElectric, 'Wiring package — Riverside', 52000, 52000, 'Paid', ids.con003, ids.projRiverside, ids.catElectrical],
+    [ids.bill011, 'BILL-ELC-003', ids.vendorElectric, 'Panel boards — Horizon', 38000, 0, 'Unpaid', ids.con003, ids.projHorizon, ids.catElectrical],
+    [ids.bill012, 'BILL-ELC-004', ids.vendorElectric, 'Generator hookup — Riverside', 29000, 15000, 'Partially Paid', ids.con003, ids.projRiverside, ids.catElectrical],
   ];
-  for (const [id, number, vendorId, desc, amount, paid, status, contractId] of bills) {
+  for (const [id, number, vendorId, desc, amount, paid, status, contractId, projectId, categoryId] of bills) {
     await client.query(
       `INSERT INTO bills (id, tenant_id, bill_number, vendor_id, amount, paid_amount, status, issue_date, due_date, description, project_id, contract_id, category_id, version, created_at, updated_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, NOW(), NOW())
        ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL`,
-      [
-        id,
-        tenantId,
-        number,
-        vendorId,
-        amount,
-        paid,
-        status,
-        issueDate,
-        dueDate,
-        desc,
-        ids.projHorizon,
-        contractId,
-        ids.catMaterials,
-      ]
+      [id, tenantId, number, vendorId, amount, paid, status, issueDate, dueDate, desc, projectId, contractId, categoryId]
     );
   }
 
@@ -658,107 +710,326 @@ export async function seedDemoBusinessData(
     );
   }
 
-  type TxRow = [
-    string,
-    string,
-    number,
-    string,
-    string,
-    string | null,
-    string | null,
-    string | null,
-    string | null,
-    string | null,
-    string | null,
-    string | null,
-  ];
+  type DemoTxSeed = {
+    id: string;
+    type: 'Income' | 'Expense';
+    amount: number;
+    date: string;
+    desc: string;
+    categoryId: string;
+    propertyId?: string | null;
+    contactId?: string | null;
+    invoiceId?: string | null;
+    projectId?: string | null;
+    buildingId?: string | null;
+    vendorId?: string | null;
+    billId?: string | null;
+  };
 
-  const txRows: TxRow[] = [
-    [`${ids.inv001}-pay`, 'Income', 75000, issueDate, 'Rent received — Unit 101', SYS_RENT, ids.prop101, ids.tenantAhmed, ids.inv001, null, ids.bldSkyline, null],
-    [`${ids.inv002}-pay`, 'Income', 45000, issueDate, 'Partial rent — Unit 201', SYS_RENT, ids.prop201, ids.tenantFatima, ids.inv002, null, ids.bldHarbor, null],
-    [`${ids.invProj001}-pay`, 'Income', 2500000, projInv1Date, 'Booking installment — Unit A-101', SYS_UNIT_SELL, null, ids.buyerImran, ids.invProj001, ids.projHorizon, null, null],
-    [`${ids.invProj002}-pay`, 'Income', 1000000, projInv2Date, 'Partial installment — Unit A-101', SYS_UNIT_SELL, null, ids.buyerImran, ids.invProj002, ids.projHorizon, null, null],
-    [`${prefix}-tx-exp-1`, 'Expense', 185000, issueDate, 'Steel procurement — Horizon project', ids.catMaterials, null, null, null, ids.projHorizon, null, ids.vendorSteel],
-    [`${prefix}-tx-exp-2`, 'Expense', 92000, issueDate, 'Cement delivery — Horizon project', ids.catCement, null, null, null, ids.projHorizon, null, ids.vendorCement],
-    [`${prefix}-tx-exp-3`, 'Expense', 34000, issueDate, 'Electrical fittings — Riverside', ids.catElectrical, null, null, null, ids.projRiverside, null, ids.vendorElectric],
-    [`${prefix}-tx-own-pay`, 'Expense', 68000, issueDate, 'Owner payout — Ali Khan (Unit 101)', SYS_PM_COST, ids.prop101, ids.ownerAli, null, null, ids.bldSkyline, null],
-    [`${prefix}-tx-brok`, 'Expense', 45000, monthStart(3), 'Broker commission — Harbor lease', SYS_BROK_FEE, ids.prop201, null, null, null, ids.bldHarbor, null],
-    [`${prefix}-tx-maint`, 'Expense', 25000, monthStart(1), 'Elevator maintenance — Skyline Tower', SYS_BLD_MAINT, null, null, null, null, ids.bldSkyline, null],
-    [`${prefix}-tx-util`, 'Expense', 8500, monthStart(4), 'Office utilities', SYS_BLD_MAINT, null, null, null, null, null, null],
-    [`${prefix}-tx-mkt`, 'Expense', 15000, monthStart(5), 'Project marketing expense', SYS_PM_COST, null, null, null, ids.projHorizon, null, null],
-  ];
+  const txRows: DemoTxSeed[] = [];
 
-  for (let offset = 1; offset <= 5; offset += 1) {
-    const rentDate = monthStart(offset);
-    const rentMonth = rentalMonth(offset);
-    txRows.push([
-      `${prefix}-tx-rent-101-${offset}`,
-      'Income',
-      75000,
-      rentDate,
-      `Rent received — Unit 101 (${rentMonth})`,
-      SYS_RENT,
-      ids.prop101,
-      ids.tenantAhmed,
-      null,
-      null,
-      ids.bldSkyline,
-      null,
-    ]);
-    if (offset <= 3) {
-      txRows.push([
-        `${prefix}-tx-rent-201-${offset}`,
-        'Income',
-        offset === 1 ? 95000 : 47500,
-        rentDate,
-        offset === 1 ? `Rent received — Unit 201 (${rentMonth})` : `Partial rent — Unit 201 (${rentMonth})`,
-        SYS_RENT,
-        ids.prop201,
-        ids.tenantFatima,
-        null,
-        null,
-        ids.bldHarbor,
-        null,
-      ]);
-    }
-    if (offset % 2 === 0) {
-      txRows.push([
-        `${prefix}-tx-proj-exp-${offset}`,
-        'Expense',
-        55000 + offset * 12000,
-        rentDate,
-        `Site expenses — Horizon (${rentMonth})`,
-        ids.catLabor,
-        null,
-        null,
-        null,
-        ids.projHorizon,
-        null,
-        ids.vendorSteel,
-      ]);
-    }
+  const pushTx = (row: DemoTxSeed) => txRows.push(row);
+
+  // Tenants — 4 rent receipts each
+  pushTx({
+    id: `${ids.inv001}-pay`,
+    type: 'Income',
+    amount: 75000,
+    date: issueDate,
+    desc: 'Rent received — Unit 101 (current month)',
+    categoryId: SYS_RENT,
+    propertyId: ids.prop101,
+    contactId: ids.tenantAhmed,
+    invoiceId: ids.inv001,
+    buildingId: ids.bldSkyline,
+  });
+  pushTx({
+    id: `${ids.inv004}-pay`,
+    type: 'Income',
+    amount: 75000,
+    date: monthStart(1),
+    desc: 'Rent received — Unit 101 (prior month)',
+    categoryId: SYS_RENT,
+    propertyId: ids.prop101,
+    contactId: ids.tenantAhmed,
+    invoiceId: ids.inv004,
+    buildingId: ids.bldSkyline,
+  });
+  pushTx({
+    id: `${prefix}-tx-rent-ahmed-2`,
+    type: 'Income',
+    amount: 75000,
+    date: monthStart(2),
+    desc: `Rent received — Unit 101 (${rentalMonth(2)})`,
+    categoryId: SYS_RENT,
+    propertyId: ids.prop101,
+    contactId: ids.tenantAhmed,
+    buildingId: ids.bldSkyline,
+  });
+  pushTx({
+    id: `${prefix}-tx-rent-ahmed-3`,
+    type: 'Income',
+    amount: 75000,
+    date: monthStart(3),
+    desc: `Rent received — Unit 101 (${rentalMonth(3)})`,
+    categoryId: SYS_RENT,
+    propertyId: ids.prop101,
+    contactId: ids.tenantAhmed,
+    buildingId: ids.bldSkyline,
+  });
+
+  pushTx({
+    id: `${ids.inv002}-pay`,
+    type: 'Income',
+    amount: 45000,
+    date: issueDate,
+    desc: 'Partial rent — Unit 201 (current month)',
+    categoryId: SYS_RENT,
+    propertyId: ids.prop201,
+    contactId: ids.tenantFatima,
+    invoiceId: ids.inv002,
+    buildingId: ids.bldHarbor,
+  });
+  for (let i = 1; i <= 3; i += 1) {
+    pushTx({
+      id: `${prefix}-tx-rent-fatima-${i}`,
+      type: 'Income',
+      amount: i === 1 ? 95000 : 47500,
+      date: monthStart(i),
+      desc: `Rent received — Unit 201 (${rentalMonth(i)})`,
+      categoryId: SYS_RENT,
+      propertyId: ids.prop201,
+      contactId: ids.tenantFatima,
+      buildingId: ids.bldHarbor,
+    });
   }
 
-  for (const [id, type, amount, date, desc, categoryId, propertyId, contactId, invoiceId, projectId, buildingId, vendorId] of txRows) {
+  for (let i = 1; i <= 4; i += 1) {
+    pushTx({
+      id: `${prefix}-tx-rent-hassan-${i}`,
+      type: 'Income',
+      amount: i === 4 ? 36000 : 72000,
+      date: monthStart(i),
+      desc: `Rent received — Unit 102 (${rentalMonth(i)})`,
+      categoryId: SYS_RENT,
+      propertyId: ids.prop102,
+      contactId: ids.tenantHassan,
+      buildingId: ids.bldSkyline,
+    });
+  }
+
+  // Client — 4 installment receipts
+  pushTx({
+    id: `${ids.invProj001}-pay`,
+    type: 'Income',
+    amount: 2500000,
+    date: projInv1Date,
+    desc: 'Booking installment — Unit A-101',
+    categoryId: SYS_UNIT_SELL,
+    contactId: ids.buyerImran,
+    invoiceId: ids.invProj001,
+    projectId: ids.projHorizon,
+  });
+  pushTx({
+    id: `${ids.invProj002}-pay`,
+    type: 'Income',
+    amount: 1000000,
+    date: projInv2Date,
+    desc: 'Partial installment — Unit A-101',
+    categoryId: SYS_UNIT_SELL,
+    contactId: ids.buyerImran,
+    invoiceId: ids.invProj002,
+    projectId: ids.projHorizon,
+  });
+  pushTx({
+    id: `${ids.invProj004}-pay`,
+    type: 'Income',
+    amount: 800000,
+    date: projInv4Date,
+    desc: 'Partial installment 4 — Unit A-101',
+    categoryId: SYS_UNIT_SELL,
+    contactId: ids.buyerImran,
+    invoiceId: ids.invProj004,
+    projectId: ids.projHorizon,
+  });
+  pushTx({
+    id: `${prefix}-tx-proj-imran-token`,
+    type: 'Income',
+    amount: 500000,
+    date: monthStart(2),
+    desc: 'Token money — Unit A-101',
+    categoryId: SYS_UNIT_SELL,
+    contactId: ids.buyerImran,
+    projectId: ids.projHorizon,
+  });
+
+  // Owners — 4 payouts each
+  const aliPayouts: Array<[string, string, number]> = [
+    [ids.prop101, 'Unit 101', 68000],
+    [ids.prop102, 'Unit 102', 62000],
+    [ids.prop103, 'Unit 103', 61000],
+    [ids.prop104, 'Unit 104', 65000],
+  ];
+  for (let i = 0; i < aliPayouts.length; i += 1) {
+    const [propId, label, amount] = aliPayouts[i];
+    pushTx({
+      id: `${prefix}-tx-own-ali-${propId}`,
+      type: 'Expense',
+      amount,
+      date: monthStart(i + 1),
+      desc: `Owner payout — Ali Khan (${label})`,
+      categoryId: SYS_PM_COST,
+      propertyId: propId,
+      contactId: ids.ownerAli,
+      buildingId: ids.bldSkyline,
+    });
+  }
+
+  const saraPayouts: Array<[string, string, number]> = [
+    [ids.prop201, 'Unit 201', 82000],
+    [ids.prop202, 'Unit 202', 78000],
+    [ids.prop203, 'Unit 203', 76000],
+    [ids.prop204, 'Unit 204', 80000],
+  ];
+  for (let i = 0; i < saraPayouts.length; i += 1) {
+    const [propId, label, amount] = saraPayouts[i];
+    pushTx({
+      id: `${prefix}-tx-own-sara-${propId}`,
+      type: 'Expense',
+      amount,
+      date: monthStart(i + 1),
+      desc: `Owner payout — Sara Malik (${label})`,
+      categoryId: SYS_PM_COST,
+      propertyId: propId,
+      contactId: ids.ownerSara,
+      buildingId: ids.bldHarbor,
+    });
+  }
+
+  // Vendors — 4 bill payments / expenses each
+  const vendorSteelTx: Array<[string, number, string, string | null, string]> = [
+    [ids.bill001, 185000, 'Steel procurement — Horizon', ids.projHorizon, monthStart(1)],
+    [ids.bill004, 60000, 'Partial steel delivery — Horizon', ids.projHorizon, monthStart(2)],
+    [ids.bill009, 95000, 'Steel reinforcement — Riverside', ids.projRiverside, monthStart(3)],
+    ['', 42000, 'Steel cutting — Horizon site', ids.projHorizon, monthStart(4)],
+  ];
+  for (let i = 0; i < vendorSteelTx.length; i += 1) {
+    const [billId, amount, desc, projectId, date] = vendorSteelTx[i];
+    pushTx({
+      id: `${prefix}-tx-vnd-steel-${i + 1}`,
+      type: 'Expense',
+      amount,
+      date,
+      desc,
+      categoryId: ids.catMaterials,
+      projectId,
+      vendorId: ids.vendorSteel,
+      billId: billId || null,
+    });
+  }
+
+  const vendorCementTx: Array<[string, number, string, string | null, string]> = [
+    [ids.bill005, 68000, 'Ready-mix concrete — Horizon', ids.projHorizon, monthStart(1)],
+    [ids.bill006, 54000, 'Foundation cement — Riverside', ids.projRiverside, monthStart(2)],
+    [ids.bill007, 20000, 'Partial block work cement — Horizon', ids.projHorizon, monthStart(3)],
+    ['', 18000, 'Cement trucking — Horizon', ids.projHorizon, monthStart(4)],
+  ];
+  for (let i = 0; i < vendorCementTx.length; i += 1) {
+    const [billId, amount, desc, projectId, date] = vendorCementTx[i];
+    pushTx({
+      id: `${prefix}-tx-vnd-cement-${i + 1}`,
+      type: 'Expense',
+      amount,
+      date,
+      desc,
+      categoryId: ids.catCement,
+      projectId,
+      vendorId: ids.vendorCement,
+      billId: billId || null,
+    });
+  }
+
+  const vendorElectricTx: Array<[string, number, string, string | null, string]> = [
+    [ids.bill003, 34000, 'Electrical fittings — Horizon', ids.projHorizon, monthStart(1)],
+    [ids.bill008, 52000, 'Wiring package — Riverside', ids.projRiverside, monthStart(2)],
+    [ids.bill012, 15000, 'Partial generator hookup — Riverside', ids.projRiverside, monthStart(3)],
+    ['', 12000, 'Site electrical inspection — Horizon', ids.projHorizon, monthStart(4)],
+  ];
+  for (let i = 0; i < vendorElectricTx.length; i += 1) {
+    const [billId, amount, desc, projectId, date] = vendorElectricTx[i];
+    pushTx({
+      id: `${prefix}-tx-vnd-electric-${i + 1}`,
+      type: 'Expense',
+      amount,
+      date,
+      desc,
+      categoryId: ids.catElectrical,
+      projectId,
+      vendorId: ids.vendorElectric,
+      billId: billId || null,
+    });
+  }
+
+  // Buildings — 4 operating expenses each
+  const skylineBuildingTx = [
+    ['maint', 25000, 'Elevator maintenance — Skyline Tower'],
+    ['util', 8500, 'Common area utilities — Skyline'],
+    ['sec', 14000, 'Security services — Skyline Tower'],
+    ['clean', 11000, 'Cleaning contract — Skyline Tower'],
+  ] as const;
+  for (let i = 0; i < skylineBuildingTx.length; i += 1) {
+    const [key, amount, desc] = skylineBuildingTx[i];
+    pushTx({
+      id: `${prefix}-tx-bld-skyline-${key}`,
+      type: 'Expense',
+      amount,
+      date: monthStart(i + 1),
+      desc,
+      categoryId: SYS_BLD_MAINT,
+      buildingId: ids.bldSkyline,
+    });
+  }
+
+  const harborBuildingTx = [
+    ['pool', 18000, 'Pool maintenance — Harbor View'],
+    ['lobby', 22000, 'Lobby upkeep — Harbor View'],
+    ['park', 9500, 'Parking area maintenance — Harbor View'],
+    ['land', 16000, 'Landscaping — Harbor View'],
+  ] as const;
+  for (let i = 0; i < harborBuildingTx.length; i += 1) {
+    const [key, amount, desc] = harborBuildingTx[i];
+    pushTx({
+      id: `${prefix}-tx-bld-harbor-${key}`,
+      type: 'Expense',
+      amount,
+      date: monthStart(i + 1),
+      desc,
+      categoryId: SYS_BLD_MAINT,
+      buildingId: ids.bldHarbor,
+    });
+  }
+
+  for (const row of txRows) {
     await client.query(
-      `INSERT INTO transactions (id, tenant_id, type, amount, date, description, account_id, category_id, property_id, contact_id, invoice_id, project_id, building_id, vendor_id, version, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 1, NOW(), NOW())
-       ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description, date = EXCLUDED.date, updated_at = NOW(), deleted_at = NULL`,
+      `INSERT INTO transactions (id, tenant_id, type, amount, date, description, account_id, category_id, property_id, contact_id, invoice_id, project_id, building_id, vendor_id, bill_id, version, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description, date = EXCLUDED.date, bill_id = EXCLUDED.bill_id, updated_at = NOW(), deleted_at = NULL`,
       [
-        id,
+        row.id,
         tenantId,
-        type,
-        amount,
-        date,
-        desc,
+        row.type,
+        row.amount,
+        row.date,
+        row.desc,
         SYS_CASH,
-        categoryId,
-        propertyId,
-        contactId,
-        invoiceId,
-        projectId,
-        buildingId,
-        vendorId,
+        row.categoryId,
+        row.propertyId ?? null,
+        row.contactId ?? null,
+        row.invoiceId ?? null,
+        row.projectId ?? null,
+        row.buildingId ?? null,
+        row.vendorId ?? null,
+        row.billId ?? null,
       ]
     );
   }
