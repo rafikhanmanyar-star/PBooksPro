@@ -153,9 +153,11 @@ async function logOrganizationStatusChange(
 
 async function invalidateTenantSessions(client: PoolClient, tenantId: string): Promise<void> {
   try {
+    await client.query('SAVEPOINT sp_invalidate_tenant_sessions');
     await client.query(`DELETE FROM user_sessions WHERE tenant_id = $1`, [tenantId]);
+    await client.query('RELEASE SAVEPOINT sp_invalidate_tenant_sessions');
   } catch {
-    /* user_sessions may not exist on all deployments */
+    await client.query('ROLLBACK TO SAVEPOINT sp_invalidate_tenant_sessions');
   }
 }
 
