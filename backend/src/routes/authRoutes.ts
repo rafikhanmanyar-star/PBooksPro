@@ -31,6 +31,11 @@ import {
   completeLoginForAccount,
 } from '../services/auth/loginSessionService.js';
 import { ensureUserTenantMembership } from '../services/auth/userTenantService.js';
+import {
+  assertUserIdentityAvailable,
+  identityConflictApiDetails,
+  UserIdentityConflictError,
+} from '../services/auth/userIdentityService.js';
 import { isInternalDemoTenantId } from '../middleware/demoEnvironmentMiddleware.js';
 import {
   isDemoPublicLoginEnabled,
@@ -617,6 +622,11 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
 
   try {
     await withTransaction(async (client) => {
+      await assertUserIdentityAvailable(client, {
+        email: emailVal,
+        username: adminUsername.trim(),
+      });
+
       const reg = await registerPendingOrganization(client, {
         tenantId,
         companyName: tenantDisplayName,
@@ -677,9 +687,13 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
       201
     );
   } catch (e: unknown) {
+    if (e instanceof UserIdentityConflictError) {
+      sendFailure(res, 409, e.code, e.message, identityConflictApiDetails(e.conflicts));
+      return;
+    }
     const err = e as { code?: string };
     if (err.code === '23505') {
-      sendFailure(res, 409, 'DUPLICATE', 'This organization ID or username already exists.');
+      sendFailure(res, 409, 'DUPLICATE', 'This organization ID, email, or username already exists.');
       return;
     }
     handleRouteError(res, e);

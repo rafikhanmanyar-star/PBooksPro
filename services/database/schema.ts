@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS users (
     UNIQUE(tenant_id, username)
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_global_lower
+  ON users (LOWER(TRIM(email)))
+  WHERE email IS NOT NULL AND TRIM(email) <> '';
+
 -- Company settings (multi-company local-only mode)
 CREATE TABLE IF NOT EXISTS company_settings (
     id TEXT PRIMARY KEY DEFAULT 'default',

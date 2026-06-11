@@ -11,6 +11,12 @@ import { validatePassword } from '../utils/passwordPolicy.js';
 import { requireResourceQuota } from '../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../core/realtime.js';
 import { ensureUserTenantMembership } from '../services/auth/userTenantService.js';
+import {
+  assertUserIdentityAvailable,
+  identityConflictApiDetails,
+  normalizeUserEmail,
+  UserIdentityConflictError,
+} from '../services/auth/userIdentityService.js';
 
 export const usersRouter = Router();
 
@@ -122,10 +128,14 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
   }
   const id = `user_${randomUUID().replace(/-/g, '')}`;
   const passwordHash = await bcrypt.hash(password, 10);
-  const emailVal = email && email.length > 0 ? email : null;
+  const emailVal = normalizeUserEmail(email);
 
   try {
     const created = await withTransaction(async (client) => {
+      await assertUserIdentityAvailable(client, {
+        email: emailVal,
+        username: username.trim(),
+      });
       const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
         `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
          VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
@@ -150,9 +160,13 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
     emitEntityEvent(tenantId, 'created', 'user', { data: created, sourceUserId: req.userId });
     sendSuccess(res, created, 201);
   } catch (e: unknown) {
+    if (e instanceof UserIdentityConflictError) {
+      sendFailure(res, 409, e.code, e.message, identityConflictApiDetails(e.conflicts));
+      return;
+    }
     const err = e as { code?: string };
     if (err.code === '23505') {
-      sendFailure(res, 409, 'DUPLICATE', 'Username already exists for this organization');
+      sendFailure(res, 409, 'DUPLICATE', 'Email or username is already in use');
       return;
     }
     handleRouteError(res, e);
@@ -172,7 +186,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
     return;
   }
   const { username, name, email, role, password } = parsed.data;
-  const emailVal = email && email.length > 0 ? email : null;
+  const emailVal = normalizeUserEmail(email);
 
   try {
     const updated = await withTransaction(async (client) => {
@@ -184,6 +198,12 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
         return null;
       }
       const before = prev.rows[0];
+
+      await assertUserIdentityAvailable(client, {
+        email: emailVal,
+        username: username.trim(),
+        excludeUserId: id,
+      });
 
       let row: { id: string; username: string; name: string; role: string; email: string | null; is_active: boolean };
       if (password && password.length > 0) {
@@ -233,13 +253,17 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
     emitEntityEvent(tenantId, 'updated', 'user', { data: updated, sourceUserId: req.userId });
     sendSuccess(res, updated);
   } catch (e: unknown) {
+    if (e instanceof UserIdentityConflictError) {
+      sendFailure(res, 409, e.code, e.message, identityConflictApiDetails(e.conflicts));
+      return;
+    }
     const err = e as { code?: string; message?: string };
     if (err.message && err.message.includes('Password')) {
       sendFailure(res, 400, 'VALIDATION_ERROR', err.message);
       return;
     }
     if (err.code === '23505') {
-      sendFailure(res, 409, 'DUPLICATE', 'Username already exists for this organization');
+      sendFailure(res, 409, 'DUPLICATE', 'Email or username is already in use');
       return;
     }
     handleRouteError(res, e);

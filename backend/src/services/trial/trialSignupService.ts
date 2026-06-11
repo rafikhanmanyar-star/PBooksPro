@@ -14,6 +14,7 @@ import { validatePassword } from '../../utils/passwordPolicy.js';
 import { getRequiredDocuments } from '../../constants/legalDocuments.js';
 import { isEnvFlagEnabled } from '../../utils/envFlag.js';
 import { ensureUserTenantMembership } from '../auth/userTenantService.js';
+import { assertUserIdentityAvailable } from '../auth/userIdentityService.js';
 
 export type TrialSignupInput = {
   name: string;
@@ -93,8 +94,8 @@ async function allocateUniqueUsername(
   for (let i = 0; i < 20; i++) {
     const candidate = i === 0 ? base : `${base.slice(0, 28)}_${i}`;
     const exists = await client.query(
-      `SELECT 1 FROM users WHERE tenant_id = $1 AND LOWER(username) = LOWER($2)`,
-      [tenantId, candidate]
+      `SELECT 1 FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`,
+      [candidate]
     );
     if (!exists.rows.length) return candidate;
   }
@@ -151,6 +152,8 @@ export async function createTrialSignup(
   );
 
   return withTransaction(async (client) => {
+    await assertUserIdentityAvailable(client, { email });
+
     const tenantId = await allocateTenantId(client, company);
     const username = await allocateUniqueUsername(client, tenantId, email);
     const userId = `user_${randomUUID().replace(/-/g, '')}`;
