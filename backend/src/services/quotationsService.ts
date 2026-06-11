@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { QuotationRepository } from '../modules/vendors/repositories/QuotationRepository.js';
 
 export type QuotationRow = {
   id: string;
@@ -105,13 +108,7 @@ function pickBody(body: Record<string, unknown>) {
 const SELECT_COLS = `id, tenant_id, vendor_id, name, date, items, total_amount::text, document_id, user_id, version, deleted_at, created_at, updated_at`;
 
 export async function listQuotations(client: pg.PoolClient, tenantId: string): Promise<QuotationRow[]> {
-  const r = await client.query<QuotationRow>(
-    `SELECT ${SELECT_COLS}
-     FROM quotations WHERE tenant_id = $1 AND deleted_at IS NULL
-     ORDER BY date DESC, id ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new QuotationRepository(tenantId).listActive(client);
 }
 
 export async function getQuotationById(
@@ -119,12 +116,7 @@ export async function getQuotationById(
   tenantId: string,
   id: string
 ): Promise<QuotationRow | null> {
-  const r = await client.query<QuotationRow>(
-    `SELECT ${SELECT_COLS}
-     FROM quotations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new QuotationRepository(tenantId).getById(client, id);
 }
 
 async function getQuotationByIdIncludingDeleted(
@@ -132,12 +124,15 @@ async function getQuotationByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<QuotationRow | null> {
-  const r = await client.query<QuotationRow>(
-    `SELECT ${SELECT_COLS}
-     FROM quotations WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new QuotationRepository(tenantId).getByIdIncludingDeleted(client, id);
+}
+
+export async function listQuotationsChangedSince(
+  client: pg.PoolClient,
+  tenantId: string,
+  since: Date
+): Promise<QuotationRow[]> {
+  return new QuotationRepository(tenantId).listChangedSince(client, since);
 }
 
 async function insertQuotation(
@@ -163,7 +158,19 @@ async function insertQuotation(
       p.user_id ?? actorUserId,
     ]
   );
-  return r.rows[0]!;
+  const row = r.rows[0]!;
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'quotations',
+    entityType: 'quotation',
+    entityId: row.id,
+    action: 'create',
+    summary: `Quotation ${row.name} created`,
+    newValue: rowToQuotationApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 async function updateQuotationRow(
@@ -215,18 +222,39 @@ export async function upsertQuotation(
     return { row, conflict: false, wasInsert: true };
   }
 
-  if (existing.deleted_at) {
+  let existingRow = existing;
+  if (existingRow.deleted_at) {
     await client.query(
       `UPDATE quotations SET deleted_at = NULL, version = 1, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
       [id, tenantId]
     );
+    existingRow = { ...existingRow, deleted_at: null, version: 1 };
   }
 
-  if (p.version != null && p.version !== existing.version) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (p.version != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'quotations',
+      entityId: id,
+      clientVersion: p.version,
+    });
+    if (lww.conflict) return { row: existingRow, conflict: true, wasInsert: false };
   }
 
+  const oldApi = rowToQuotationApi(existingRow);
   const row = await updateQuotationRow(client, tenantId, id, p);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'quotations',
+    entityType: 'quotation',
+    entityId: row.id,
+    action: 'update',
+    summary: `Quotation ${row.name} updated`,
+    newValue: rowToQuotationApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false };
 }
 
@@ -236,15 +264,34 @@ export async function softDeleteQuotation(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
-  const existing = await getQuotationById(client, tenantId, id);
-  if (!existing) return { ok: false, conflict: false };
-  if (expectedVersion != null && existing.version !== expectedVersion) {
-    return { ok: false, conflict: true };
+  const ex = await getQuotationByIdIncludingDeleted(client, tenantId, id);
+  if (!ex || ex.deleted_at) return { ok: false, conflict: false };
+  const oldApi = rowToQuotationApi(ex);
+
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'quotations',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
   }
+
   await client.query(
     `UPDATE quotations SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: ex.user_id,
+    module: 'quotations',
+    entityType: 'quotation',
+    entityId: id,
+    action: 'delete',
+    summary: `Quotation ${ex.name} deleted`,
+    oldValue: oldApi,
+  });
   return { ok: true, conflict: false };
 }

@@ -1,6 +1,8 @@
 import type pg from 'pg';
-import { S3CompatibleStorageProvider } from '../../../services/backup/storage/s3CompatibleProvider.js';
-import type { StorageProviderConfig } from '../../../services/backup/storage/types.js';
+import type {
+  OffsiteStorageProvider,
+  StorageProviderConfig,
+} from '../../../services/backup/storage/types.js';
 import { DocumentRepository } from '../repositories/DocumentRepository.js';
 import type { DocumentMetadataRow } from '../types/index.js';
 
@@ -36,9 +38,12 @@ export class DocumentStorageService {
     this.repo = new DocumentRepository(tenantId, client);
   }
 
-  private storage(): S3CompatibleStorageProvider | null {
+  private async storage(): Promise<OffsiteStorageProvider | null> {
     const cfg = r2ConfigFromEnv();
     if (!cfg) return null;
+    const { S3CompatibleStorageProvider } = await import(
+      '../../../services/backup/storage/s3CompatibleProvider.js'
+    );
     return new S3CompatibleStorageProvider('cloudflare_r2', cfg);
   }
 
@@ -55,7 +60,7 @@ export class DocumentStorageService {
       body: Buffer;
     }
   ): Promise<{ storageKey: string; inlineData: Buffer | null }> {
-    const provider = this.storage();
+    const provider = await this.storage();
     if (provider) {
       const storageKey = this.buildStorageKey(input.documentId, input.entityType, input.fileName);
       await provider.upload({
@@ -79,14 +84,14 @@ export class DocumentStorageService {
     if (row.storage_key.startsWith('inline:')) {
       return Buffer.alloc(0);
     }
-    const provider = this.storage();
+    const provider = await this.storage();
     if (!provider) return Buffer.alloc(0);
     return provider.download(row.storage_key);
   }
 
   async deleteObject(row: DocumentMetadataRow): Promise<void> {
     if (row.storage_key.startsWith('inline:')) return;
-    const provider = this.storage();
+    const provider = await this.storage();
     if (!provider) return;
     try {
       await provider.download(row.storage_key);

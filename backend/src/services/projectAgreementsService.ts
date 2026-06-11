@@ -2,6 +2,9 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional, todayUtcYyyyMmDd } from '../utils/dateOnly.js';
 import { enforceLockForSave } from './recordLocksService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { ProjectAgreementRepository } from '../modules/project-selling/repositories/ProjectAgreementRepository.js';
 
 export type ProjectAgreementRow = {
   id: string;
@@ -110,19 +113,7 @@ export async function listProjectAgreementsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<ProjectAgreementRow[]> {
-  const r = await client.query<ProjectAgreementRow>(
-    `SELECT id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-            list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-            rebate_amount, rebate_broker_id, issue_date, description, status,
-            cancellation_details, installment_plan,
-            list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-            lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM project_agreements WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new ProjectAgreementRepository(tenantId).listChangedSince(client, since);
 }
 
 async function loadUnitIdsMap(
@@ -148,30 +139,7 @@ export async function listProjectAgreements(
   tenantId: string,
   filters?: { status?: string; projectId?: string; clientId?: string }
 ): Promise<ProjectAgreementRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-           list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-           rebate_amount, rebate_broker_id, issue_date, description, status,
-           cancellation_details, installment_plan,
-           list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-           lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-           user_id, version, deleted_at, created_at, updated_at
-           FROM project_agreements WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  if (filters?.clientId) {
-    params.push(filters.clientId);
-    q += ` AND client_id = $${params.length}`;
-  }
-  q += ' ORDER BY issue_date DESC NULLS LAST, agreement_number ASC';
-  const r = await client.query<ProjectAgreementRow>(q, params);
-  return r.rows;
+  return new ProjectAgreementRepository(tenantId).list(client, filters);
 }
 
 export async function listProjectAgreementsWithUnits(
@@ -193,18 +161,7 @@ export async function getProjectAgreementById(
   tenantId: string,
   id: string
 ): Promise<{ row: ProjectAgreementRow; unitIds: string[] } | null> {
-  const r = await client.query<ProjectAgreementRow>(
-    `SELECT id, tenant_id, agreement_number, client_id, project_id, unit_ids,
-            list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
-            rebate_amount, rebate_broker_id, issue_date, description, status,
-            cancellation_details, installment_plan,
-            list_price_category_id, customer_discount_category_id, floor_discount_category_id,
-            lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM project_agreements WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const row = r.rows[0];
+  const row = await new ProjectAgreementRepository(tenantId).getById(client, id);
   if (!row) return null;
   const unitMap = await loadUnitIdsMap(client, [id]);
   return { row, unitIds: unitMap.get(id) ?? [] };
@@ -401,7 +358,24 @@ export async function createProjectAgreement(
     ]
   );
   await replaceAgreementUnits(client, id, p.unitIds);
-  return { row: r.rows[0], unitIds: p.unitIds };
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id ?? actorUserIdFromBody(body),
+    module: 'project_agreements',
+    entityType: 'project_agreement',
+    entityId: row.id,
+    action: 'create',
+    summary: `Project agreement ${row.agreement_number} created`,
+    newValue: rowToProjectAgreementApi(row, p.unitIds),
+    version: row.version,
+  });
+  return { row, unitIds: p.unitIds };
+}
+
+function actorUserIdFromBody(body: Record<string, unknown>): string | null {
+  const u = body.userId ?? body.user_id;
+  return u != null && String(u).trim() ? String(u).trim() : null;
 }
 
 export async function updateProjectAgreement(
@@ -459,6 +433,14 @@ export async function updateProjectAgreement(
   ];
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'project_agreements',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true, unitIds: [] };
+
     const u = await client.query<ProjectAgreementRow>(
       `UPDATE project_agreements SET
          agreement_number = $3, client_id = $4, project_id = $5, unit_ids = $6,
@@ -468,7 +450,7 @@ export async function updateProjectAgreement(
          list_price_category_id = $20, customer_discount_category_id = $21, floor_discount_category_id = $22,
          lump_sum_discount_category_id = $23, misc_discount_category_id = $24, selling_price_category_id = $25, rebate_category_id = $26,
          user_id = $27, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $28
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
                  list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
                  rebate_amount, rebate_broker_id, issue_date, description, status,
@@ -476,15 +458,25 @@ export async function updateProjectAgreement(
                  list_price_category_id, customer_discount_category_id, floor_discount_category_id,
                  lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
                  user_id, version, deleted_at, created_at, updated_at`,
-      [...vals, expectedVersion]
+      vals
     );
     if (u.rows.length === 0) {
-      const exists = await getProjectAgreementById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false, unitIds: [] };
-      return { row: null, conflict: true, unitIds: [] };
+      return { row: null, conflict: false, unitIds: [] };
     }
     await replaceAgreementUnits(client, id, p.unitIds);
-    return { row: u.rows[0], conflict: false, unitIds: p.unitIds };
+    const row = u.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.user_id,
+      module: 'project_agreements',
+      entityType: 'project_agreement',
+      entityId: row.id,
+      action: 'update',
+      summary: `Project agreement ${row.agreement_number} updated`,
+      newValue: rowToProjectAgreementApi(row, p.unitIds),
+      version: row.version,
+    });
+    return { row, conflict: false, unitIds: p.unitIds };
   }
 
   const u = await client.query<ProjectAgreementRow>(
@@ -506,8 +498,23 @@ export async function updateProjectAgreement(
                user_id, version, deleted_at, created_at, updated_at`,
     vals
   );
-  if (u.rows[0]) await replaceAgreementUnits(client, id, p.unitIds);
-  return { row: u.rows[0] ?? null, conflict: false, unitIds: p.unitIds };
+  if (u.rows[0]) {
+    await replaceAgreementUnits(client, id, p.unitIds);
+    const row = u.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.user_id,
+      module: 'project_agreements',
+      entityType: 'project_agreement',
+      entityId: row.id,
+      action: 'update',
+      summary: `Project agreement ${row.agreement_number} updated`,
+      newValue: rowToProjectAgreementApi(row, p.unitIds),
+      version: row.version,
+    });
+    return { row, conflict: false, unitIds: p.unitIds };
+  }
+  return { row: null, conflict: false, unitIds: p.unitIds };
 }
 
 export async function softDeleteProjectAgreement(
@@ -518,27 +525,70 @@ export async function softDeleteProjectAgreement(
   actorUserId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
   await enforceLockForSave(client, tenantId, 'agreement', id, actorUserId);
+  const before = await getProjectAgreementById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'project_agreements',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE project_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
+                 list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
+                 rebate_amount, rebate_broker_id, issue_date, description, status,
+                 cancellation_details, installment_plan,
+                 list_price_category_id, customer_discount_category_id, floor_discount_category_id,
+                 lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
+                 user_id, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const ex = await getProjectAgreementById(client, tenantId, id);
-      if (!ex) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false };
     await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [id]);
+    const row = r.rows[0] as ProjectAgreementRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.user_id,
+      module: 'project_agreements',
+      entityType: 'project_agreement',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Project agreement ${row.agreement_number} deleted`,
+      oldValue: before ? rowToProjectAgreementApi(before.row, before.unitIds) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE project_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, agreement_number, client_id, project_id, unit_ids,
+               list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount, selling_price,
+               rebate_amount, rebate_broker_id, issue_date, description, status,
+               cancellation_details, installment_plan,
+               list_price_category_id, customer_discount_category_id, floor_discount_category_id,
+               lump_sum_discount_category_id, misc_discount_category_id, selling_price_category_id, rebate_category_id,
+               user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
   if ((r.rowCount ?? 0) > 0) {
     await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [id]);
+    const row = r.rows[0] as ProjectAgreementRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? row.user_id,
+      module: 'project_agreements',
+      entityType: 'project_agreement',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Project agreement ${row.agreement_number} deleted`,
+      oldValue: before ? rowToProjectAgreementApi(before.row, before.unitIds) : null,
+      version: row.version,
+    });
   }
   return { ok: (r.rowCount ?? 0) > 0, conflict: false };
 }

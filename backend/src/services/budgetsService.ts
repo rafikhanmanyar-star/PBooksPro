@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { BudgetRepository } from '../modules/project-selling/repositories/BudgetRepository.js';
 
 export type BudgetRow = {
   id: string;
@@ -49,23 +52,7 @@ export async function listBudgets(
   tenantId: string,
   filters?: { projectId?: string }
 ): Promise<BudgetRow[]> {
-  const projectId = filters?.projectId?.trim();
-  if (projectId) {
-    const r = await client.query<BudgetRow>(
-      `SELECT id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at
-       FROM budgets WHERE tenant_id = $1 AND deleted_at IS NULL AND project_id = $2
-       ORDER BY category_id ASC`,
-      [tenantId, projectId]
-    );
-    return r.rows;
-  }
-  const r = await client.query<BudgetRow>(
-    `SELECT id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at
-     FROM budgets WHERE tenant_id = $1 AND deleted_at IS NULL
-     ORDER BY project_id ASC, category_id ASC`,
-    [tenantId]
-  );
-  return r.rows;
+  return new BudgetRepository(tenantId).listActive(client, filters);
 }
 
 export async function getBudgetById(
@@ -73,12 +60,7 @@ export async function getBudgetById(
   tenantId: string,
   id: string
 ): Promise<BudgetRow | null> {
-  const r = await client.query<BudgetRow>(
-    `SELECT id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at
-     FROM budgets WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new BudgetRepository(tenantId).getById(client, id);
 }
 
 export async function getBudgetByIdIncludingDeleted(
@@ -86,12 +68,7 @@ export async function getBudgetByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<BudgetRow | null> {
-  const r = await client.query<BudgetRow>(
-    `SELECT id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at
-     FROM budgets WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new BudgetRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 export async function createBudget(
@@ -115,7 +92,19 @@ export async function createBudget(
      RETURNING id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId, p.category_id, p.project_id, p.amount, userId ?? null]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'budgets',
+    entityType: 'budget',
+    entityId: row.id,
+    action: 'create',
+    summary: `Budget ${row.id} created`,
+    newValue: rowToBudgetApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function upsertBudget(
@@ -138,9 +127,23 @@ export async function upsertBudget(
   }
 
   const expectedVersion = p.version;
-  if (expectedVersion !== undefined && existing.version !== expectedVersion) {
-    return { row: existing, conflict: true, wasInsert: false };
+  if (expectedVersion !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== expectedVersion) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'budgets',
+        entityId: id,
+        clientVersion: expectedVersion,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
+
+  const oldApi = rowToBudgetApi(existing);
 
   if (existing.deleted_at) {
     const u = await client.query<BudgetRow>(
@@ -151,7 +154,20 @@ export async function upsertBudget(
        RETURNING id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`,
       [id, tenantId, p.category_id, p.project_id, p.amount, userId ?? null]
     );
-    return { row: u.rows[0], conflict: false, wasInsert: false };
+    const row = u.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'budgets',
+      entityType: 'budget',
+      entityId: row.id,
+      action: 'update',
+      summary: `Budget ${row.id} restored`,
+      newValue: rowToBudgetApi(row),
+      oldValue: oldApi,
+      version: row.version,
+    });
+    return { row, conflict: false, wasInsert: false };
   }
 
   const u = await client.query<BudgetRow>(
@@ -165,7 +181,20 @@ export async function upsertBudget(
   if (u.rows.length === 0) {
     return { row: existing, conflict: true, wasInsert: false };
   }
-  return { row: u.rows[0], conflict: false, wasInsert: false };
+  const row = u.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'budgets',
+    entityType: 'budget',
+    entityId: row.id,
+    action: 'update',
+    summary: `Budget ${row.id} updated`,
+    newValue: rowToBudgetApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
+  return { row, conflict: false, wasInsert: false };
 }
 
 export async function softDeleteBudget(
@@ -174,7 +203,18 @@ export async function softDeleteBudget(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const ex = await getBudgetByIdIncludingDeleted(client, tenantId, id);
+  const oldApi = ex ? rowToBudgetApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'budgets',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const u = await client.query(
       `UPDATE budgets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
@@ -185,6 +225,16 @@ export async function softDeleteBudget(
       if (!ex || ex.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'budgets',
+      entityType: 'budget',
+      entityId: id,
+      action: 'delete',
+      summary: `Budget ${id} deleted`,
+      oldValue: oldApi,
+    });
     return { ok: true, conflict: false };
   }
   const u = await client.query(
@@ -192,7 +242,20 @@ export async function softDeleteBudget(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (u.rowCount ?? 0) > 0, conflict: false };
+  const ok = (u.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: ex?.user_id ?? null,
+      module: 'budgets',
+      entityType: 'budget',
+      entityId: id,
+      action: 'delete',
+      summary: `Budget ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 export async function listBudgetsChangedSince(
@@ -200,11 +263,5 @@ export async function listBudgetsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<BudgetRow[]> {
-  const r = await client.query<BudgetRow>(
-    `SELECT id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at
-     FROM budgets WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new BudgetRepository(tenantId).listChangedSince(client, since);
 }

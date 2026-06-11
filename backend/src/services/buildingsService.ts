@@ -100,20 +100,36 @@ export async function updateBuilding(
   if (!p.name.trim()) throw new Error('Building name is required.');
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'buildings',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const r = await client.query<BuildingRow>(
       `UPDATE buildings SET
         name = $3, description = $4, color = $5,
         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $6
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.description ?? null, p.color ?? null, expectedVersion]
+      [id, tenantId, p.name, p.description ?? null, p.color ?? null]
     );
-    if (r.rows.length === 0) {
-      const exists = await getBuildingById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
-    }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0] ?? null;
+    if (!row) return { row: null, conflict: false };
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'buildings',
+      entityType: 'building',
+      entityId: row.id,
+      action: 'update',
+      summary: `Building ${row.name} updated`,
+      newValue: rowToBuildingApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<BuildingRow>(
@@ -124,7 +140,21 @@ export async function updateBuilding(
      RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
     [id, tenantId, p.name, p.description ?? null, p.color ?? null]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'buildings',
+      entityType: 'building',
+      entityId: row.id,
+      action: 'update',
+      summary: `Building ${row.name} updated`,
+      newValue: rowToBuildingApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function countPropertiesForBuilding(
@@ -151,25 +181,59 @@ export async function softDeleteBuilding(
     return { ok: false, conflict: false, blocked: true };
   }
 
+  const before = await getBuildingById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'buildings',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE buildings SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const cur = await getBuildingById(client, tenantId, id);
-      if (!cur) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false };
+    const row = r.rows[0] as BuildingRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'buildings',
+      entityType: 'building',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Building ${row.name} deleted`,
+      oldValue: before ? rowToBuildingApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE buildings SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as BuildingRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'buildings',
+      entityType: 'building',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Building ${row.name} deleted`,
+      oldValue: before ? rowToBuildingApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 /** Incremental sync: buildings created/updated/deleted since `since` (includes soft-deleted rows). */
@@ -178,11 +242,5 @@ export async function listBuildingsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<BuildingRow[]> {
-  const r = await client.query<BuildingRow>(
-    `SELECT id, tenant_id, name, description, color, version, deleted_at, created_at, updated_at
-     FROM buildings WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new BuildingRepository(tenantId).listChangedSince(client, since);
 }

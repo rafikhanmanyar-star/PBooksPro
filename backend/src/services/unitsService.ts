@@ -2,6 +2,9 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { getContactById } from './contactsService.js';
 import { getProjectById } from './projectsService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { UnitRepository } from '../modules/project-selling/repositories/UnitRepository.js';
 
 export const UNIT_STATUSES = ['available', 'sold', 'rented', 'blocked'] as const;
 export type UnitStatus = (typeof UNIT_STATUSES)[number];
@@ -111,18 +114,7 @@ export async function listUnits(
   tenantId: string,
   filters?: { projectId?: string }
 ): Promise<UnitRow[]> {
-  const params: unknown[] = [tenantId];
-  let where = 'tenant_id = $1 AND deleted_at IS NULL';
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    where += ` AND project_id = $${params.length}`;
-  }
-  const r = await client.query<UnitRow>(
-    `SELECT id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at
-     FROM units WHERE ${where} ORDER BY unit_number ASC`,
-    params
-  );
-  return r.rows;
+  return new UnitRepository(tenantId).list(client, filters);
 }
 
 export async function getUnitById(
@@ -130,12 +122,7 @@ export async function getUnitById(
   tenantId: string,
   id: string
 ): Promise<UnitRow | null> {
-  const r = await client.query<UnitRow>(
-    `SELECT id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at
-     FROM units WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new UnitRepository(tenantId).getById(client, id);
 }
 
 export async function createUnit(
@@ -180,7 +167,19 @@ export async function createUnit(
       (body.userId ?? body.user_id) as string | null ?? null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'units',
+    entityType: 'unit',
+    entityId: row.id,
+    action: 'create',
+    summary: `Unit ${row.unit_number} created`,
+    newValue: rowToUnitApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateUnit(
@@ -236,6 +235,14 @@ export async function updateUnit(
   ];
 
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'units',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existing, conflict: true };
+
     const r = await client.query<UnitRow>(
       `UPDATE units SET
         project_id = $1,
@@ -250,14 +257,24 @@ export async function updateUnit(
         area = $10,
         version = version + 1,
         updated_at = NOW()
-      WHERE id = $11 AND tenant_id = $12 AND deleted_at IS NULL AND version = $13
+      WHERE id = $11 AND tenant_id = $12 AND deleted_at IS NULL
       RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-      [...vals, id, tenantId, expectedVersion]
+      [...vals, id, tenantId]
     );
-    if (r.rowCount === 0) {
-      return { row: existing, conflict: true };
-    }
-    return { row: r.rows[0], conflict: false };
+    const row = r.rows[0] ?? null;
+    if (!row) return { row: null, conflict: false };
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'units',
+      entityType: 'unit',
+      entityId: row.id,
+      action: 'update',
+      summary: `Unit ${row.unit_number} updated`,
+      newValue: rowToUnitApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const r = await client.query<UnitRow>(
@@ -278,7 +295,21 @@ export async function updateUnit(
     RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
     [...vals, id, tenantId]
   );
-  return { row: r.rows[0] ?? null, conflict: false };
+  const row = r.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'units',
+      entityType: 'unit',
+      entityId: row.id,
+      action: 'update',
+      summary: `Unit ${row.unit_number} updated`,
+      newValue: rowToUnitApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 export async function softDeleteUnit(
@@ -287,25 +318,60 @@ export async function softDeleteUnit(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getUnitById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'units',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE units SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
+      [id, tenantId]
     );
-    if (r.rowCount === 0) {
-      const row = await getUnitById(client, tenantId, id);
-      return { ok: false, conflict: !!row };
-    }
+    if (r.rowCount === 0) return { ok: false, conflict: false };
+    const row = r.rows[0] as UnitRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'units',
+      entityType: 'unit',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Unit ${row.unit_number} deleted`,
+      oldValue: before ? rowToUnitApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
 
   const r = await client.query(
     `UPDATE units SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as UnitRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: row.user_id,
+      module: 'units',
+      entityType: 'unit',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Unit ${row.unit_number} deleted`,
+      oldValue: before ? rowToUnitApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }
 
 /** Incremental sync: units created/updated/deleted since `since` (includes soft-deleted rows). */
@@ -314,11 +380,5 @@ export async function listUnitsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<UnitRow[]> {
-  const r = await client.query<UnitRow>(
-    `SELECT id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at
-     FROM units WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new UnitRepository(tenantId).listChangedSince(client, since);
 }

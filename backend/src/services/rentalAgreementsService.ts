@@ -11,6 +11,7 @@ import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
 import { enforceLockForSave } from './recordLocksService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { RentalAgreementRepository } from '../modules/leases/repositories/RentalAgreementRepository.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -75,15 +76,7 @@ export async function listRentalAgreementsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<RentalAgreementRow[]> {
-  const r = await client.query<RentalAgreementRow>(
-    `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-            version, deleted_at, created_at, updated_at
-     FROM rental_agreements WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new RentalAgreementRepository(tenantId).listChangedSince(client, since);
 }
 
 function parseIsoDate(label: string, v: unknown): string {
@@ -131,22 +124,7 @@ export async function listRentalAgreements(
   tenantId: string,
   filters?: { status?: string; propertyId?: string }
 ): Promise<RentalAgreementRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-           rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-           version, deleted_at, created_at, updated_at
-           FROM rental_agreements WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.propertyId) {
-    params.push(filters.propertyId);
-    q += ` AND property_id = $${params.length}`;
-  }
-  q += ' ORDER BY start_date DESC, agreement_number ASC';
-  const r = await client.query<RentalAgreementRow>(q, params);
-  return r.rows;
+  return new RentalAgreementRepository(tenantId).list(client, filters);
 }
 
 export async function getRentalAgreementById(
@@ -154,14 +132,7 @@ export async function getRentalAgreementById(
   tenantId: string,
   id: string
 ): Promise<RentalAgreementRow | null> {
-  const r = await client.query<RentalAgreementRow>(
-    `SELECT id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-            rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-            version, deleted_at, created_at, updated_at
-     FROM rental_agreements WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new RentalAgreementRepository(tenantId).getById(client, id);
 }
 
 export async function createRentalAgreement(
@@ -599,17 +570,25 @@ export async function softDeleteRentalAgreement(
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const before = await getRentalAgreementById(client, tenantId, id);
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'rental_agreements',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
                  rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
                  version, deleted_at, created_at, updated_at`,
-      [id, tenantId, expectedVersion]
+      [id, tenantId]
     );
     if (r.rowCount === 0) {
       if (!before) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
+      return { ok: false, conflict: false };
     }
     const row = r.rows[0] as RentalAgreementRow;
     await recordDomainMutation(client, {
