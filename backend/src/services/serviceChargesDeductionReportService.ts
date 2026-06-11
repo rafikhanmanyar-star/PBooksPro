@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
 
 type ServiceChargesEngineModule = {
@@ -11,18 +9,8 @@ type ServiceChargesEngineModule = {
   ) => unknown[];
 };
 
-let cachedEngine: ServiceChargesEngineModule | null = null;
-
 async function loadServiceChargesDeductionEngine(): Promise<ServiceChargesEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'serviceChargesDeductionReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Service charges deduction engine bundle missing: ${bundled}. Run: node scripts/ensure-service-charges-deduction-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as ServiceChargesEngineModule;
-  return cachedEngine;
+  return loadReportEngine<ServiceChargesEngineModule>('serviceChargesDeduction');
 }
 
 export async function getServiceChargesDeductionReportJson(

@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from './categoriesService.js';
 import { listBills, rowToBillApi } from './billsService.js';
@@ -22,18 +20,8 @@ type RentalBillsDashboardEngineModule = {
   };
 };
 
-let cachedEngine: RentalBillsDashboardEngineModule | null = null;
-
 async function loadRentalBillsDashboardEngine(): Promise<RentalBillsDashboardEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'rentalBillsDashboardEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Rental bills dashboard engine bundle missing: ${bundled}. Run: node scripts/ensure-rental-bills-dashboard-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as RentalBillsDashboardEngineModule;
-  return cachedEngine;
+  return loadReportEngine<RentalBillsDashboardEngineModule>('rentalBillsDashboard');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

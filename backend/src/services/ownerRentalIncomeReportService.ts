@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from './categoriesService.js';
 import { listBills, rowToBillApi } from './billsService.js';
@@ -22,18 +20,8 @@ type OwnerRentalIncomeEngineModule = {
   };
 };
 
-let cachedEngine: OwnerRentalIncomeEngineModule | null = null;
-
 async function loadOwnerRentalIncomeEngine(): Promise<OwnerRentalIncomeEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'ownerRentalIncomeLedgerEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Owner rental income engine bundle missing: ${bundled}. Run: node scripts/ensure-owner-rental-income-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as OwnerRentalIncomeEngineModule;
-  return cachedEngine;
+  return loadReportEngine<OwnerRentalIncomeEngineModule>('ownerRentalIncome');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

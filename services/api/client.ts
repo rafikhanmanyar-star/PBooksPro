@@ -5,7 +5,7 @@
  * Handles authentication, error handling, and request/response transformation.
  */
 
-import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, isStagingEnvironment, normalizeApiBaseUrl, PBOOKS_API_BASE_STORAGE_KEY } from '../../config/apiUrl';
 import { logger } from '../logger';
 import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
 import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
@@ -108,9 +108,7 @@ export class ApiClient {
     const trimmed = url.trim();
     if (!trimmed) return;
     let base = trimmed.replace(/\/+$/, '');
-    if (!base.endsWith('/api')) {
-      base = `${base}/api`;
-    }
+    base = normalizeApiBaseUrl(base);
     if (isStagingEnvironment() && /:3000(\/|$)/.test(base)) {
       throw new Error(
         'This is the Staging client — it cannot connect to the production API (port 3000). Use port 3001 (PBooks Pro Staging API Server).'

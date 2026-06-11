@@ -38,12 +38,18 @@ export async function computeCurrentUsage(
     client.query(`SELECT COUNT(*)::int AS c FROM projects WHERE tenant_id = $1`, [tenantId]),
   ]);
 
-  // Storage: sum document sizes if table exists, else 0
+  // Storage: document_metadata inline bytes + declared file_size (R2 objects use file_size).
   let storageBytes = 0;
   try {
-    const storage = await client.query(
-      `SELECT COALESCE(SUM(octet_length(content)), 0)::bigint AS bytes
-       FROM documents WHERE tenant_id = $1`,
+    const storage = await client.query<{ bytes: string }>(
+      `SELECT COALESCE(SUM(
+         CASE
+           WHEN inline_data IS NOT NULL THEN octet_length(inline_data)
+           ELSE COALESCE(file_size, 0)
+         END
+       ), 0)::bigint AS bytes
+       FROM document_metadata
+       WHERE tenant_id = $1 AND deleted_at IS NULL`,
       [tenantId]
     );
     storageBytes = Number(storage.rows[0]?.bytes ?? 0);

@@ -1,7 +1,7 @@
 import type pg from 'pg';
-import { withSavepoint } from '../../db/pool.js';
 import { bootstrapTenantChart } from '../tenantBootstrap.js';
 import { startTrialSubscription } from '../billing/subscriptionService.js';
+import { wipeTenantBusinessData } from '../tenantDataManagementService.js';
 import {
   DEMO_MASTER_TENANT_ID,
   DEMO_PUBLIC_TENANT_ID,
@@ -9,29 +9,6 @@ import {
 import { backfillBillJournalMirrorsForTenant } from '../billJournalBackfillService.js';
 import { backfillInvoiceJournalMirrorsForTenant } from '../invoiceJournalBackfillService.js';
 import { backfillTransactionJournalMirrorsForTenant } from '../transactionJournalBackfillService.js';
-import { logger } from '../../utils/logger.js';
-
-/** Tables wiped before re-seed (children before parents). */
-const WIPE_TABLES = [
-  'journal_lines',
-  'journal_reversals',
-  'journal_entries',
-  'transaction_log',
-  'transactions',
-  'invoices',
-  'project_agreement_units',
-  'project_agreements',
-  'bills',
-  'budgets',
-  'contracts',
-  'rental_agreements',
-  'properties',
-  'units',
-  'projects',
-  'buildings',
-  'vendors',
-  'contacts',
-] as const;
 
 const SYS_CASH = 'sys-acc-cash';
 const SYS_RENT = 'sys-cat-rent-inc';
@@ -187,114 +164,6 @@ function monthStart(offsetMonths: number, base = new Date()): string {
 function rentalMonth(offsetMonths: number, base = new Date()): string {
   const d = new Date(base.getFullYear(), base.getMonth() - offsetMonths, 1);
   return `${d.getFullYear()}-${padMonth(d)}`;
-}
-
-const JOURNAL_IMMUTABILITY_TRIGGERS = [
-  'journal_lines_immutable_del',
-  'journal_lines_immutable_upd',
-  'journal_entries_immutable_del',
-  'journal_entries_immutable_upd',
-] as const;
-
-async function setJournalImmutabilityTriggers(
-  client: pg.PoolClient,
-  enabled: boolean
-): Promise<void> {
-  const verb = enabled ? 'ENABLE' : 'DISABLE';
-  for (const trigger of JOURNAL_IMMUTABILITY_TRIGGERS) {
-    const table = trigger.startsWith('journal_lines') ? 'journal_lines' : 'journal_entries';
-    await client.query(`ALTER TABLE ${table} ${verb} TRIGGER ${trigger}`);
-  }
-}
-
-async function deleteTenantJournalRows(client: pg.PoolClient, tenantId: string): Promise<void> {
-  await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
-  await client.query(
-    `DELETE FROM journal_lines
-     WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = $1)`,
-    [tenantId]
-  );
-  await client.query(`DELETE FROM journal_entries WHERE tenant_id = $1`, [tenantId]);
-}
-
-/** Managed Postgres (Render) cannot set session_replication_role — disable immutability triggers instead. */
-async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
-  const purgeWithReplicaRole = () =>
-    withSavepoint(client, 'demo_journal_purge_replica', async (c) => {
-      await c.query(`SET session_replication_role = replica`);
-      try {
-        await deleteTenantJournalRows(c, tenantId);
-      } finally {
-        await c.query(`SET session_replication_role = DEFAULT`);
-      }
-    });
-
-  const purgeWithTriggersDisabled = () =>
-    withSavepoint(client, 'demo_journal_purge_triggers', async (c) => {
-      await setJournalImmutabilityTriggers(c, false);
-      try {
-        await deleteTenantJournalRows(c, tenantId);
-      } finally {
-        await setJournalImmutabilityTriggers(c, true);
-      }
-    });
-
-  try {
-    await purgeWithReplicaRole();
-  } catch (replicaErr) {
-    try {
-      await purgeWithTriggersDisabled();
-    } catch (triggerErr) {
-      logger.warn('Demo journal purge skipped (stale GL rows may remain until next successful reset)', {
-        tenantId,
-        replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
-        triggerErr: triggerErr instanceof Error ? triggerErr.message : String(triggerErr),
-      });
-    }
-  }
-}
-
-export async function wipeTenantBusinessData(
-  client: pg.PoolClient,
-  tenantId: string
-): Promise<void> {
-  await purgeTenantJournal(client, tenantId);
-
-  const tablesAfterJournal = WIPE_TABLES.filter(
-    (t) => t !== 'journal_lines' && t !== 'journal_reversals' && t !== 'journal_entries'
-  );
-
-  for (const table of tablesAfterJournal) {
-    try {
-      await withSavepoint(client, `wipe_${table}`, async (c) => {
-        await c.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-      });
-    } catch {
-      /* table may not exist on older schemas */
-    }
-  }
-
-  const idPrefix = tenantId === DEMO_MASTER_TENANT_ID ? 'dm' : 'demo';
-  try {
-    await withSavepoint(client, 'wipe_demo_accounts', async (c) => {
-      await c.query(`DELETE FROM accounts WHERE tenant_id = $1 AND id LIKE $2`, [
-        tenantId,
-        `${idPrefix}-acc-%`,
-      ]);
-    });
-  } catch {
-    /* optional */
-  }
-
-  try {
-    await withSavepoint(client, 'wipe_demo_categories', async (c) => {
-      await c.query(`DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`, [
-        tenantId,
-      ]);
-    });
-  } catch {
-    /* optional */
-  }
 }
 
 async function postSeedJournalMirrors(client: pg.PoolClient, tenantId: string): Promise<void> {

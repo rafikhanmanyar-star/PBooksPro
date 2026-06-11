@@ -25,6 +25,13 @@ import {
   shouldSkipTransactionJournalMirror,
 } from '../../../services/transactionJournalPostingService.js';
 import type { TransactionRow } from '../../../services/transactionsService.js';
+import {
+  buildJournalBodyFromPeV,
+  buildJournalLinesFromPeV,
+  PEV_JOURNAL_SOURCE_MODULE,
+  shouldSkipPeVJournalMirror,
+} from '../../../services/pevJournalPostingService.js';
+import type { ProjectExpenseVoucherRow } from '../../../services/projectExpenseVoucherService.js';
 
 export type PostingOptions = {
   allowClosedPeriod?: boolean;
@@ -223,6 +230,44 @@ export class FinancialPostingService {
     );
     if (!existingId) return;
     await this.reverseJournal(client, existingId, 'Transaction updated or removed', actorUserId);
+  }
+
+  async postFromPeV(
+    client: pg.PoolClient,
+    row: ProjectExpenseVoucherRow,
+    expenseGlAccountId: string,
+    actorUserId: string | null,
+    options?: { replaceExisting?: boolean }
+  ): Promise<{ journalEntryId: string | null }> {
+    if (shouldSkipPeVJournalMirror(row)) {
+      await this.reversePeVMirror(client, row.id, actorUserId);
+      return { journalEntryId: null };
+    }
+
+    if (options?.replaceExisting !== false) {
+      await this.reversePeVMirror(client, row.id, actorUserId);
+    }
+
+    const lines = buildJournalLinesFromPeV(row, expenseGlAccountId);
+    if (!lines) return { journalEntryId: null };
+
+    const body = buildJournalBodyFromPeV(row, lines);
+    const { journalEntryId } = await this.postJournal(client, body, { actorUserId });
+    return { journalEntryId };
+  }
+
+  async reversePeVMirror(
+    client: pg.PoolClient,
+    voucherId: string,
+    actorUserId: string | null
+  ): Promise<void> {
+    const existingId = await this.journalRepo().findActiveBySource(
+      client,
+      PEV_JOURNAL_SOURCE_MODULE,
+      voucherId
+    );
+    if (!existingId) return;
+    await this.reverseJournal(client, existingId, 'Project expense voucher reversed', actorUserId);
   }
 }
 

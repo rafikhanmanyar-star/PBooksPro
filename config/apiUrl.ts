@@ -127,7 +127,7 @@ function readStoredApiBaseUrl(): string | null {
   }
 }
 
-function normalizeApiBaseUrl(url: string): string {
+export function normalizeApiBaseUrl(url: string): string {
   const u = url.trim().replace(/\/?$/, '');
   if (u.endsWith('/api/v1')) return u;
   if (u.endsWith('/api')) return `${u}/v1`;

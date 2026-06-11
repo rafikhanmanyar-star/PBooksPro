@@ -15,9 +15,9 @@ alwaysApply: true
 - Path alias `@/*` is available in tsconfig; use when refactoring deep paths
 
 ## Multi-Tenant
-- All tenant-scoped data must use `tenant_id`; pass `tenantId` explicitly to services
+- All tenant-scoped data uses `tenant_id`; v2 repositories extend `TenantRepository`
 - `authMiddleware` sets `req.tenantId`, `req.userId` on authenticated routes
-- See `architecture-overview.mdc` for full layer and placement rules
+- See `doc/ARCHITECTURE.md` (v2) for full layer and placement rules
 
 ## Environments
 - Staging (`staging` branch, port 3001) and production (`main`, port 3000) are separate

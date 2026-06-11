@@ -102,6 +102,9 @@
     "dev:backend:production": "dotenv -e .env.production -- npm run dev --prefix backend",
     "db:backfill-payroll-ledger": "dotenv -e .env -- npm run backfill-payroll-ledger --prefix backend --",
     "db:backfill-transaction-journal": "dotenv -e .env -- npm run backfill-transaction-journal --prefix backend --",
+    "db:backfill-documents-metadata": "dotenv -e .env -- npm run backfill-documents-metadata --prefix backend --",
+    "db:backfill-documents-metadata:staging": "dotenv -e .env.staging -- npm run backfill-documents-metadata --prefix backend --",
+    "db:backfill-documents-metadata:production": "dotenv -e .env.production -- npm run backfill-documents-metadata --prefix backend --",
     "reset-pm-cycle": "dotenv -e .env -- npm run reset-pm-cycle --prefix backend --"
   },
   "dependencies": {

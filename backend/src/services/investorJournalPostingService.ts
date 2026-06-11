@@ -4,11 +4,21 @@
 import type pg from 'pg';
 import { roundMoney } from '../financial/validation.js';
 import {
-  insertJournalEntry,
   type CreateJournalBody,
   type InvestorTransactionType,
 } from './journalService.js';
+import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import { createTransaction } from './transactionsService.js';
+
+async function postInvestorJournalEntry(
+  client: pg.PoolClient,
+  tenantId: string,
+  body: CreateJournalBody
+): Promise<{ journalEntryId: string }> {
+  return createFinancialPostingService(tenantId).postJournal(client, body, {
+    actorUserId: body.createdBy,
+  });
+}
 
 /** Matches `EquityLedgerSubtype` in client `types.ts` — ledger UI reads `transactions`, not journal-only rows. */
 const EQ_SUB_INVESTMENT = 'equity_investment';
@@ -152,7 +162,7 @@ export async function postInvestorContribution(
       },
     ],
   };
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
   await mirrorContributionToTransactionsRow(client, tenantId, {
     journalEntryId,
     entryDate: input.entryDate,
@@ -219,7 +229,7 @@ export async function postInvestorWithdrawal(
       { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt, projectId: input.projectId },
     ],
   };
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, body);
+  const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
   await mirrorWithdrawalToTransactionsRow(client, tenantId, {
     journalEntryId,
     entryDate: input.entryDate,
@@ -277,7 +287,7 @@ export async function postProfitAllocationToInvestor(
       },
     ],
   };
-  return insertJournalEntry(client, tenantId, body);
+  return postInvestorJournalEntry(client, tenantId, body);
 }
 
 /** Inter-project: clearing-style two entries (no cash) or user supplies cash legs — here book-only via clearing not used; two entries Dr/Cr equity with cash if needed. */
@@ -302,7 +312,7 @@ export async function postInterProjectEquityTransfer(
   if (amt <= 0) throw new Error('Amount must be positive.');
   const baseDesc = input.description ?? 'Inter-project equity transfer';
 
-  const outJe = await insertJournalEntry(client, tenantId, {
+  const outJe = await postInvestorJournalEntry(client, tenantId, {
     entryDate: input.entryDate,
     reference: `INV-T-OUT-${Date.now()}`,
     description: `${baseDesc} (source project)`,
@@ -323,7 +333,7 @@ export async function postInterProjectEquityTransfer(
     ],
   });
 
-  const inJe = await insertJournalEntry(client, tenantId, {
+  const inJe = await postInvestorJournalEntry(client, tenantId, {
     entryDate: input.entryDate,
     reference: `INV-T-IN-${Date.now()}`,
     description: `${baseDesc} (destination project)`,

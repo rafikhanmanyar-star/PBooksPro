@@ -620,9 +620,43 @@ const SettingsPage: React.FC = () => {
     };
 
     const handleFactoryReset = async () => {
-        if (await showConfirm('FACTORY RESET WARNING: This will wipe ALL data and return the app to a fresh install state. \n\nAre you absolutely sure?', { title: 'Factory Reset', confirmLabel: 'Wipe Everything', cancelLabel: 'Cancel' })) {
+        if (!(await showConfirm(
+            'FACTORY RESET WARNING: This will wipe ALL data and return the app to a fresh install state. \n\nAre you absolutely sure?',
+            { title: 'Factory Reset', confirmLabel: 'Wipe Everything', cancelLabel: 'Cancel' }
+        ))) {
+            return;
+        }
+
+        try {
+            const tenantId = authTenant?.id;
+
+            if (isLocalOnlyMode()) {
+                const dbService = getDatabaseService();
+                if (!dbService.isReady()) {
+                    showAlert('Local database is not ready. Please try again.', { title: 'Error' });
+                    return;
+                }
+                dbService.clearAllData(tenantId);
+            } else {
+                await dataManagementApi.factoryReset();
+                const dbService = getDatabaseService();
+                if (dbService.isReady()) {
+                    dbService.clearAllData(tenantId);
+                }
+            }
+
             dispatch({ type: 'LOAD_SAMPLE_DATA' });
-            showToast('App has been reset.', 'success');
+            showToast(
+                isLocalOnlyMode()
+                    ? 'Organization data has been reset locally.'
+                    : 'Organization data has been reset on the server.',
+                'success'
+            );
+            setTimeout(() => window.location.reload(), 800);
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to reset organization data.';
+            console.error('Factory reset failed:', error);
+            showAlert(message, { title: 'Factory Reset Failed' });
         }
     };
 
@@ -1088,10 +1122,13 @@ const SettingsPage: React.FC = () => {
                             <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
                         </button>
                     )}
-                    <button onClick={handleFactoryReset} className="p-4 bg-app-text border border-app-border rounded-xl hover:bg-app-text/90 transition-all text-left group">
-                        <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
-                        <p className="text-xs text-app-muted leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
-                    </button>
+                    {perms.canManageUsers && (
+                        <button onClick={handleFactoryReset} className="p-4 bg-app-text border border-app-border rounded-xl hover:bg-app-text/90 transition-all text-left group">
+                            <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
+                            <p className="text-xs text-app-muted leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
+                            <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

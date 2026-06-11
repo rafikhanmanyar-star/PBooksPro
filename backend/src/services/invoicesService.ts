@@ -4,6 +4,7 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnl
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from './invoiceJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { InvoiceRepository } from '../modules/customers/repositories/InvoiceRepository.js';
 
 export type InvoiceRow = {
   id: string;
@@ -132,33 +133,7 @@ export async function listInvoices(
     includeDeleted?: boolean;
   }
 ): Promise<InvoiceRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-           invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-           security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at
-           FROM invoices WHERE tenant_id = $1`;
-  if (!filters?.includeDeleted) {
-    q += ` AND deleted_at IS NULL`;
-  }
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.invoiceType) {
-    params.push(filters.invoiceType);
-    q += ` AND invoice_type = $${params.length}`;
-  }
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  if (filters?.agreementId) {
-    params.push(filters.agreementId);
-    q += ` AND agreement_id = $${params.length}`;
-  }
-  q += ' ORDER BY issue_date DESC, invoice_number ASC';
-  const r = await client.query<InvoiceRow>(q, params);
-  return r.rows;
+  return new InvoiceRepository(tenantId).list(client, filters);
 }
 
 export async function getInvoiceById(
@@ -166,14 +141,7 @@ export async function getInvoiceById(
   tenantId: string,
   id: string
 ): Promise<InvoiceRow | null> {
-  const r = await client.query<InvoiceRow>(
-    `SELECT id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-            invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-            security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at
-     FROM invoices WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new InvoiceRepository(tenantId).getById(client, id);
 }
 
 /** Active or soft-deleted row (for POST upsert). */
@@ -182,14 +150,7 @@ export async function getInvoiceByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<InvoiceRow | null> {
-  const r = await client.query<InvoiceRow>(
-    `SELECT id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-            invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-            security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at
-     FROM invoices WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new InvoiceRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 /** Server-authoritative paid_amount/status from payment transactions (ignores client-supplied values). */

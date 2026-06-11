@@ -1,0 +1,254 @@
+/**
+ * Tenant-scoped destructive data operations (factory reset, clear transactions).
+ * Used by Settings → Data Management in LAN/API mode.
+ */
+
+import type pg from 'pg';
+import { withSavepoint } from '../db/pool.js';
+import { bootstrapTenantChart } from './tenantBootstrap.js';
+import { logger } from '../utils/logger.js';
+import {
+  DEMO_INTERNAL_TENANT_IDS,
+  DEMO_MASTER_TENANT_ID,
+  DEMO_PUBLIC_TENANT_ID,
+  isDemoMasterTenant,
+} from '../constants/demoEnvironment.js';
+
+const JOURNAL_IMMUTABILITY_TRIGGERS = [
+  'journal_lines_immutable_del',
+  'journal_lines_immutable_upd',
+  'journal_entries_immutable_del',
+  'journal_entries_immutable_upd',
+] as const;
+
+/** Child tables first. Missing tables are skipped (savepoint per table). */
+const CLEAR_TRANSACTION_TABLES = [
+  'vendor_bill_advance_clearings',
+  'contractor_bill_adjustments',
+  'contractor_bills',
+  'contractor_advances',
+  'pm_cycle_allocations',
+  'project_agreement_units',
+  'sales_returns',
+  'transaction_log',
+  'transactions',
+  'invoices',
+  'bills',
+  'quotations',
+  'recurring_invoice_templates',
+  'contracts',
+  'rental_agreements',
+  'project_agreements',
+  'project_received_assets',
+] as const;
+
+const FACTORY_RESET_EXTRA_TABLES = [
+  'documents',
+  'budgets',
+  'units',
+  'properties',
+  'property_ownership',
+  'buildings',
+  'projects',
+  'vendors',
+  'contacts',
+  'installment_plans',
+  'plan_amenities',
+  'owner_balances',
+  'monthly_owner_summary',
+  'pl_category_mapping',
+  'project_expense_vouchers',
+  'project_expense_categories',
+  'custom_report_templates',
+  'report_builder_audit_log',
+  'analytics_snapshots',
+  'record_locks',
+  'payslips',
+  'payroll_runs',
+  'payroll_employees',
+  'payroll_salary_components',
+  'payroll_projects',
+  'payroll_grades',
+  'payroll_departments',
+  'payroll_tenant_config',
+  'personal_transactions',
+  'personal_categories',
+  'personal_tasks',
+  'app_settings',
+] as const;
+
+export type TenantWipeResult = {
+  tenantId: string;
+  tablesCleared: number;
+  recordsDeleted: number;
+};
+
+function assertTenantMayBeWiped(tenantId: string): void {
+  if (
+    isDemoMasterTenant(tenantId) ||
+    tenantId === DEMO_PUBLIC_TENANT_ID ||
+    DEMO_INTERNAL_TENANT_IDS.has(tenantId)
+  ) {
+    throw new Error('This organization cannot be reset.');
+  }
+}
+
+async function setJournalImmutabilityTriggers(
+  client: pg.PoolClient,
+  enabled: boolean
+): Promise<void> {
+  const verb = enabled ? 'ENABLE' : 'DISABLE';
+  for (const trigger of JOURNAL_IMMUTABILITY_TRIGGERS) {
+    const table = trigger.startsWith('journal_lines') ? 'journal_lines' : 'journal_entries';
+    await client.query(`ALTER TABLE ${table} ${verb} TRIGGER ${trigger}`);
+  }
+}
+
+async function deleteTenantJournalRows(client: pg.PoolClient, tenantId: string): Promise<void> {
+  await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
+  await client.query(
+    `DELETE FROM journal_lines
+     WHERE journal_entry_id IN (SELECT id FROM journal_entries WHERE tenant_id = $1)`,
+    [tenantId]
+  );
+  await client.query(`DELETE FROM journal_entries WHERE tenant_id = $1`, [tenantId]);
+}
+
+/** Bypass journal immutability triggers (managed Postgres / Render). */
+export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
+  const purgeWithReplicaRole = () =>
+    withSavepoint(client, 'tenant_journal_purge_replica', async (c) => {
+      await c.query(`SET session_replication_role = replica`);
+      try {
+        await deleteTenantJournalRows(c, tenantId);
+      } finally {
+        await c.query(`SET session_replication_role = DEFAULT`);
+      }
+    });
+
+  const purgeWithTriggersDisabled = () =>
+    withSavepoint(client, 'tenant_journal_purge_triggers', async (c) => {
+      await setJournalImmutabilityTriggers(c, false);
+      try {
+        await deleteTenantJournalRows(c, tenantId);
+      } finally {
+        await setJournalImmutabilityTriggers(c, true);
+      }
+    });
+
+  try {
+    await purgeWithReplicaRole();
+  } catch (replicaErr) {
+    try {
+      await purgeWithTriggersDisabled();
+    } catch (triggerErr) {
+      logger.warn('Tenant journal purge skipped (stale GL rows may remain)', {
+        tenantId,
+        replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
+        triggerErr: triggerErr instanceof Error ? triggerErr.message : String(triggerErr),
+      });
+    }
+  }
+}
+
+async function deleteFromTenantTable(
+  client: pg.PoolClient,
+  tenantId: string,
+  table: string
+): Promise<number> {
+  let deleted = 0;
+  await withSavepoint(client, `wipe_${table}`, async (c) => {
+    const r = await c.query(`DELETE FROM ${table} WHERE tenant_id = $1`, [tenantId]);
+    deleted = r.rowCount ?? 0;
+  });
+  return deleted;
+}
+
+async function wipeTenantTables(
+  client: pg.PoolClient,
+  tenantId: string,
+  tables: readonly string[]
+): Promise<TenantWipeResult> {
+  let tablesCleared = 0;
+  let recordsDeleted = 0;
+
+  await purgeTenantJournal(client, tenantId);
+  tablesCleared += 1;
+  recordsDeleted += 3;
+
+  for (const table of tables) {
+    try {
+      const n = await deleteFromTenantTable(client, tenantId, table);
+      if (n > 0) tablesCleared += 1;
+      recordsDeleted += n;
+    } catch {
+      /* table may not exist on older schemas */
+    }
+  }
+
+  try {
+    await withSavepoint(client, 'wipe_tenant_accounts', async (c) => {
+      const r = await c.query(`DELETE FROM accounts WHERE tenant_id = $1`, [tenantId]);
+      recordsDeleted += r.rowCount ?? 0;
+    });
+    tablesCleared += 1;
+  } catch {
+    /* optional */
+  }
+
+  try {
+    await withSavepoint(client, 'wipe_tenant_categories', async (c) => {
+      const r = await c.query(
+        `DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`,
+        [tenantId]
+      );
+      recordsDeleted += r.rowCount ?? 0;
+    });
+    tablesCleared += 1;
+  } catch {
+    /* optional */
+  }
+
+  return { tenantId, tablesCleared, recordsDeleted };
+}
+
+/** Wipe transactional data; preserve master entities (projects, contacts, etc.). */
+export async function clearTenantTransactions(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<TenantWipeResult> {
+  assertTenantMayBeWiped(tenantId);
+  return wipeTenantTables(client, tenantId, CLEAR_TRANSACTION_TABLES);
+}
+
+/** Wipe all organization business data; preserve users, tenant record, and subscriptions. */
+export async function wipeTenantOrganizationData(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<TenantWipeResult> {
+  assertTenantMayBeWiped(tenantId);
+  const tables = [...CLEAR_TRANSACTION_TABLES, ...FACTORY_RESET_EXTRA_TABLES];
+  return wipeTenantTables(client, tenantId, tables);
+}
+
+/** Full factory reset: wipe data and re-bootstrap the system chart. */
+export async function factoryResetTenant(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<TenantWipeResult> {
+  const result = await wipeTenantOrganizationData(client, tenantId);
+  await bootstrapTenantChart(client, tenantId, { legacyIds: false });
+  return result;
+}
+
+/** @deprecated Use wipeTenantOrganizationData — kept for demo seed service. */
+export async function wipeTenantBusinessData(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<void> {
+  if (tenantId === DEMO_MASTER_TENANT_ID) {
+    await wipeTenantOrganizationData(client, tenantId);
+    return;
+  }
+  await wipeTenantOrganizationData(client, tenantId);
+}

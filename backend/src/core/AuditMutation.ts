@@ -1,11 +1,10 @@
 import type pg from 'pg';
 import {
-  appendAuditEvent,
-  type AppendAuditEventInput,
   type AuditAction,
   type AuditModule,
   type AuditRequestContext,
 } from '../services/enterpriseAuditService.js';
+import { recordDomainMutation } from './recordDomainMutation.js';
 
 export type AuditMutationContext = {
   tenantId: string;
@@ -14,10 +13,15 @@ export type AuditMutationContext = {
   module: AuditModule | string;
   entityType: string;
   action: AuditAction | string;
+  /** change_log action when it differs from audit action (e.g. workflow submit → update). */
+  changeLogAction?: 'create' | 'update' | 'delete';
   entityId?: string | null;
   summary?: string | null;
   oldValue?: unknown;
+  newValue?: unknown;
   requestCtx?: AuditRequestContext;
+  version?: number;
+  enqueueSync?: boolean;
 };
 
 export type AuditMutationResult<T> = {
@@ -26,8 +30,7 @@ export type AuditMutationResult<T> = {
 };
 
 /**
- * Runs a mutation inside an open transaction and records audit_events.
- * Pass the same PoolClient used for the mutation.
+ * Runs a mutation inside an open transaction and records audit + change_log via recordDomainMutation.
  */
 export async function withAudit<T>(
   client: pg.PoolClient,
@@ -39,20 +42,31 @@ export async function withAudit<T>(
   if (!entityId && result && typeof result === 'object' && 'id' in result) {
     entityId = String((result as { id: unknown }).id);
   }
+  if (!entityId) {
+    throw new Error('withAudit requires entityId on context or id on mutation result');
+  }
 
-  const auditEventId = await appendAuditEvent(client, {
+  const changeLogAction =
+    ctx.changeLogAction ??
+    (ctx.action === 'create' || ctx.action === 'update' || ctx.action === 'delete'
+      ? ctx.action
+      : 'update');
+
+  const auditEventId = await recordDomainMutation(client, {
     tenantId: ctx.tenantId,
     userId: ctx.userId,
-    email: ctx.email,
     module: ctx.module,
-    action: ctx.action,
     entityType: ctx.entityType,
     entityId,
-    summary: ctx.summary,
+    action: changeLogAction,
+    auditAction: ctx.action,
+    summary: ctx.summary ?? undefined,
     oldValue: ctx.oldValue,
-    newValue: result,
-    ctx: ctx.requestCtx,
-  } satisfies AppendAuditEventInput);
+    newValue: ctx.newValue ?? result,
+    version: ctx.version,
+    requestCtx: ctx.requestCtx,
+    enqueueSync: ctx.enqueueSync,
+  });
 
   return { result, auditEventId };
 }
@@ -65,19 +79,5 @@ export async function withAuditValues<T>(
   ctx: AuditMutationContext & { newValue?: unknown },
   fn: () => Promise<T>
 ): Promise<AuditMutationResult<T>> {
-  const result = await fn();
-  const auditEventId = await appendAuditEvent(client, {
-    tenantId: ctx.tenantId,
-    userId: ctx.userId,
-    email: ctx.email,
-    module: ctx.module,
-    action: ctx.action,
-    entityType: ctx.entityType,
-    entityId: ctx.entityId,
-    summary: ctx.summary,
-    oldValue: ctx.oldValue,
-    newValue: ctx.newValue ?? result,
-    ctx: ctx.requestCtx,
-  });
-  return { result, auditEventId };
+  return withAudit(client, ctx, fn);
 }

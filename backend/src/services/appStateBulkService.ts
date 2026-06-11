@@ -37,7 +37,7 @@ import {
 } from './pmCycleAllocationsService.js';
 import { listVendors, rowToVendorApi } from './vendorsService.js';
 import { listQuotations, rowToQuotationApi } from './quotationsService.js';
-import { listDocuments, rowToDocumentApi } from './documentsService.js';
+import { listDocuments, rowToDocumentApi } from '../modules/documents/services/documentsModuleService.js';
 import { listTransactionLogs, rowToTransactionLogApi } from './transactionLogService.js';
 import {
   listPersonalCategories,

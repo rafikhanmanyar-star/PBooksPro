@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
 import { listBills, rowToBillApi } from './billsService.js';
 import { listBuildings, rowToBuildingApi } from './buildingsService.js';
@@ -19,18 +17,8 @@ type VendorLedgerEngineModule = {
   };
 };
 
-let cachedEngine: VendorLedgerEngineModule | null = null;
-
 async function loadVendorLedgerEngine(): Promise<VendorLedgerEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'vendorLedgerReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Vendor ledger engine bundle missing: ${bundled}. Run: node scripts/ensure-vendor-ledger-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as VendorLedgerEngineModule;
-  return cachedEngine;
+  return loadReportEngine<VendorLedgerEngineModule>('vendorLedger');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

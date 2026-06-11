@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
-import type { AuthedRequest } from '../middleware/authMiddleware.js';
+import type { RequestWithAuditContext } from '../middleware/auditRequestContext.js';
 import { getPool, withTransaction } from '../db/pool.js';
 import {
   getDocumentById,
@@ -8,12 +8,12 @@ import {
   rowToDocumentApi,
   softDeleteDocument,
   upsertDocument,
-} from '../services/documentsService.js';
+} from '../modules/documents/services/documentsModuleService.js';
 import { emitEntityEvent } from '../core/realtime.js';
 
 export const documentsRouter = Router();
 
-documentsRouter.get('/documents', async (req: AuthedRequest, res) => {
+documentsRouter.get('/documents', async (req: RequestWithAuditContext, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -45,7 +45,7 @@ documentsRouter.get('/documents', async (req: AuthedRequest, res) => {
   }
 });
 
-documentsRouter.get('/documents/:id', async (req: AuthedRequest, res) => {
+documentsRouter.get('/documents/:id', async (req: RequestWithAuditContext, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -70,7 +70,7 @@ documentsRouter.get('/documents/:id', async (req: AuthedRequest, res) => {
   }
 });
 
-documentsRouter.post('/documents', async (req: AuthedRequest, res) => {
+documentsRouter.post('/documents', async (req: RequestWithAuditContext, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -78,7 +78,13 @@ documentsRouter.post('/documents', async (req: AuthedRequest, res) => {
   }
   try {
     const result = await withTransaction((client) =>
-      upsertDocument(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
+      upsertDocument(
+        client,
+        tenantId,
+        req.body as Record<string, unknown>,
+        req.userId ?? null,
+        req.auditContext
+      )
     );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', {
@@ -96,7 +102,7 @@ documentsRouter.post('/documents', async (req: AuthedRequest, res) => {
   }
 });
 
-documentsRouter.delete('/documents/:id', async (req: AuthedRequest, res) => {
+documentsRouter.delete('/documents/:id', async (req: RequestWithAuditContext, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -108,7 +114,14 @@ documentsRouter.delete('/documents/:id', async (req: AuthedRequest, res) => {
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
   try {
     const result = await withTransaction((client) =>
-      softDeleteDocument(client, tenantId, id, expectedVersion)
+      softDeleteDocument(
+        client,
+        tenantId,
+        id,
+        expectedVersion,
+        req.userId ?? null,
+        req.auditContext
+      )
     );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Version conflict');

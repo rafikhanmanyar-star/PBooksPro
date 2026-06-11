@@ -9,6 +9,7 @@ import {
 import { getPropertyById } from './propertiesService.js';
 import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
 import { enforceLockForSave } from './recordLocksService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -220,7 +221,19 @@ export async function createRentalAgreement(
         : null,
     ]
   );
-  return r.rows[0];
+  const row = r.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: null,
+    module: 'rental_agreements',
+    entityType: 'rental_agreement',
+    entityId: row.id,
+    action: 'create',
+    summary: `Rental agreement ${row.agreement_number} created`,
+    newValue: rowToRentalAgreementApi(row),
+    version: row.version,
+  });
+  return row;
 }
 
 export async function updateRentalAgreement(
@@ -272,7 +285,19 @@ export async function updateRentalAgreement(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    return { row: u.rows[0], conflict: false };
+    const row = u.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'rental_agreements',
+      entityType: 'rental_agreement',
+      entityId: row.id,
+      action: 'update',
+      summary: `Rental agreement ${row.agreement_number} updated`,
+      newValue: rowToRentalAgreementApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false };
   }
 
   const u = await client.query<RentalAgreementRow>(
@@ -306,7 +331,21 @@ export async function updateRentalAgreement(
         : null,
     ]
   );
-  return { row: u.rows[0] ?? null, conflict: false };
+  const row = u.rows[0] ?? null;
+  if (row) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId,
+      module: 'rental_agreements',
+      entityType: 'rental_agreement',
+      entityId: row.id,
+      action: 'update',
+      summary: `Rental agreement ${row.agreement_number} updated`,
+      newValue: rowToRentalAgreementApi(row),
+      version: row.version,
+    });
+  }
+  return { row, conflict: false };
 }
 
 /** After create/update, enforce one Active per property and single broker fee on first agreement in each renewal chain. */
@@ -552,23 +591,56 @@ export async function softDeleteRentalAgreement(
   id: string,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getRentalAgreementById(client, tenantId, id);
   if (expectedVersion !== undefined) {
     const r = await client.query(
       `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3
+       RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
+                 rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+                 version, deleted_at, created_at, updated_at`,
       [id, tenantId, expectedVersion]
     );
     if (r.rowCount === 0) {
-      const ex = await getRentalAgreementById(client, tenantId, id);
-      if (!ex) return { ok: false, conflict: false };
+      if (!before) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    const row = r.rows[0] as RentalAgreementRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'rental_agreements',
+      entityType: 'rental_agreement',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Rental agreement ${row.agreement_number} deleted`,
+      oldValue: before ? rowToRentalAgreementApi(before) : null,
+      version: row.version,
+    });
     return { ok: true, conflict: false };
   }
   const r = await client.query(
     `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
+               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
+               version, deleted_at, created_at, updated_at`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok && r.rows[0]) {
+    const row = r.rows[0] as RentalAgreementRow;
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: null,
+      module: 'rental_agreements',
+      entityType: 'rental_agreement',
+      entityId: row.id,
+      action: 'delete',
+      summary: `Rental agreement ${row.agreement_number} deleted`,
+      oldValue: before ? rowToRentalAgreementApi(before) : null,
+      version: row.version,
+    });
+  }
+  return { ok, conflict: false };
 }

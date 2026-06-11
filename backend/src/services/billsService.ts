@@ -4,6 +4,7 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdO
 import { enforceLockForSave } from './recordLocksService.js';
 import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
 
 export type BillRow = {
   id: string;
@@ -174,26 +175,7 @@ export async function listBills(
   tenantId: string,
   filters?: { status?: string; projectId?: string; propertyId?: string }
 ): Promise<BillRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-           description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-           expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-           FROM bills WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  if (filters?.propertyId) {
-    params.push(filters.propertyId);
-    q += ` AND property_id = $${params.length}`;
-  }
-  q += ' ORDER BY issue_date DESC, bill_number ASC';
-  const r = await client.query<BillRow>(q, params);
-  return r.rows;
+  return new BillRepository(tenantId).list(client, filters);
 }
 
 export async function getBillById(
@@ -201,14 +183,7 @@ export async function getBillById(
   tenantId: string,
   id: string
 ): Promise<BillRow | null> {
-  const r = await client.query<BillRow>(
-    `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-            description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-            expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new BillRepository(tenantId).getById(client, id);
 }
 
 export async function getBillByIdIncludingDeleted(
@@ -216,14 +191,7 @@ export async function getBillByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<BillRow | null> {
-  const r = await client.query<BillRow>(
-    `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-            description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-            expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     FROM bills WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new BillRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 /** Server-authoritative paid_amount/status from payment transactions and advance clearings. */

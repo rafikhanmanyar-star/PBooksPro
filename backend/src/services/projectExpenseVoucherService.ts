@@ -2,11 +2,40 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney } from '../financial/validation.js';
-import { appendAuditEvent } from './enterpriseAuditService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import type { ChangeLogAction } from './changeLogService.js';
 import { SYS_EXPENSE_SUMMARY } from '../constants/fiscalAccounts.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { createCategory } from './categoriesService.js';
 import { syncPeVJournalMirror, reversePeVJournalMirror } from './pevJournalPostingService.js';
+
+async function auditPeV(
+  client: pg.PoolClient,
+  opts: {
+    tenantId: string;
+    userId?: string | null;
+    entityId: string;
+    auditAction: string;
+    summary: string;
+    newValue?: unknown;
+    version?: number;
+  }
+): Promise<void> {
+  const action: ChangeLogAction =
+    opts.auditAction === 'delete' ? 'delete' : opts.auditAction === 'create' ? 'create' : 'update';
+  await recordDomainMutation(client, {
+    tenantId: opts.tenantId,
+    userId: opts.userId,
+    module: 'project_expense_voucher',
+    entityType: 'project_expense_voucher',
+    entityId: opts.entityId,
+    action,
+    auditAction: opts.auditAction,
+    summary: opts.summary,
+    newValue: opts.newValue,
+    version: opts.version,
+  });
+}
 
 export type PeVStatus = 'draft' | 'submitted' | 'approved' | 'rejected' | 'posted';
 
@@ -370,15 +399,14 @@ export async function createProjectExpenseVoucher(
   row = (await getProjectExpenseVoucherById(client, tenantId, id))!;
   if (!row) throw new Error('Failed to load voucher after posting.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: createdBy,
-    module: 'project_expense_voucher',
-    action: 'create',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'create',
     summary: `PEV ${voucherNumber} recorded`,
     newValue: { voucherNumber, amount: picked.amount, projectId: picked.project_id, journalEntryId },
+    version: row.version,
   });
 
   return { row, journalEntryId };
@@ -447,15 +475,14 @@ export async function updateProjectExpenseVoucher(
   updated = await getProjectExpenseVoucherById(client, tenantId, id);
 
   if (updated) {
-    await appendAuditEvent(client, {
+    await auditPeV(client, {
       tenantId,
       userId: actorUserId,
-      module: 'project_expense_voucher',
-      action: 'update',
-      entityType: 'project_expense_voucher',
       entityId: id,
+      auditAction: 'update',
       summary: `PEV ${updated.voucher_number} updated`,
       newValue: { journalEntryId },
+      version: updated.version,
     });
   }
   return { row: updated };
@@ -481,14 +508,13 @@ export async function submitProjectExpenseVoucher(
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after submit.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'submit',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'submit',
     summary: `PEV ${updated.voucher_number} submitted`,
+    version: updated.version,
   });
   return updated;
 }
@@ -513,14 +539,13 @@ export async function approveProjectExpenseVoucher(
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after approval.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'approve',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'approve',
     summary: `PEV ${updated.voucher_number} approved`,
+    version: updated.version,
   });
   return updated;
 }
@@ -546,15 +571,14 @@ export async function rejectProjectExpenseVoucher(
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after rejection.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'reject',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'reject',
     summary: `PEV ${updated.voucher_number} rejected`,
     newValue: { reason: reason ?? null },
+    version: updated.version,
   });
   return updated;
 }
@@ -597,15 +621,14 @@ export async function postProjectExpenseVoucher(
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after posting.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'post',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'post',
     summary: `PEV ${updated.voucher_number} posted to GL`,
     newValue: { journalEntryId },
+    version: updated.version,
   });
 
   return { row: updated, journalEntryId };
@@ -632,14 +655,13 @@ export async function softDeleteProjectExpenseVoucher(
     [tenantId, id]
   );
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'delete',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'delete',
     summary: `PEV ${row.voucher_number} deleted`,
+    version: row.version,
   });
 
   return { ok: true };
@@ -683,14 +705,13 @@ export async function unpostProjectExpenseVoucher(
   const updated = await getProjectExpenseVoucherById(client, tenantId, id);
   if (!updated) throw new Error('Voucher not found after unpost.');
 
-  await appendAuditEvent(client, {
+  await auditPeV(client, {
     tenantId,
     userId: actorUserId,
-    module: 'project_expense_voucher',
-    action: 'unpost',
-    entityType: 'project_expense_voucher',
     entityId: id,
+    auditAction: 'unpost',
     summary: `PEV ${updated.voucher_number} unposted`,
+    version: updated.version,
   });
   return updated;
 }

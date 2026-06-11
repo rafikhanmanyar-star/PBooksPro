@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { listAccounts, rowToAccountApi } from './accountsService.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from './categoriesService.js';
@@ -20,18 +18,8 @@ type BalanceSheetEngineModule = {
   ) => Record<string, unknown>;
 };
 
-let cachedEngine: BalanceSheetEngineModule | null = null;
-
 async function loadBalanceSheetEngine(): Promise<BalanceSheetEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'balanceSheetEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Balance sheet engine bundle missing: ${bundled}. Run: node scripts/ensure-balance-sheet-engine.mjs (or npm run build in backend).`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as BalanceSheetEngineModule;
-  return cachedEngine;
+  return loadReportEngine<BalanceSheetEngineModule>('balanceSheet');
 }
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {

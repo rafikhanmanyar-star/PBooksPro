@@ -1,7 +1,5 @@
-import path from 'path';
-import { pathToFileURL } from 'url';
-import fs from 'fs';
 import type pg from 'pg';
+import { loadReportEngine } from '../reportEngines/loadReportEngine.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
 
 type OwnerSecurityDepositEngineModule = {
@@ -11,18 +9,8 @@ type OwnerSecurityDepositEngineModule = {
   ) => unknown[];
 };
 
-let cachedEngine: OwnerSecurityDepositEngineModule | null = null;
-
 async function loadOwnerSecurityDepositEngine(): Promise<OwnerSecurityDepositEngineModule> {
-  if (cachedEngine) return cachedEngine;
-  const bundled = path.join(process.cwd(), 'dist', 'ownerSecurityDepositReportEngine.mjs');
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Owner security deposit engine bundle missing: ${bundled}. Run: node scripts/ensure-owner-security-deposit-engine.mjs`
-    );
-  }
-  cachedEngine = (await import(pathToFileURL(bundled).href)) as OwnerSecurityDepositEngineModule;
-  return cachedEngine;
+  return loadReportEngine<OwnerSecurityDepositEngineModule>('ownerSecurityDeposit');
 }
 
 const VALID_SORT_KEYS = new Set([
