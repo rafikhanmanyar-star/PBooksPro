@@ -9,7 +9,6 @@ import { bootstrapTenantChart } from './tenantBootstrap.js';
 import { logger } from '../utils/logger.js';
 import {
   DEMO_INTERNAL_TENANT_IDS,
-  DEMO_MASTER_TENANT_ID,
   DEMO_PUBLIC_TENANT_ID,
   isDemoMasterTenant,
 } from '../constants/demoEnvironment.js';
@@ -221,14 +220,21 @@ export async function clearTenantTransactions(
   return wipeTenantTables(client, tenantId, CLEAR_TRANSACTION_TABLES);
 }
 
+async function wipeTenantOrganizationDataUnchecked(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<TenantWipeResult> {
+  const tables = [...CLEAR_TRANSACTION_TABLES, ...FACTORY_RESET_EXTRA_TABLES];
+  return wipeTenantTables(client, tenantId, tables);
+}
+
 /** Wipe all organization business data; preserve users, tenant record, and subscriptions. */
 export async function wipeTenantOrganizationData(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<TenantWipeResult> {
   assertTenantMayBeWiped(tenantId);
-  const tables = [...CLEAR_TRANSACTION_TABLES, ...FACTORY_RESET_EXTRA_TABLES];
-  return wipeTenantTables(client, tenantId, tables);
+  return wipeTenantOrganizationDataUnchecked(client, tenantId);
 }
 
 /** Full factory reset: wipe data and re-bootstrap the system chart. */
@@ -241,14 +247,13 @@ export async function factoryResetTenant(
   return result;
 }
 
-/** @deprecated Use wipeTenantOrganizationData — kept for demo seed service. */
+/**
+ * Demo seed/reset only — bypasses assertTenantMayBeWiped so sandbox tenants can be rebuilt.
+ * User-facing Settings → Data Management must use wipeTenantOrganizationData instead.
+ */
 export async function wipeTenantBusinessData(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<void> {
-  if (tenantId === DEMO_MASTER_TENANT_ID) {
-    await wipeTenantOrganizationData(client, tenantId);
-    return;
-  }
-  await wipeTenantOrganizationData(client, tenantId);
+  await wipeTenantOrganizationDataUnchecked(client, tenantId);
 }

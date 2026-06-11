@@ -144,30 +144,24 @@ export async function createUnit(
 
   const id = typeof body.id === 'string' && body.id.trim() ? body.id.trim() : randomUUID();
 
-  const r = await client.query<UnitRow>(
-    `INSERT INTO units (
-      id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at
-    ) VALUES (
-      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 1, NULL, NOW(), NOW()
-    )
-    RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.project_id,
-      p.unit_number,
-      p.floor ?? null,
-      p.unit_type ?? null,
-      p.size ?? null,
-      p.status,
-      p.owner_contact_id ?? null,
-      p.sale_price !== undefined ? p.sale_price : null,
-      p.description ?? null,
-      p.area !== undefined ? p.area : null,
-      (body.userId ?? body.user_id) as string | null ?? null,
-    ]
+  const unitFields = {
+    project_id: p.project_id,
+    unit_number: p.unit_number,
+    floor: p.floor ?? null,
+    unit_type: p.unit_type ?? null,
+    size: p.size ?? null,
+    status: p.status,
+    owner_contact_id: p.owner_contact_id ?? null,
+    sale_price: p.sale_price !== undefined ? p.sale_price : null,
+    description: p.description ?? null,
+    area: p.area !== undefined ? p.area : null,
+  };
+  const row = await new UnitRepository(tenantId).insertUnit(
+    client,
+    id,
+    unitFields,
+    ((body.userId ?? body.user_id) as string | null) ?? null
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -221,18 +215,19 @@ export async function updateUnit(
     if (!contact) throw new Error('Owner contact not found.');
   }
 
-  const vals = [
-    p.project_id,
-    p.unit_number,
-    p.floor ?? null,
-    p.unit_type ?? null,
-    p.size ?? null,
-    p.status,
-    p.owner_contact_id ?? null,
-    p.sale_price !== undefined ? p.sale_price : null,
-    p.description ?? null,
-    p.area !== undefined ? p.area : null,
-  ];
+  const unitFields = {
+    project_id: p.project_id,
+    unit_number: p.unit_number,
+    floor: p.floor ?? null,
+    unit_type: p.unit_type ?? null,
+    size: p.size ?? null,
+    status: p.status,
+    owner_contact_id: p.owner_contact_id ?? null,
+    sale_price: p.sale_price !== undefined ? p.sale_price : null,
+    description: p.description ?? null,
+    area: p.area !== undefined ? p.area : null,
+  };
+  const unitRepo = new UnitRepository(tenantId);
 
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -243,25 +238,7 @@ export async function updateUnit(
     });
     if (lww.conflict) return { row: existing, conflict: true };
 
-    const r = await client.query<UnitRow>(
-      `UPDATE units SET
-        project_id = $1,
-        unit_number = $2,
-        floor = $3,
-        unit_type = $4,
-        size = $5,
-        status = $6,
-        owner_contact_id = $7,
-        sale_price = $8,
-        description = $9,
-        area = $10,
-        version = version + 1,
-        updated_at = NOW()
-      WHERE id = $11 AND tenant_id = $12 AND deleted_at IS NULL
-      RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-      [...vals, id, tenantId]
-    );
-    const row = r.rows[0] ?? null;
+    const row = await unitRepo.updateActive(client, id, unitFields);
     if (!row) return { row: null, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
@@ -277,25 +254,7 @@ export async function updateUnit(
     return { row, conflict: false };
   }
 
-  const r = await client.query<UnitRow>(
-    `UPDATE units SET
-      project_id = $1,
-      unit_number = $2,
-      floor = $3,
-      unit_type = $4,
-      size = $5,
-      status = $6,
-      owner_contact_id = $7,
-      sale_price = $8,
-      description = $9,
-      area = $10,
-      version = version + 1,
-      updated_at = NOW()
-    WHERE id = $11 AND tenant_id = $12 AND deleted_at IS NULL
-    RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-    [...vals, id, tenantId]
-  );
-  const row = r.rows[0] ?? null;
+  const row = await unitRepo.updateActive(client, id, unitFields);
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -328,14 +287,8 @@ export async function softDeleteUnit(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE units SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) return { ok: false, conflict: false };
-    const row = r.rows[0] as UnitRow;
+    const { ok, row } = await new UnitRepository(tenantId).markDeleted(client, id);
+    if (!ok || !row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -350,15 +303,8 @@ export async function softDeleteUnit(
     return { ok: true, conflict: false };
   }
 
-  const r = await client.query(
-    `UPDATE units SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as UnitRow;
+  const { ok, row } = await new UnitRepository(tenantId).markDeleted(client, id);
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
