@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { AdminRequest } from '../../../middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../../../services/databaseService.js';
-import { LicenseService } from '../../../services/licenseService.js';
+import { LicenseService, DEFAULT_LICENSE_MODULES } from '../../../services/licenseService.js';
 import bcrypt from 'bcryptjs';
 
 const router = Router();
@@ -450,7 +450,11 @@ router.get('/:id/modules', async (req: AdminRequest, res) => {
       [tenantId]
     );
 
-    res.json(modules);
+    res.json(
+      modules.filter((m: { module_key: string }) =>
+        DEFAULT_LICENSE_MODULES.includes(m.module_key as (typeof DEFAULT_LICENSE_MODULES)[number])
+      )
+    );
   } catch (error: any) {
     console.error('Error fetching tenant modules:', error);
     res.status(500).json({ error: 'Failed to fetch tenant modules' });
@@ -485,7 +489,9 @@ router.post('/:id/modules', async (req: AdminRequest, res) => {
     res.json({ success: true, message: `Module ${moduleKey} updated successfully` });
   } catch (error: any) {
     console.error('Error updating tenant module:', error);
-    res.status(500).json({ error: 'Failed to update tenant module' });
+    const message = error?.message || 'Failed to update tenant module';
+    const statusCode = message.includes('Unknown or removed module') ? 400 : 500;
+    res.status(statusCode).json({ error: message });
   }
 });
 
