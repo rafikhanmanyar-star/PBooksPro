@@ -95,6 +95,42 @@ export class ContractorAdvanceRepository extends TenantRepository {
     return Number.isFinite(n) ? n : null;
   }
 
+  async insertAdvance(
+    client: pg.PoolClient,
+    input: {
+      id: string;
+      contractor_contact_id: string;
+      advance_date: string;
+      amount: number;
+      cash_account_id: string;
+      advance_asset_account_id: string;
+      project_id: string | null;
+      description: string | null;
+      created_by: string | null;
+    }
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO contractor_advances (
+        id, tenant_id, contractor_contact_id, advance_date, original_amount, remaining_amount,
+        cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by
+      )
+      VALUES ($1, $2, $3, $4::date, $5, $6, $7, $8, NULL, $9, $10, $11)`,
+      [
+        input.id,
+        this.tenantId,
+        input.contractor_contact_id,
+        input.advance_date,
+        input.amount,
+        input.amount,
+        input.cash_account_id,
+        input.advance_asset_account_id,
+        input.project_id,
+        input.description,
+        input.created_by,
+      ]
+    );
+  }
+
   async markFullyAppliedInDescription(client: pg.PoolClient, id: string): Promise<void> {
     await client.query(
       `UPDATE contractor_advances SET

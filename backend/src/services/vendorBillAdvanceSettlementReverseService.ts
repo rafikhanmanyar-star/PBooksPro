@@ -71,10 +71,7 @@ export async function reverseVendorBillAdvanceSettlement(
     await advanceRepo.adjustRemaining(client, advId, amt);
   }
 
-  await client.query(`DELETE FROM vendor_bill_advance_clearings WHERE tenant_id = $1 AND journal_entry_id = $2`, [
-    tenantId,
-    jeId,
-  ]);
+  await new VendorBillAdvanceClearingRepository(tenantId).deleteByJournalEntry(client, jeId);
 
   const vsetRef = `${VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX}${jeId}`;
   const txSel = await client.query<{ id: string }>(

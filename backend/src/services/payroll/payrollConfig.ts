@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../core/recordDomainMutation.js';
+import { PayrollEmployeeRepository } from '../../modules/payroll/repositories/PayrollEmployeeRepository.js';
 import { PayrollProjectRepository, type PayrollProjectWriteFields } from '../../modules/payroll/repositories/PayrollProjectRepository.js';
 import { PayrollSalaryComponentRepository } from '../../modules/payroll/repositories/PayrollSalaryComponentRepository.js';
 import { PayrollTenantConfigRepository } from '../../modules/payroll/repositories/PayrollTenantConfigRepository.js';
@@ -172,11 +173,7 @@ export async function migrateDepartmentNamesToIds(client: pg.PoolClient, tenantI
     const match = byName.get(e.department.toLowerCase());
     const did = e.department_id || match;
     if (did && did !== e.department_id) {
-      await client.query(`UPDATE payroll_employees SET department_id = $3, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`, [
-        e.id,
-        tenantId,
-        did,
-      ]);
+      await new PayrollEmployeeRepository(tenantId).setDepartmentId(client, e.id, did);
       n++;
     }
   }
