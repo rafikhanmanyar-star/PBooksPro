@@ -40,4 +40,21 @@ export class AppSettingsRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async upsertKey(client: pg.PoolClient, key: string, jsonValue: string): Promise<void> {
+    await client.query(
+      `INSERT INTO app_settings (tenant_id, key, value, updated_at)
+       VALUES ($1, $2, $3::jsonb, NOW())
+       ON CONFLICT (tenant_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+      [this.tenantId, key, jsonValue]
+    );
+  }
+
+  async deleteKey(client: pg.PoolClient, key: string): Promise<boolean> {
+    const r = await client.query(
+      `DELETE FROM app_settings WHERE tenant_id = $1 AND key = $2`,
+      [this.tenantId, key]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
 }

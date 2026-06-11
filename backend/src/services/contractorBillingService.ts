@@ -6,6 +6,7 @@ import { roundMoney } from '../financial/validation.js';
 import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
 import { getContactById } from './contactsService.js';
 import { getVendorById } from './vendorsService.js';
+import { ContactRepository } from '../modules/crm/repositories/ContactRepository.js';
 import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
 import { ContractorBillRepository } from '../modules/vendors/repositories/ContractorBillRepository.js';
 
@@ -178,51 +179,27 @@ export async function resolveContractorPartyToContactId(
     throw new Error('Contact not found or inactive.');
   }
 
-  await client.query(
-    `INSERT INTO contacts (id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, 'Vendor', $4, $5, $6, $7, $8, 1, NULL, NOW(), NOW())
-     ON CONFLICT (id) DO NOTHING`,
-    [
-      partyId,
-      tenantId,
-      vendor.name,
-      vendor.description,
-      vendor.contact_no,
-      vendor.company_name,
-      vendor.address,
-      vendor.user_id,
-    ]
-  );
+  const contactRepo = new ContactRepository(tenantId);
+  const bridgeFields = {
+    name: vendor.name,
+    type: 'Vendor',
+    description: vendor.description,
+    contact_no: vendor.contact_no,
+    company_name: vendor.company_name,
+    address: vendor.address,
+  };
+  await contactRepo.upsertVendorBridgeContact(client, partyId, bridgeFields, vendor.user_id);
 
   const bridged = await getContactById(client, tenantId, partyId);
   if (bridged) return bridged.id;
 
-  const revived = await client.query<{ id: string }>(
-    `UPDATE contacts SET
-       deleted_at = NULL,
-       name = $3,
-       type = 'Vendor',
-       description = COALESCE($4, description),
-       contact_no = COALESCE($5, contact_no),
-       company_name = COALESCE($6, company_name),
-       address = COALESCE($7, address),
-       user_id = COALESCE($8, user_id),
-       version = version + 1,
-       updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id`,
-    [
-      partyId,
-      tenantId,
-      vendor.name,
-      vendor.description,
-      vendor.contact_no,
-      vendor.company_name,
-      vendor.address,
-      vendor.user_id,
-    ]
+  const revivedId = await contactRepo.reviveVendorBridgeContact(
+    client,
+    partyId,
+    bridgeFields,
+    vendor.user_id
   );
-  if (revived.rows[0]?.id) return revived.rows[0].id;
+  if (revivedId) return revivedId;
 
   throw new Error('Contact not found or inactive.');
 }

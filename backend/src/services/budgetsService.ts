@@ -83,16 +83,13 @@ export async function createBudget(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `budget_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<BudgetRow>(
-    `INSERT INTO budgets (
-       id, tenant_id, category_id, project_id, amount, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.category_id, p.project_id, p.amount, userId ?? null]
+  const budgetRepo = new BudgetRepository(tenantId);
+  const row = await budgetRepo.insertBudget(
+    client,
+    id,
+    { category_id: p.category_id, project_id: p.project_id, amount: p.amount },
+    userId ?? null
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -145,16 +142,19 @@ export async function upsertBudget(
 
   const oldApi = rowToBudgetApi(existing);
 
+  const budgetRepo = new BudgetRepository(tenantId);
+  const budgetFields = {
+    category_id: p.category_id,
+    project_id: p.project_id,
+    amount: p.amount,
+  };
+
   if (existing.deleted_at) {
-    const u = await client.query<BudgetRow>(
-      `UPDATE budgets SET
-         category_id = $3, project_id = $4, amount = $5, user_id = COALESCE($6, user_id),
-         deleted_at = NULL, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.category_id, p.project_id, p.amount, userId ?? null]
-    );
-    const row = u.rows[0];
+    const row = await budgetRepo.updateActive(client, id, budgetFields, {
+      userId: userId ?? null,
+      restoreDeleted: true,
+    });
+    if (!row) throw new Error('Budget restore failed.');
     await recordDomainMutation(client, {
       tenantId,
       userId: row.user_id,
@@ -170,18 +170,10 @@ export async function upsertBudget(
     return { row, conflict: false, wasInsert: false };
   }
 
-  const u = await client.query<BudgetRow>(
-    `UPDATE budgets SET
-       category_id = $3, project_id = $4, amount = $5, user_id = COALESCE($6, user_id),
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.category_id, p.project_id, p.amount, userId ?? null]
-  );
-  if (u.rows.length === 0) {
+  const row = await budgetRepo.updateActive(client, id, budgetFields, { userId: userId ?? null });
+  if (!row) {
     return { row: existing, conflict: true, wasInsert: false };
   }
-  const row = u.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -215,12 +207,8 @@ export async function softDeleteBudget(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const u = await client.query(
-      `UPDATE budgets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if ((u.rowCount ?? 0) === 0) {
+    const { ok } = await new BudgetRepository(tenantId).markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const ex = await getBudgetByIdIncludingDeleted(client, tenantId, id);
       if (!ex || ex.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -237,12 +225,7 @@ export async function softDeleteBudget(
     });
     return { ok: true, conflict: false };
   }
-  const u = await client.query(
-    `UPDATE budgets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (u.rowCount ?? 0) > 0;
+  const { ok } = await new BudgetRepository(tenantId).markDeleted(client, id);
   if (ok) {
     await recordDomainMutation(client, {
       tenantId,
