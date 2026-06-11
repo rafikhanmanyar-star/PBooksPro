@@ -6,6 +6,7 @@ import {
   TENANT_BACKUP_TABLES,
   filterBackupTables,
 } from './tenantBackupRegistry.js';
+import { TenantBackupRepository } from '../modules/backup/repositories/TenantBackupRepository.js';
 
 export type TenantBackupPayloadV2 = {
   format: typeof TENANT_BACKUP_FORMAT_V2;
@@ -25,45 +26,22 @@ export type TenantBackupPayloadV1 = {
 
 export type TenantBackupPayload = TenantBackupPayloadV2 | TenantBackupPayloadV1;
 
-async function tableExists(client: pg.PoolClient, table: string): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = $1 LIMIT 1`,
-    [table]
-  );
-  return r.rows.length > 0;
-}
-
-async function exportTenantTable(
-  client: pg.PoolClient,
-  table: string,
-  tenantId: string
-): Promise<unknown[]> {
-  if (table === 'payroll_tenant_config') {
-    const r = await client.query(`SELECT * FROM payroll_tenant_config WHERE tenant_id = $1`, [
-      tenantId,
-    ]);
-    return r.rows;
-  }
-  const r = await client.query(`SELECT * FROM ${table} WHERE tenant_id = $1`, [tenantId]);
-  return r.rows;
-}
+const backupRepo = new TenantBackupRepository();
 
 export async function buildTenantBackupPayload(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<TenantBackupPayloadV2> {
-  const tenantCheck = await client.query(`SELECT id, name FROM tenants WHERE id = $1`, [tenantId]);
-  if (tenantCheck.rows.length === 0) {
+  const tenant = await backupRepo.getTenantById(client, tenantId);
+  if (!tenant) {
     throw new Error('Organization not found.');
   }
-  const tenantName = String(tenantCheck.rows[0].name ?? '');
 
   const tables: Record<string, unknown[]> = {};
   for (const table of TENANT_BACKUP_TABLES) {
-    if (!(await tableExists(client, table))) continue;
+    if (!(await backupRepo.tableExists(client, table))) continue;
     try {
-      const rows = await exportTenantTable(client, table, tenantId);
+      const rows = await backupRepo.exportTenantTable(client, table, tenantId);
       if (rows.length > 0) tables[table] = rows;
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
@@ -76,7 +54,7 @@ export async function buildTenantBackupPayload(
     format: TENANT_BACKUP_FORMAT_V2,
     exportedAt: new Date().toISOString(),
     sourceTenantId: tenantId,
-    sourceTenantName: tenantName,
+    sourceTenantName: String(tenant.name ?? ''),
     scope: Object.keys(tables),
     tables,
   };

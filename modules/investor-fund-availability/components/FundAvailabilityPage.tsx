@@ -2,7 +2,7 @@ import { useFinancialReportAppState } from '../../../hooks/useSelectiveState';
 import React, { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Download, FileText, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
-import { useReactToPrint } from 'react-to-print';
+import { usePrintReport } from '../../../hooks/usePrintReport';
 import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
@@ -10,7 +10,6 @@ import ComboBox from '../../../components/ui/ComboBox';
 import { toLocalDateString } from '../../../utils/dateUtils';
 import ReportHeader from '../../../components/reports/ReportHeader';
 import ReportFooter from '../../../components/reports/ReportFooter';
-import { STANDARD_PRINT_STYLES } from '../../../utils/printStyles';
 import { useFundAvailabilityFiltersStore } from '../store/fundAvailabilityFiltersStore';
 import {
     useFilteredFundRows,
@@ -54,8 +53,7 @@ export const FundAvailabilityPage: React.FC = () => {
 
     const [drawerId, setDrawerId] = useState<string | null>(null);
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const printRef = React.useRef<HTMLDivElement>(null);
-    const handlePrint = useReactToPrint({ contentRef: printRef, documentTitle: 'Investor Fund Availability' });
+    const printReport = usePrintReport();
 
     const [valOpen, setValOpen] = useState(false);
     const [valResult, setValResult] = useState<WithdrawalValidationResult | null>(null);
@@ -95,36 +93,7 @@ export const FundAvailabilityPage: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full min-h-0 overflow-hidden bg-app-bg">
-            <style>{STANDARD_PRINT_STYLES}</style>
-
-            <div ref={printRef} className="hidden print:block printable_area px-4 py-4">
-                <ReportHeader />
-                <h1 className="text-xl font-bold text-center text-slate-900">Investor Fund Availability</h1>
-                <p className="text-center text-sm text-slate-600 mt-1">As of {endDate}</p>
-                <table className="mt-4 w-full text-xs border-collapse">
-                    <thead>
-                        <tr className="border-b">
-                            <th className="text-left py-1">Project</th>
-                            <th className="text-right py-1">Distributable</th>
-                            <th className="text-right py-1">Equity</th>
-                            <th className="text-left py-1">Health</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.map((r) => (
-                            <tr key={r.projectId} className="border-b border-slate-100">
-                                <td className="py-1">{r.projectName}</td>
-                                <td className="text-right py-1">{r.distributableFunds.toFixed(2)}</td>
-                                <td className="text-right py-1">{r.investorEquity.toFixed(2)}</td>
-                                <td className="py-1">{r.fundHealth}</td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-                <ReportFooter />
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4 no-print">
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-4 space-y-4">
                 <header className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                     <div>
                         <h1 className="text-2xl font-bold tracking-tight text-app-text">Investor Fund Availability</h1>
@@ -154,7 +123,7 @@ export const FundAvailabilityPage: React.FC = () => {
                         >
                             <FileText className="h-4 w-4" /> PDF
                         </Button>
-                        <Button variant="secondary" type="button" className="gap-2" onClick={() => void handlePrint()}>
+                        <Button variant="secondary" type="button" className="gap-2" onClick={() => printReport({ elementId: 'fund-availability-print' })}>
                             <Printer className="h-4 w-4" /> Print
                         </Button>
                         <Button variant="secondary" type="button" className="gap-2" onClick={() => void onRefresh()}>
@@ -210,13 +179,22 @@ export const FundAvailabilityPage: React.FC = () => {
                     </div>
                 </section>
 
-                <FundAvailabilityDataTable
-                    rows={rows}
-                    isLoading={summaryQ.isLoading}
-                    onRowOpen={setDrawerId}
-                    selectedIds={selectedIds}
-                    onSelectionChange={setSelectedIds}
-                />
+                <section
+                    id="fund-availability-print"
+                    className="printable-area print-report-surface rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card"
+                    data-print-scroll-container
+                >
+                    <ReportHeader reportTitle="Investor Fund Availability" />
+                    <p className="text-center text-sm text-slate-600 mb-3">As of {endDate}</p>
+                    <FundAvailabilityDataTable
+                        rows={rows}
+                        isLoading={summaryQ.isLoading}
+                        onRowOpen={setDrawerId}
+                        selectedIds={selectedIds}
+                        onSelectionChange={setSelectedIds}
+                    />
+                    <ReportFooter />
+                </section>
             </div>
 
             <FundAvailabilityDrawer state={state} projectId={drawerId} endDate={endDate} reservePolicy={reservePolicy} onClose={() => setDrawerId(null)} />

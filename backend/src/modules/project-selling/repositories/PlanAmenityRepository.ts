@@ -52,4 +52,57 @@ export class PlanAmenityRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async insertPlanAmenity(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    price: number,
+    isPercentage: number,
+    isActive: number,
+    description: string | null
+  ): Promise<PlanAmenityRow> {
+    const r = await client.query<PlanAmenityRow>(
+      `INSERT INTO plan_amenities (
+         id, tenant_id, name, price, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NULL, NOW(), NOW())
+       RETURNING ${AMENITY_COLUMNS}`,
+      [id, this.tenantId, name, price, isPercentage, isActive, description]
+    );
+    return r.rows[0]!;
+  }
+
+  async updateActive(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    price: number,
+    isPercentage: number,
+    isActive: number,
+    description: string | null,
+    options?: { restoreDeleted?: boolean }
+  ): Promise<PlanAmenityRow | null> {
+    const restore = options?.restoreDeleted === true;
+    const r = await client.query<PlanAmenityRow>(
+      `UPDATE plan_amenities SET
+         name = $3, price = $4, is_percentage = $5, is_active = $6, description = $7,
+         version = version + 1, updated_at = NOW()${restore ? ', deleted_at = NULL' : ''}
+       WHERE id = $1 AND tenant_id = $2${restore ? '' : ' AND deleted_at IS NULL'}
+       RETURNING ${AMENITY_COLUMNS}`,
+      [id, this.tenantId, name, price, isPercentage, isActive, description]
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async markDeleted(client: pg.PoolClient, id: string, expectedVersion?: number): Promise<boolean> {
+    const versionClause = expectedVersion !== undefined ? ' AND version = $3' : '';
+    const params =
+      expectedVersion !== undefined ? [id, this.tenantId, expectedVersion] : [id, this.tenantId];
+    const r = await client.query(
+      `UPDATE plan_amenities SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL${versionClause}`,
+      params
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
 }

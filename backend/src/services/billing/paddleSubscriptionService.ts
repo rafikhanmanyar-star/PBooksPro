@@ -18,6 +18,9 @@ import {
   type SubscriptionRow,
 } from './subscriptionService.js';
 import { logBillingAudit } from './billingAuditService.js';
+import { SubscriptionRepository } from '../../modules/billing/repositories/SubscriptionRepository.js';
+
+const subRepo = new SubscriptionRepository();
 
 export async function changeSubscriptionPlan(
   client: pg.PoolClient,
@@ -174,14 +177,11 @@ export async function syncSubscriptionFromPaddle(
       ? ((custom as Record<string, unknown>).plan_code as string)
       : null;
 
-  const { rows } = await client.query(
-    `SELECT id FROM subscriptions WHERE paddle_subscription_id = $1`,
-    [paddleSubId]
-  );
+  const existingId = await subRepo.getIdByPaddleSubscriptionId(client, paddleSubId);
 
-  if (rows.length) {
+  if (existingId) {
     const updates: string[] = ['updated_at = NOW()'];
-    const params: unknown[] = [rows[0].id];
+    const params: unknown[] = [existingId];
     let idx = 2;
 
     if (mapped) {
@@ -203,7 +203,7 @@ export async function syncSubscriptionFromPaddle(
       updates.push(`past_due_at = NULL`);
     }
 
-    await client.query(`UPDATE subscriptions SET ${updates.join(', ')} WHERE id = $1`, params);
+    await subRepo.patchFromPaddle(client, existingId, updates, params);
     return;
   }
 
@@ -220,31 +220,23 @@ export async function syncSubscriptionFromPaddle(
 
   const existing = await getActiveSubscription(client, tenantId);
   if (existing) {
-    await client.query(
-      `UPDATE subscriptions SET
-         paddle_subscription_id = $2,
-         paddle_customer_id = COALESCE($3, paddle_customer_id),
-         status = COALESCE($4, status),
-         updated_at = NOW()
-       WHERE id = $1`,
-      [existing.id, paddleSubId, customerId, mapped ?? 'active']
+    await subRepo.linkPaddleToExisting(
+      client,
+      existing.id,
+      paddleSubId,
+      customerId,
+      mapped ?? 'active'
     );
   } else {
     const { randomUUID } = await import('node:crypto');
-    await client.query(
-      `INSERT INTO subscriptions (
-         id, tenant_id, plan_id, status, billing_cycle, start_date, renewal_date,
-         paddle_customer_id, paddle_subscription_id
-       ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW() + INTERVAL '1 month', $6, $7)`,
-      [
-        randomUUID(),
-        tenantId,
-        plan.id,
-        mapped ?? 'active',
-        billingCycle,
-        customerId,
-        paddleSubId,
-      ]
-    );
+    await subRepo.insertFromPaddle(client, {
+      id: randomUUID(),
+      tenantId,
+      planId: plan.id,
+      status: mapped ?? 'active',
+      billingCycle,
+      paddleCustomerId: customerId,
+      paddleSubscriptionId: paddleSubId,
+    });
   }
 }

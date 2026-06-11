@@ -2,6 +2,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import type { EmailAutomationCategory } from '../../constants/emailAutomation.js';
+import { EmailAutomationUnsubscribeRepository } from '../../modules/email-automation/repositories/EmailAutomationRepository.js';
+
+const unsubscribeRepo = new EmailAutomationUnsubscribeRepository();
 
 function unsubscribeSecret(): string {
   return (
@@ -43,13 +46,7 @@ export async function isEmailUnsubscribed(
   category: EmailAutomationCategory
 ): Promise<boolean> {
   const normalized = email.trim().toLowerCase();
-  const { rows } = await client.query<{ category: string }>(
-    `SELECT category FROM email_automation_unsubscribes
-     WHERE LOWER(email) = $1
-       AND (tenant_id IS NULL OR tenant_id = $2 OR $2 IS NULL)
-       AND category IN ('all', $3)`,
-    [normalized, tenantId, category]
-  );
+  const rows = await unsubscribeRepo.findUnsubscribeCategories(client, normalized, tenantId, category);
   return rows.length > 0;
 }
 
@@ -62,32 +59,20 @@ export async function recordUnsubscribe(
   const normalized = email.trim().toLowerCase();
   const token = signUnsubscribe(normalized, tenantId, category === 'all' ? 'all' : category);
 
-  const exists = await client.query(
-    `SELECT 1 FROM email_automation_unsubscribes
-     WHERE LOWER(email) = $1 AND COALESCE(tenant_id, '') = COALESCE($2, '') AND category = $3`,
-    [normalized, tenantId, category]
-  );
-  if (!exists.rows.length) {
-    await client.query(
-      `INSERT INTO email_automation_unsubscribes (id, email, tenant_id, category, unsubscribe_token)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [randomUUID(), normalized, tenantId, category, token]
-    );
+  const exists = await unsubscribeRepo.exists(client, normalized, tenantId, category);
+  if (!exists) {
+    await unsubscribeRepo.insert(client, {
+      id: randomUUID(),
+      email: normalized,
+      tenantId,
+      category,
+      token,
+    });
   }
 
-  await client.query(
-    `UPDATE email_automation_queue SET status = 'canceled'
-     WHERE LOWER(recipient_email) = $1 AND status = 'pending'
-       AND ($2::text IS NULL OR tenant_id = $2)`,
-    [normalized, tenantId]
-  );
+  await unsubscribeRepo.cancelPendingForEmail(client, normalized, tenantId);
 
   if (category === 'marketing' || category === 'all') {
-    await client.query(
-      `UPDATE marketing_email_queue SET status = 'canceled'
-       WHERE status = 'pending'
-         AND lead_id IN (SELECT id FROM marketing_leads WHERE LOWER(email) = $1)`,
-      [normalized]
-    );
+    await unsubscribeRepo.cancelPendingMarketingForEmail(client, normalized);
   }
 }

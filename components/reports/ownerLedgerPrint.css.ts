@@ -1,7 +1,9 @@
 /**
  * Print-only styles for Owner Ledger (Project) report.
- * Scoped by #print-area — use with window.print(), not the portal print flow.
+ * Scoped by #print-area (legacy direct print) and .owner-ledger-report-print (portal clone).
  */
+const LEDGER_SCOPE = '#print-area, .owner-ledger-report-print';
+
 export const OWNER_LEDGER_PRINT_CSS = `
 @media print {
   @page {
@@ -88,7 +90,7 @@ export const OWNER_LEDGER_PRINT_CSS = `
     background: white !important;
   }
 
-  #print-area {
+  ${LEDGER_SCOPE} {
     position: relative !important;
     width: 100% !important;
     max-width: 100% !important;
@@ -99,35 +101,35 @@ export const OWNER_LEDGER_PRINT_CSS = `
     color: #111 !important;
   }
 
-  #print-area * {
+  ${LEDGER_SCOPE} * {
     box-sizing: border-box;
   }
 
   /* Dark theme: app text tokens print near-white on white paper — force ink */
-  #print-area .text-app-text,
-  #print-area .text-app-muted {
+  ${LEDGER_SCOPE} .text-app-text,
+  ${LEDGER_SCOPE} .text-app-muted {
     color: #111827 !important;
   }
 
-  #print-area .text-ds-danger {
+  ${LEDGER_SCOPE} .text-ds-danger {
     color: #b91c1c !important;
   }
 
-  #print-area .text-ds-success {
+  ${LEDGER_SCOPE} .text-ds-success {
     color: #15803d !important;
   }
 
-  #print-area .text-primary {
+  ${LEDGER_SCOPE} .text-primary {
     color: #1d4ed8 !important;
   }
 
-  #print-area .bg-app-card,
-  #print-area .bg-app-toolbar,
-  #print-area .bg-app-table-header {
+  ${LEDGER_SCOPE} .bg-app-card,
+  ${LEDGER_SCOPE} .bg-app-toolbar,
+  ${LEDGER_SCOPE} .bg-app-table-header {
     background-color: #fff !important;
   }
 
-  #print-area .print-container-inner {
+  ${LEDGER_SCOPE} .print-container-inner {
     padding: 0 !important;
     margin: 0 !important;
     border: none !important;
@@ -135,32 +137,33 @@ export const OWNER_LEDGER_PRINT_CSS = `
     background: white !important;
   }
 
-  #print-area h1,
-  #print-area h2,
-  #print-area h3 {
+  ${LEDGER_SCOPE} h1,
+  ${LEDGER_SCOPE} h2,
+  ${LEDGER_SCOPE} h3 {
     margin: 0 0 0.35em 0;
     color: #000 !important;
   }
 
-  #print-area .owner-ledger-title-block {
+  ${LEDGER_SCOPE} .owner-ledger-title-block {
     text-align: center;
     margin-bottom: 14px;
     page-break-after: avoid;
   }
 
-  #print-area .owner-ledger-title-block h2 {
+  ${LEDGER_SCOPE} .owner-ledger-title-block h2 {
     font-size: 18px;
     font-weight: 700;
   }
 
-  #print-area .owner-ledger-title-block p {
+  ${LEDGER_SCOPE} .owner-ledger-title-block p {
     margin: 4px 0 0 0;
     font-size: 11px;
     color: #333 !important;
   }
 
   /* Company header (ReportHeader) */
-  #print-area .owner-ledger-company-header {
+  ${LEDGER_SCOPE} .owner-ledger-company-header,
+  ${LEDGER_SCOPE} .report-branding-header {
     display: block !important;
     margin-bottom: 12px;
     padding-bottom: 10px;
@@ -169,7 +172,7 @@ export const OWNER_LEDGER_PRINT_CSS = `
   }
 
   /* Summary grids */
-  #print-area .summary-grid {
+  ${LEDGER_SCOPE} .summary-grid {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
@@ -181,17 +184,17 @@ export const OWNER_LEDGER_PRINT_CSS = `
     page-break-inside: avoid;
   }
 
-  #print-area .summary-grid .summary-col {
+  ${LEDGER_SCOPE} .summary-grid .summary-col {
     font-size: 11px;
     line-height: 1.45;
   }
 
-  #print-area .summary-grid strong {
+  ${LEDGER_SCOPE} .summary-grid strong {
     font-weight: 600;
   }
 
   /* Ledger table */
-  #print-area .owner-ledger-print-table {
+  ${LEDGER_SCOPE} .owner-ledger-print-table {
     width: 100% !important;
     border-collapse: collapse !important;
     margin-top: 8px;
@@ -199,16 +202,16 @@ export const OWNER_LEDGER_PRINT_CSS = `
     table-layout: fixed;
   }
 
-  #print-area .owner-ledger-print-table thead {
+  ${LEDGER_SCOPE} .owner-ledger-print-table thead {
     display: table-header-group !important;
   }
 
-  #print-area .owner-ledger-print-table tfoot {
+  ${LEDGER_SCOPE} .owner-ledger-print-table tfoot {
     display: table-footer-group !important;
   }
 
-  #print-area .owner-ledger-print-table th,
-  #print-area .owner-ledger-print-table td {
+  ${LEDGER_SCOPE} .owner-ledger-print-table th,
+  ${LEDGER_SCOPE} .owner-ledger-print-table td {
     border: 1px solid #ccc !important;
     padding: 6px 5px !important;
     text-align: left;
@@ -216,29 +219,29 @@ export const OWNER_LEDGER_PRINT_CSS = `
     word-wrap: break-word;
   }
 
-  #print-area .owner-ledger-print-table th {
+  ${LEDGER_SCOPE} .owner-ledger-print-table th {
     background: #f3f3f3 !important;
     font-weight: 600;
     color: #000 !important;
   }
 
-  #print-area .owner-ledger-print-table td.num,
-  #print-area .owner-ledger-print-table th.num {
+  ${LEDGER_SCOPE} .owner-ledger-print-table td.num,
+  ${LEDGER_SCOPE} .owner-ledger-print-table th.num {
     text-align: right;
     font-variant-numeric: tabular-nums;
   }
 
-  #print-area .owner-ledger-print-table tr {
+  ${LEDGER_SCOPE} .owner-ledger-print-table tr {
     page-break-inside: avoid;
   }
 
-  #print-area .owner-ledger-print-table tr.totals td {
+  ${LEDGER_SCOPE} .owner-ledger-print-table tr.totals td {
     font-weight: 700 !important;
     background: #f9f9f9 !important;
     border-top: 2px solid #999 !important;
   }
 
-  #print-area .owner-ledger-table-wrap {
+  ${LEDGER_SCOPE} .owner-ledger-table-wrap {
     overflow: visible !important;
     max-height: none !important;
     min-height: 0 !important;
@@ -247,7 +250,8 @@ export const OWNER_LEDGER_PRINT_CSS = `
   }
 
   /* Report settings footer */
-  #print-area .owner-ledger-report-footer {
+  ${LEDGER_SCOPE} .owner-ledger-report-footer,
+  ${LEDGER_SCOPE} .report-branding-footer {
     display: block !important;
     margin-top: 12px;
     padding-top: 8px;
@@ -257,7 +261,7 @@ export const OWNER_LEDGER_PRINT_CSS = `
     text-align: center;
   }
 
-  #print-area .owner-ledger-print-footer {
+  ${LEDGER_SCOPE} .owner-ledger-print-footer {
     margin-top: 16px;
     padding-top: 8px;
     font-size: 10px;
@@ -267,8 +271,8 @@ export const OWNER_LEDGER_PRINT_CSS = `
   }
 
   /* Drop screen-only chrome inside print area */
-  #print-area .shadow-ds-card,
-  #print-area .sticky {
+  ${LEDGER_SCOPE} .shadow-ds-card,
+  ${LEDGER_SCOPE} .sticky {
     box-shadow: none !important;
     position: static !important;
   }

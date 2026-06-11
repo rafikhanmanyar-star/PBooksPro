@@ -2,7 +2,6 @@
  * Privacy request tracking — create, list, and update data-subject requests.
  */
 
-import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import {
   isPrivacyRequestStatus,
@@ -10,6 +9,10 @@ import {
   type PrivacyRequestStatus,
   type PrivacyRequestType,
 } from '../../constants/privacyRequestTypes.js';
+import {
+  PrivacyRequestRepository,
+  newPrivacyRequestId,
+} from '../../modules/privacy/repositories/PrivacyRepository.js';
 
 export type PrivacyRequestRow = {
   id: string;
@@ -30,27 +33,7 @@ export type CreatePrivacyRequestInput = {
   status?: PrivacyRequestStatus;
 };
 
-function mapRow(row: pg.QueryResultRow): PrivacyRequestRow {
-  const metadata =
-    row.metadata && typeof row.metadata === 'object' && !Array.isArray(row.metadata)
-      ? (row.metadata as Record<string, unknown>)
-      : {};
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    request_type: row.request_type,
-    status: row.status,
-    requested_at: row.requested_at instanceof Date ? row.requested_at.toISOString() : String(row.requested_at),
-    completed_at:
-      row.completed_at == null
-        ? null
-        : row.completed_at instanceof Date
-          ? row.completed_at.toISOString()
-          : String(row.completed_at),
-    requested_by_user_id: row.requested_by_user_id ?? null,
-    metadata,
-  };
-}
+const requestRepo = new PrivacyRequestRepository();
 
 export async function createPrivacyRequest(
   client: pg.PoolClient,
@@ -64,19 +47,15 @@ export async function createPrivacyRequest(
     throw new Error(`Invalid privacy request status: ${status}`);
   }
 
-  const id = randomUUID();
-  const metadata = input.metadata ?? {};
+  const id = newPrivacyRequestId();
   const completedAt = status === 'completed' ? new Date() : null;
 
-  await client.query(
-    `INSERT INTO privacy_requests (
-       id, tenant_id, request_type, status, requested_by_user_id, metadata, completed_at
-     ) VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)`,
-    [id, input.tenantId, input.requestType, status, input.requestedByUserId, JSON.stringify(metadata), completedAt]
-  );
-
-  const { rows } = await client.query(`SELECT * FROM privacy_requests WHERE id = $1`, [id]);
-  return mapRow(rows[0]!);
+  return requestRepo.insert(client, {
+    ...input,
+    id,
+    status,
+    completedAt,
+  });
 }
 
 export async function getPrivacyRequest(
@@ -84,11 +63,7 @@ export async function getPrivacyRequest(
   tenantId: string,
   requestId: string
 ): Promise<PrivacyRequestRow | null> {
-  const { rows } = await client.query(
-    `SELECT * FROM privacy_requests WHERE id = $1 AND tenant_id = $2`,
-    [requestId, tenantId]
-  );
-  return rows[0] ? mapRow(rows[0]) : null;
+  return requestRepo.getById(client, tenantId, requestId);
 }
 
 export async function listPrivacyRequests(
@@ -96,20 +71,7 @@ export async function listPrivacyRequests(
   tenantId: string,
   options?: { userId?: string | null; limit?: number }
 ): Promise<PrivacyRequestRow[]> {
-  const limit = Math.min(Math.max(options?.limit ?? 50, 1), 200);
-  const params: unknown[] = [tenantId];
-  let sql = `SELECT * FROM privacy_requests WHERE tenant_id = $1`;
-
-  if (options?.userId) {
-    params.push(options.userId);
-    sql += ` AND requested_by_user_id = $${params.length}`;
-  }
-
-  params.push(limit);
-  sql += ` ORDER BY requested_at DESC LIMIT $${params.length}`;
-
-  const { rows } = await client.query(sql, params);
-  return rows.map(mapRow);
+  return requestRepo.list(client, tenantId, options);
 }
 
 export async function updatePrivacyRequestStatus(
@@ -140,14 +102,13 @@ export async function updatePrivacyRequestStatus(
         ? new Date()
         : null;
 
-  await client.query(
-    `UPDATE privacy_requests
-     SET status = $1,
-         metadata = $2::jsonb,
-         completed_at = $3
-     WHERE id = $4 AND tenant_id = $5`,
-    [input.status, JSON.stringify(mergedMetadata), completedAt, input.requestId, input.tenantId]
-  );
+  await requestRepo.updateStatus(client, {
+    tenantId: input.tenantId,
+    requestId: input.requestId,
+    status: input.status,
+    metadataJson: JSON.stringify(mergedMetadata),
+    completedAt,
+  });
 
   return getPrivacyRequest(client, input.tenantId, input.requestId);
 }

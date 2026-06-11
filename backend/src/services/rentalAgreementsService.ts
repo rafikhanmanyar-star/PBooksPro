@@ -8,10 +8,14 @@ import {
 } from '../rentalAgreementReconcile.js';
 import { getPropertyById } from './propertiesService.js';
 import { createInvoice, rowToInvoiceApi } from './invoicesService.js';
+import { CategoryRepository } from '../modules/accounting/repositories/CategoryRepository.js';
 import { enforceLockForSave } from './recordLocksService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { RentalAgreementRepository } from '../modules/leases/repositories/RentalAgreementRepository.js';
+import {
+  RentalAgreementRepository,
+  type RentalAgreementWriteFields,
+} from '../modules/leases/repositories/RentalAgreementRepository.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -119,6 +123,29 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function toRentalWriteFields(p: ReturnType<typeof pickBody>): RentalAgreementWriteFields {
+  return {
+    agreement_number: p.agreement_number,
+    contact_id: p.contact_id,
+    property_id: p.property_id,
+    start_date: p.start_date,
+    end_date: p.end_date,
+    monthly_rent: p.monthly_rent,
+    rent_due_date: Number.isFinite(p.rent_due_date) ? p.rent_due_date : 1,
+    status: p.status,
+    description: p.description ?? null,
+    security_deposit:
+      p.security_deposit != null && Number.isFinite(p.security_deposit) ? p.security_deposit : null,
+    broker_id: p.broker_id && String(p.broker_id).trim() ? String(p.broker_id).trim() : null,
+    broker_fee: p.broker_fee != null && Number.isFinite(p.broker_fee) ? p.broker_fee : null,
+    owner_id: p.owner_id && String(p.owner_id).trim() ? String(p.owner_id).trim() : null,
+    previous_agreement_id:
+      p.previous_agreement_id && String(p.previous_agreement_id).trim()
+        ? String(p.previous_agreement_id).trim()
+        : null,
+  };
+}
+
 export async function listRentalAgreements(
   client: pg.PoolClient,
   tenantId: string,
@@ -149,51 +176,19 @@ export async function createRentalAgreement(
 
   const statusNorm = String(p.status || '').trim().toLowerCase();
   if (statusNorm === 'active') {
-    const dup = await client.query<{ c: string }>(
-      `SELECT 1 as c FROM rental_agreements
-       WHERE tenant_id = $1 AND property_id = $2 AND LOWER(TRIM(status)) = 'active' AND deleted_at IS NULL
-       LIMIT 1`,
-      [tenantId, p.property_id]
-    );
-    if (dup.rows.length > 0) {
+    const repo = new RentalAgreementRepository(tenantId);
+    if (await repo.hasActiveForProperty(client, p.property_id)) {
       throw new Error(
         'This property already has an active agreement. Use Renew agreement, or end the existing lease, before creating another active lease.'
       );
     }
   }
 
-  const r = await client.query<RentalAgreementRow>(
-    `INSERT INTO rental_agreements (
-       id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent, rent_due_date,
-       status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6::date, $7::date, $8, $9, $10, $11, $12, $13, $14, $15, $16, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-               version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.agreement_number,
-      p.contact_id,
-      p.property_id,
-      p.start_date,
-      p.end_date,
-      p.monthly_rent,
-      Number.isFinite(p.rent_due_date) ? p.rent_due_date : 1,
-      p.status,
-      p.description ?? null,
-      p.security_deposit != null && Number.isFinite(p.security_deposit) ? p.security_deposit : null,
-      p.broker_id && String(p.broker_id).trim() ? String(p.broker_id).trim() : null,
-      p.broker_fee != null && Number.isFinite(p.broker_fee) ? p.broker_fee : null,
-      p.owner_id && String(p.owner_id).trim() ? String(p.owner_id).trim() : null,
-      p.previous_agreement_id && String(p.previous_agreement_id).trim()
-        ? String(p.previous_agreement_id).trim()
-        : null,
-    ]
+  const row = await new RentalAgreementRepository(tenantId).insertAgreement(
+    client,
+    id,
+    toRentalWriteFields(p)
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: null,
@@ -218,6 +213,8 @@ export async function updateRentalAgreement(
   await enforceLockForSave(client, tenantId, 'rental', id, actorUserId);
   const p = pickBody(body);
   const expectedVersion = p.version;
+  const repo = new RentalAgreementRepository(tenantId);
+  const fields = toRentalWriteFields(p);
 
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -228,41 +225,10 @@ export async function updateRentalAgreement(
     });
     if (lww.conflict) return { row: null, conflict: true };
 
-    const u = await client.query<RentalAgreementRow>(
-      `UPDATE rental_agreements SET
-         agreement_number = $3, contact_id = $4, property_id = $5, start_date = $6::date, end_date = $7::date,
-         monthly_rent = $8, rent_due_date = $9, status = $10, description = $11,
-         security_deposit = $12, broker_id = $13, broker_fee = $14, owner_id = $15, previous_agreement_id = $16,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-                 rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-                 version, deleted_at, created_at, updated_at`,
-      [
-        id,
-        tenantId,
-        p.agreement_number,
-        p.contact_id,
-        p.property_id,
-        p.start_date,
-        p.end_date,
-        p.monthly_rent,
-        Number.isFinite(p.rent_due_date) ? p.rent_due_date : 1,
-        p.status,
-        p.description ?? null,
-        p.security_deposit != null && Number.isFinite(p.security_deposit) ? p.security_deposit : null,
-        p.broker_id && String(p.broker_id).trim() ? String(p.broker_id).trim() : null,
-        p.broker_fee != null && Number.isFinite(p.broker_fee) ? p.broker_fee : null,
-        p.owner_id && String(p.owner_id).trim() ? String(p.owner_id).trim() : null,
-        p.previous_agreement_id && String(p.previous_agreement_id).trim()
-          ? String(p.previous_agreement_id).trim()
-          : null,
-      ]
-    );
-    if (u.rows.length === 0) {
+    const row = await repo.updateActive(client, id, fields);
+    if (!row) {
       return { row: null, conflict: false };
     }
-    const row = u.rows[0];
     await recordDomainMutation(client, {
       tenantId,
       userId: actorUserId,
@@ -277,38 +243,7 @@ export async function updateRentalAgreement(
     return { row, conflict: false };
   }
 
-  const u = await client.query<RentalAgreementRow>(
-    `UPDATE rental_agreements SET
-       agreement_number = $3, contact_id = $4, property_id = $5, start_date = $6::date, end_date = $7::date,
-       monthly_rent = $8, rent_due_date = $9, status = $10, description = $11,
-       security_deposit = $12, broker_id = $13, broker_fee = $14, owner_id = $15, previous_agreement_id = $16,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-               version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.agreement_number,
-      p.contact_id,
-      p.property_id,
-      p.start_date,
-      p.end_date,
-      p.monthly_rent,
-      Number.isFinite(p.rent_due_date) ? p.rent_due_date : 1,
-      p.status,
-      p.description ?? null,
-      p.security_deposit != null && Number.isFinite(p.security_deposit) ? p.security_deposit : null,
-      p.broker_id && String(p.broker_id).trim() ? String(p.broker_id).trim() : null,
-      p.broker_fee != null && Number.isFinite(p.broker_fee) ? p.broker_fee : null,
-      p.owner_id && String(p.owner_id).trim() ? String(p.owner_id).trim() : null,
-      p.previous_agreement_id && String(p.previous_agreement_id).trim()
-        ? String(p.previous_agreement_id).trim()
-        : null,
-    ]
-  );
-  const row = u.rows[0] ?? null;
+  const row = await repo.updateActive(client, id, fields);
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -347,6 +282,7 @@ export async function syncReconcileRentalAgreementsForTenant(
   const fixed = reconcileRentalAgreementsListLike(asApi);
   if (!reconcileChangedLike(asApi, fixed)) return;
 
+  const repo = new RentalAgreementRepository(tenantId);
   const origById = new Map(asApi.map((a) => [a.id, a]));
   for (const f of fixed) {
     const o = origById.get(f.id);
@@ -358,21 +294,12 @@ export async function syncReconcileRentalAgreementsForTenant(
     ) {
       continue;
     }
-    await client.query(
-      `UPDATE rental_agreements SET
-         status = $1,
-         previous_agreement_id = $2,
-         broker_fee = $3,
-         version = version + 1,
-         updated_at = NOW()
-       WHERE id = $4 AND tenant_id = $5 AND deleted_at IS NULL`,
-      [
-        f.status,
-        f.previousAgreementId && String(f.previousAgreementId).trim() ? String(f.previousAgreementId).trim() : null,
-        f.brokerFee != null && Number.isFinite(f.brokerFee) ? f.brokerFee : null,
-        f.id,
-        tenantId,
-      ]
+    await repo.updateReconcile(
+      client,
+      f.id,
+      f.status,
+      f.previousAgreementId && String(f.previousAgreementId).trim() ? String(f.previousAgreementId).trim() : null,
+      f.brokerFee != null && Number.isFinite(f.brokerFee) ? f.brokerFee : null
     );
   }
 }
@@ -385,24 +312,7 @@ export async function repairMissingContactIdsFromPreviousAgreement(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<{ updated: number; ids: string[] }> {
-  const r = await client.query<{ id: string }>(
-    `UPDATE rental_agreements AS r
-       SET contact_id = p.contact_id,
-           version = r.version + 1,
-           updated_at = NOW()
-     FROM rental_agreements AS p
-     WHERE r.tenant_id = $1
-       AND p.tenant_id = $1
-       AND r.deleted_at IS NULL
-       AND p.deleted_at IS NULL
-       AND r.previous_agreement_id IS NOT NULL
-       AND r.previous_agreement_id = p.id
-       AND TRIM(COALESCE(r.contact_id, '')) = ''
-       AND TRIM(COALESCE(p.contact_id, '')) <> ''
-     RETURNING r.id`,
-    [tenantId]
-  );
-  return { updated: r.rowCount ?? 0, ids: r.rows.map((x) => x.id) };
+  return new RentalAgreementRepository(tenantId).repairMissingContactIdsFromPrevious(client);
 }
 
 function proRataFirstMonthRentLikeForm(monthlyRent: number, startYmd: string): number {
@@ -444,16 +354,9 @@ export async function renewRentalAgreement(
     throw new Error('oldVersion (current agreement version) is required to renew safely.');
   }
 
-  const uOld = await client.query<RentalAgreementRow>(
-    `UPDATE rental_agreements SET status = 'Renewed', version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       AND LOWER(TRIM(status)) = 'active' AND version = $3
-     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-               version, deleted_at, created_at, updated_at`,
-    [oldAgreementId, tenantId, expectedVersion]
-  );
-  if (uOld.rows.length === 0) {
+  const repo = new RentalAgreementRepository(tenantId);
+  const uOldRow = await repo.markRenewed(client, oldAgreementId, expectedVersion);
+  if (!uOldRow) {
     const again = await getRentalAgreementById(client, tenantId, oldAgreementId);
     if (!again) throw new Error('Agreement not found.');
     throw new Error('This agreement was updated elsewhere. Please refresh and try again.');
@@ -504,7 +407,7 @@ export async function renewRentalAgreement(
   let newRow = (await getRentalAgreementById(client, tenantId, newRowInserted.id)) ?? newRowInserted;
   await syncReconcileRentalAgreementsForTenant(client, tenantId);
   newRow = (await getRentalAgreementById(client, tenantId, newId)) ?? newRow;
-  const oldRow = (await getRentalAgreementById(client, tenantId, oldAgreementId)) ?? uOld.rows[0]!;
+  const oldRow = (await getRentalAgreementById(client, tenantId, oldAgreementId)) ?? uOldRow;
 
   const generated: Record<string, unknown>[] = [];
   let nextInvoiceNumber: number | undefined;
@@ -523,11 +426,10 @@ export async function renewRentalAgreement(
 
     const numPart = (n: number) => String(n).padStart(pad, '0');
     const invoiceNumber = `${invPrefix}${numPart(invNext)}`;
-    const cat = await client.query<{ id: string }>(
-      `SELECT id FROM categories WHERE tenant_id = $1 AND (deleted_at IS NULL) AND LOWER(TRIM(name)) = 'rental income' LIMIT 1`,
-      [tenantId]
+    const categoryId = await new CategoryRepository(tenantId).findTenantCategoryIdByLowerName(
+      client,
+      'rental income'
     );
-    const categoryId = cat.rows[0]?.id;
     const amount = proRataFirstMonthRentLikeForm(monthlyRent, startDate);
     const startNorm = /^\d{4}-\d{2}-\d{2}/.test(startDate) ? startDate : startDate;
     const monthName = new Date(
@@ -569,6 +471,7 @@ export async function softDeleteRentalAgreement(
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const before = await getRentalAgreementById(client, tenantId, id);
+  const repo = new RentalAgreementRepository(tenantId);
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
       tenantId,
@@ -578,19 +481,11 @@ export async function softDeleteRentalAgreement(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-                 rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-                 version, deleted_at, created_at, updated_at`,
-      [id, tenantId]
-    );
-    if (r.rowCount === 0) {
+    const row = await repo.markDeleted(client, id);
+    if (!row) {
       if (!before) return { ok: false, conflict: false };
       return { ok: false, conflict: false };
     }
-    const row = r.rows[0] as RentalAgreementRow;
     await recordDomainMutation(client, {
       tenantId,
       userId: null,
@@ -604,17 +499,9 @@ export async function softDeleteRentalAgreement(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE rental_agreements SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
-               rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
-               version, deleted_at, created_at, updated_at`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
-  if (ok && r.rows[0]) {
-    const row = r.rows[0] as RentalAgreementRow;
+  const row = await repo.markDeleted(client, id);
+  const ok = row != null;
+  if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
       userId: null,

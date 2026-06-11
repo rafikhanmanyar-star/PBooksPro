@@ -64,4 +64,46 @@ export class ProjectExpenseCategoryRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async insertCategory(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    description: string | null,
+    isActive: boolean
+  ): Promise<ProjectExpenseCategoryRow> {
+    const r = await client.query<ProjectExpenseCategoryRow>(
+      `INSERT INTO project_expense_categories (id, tenant_id, name, description, is_active)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING ${SELECT_COLS}`,
+      [id, this.tenantId, name, description, isActive]
+    );
+    return r.rows[0]!;
+  }
+
+  async updateActive(
+    client: pg.PoolClient,
+    id: string,
+    name: string,
+    description: string | null,
+    isActive: boolean
+  ): Promise<ProjectExpenseCategoryRow | null> {
+    const r = await client.query<ProjectExpenseCategoryRow>(
+      `UPDATE project_expense_categories SET
+         name = $1, description = $2, is_active = $3, version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL
+       RETURNING ${SELECT_COLS}`,
+      [name, description, isActive, this.tenantId, id]
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async markDeleted(client: pg.PoolClient, id: string): Promise<boolean> {
+    const r = await client.query(
+      `UPDATE project_expense_categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [this.tenantId, id]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
 }

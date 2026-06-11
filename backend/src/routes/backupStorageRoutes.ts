@@ -47,7 +47,7 @@ backupStorageRouter.get('/backups/storage/settings', requirePermission('backups.
     const row = await getStorageSettingsRow(client);
     sendSuccess(res, {
       settings: toPublicSettings(row),
-      endpointHint: defaultEndpointHint(row?.provider ?? 'aws_s3'),
+      endpointHint: defaultEndpointHint(toPublicSettings(row).provider),
     });
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /backups/storage/settings' });

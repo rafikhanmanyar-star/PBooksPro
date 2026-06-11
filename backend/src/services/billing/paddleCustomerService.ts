@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { createPaddleCustomer } from './paddleService.js';
 import { logBillingAudit } from './billingAuditService.js';
+import { BillingCustomerRepository } from '../../modules/billing/repositories/BillingCustomerRepository.js';
 
 export type BillingCustomerRow = {
   id: string;
@@ -18,41 +19,20 @@ export type BillingCustomerRow = {
   updated_at: string;
 };
 
-function mapRow(row: pg.QueryResultRow): BillingCustomerRow {
-  return {
-    id: row.id,
-    tenant_id: row.tenant_id,
-    paddle_customer_id: row.paddle_customer_id,
-    email: row.email,
-    name: row.name,
-    metadata:
-      row.metadata && typeof row.metadata === 'object'
-        ? (row.metadata as Record<string, unknown>)
-        : {},
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-  };
-}
+const customerRepo = new BillingCustomerRepository();
 
 export async function getBillingCustomerByTenant(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<BillingCustomerRow | null> {
-  const { rows } = await client.query(`SELECT * FROM billing_customers WHERE tenant_id = $1`, [
-    tenantId,
-  ]);
-  return rows.length ? mapRow(rows[0]) : null;
+  return customerRepo.getByTenant(client, tenantId);
 }
 
 export async function getBillingCustomerByPaddleId(
   client: pg.PoolClient,
   paddleCustomerId: string
 ): Promise<BillingCustomerRow | null> {
-  const { rows } = await client.query(
-    `SELECT * FROM billing_customers WHERE paddle_customer_id = $1`,
-    [paddleCustomerId]
-  );
-  return rows.length ? mapRow(rows[0]) : null;
+  return customerRepo.getByPaddleId(client, paddleCustomerId);
 }
 
 export async function createOrSyncBillingCustomer(
@@ -74,19 +54,11 @@ export async function createOrSyncBillingCustomer(
   });
 
   if (existing) {
-    await client.query(
-      `UPDATE billing_customers SET
-         paddle_customer_id = $2,
-         email = $3,
-         name = COALESCE($4, name),
-         updated_at = NOW()
-       WHERE id = $1`,
-      [existing.id, paddle.paddleCustomerId, input.email, input.name ?? null]
-    );
-    const { rows } = await client.query(`SELECT * FROM billing_customers WHERE id = $1`, [
-      existing.id,
-    ]);
-    const updated = mapRow(rows[0]);
+    const updated = await customerRepo.linkPaddle(client, existing.id, {
+      paddleCustomerId: paddle.paddleCustomerId,
+      email: input.email,
+      name: input.name ?? null,
+    });
     await logBillingAudit(client, {
       tenantId: input.tenantId,
       userId: input.userId,
@@ -98,11 +70,13 @@ export async function createOrSyncBillingCustomer(
   }
 
   const id = randomUUID();
-  await client.query(
-    `INSERT INTO billing_customers (id, tenant_id, paddle_customer_id, email, name)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [id, input.tenantId, paddle.paddleCustomerId, input.email, input.name ?? null]
-  );
+  const created = await customerRepo.insert(client, {
+    id,
+    tenantId: input.tenantId,
+    paddleCustomerId: paddle.paddleCustomerId,
+    email: input.email,
+    name: input.name ?? null,
+  });
 
   await logBillingAudit(client, {
     tenantId: input.tenantId,
@@ -112,8 +86,7 @@ export async function createOrSyncBillingCustomer(
     details: { paddleCustomerId: paddle.paddleCustomerId, email: input.email },
   });
 
-  const { rows } = await client.query(`SELECT * FROM billing_customers WHERE id = $1`, [id]);
-  return mapRow(rows[0]);
+  return created;
 }
 
 export async function updateBillingCustomerInfo(
@@ -139,9 +112,11 @@ export async function updateBillingCustomerInfo(
     });
   }
 
-  await client.query(
-    `UPDATE billing_customers SET email = $2, name = COALESCE($3, name), updated_at = NOW() WHERE id = $1`,
-    [customer.id, input.email, input.name ?? null]
+  const updated = await customerRepo.updateInfo(
+    client,
+    customer.id,
+    input.email,
+    input.name ?? null
   );
 
   await logBillingAudit(client, {
@@ -152,8 +127,7 @@ export async function updateBillingCustomerInfo(
     details: { email: input.email },
   });
 
-  const { rows } = await client.query(`SELECT * FROM billing_customers WHERE id = $1`, [customer.id]);
-  return mapRow(rows[0]);
+  return updated;
 }
 
 export async function updateCustomerFromPaddleWebhook(
@@ -173,28 +147,21 @@ export async function updateCustomerFromPaddleWebhook(
 
   const byPaddle = await getBillingCustomerByPaddleId(client, paddleId);
   if (byPaddle) {
-    await client.query(
-      `UPDATE billing_customers SET email = COALESCE($2, email), name = COALESCE($3, name), updated_at = NOW()
-       WHERE id = $1`,
-      [byPaddle.id, email, name]
-    );
+    await customerRepo.updateFromWebhookByPaddleId(client, byPaddle.id, email, name);
     return;
   }
 
   if (tenantId && email) {
     const existing = await getBillingCustomerByTenant(client, tenantId);
     if (existing) {
-      await client.query(
-        `UPDATE billing_customers SET paddle_customer_id = $2, email = $3, name = COALESCE($4, name), updated_at = NOW()
-         WHERE id = $1`,
-        [existing.id, paddleId, email, name]
-      );
+      await customerRepo.linkPaddleOnExisting(client, existing.id, paddleId, email, name);
     } else {
-      await client.query(
-        `INSERT INTO billing_customers (id, tenant_id, paddle_customer_id, email, name)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [randomUUID(), tenantId, paddleId, email, name]
-      );
+      await customerRepo.insertFromWebhook(client, {
+        tenantId,
+        paddleId,
+        email,
+        name,
+      });
     }
   }
 }

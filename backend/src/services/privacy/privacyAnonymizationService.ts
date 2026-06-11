@@ -5,12 +5,15 @@
 import { randomBytes } from 'node:crypto';
 import type pg from 'pg';
 import bcrypt from 'bcryptjs';
+import { PrivacyAnonymizationRepository } from '../../modules/privacy/repositories/PrivacyRepository.js';
 
 export type AnonymizeUserResult = {
   userId: string;
   anonymizedUsername: string;
   anonymizedName: string;
 };
+
+const anonRepo = new PrivacyAnonymizationRepository();
 
 function anonymizedUsername(userId: string): string {
   return `deleted_${userId.replace(/-/g, '').slice(0, 12)}`;
@@ -25,11 +28,8 @@ export async function anonymizeUserData(
   tenantId: string,
   targetUserId: string
 ): Promise<AnonymizeUserResult> {
-  const { rows } = await client.query(
-    `SELECT id, username FROM users WHERE id = $1 AND tenant_id = $2`,
-    [targetUserId, tenantId]
-  );
-  if (rows.length === 0) {
+  const user = await anonRepo.getUserUsername(client, tenantId, targetUserId);
+  if (!user) {
     throw new Error('User not found in this organization.');
   }
 
@@ -37,30 +37,20 @@ export async function anonymizeUserData(
   const nextName = anonymizedName(targetUserId);
   const unusableHash = await bcrypt.hash(randomBytes(32).toString('hex'), 10);
 
-  await client.query(
-    `UPDATE users
-     SET username = $1,
-         name = $2,
-         email = NULL,
-         password_hash = $3,
-         is_active = FALSE,
-         updated_at = NOW()
-     WHERE id = $4 AND tenant_id = $5`,
-    [nextUsername, nextName, unusableHash, targetUserId, tenantId]
-  );
+  await anonRepo.anonymizeUser(client, {
+    tenantId,
+    userId: targetUserId,
+    username: nextUsername,
+    name: nextName,
+    passwordHash: unusableHash,
+  });
 
-  if (await auditTableExists(client)) {
-    await client.query(
-      `UPDATE audit_events SET email = NULL WHERE tenant_id = $1 AND user_id = $2`,
-      [tenantId, targetUserId]
-    );
+  if (await anonRepo.tableExists(client, 'audit_events')) {
+    await anonRepo.clearAuditEmail(client, tenantId, targetUserId);
   }
 
-  if (await loginEventsTableExists(client)) {
-    await client.query(
-      `UPDATE login_events SET email = NULL WHERE tenant_id = $1 AND user_id = $2`,
-      [tenantId, targetUserId]
-    );
+  if (await anonRepo.tableExists(client, 'login_events')) {
+    await anonRepo.clearLoginEventEmail(client, tenantId, targetUserId);
   }
 
   return {
@@ -68,22 +58,6 @@ export async function anonymizeUserData(
     anonymizedUsername: nextUsername,
     anonymizedName: nextName,
   };
-}
-
-async function auditTableExists(client: pg.PoolClient): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = 'audit_events' LIMIT 1`
-  );
-  return r.rows.length > 0;
-}
-
-async function loginEventsTableExists(client: pg.PoolClient): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM information_schema.tables
-     WHERE table_schema = 'public' AND table_name = 'login_events' LIMIT 1`
-  );
-  return r.rows.length > 0;
 }
 
 export function buildAnonymizationMetadata(result: AnonymizeUserResult): Record<string, unknown> {

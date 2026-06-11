@@ -3,6 +3,10 @@
  */
 
 import type pg from 'pg';
+import {
+  BackupSecuritySettingsRepository,
+  type BackupSecuritySettingsRow,
+} from '../../modules/backup/repositories/BackupSettingsRepository.js';
 
 export type BackupSecuritySettings = {
   id: string;
@@ -23,7 +27,9 @@ export type BackupSecurityStatus = {
   formats: string[];
 };
 
-function mapRow(row: pg.QueryResultRow): BackupSecuritySettings {
+const securityRepo = new BackupSecuritySettingsRepository();
+
+function mapRow(row: BackupSecuritySettingsRow): BackupSecuritySettings {
   return {
     id: row.id,
     encrypt_at_rest: row.encrypt_at_rest,
@@ -36,23 +42,22 @@ function mapRow(row: pg.QueryResultRow): BackupSecuritySettings {
   };
 }
 
+const DEFAULT_SETTINGS: BackupSecuritySettings = {
+  id: 'default',
+  encrypt_at_rest: true,
+  encrypt_before_upload: true,
+  require_restore_authorization: true,
+  min_backup_password_length: 8,
+  key_version: 1,
+  key_rotated_at: null,
+  updated_at: new Date().toISOString(),
+};
+
 export async function getBackupSecuritySettings(
   client: pg.PoolClient
 ): Promise<BackupSecuritySettings> {
-  const { rows } = await client.query(`SELECT * FROM backup_security_settings WHERE id = 'default'`);
-  if (rows.length === 0) {
-    return {
-      id: 'default',
-      encrypt_at_rest: true,
-      encrypt_before_upload: true,
-      require_restore_authorization: true,
-      min_backup_password_length: 8,
-      key_version: 1,
-      key_rotated_at: null,
-      updated_at: new Date().toISOString(),
-    };
-  }
-  return mapRow(rows[0]);
+  const row = await securityRepo.getRow(client);
+  return row ? mapRow(row) : DEFAULT_SETTINGS;
 }
 
 export async function updateBackupSecuritySettings(
@@ -68,32 +73,19 @@ export async function updateBackupSecuritySettings(
   >
 ): Promise<BackupSecuritySettings> {
   const current = await getBackupSecuritySettings(client);
-  await client.query(
-    `UPDATE backup_security_settings SET
-       encrypt_at_rest = $1,
-       encrypt_before_upload = $2,
-       require_restore_authorization = $3,
-       min_backup_password_length = $4,
-       updated_at = NOW()
-     WHERE id = 'default'`,
-    [
-      patch.encrypt_at_rest ?? current.encrypt_at_rest,
-      patch.encrypt_before_upload ?? current.encrypt_before_upload,
+  await securityRepo.update(client, {
+    encrypt_at_rest: patch.encrypt_at_rest ?? current.encrypt_at_rest,
+    encrypt_before_upload: patch.encrypt_before_upload ?? current.encrypt_before_upload,
+    require_restore_authorization:
       patch.require_restore_authorization ?? current.require_restore_authorization,
+    min_backup_password_length:
       patch.min_backup_password_length ?? current.min_backup_password_length,
-    ]
-  );
+  });
   return getBackupSecuritySettings(client);
 }
 
 export async function rotateBackupKeyVersion(client: pg.PoolClient): Promise<BackupSecuritySettings> {
-  await client.query(
-    `UPDATE backup_security_settings SET
-       key_version = key_version + 1,
-       key_rotated_at = NOW(),
-       updated_at = NOW()
-     WHERE id = 'default'`
-  );
+  await securityRepo.rotateKeyVersion(client);
   return getBackupSecuritySettings(client);
 }
 

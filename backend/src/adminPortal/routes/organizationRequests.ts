@@ -3,7 +3,6 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { getPool, withTransaction } from '../../db/pool.js';
 import { AdminRequest } from '../middleware/adminAuthMiddleware.js';
-import { getDatabaseService } from '../adminPortalDb.js';
 import { ORGANIZATION_STATUSES } from '../../constants/organizationStatus.js';
 import {
   approveOrganization,
@@ -13,8 +12,12 @@ import {
   rejectOrganization,
   suspendOrganization,
 } from '../../services/organization/organizationApprovalService.js';
+import { AdminUserRepository } from '../../modules/admin-portal/repositories/AdminPortalRepository.js';
+import { OrganizationRepository } from '../../modules/organization/repositories/OrganizationRepository.js';
 
 const router = Router();
+const adminUserRepo = new AdminUserRepository();
+const orgRepo = new OrganizationRepository();
 
 const listQuerySchema = z.object({
   status: z.enum(ORGANIZATION_STATUSES).optional(),
@@ -27,12 +30,7 @@ const rejectBodySchema = z.object({
 });
 
 async function resolveAdminActor(adminId: string): Promise<{ id: string; email: string | null; name: string }> {
-  const db = getDatabaseService();
-  const rows = await db.query<{ id: string; email: string; name: string }>(
-    'SELECT id, email, name FROM admin_users WHERE id = $1',
-    [adminId]
-  );
-  const row = rows[0];
+  const row = await adminUserRepo.getById(adminId);
   return { id: adminId, email: row?.email ?? null, name: row?.name ?? 'Platform Admin' };
 }
 
@@ -62,19 +60,19 @@ router.get('/', async (req: AdminRequest, res) => {
 
 router.get('/stats', async (_req: AdminRequest, res) => {
   try {
-    const db = getDatabaseService();
-    const [pending, active, rejected, suspended] = await Promise.all([
-      db.query("SELECT COUNT(*)::text AS count FROM tenants WHERE status = 'PENDING'"),
-      db.query("SELECT COUNT(*)::text AS count FROM tenants WHERE status = 'ACTIVE'"),
-      db.query("SELECT COUNT(*)::text AS count FROM tenants WHERE status = 'REJECTED'"),
-      db.query("SELECT COUNT(*)::text AS count FROM tenants WHERE status = 'SUSPENDED'"),
-    ]);
-    res.json({
-      pending: Number(pending[0]?.count ?? 0),
-      active: Number(active[0]?.count ?? 0),
-      rejected: Number(rejected[0]?.count ?? 0),
-      suspended: Number(suspended[0]?.count ?? 0),
-    });
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const [pending, active, rejected, suspended] = await Promise.all([
+        orgRepo.countTenantsByStatus(client, 'PENDING'),
+        orgRepo.countTenantsByStatus(client, 'ACTIVE'),
+        orgRepo.countTenantsByStatus(client, 'REJECTED'),
+        orgRepo.countTenantsByStatus(client, 'SUSPENDED'),
+      ]);
+      res.json({ pending, active, rejected, suspended });
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('Error fetching organization request stats:', error);
     res.status(500).json({ error: 'Failed to fetch organization request stats' });

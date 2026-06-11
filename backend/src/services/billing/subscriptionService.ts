@@ -12,6 +12,7 @@ import {
 } from './billingPlanService.js';
 import { logSubscriptionEvent } from './subscriptionEventService.js';
 import { createInvoice } from './subscriptionInvoiceService.js';
+import { SubscriptionRepository } from '../../modules/billing/repositories/SubscriptionRepository.js';
 
 export type SubscriptionStatus =
   | 'trialing'
@@ -45,13 +46,7 @@ export type SubscriptionRow = {
   plan_name?: string;
 };
 
-const ACTIVE_STATUSES: SubscriptionStatus[] = [
-  'trialing',
-  'active',
-  'past_due',
-  'paused',
-  'pending',
-];
+const subRepo = new SubscriptionRepository();
 
 function mapSub(row: pg.QueryResultRow): SubscriptionRow {
   return {
@@ -97,44 +92,24 @@ export async function getActiveSubscription(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<SubscriptionRow | null> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.tenant_id = $1 AND s.status = ANY($2::text[])
-     ORDER BY s.updated_at DESC
-     LIMIT 1`,
-    [tenantId, ACTIVE_STATUSES]
-  );
-  return rows.length ? mapSub(rows[0]) : null;
+  const row = await subRepo.getActiveWithPlan(client, tenantId);
+  return row ? mapSub(row) : null;
 }
 
 export async function getSubscriptionById(
   client: pg.PoolClient,
   subscriptionId: string
 ): Promise<SubscriptionRow | null> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.id = $1`,
-    [subscriptionId]
-  );
-  return rows.length ? mapSub(rows[0]) : null;
+  const row = await subRepo.getByIdWithPlan(client, subscriptionId);
+  return row ? mapSub(row) : null;
 }
 
 export async function getSubscriptionByPaddleId(
   client: pg.PoolClient,
   paddleSubscriptionId: string
 ): Promise<SubscriptionRow | null> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.paddle_subscription_id = $1`,
-    [paddleSubscriptionId]
-  );
-  return rows.length ? mapSub(rows[0]) : null;
+  const row = await subRepo.getByPaddleIdWithPlan(client, paddleSubscriptionId);
+  return row ? mapSub(row) : null;
 }
 
 export async function extendSubscriptionTrialByMonths(
@@ -149,11 +124,7 @@ export async function extendSubscriptionTrialByMonths(
   const base = sub.trial_end_date ? new Date(sub.trial_end_date) : new Date();
   const extended = addMonths(base, months);
 
-  await client.query(
-    `UPDATE subscriptions SET trial_end_date = $2, renewal_date = $2, updated_at = NOW()
-     WHERE id = $1 AND status IN ('trialing', 'active', 'past_due', 'paused', 'pending')`,
-    [sub.id, extended.toISOString()]
-  );
+  await subRepo.extendTrial(client, sub.id, extended.toISOString());
 
   await logSubscriptionEvent(client, {
     tenantId,
@@ -179,12 +150,13 @@ export async function startTrialSubscription(
   const trialDays = trialDaysFromPlan(trialPlan);
   const trialEnd = addDays(now, trialDays);
 
-  await client.query(
-    `INSERT INTO subscriptions (
-       id, tenant_id, plan_id, status, billing_cycle, start_date, trial_end_date, renewal_date
-     ) VALUES ($1, $2, $3, 'trialing', 'trial', $4, $5, $5)`,
-    [id, tenantId, trialPlan.id, now.toISOString(), trialEnd.toISOString()]
-  );
+  await subRepo.insertTrial(client, {
+    id,
+    tenantId,
+    planId: trialPlan.id,
+    startDate: now.toISOString(),
+    trialEndDate: trialEnd.toISOString(),
+  });
 
   await logSubscriptionEvent(client, {
     tenantId,
@@ -226,48 +198,25 @@ export async function activatePaidSubscription(
 
   if (existing) {
     subscriptionId = existing.id;
-    await client.query(
-      `UPDATE subscriptions SET
-         plan_id = $2,
-         status = 'active',
-         billing_cycle = $3,
-         renewal_date = $4,
-         trial_end_date = NULL,
-         canceled_at = NULL,
-         cancel_at_period_end = FALSE,
-         pending_plan_id = NULL,
-         past_due_at = NULL,
-         paddle_customer_id = COALESCE($5, paddle_customer_id),
-         paddle_subscription_id = COALESCE($6, paddle_subscription_id),
-         updated_at = NOW()
-       WHERE id = $1`,
-      [
-        subscriptionId,
-        input.planId,
-        input.billingCycle,
-        renewal.toISOString(),
-        input.paddleCustomerId ?? null,
-        input.paddleSubscriptionId ?? null,
-      ]
-    );
+    await subRepo.updateActivated(client, subscriptionId, {
+      planId: input.planId,
+      billingCycle: input.billingCycle,
+      renewalDate: renewal.toISOString(),
+      paddleCustomerId: input.paddleCustomerId ?? null,
+      paddleSubscriptionId: input.paddleSubscriptionId ?? null,
+    });
   } else {
     subscriptionId = randomUUID();
-    await client.query(
-      `INSERT INTO subscriptions (
-         id, tenant_id, plan_id, status, billing_cycle, start_date, renewal_date,
-         paddle_customer_id, paddle_subscription_id
-       ) VALUES ($1, $2, $3, 'active', $4, $5, $6, $7, $8)`,
-      [
-        subscriptionId,
-        input.tenantId,
-        input.planId,
-        input.billingCycle,
-        now.toISOString(),
-        renewal.toISOString(),
-        input.paddleCustomerId ?? null,
-        input.paddleSubscriptionId ?? null,
-      ]
-    );
+    await subRepo.insertActivated(client, {
+      id: subscriptionId,
+      tenantId: input.tenantId,
+      planId: input.planId,
+      billingCycle: input.billingCycle,
+      startDate: now.toISOString(),
+      renewalDate: renewal.toISOString(),
+      paddleCustomerId: input.paddleCustomerId ?? null,
+      paddleSubscriptionId: input.paddleSubscriptionId ?? null,
+    });
   }
 
   const invoice = await createInvoice(client, {
@@ -335,10 +284,7 @@ export async function upgradeSubscription(
     throw new Error('Select a higher-tier plan to upgrade.');
   }
 
-  await client.query(
-    `UPDATE subscriptions SET plan_id = $2, pending_plan_id = NULL, updated_at = NOW() WHERE id = $1`,
-    [sub.id, newPlan.id]
-  );
+  await subRepo.updatePlanId(client, sub.id, newPlan.id);
 
   await logSubscriptionEvent(client, {
     tenantId,
@@ -375,15 +321,9 @@ export async function downgradeSubscription(
   }
 
   if (atPeriodEnd) {
-    await client.query(
-      `UPDATE subscriptions SET pending_plan_id = $2, updated_at = NOW() WHERE id = $1`,
-      [sub.id, newPlan.id]
-    );
+    await subRepo.setPendingPlan(client, sub.id, newPlan.id);
   } else {
-    await client.query(
-      `UPDATE subscriptions SET plan_id = $2, pending_plan_id = NULL, updated_at = NOW() WHERE id = $1`,
-      [sub.id, newPlan.id]
-    );
+    await subRepo.updatePlanId(client, sub.id, newPlan.id);
   }
 
   await logSubscriptionEvent(client, {
@@ -411,21 +351,9 @@ export async function cancelSubscription(
   if (!sub) throw new Error('No active subscription to cancel.');
 
   if (atPeriodEnd) {
-    await client.query(
-      `UPDATE subscriptions SET cancel_at_period_end = TRUE, updated_at = NOW() WHERE id = $1`,
-      [sub.id]
-    );
+    await subRepo.setCancelAtPeriodEnd(client, sub.id);
   } else {
-    await client.query(
-      `UPDATE subscriptions SET
-         status = 'canceled',
-         canceled_at = NOW(),
-         cancel_at_period_end = FALSE,
-         renewal_date = NULL,
-         updated_at = NOW()
-       WHERE id = $1`,
-      [sub.id]
-    );
+    await subRepo.cancelImmediately(client, sub.id);
   }
 
   await logSubscriptionEvent(client, {
@@ -443,40 +371,22 @@ export async function reactivateSubscription(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<SubscriptionRow> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.tenant_id = $1
-     ORDER BY s.updated_at DESC
-     LIMIT 1`,
-    [tenantId]
-  );
-  if (rows.length === 0) throw new Error('No subscription found.');
+  const row = await subRepo.getLatestWithPlan(client, tenantId);
+  if (!row) throw new Error('No subscription found.');
 
-  const sub = mapSub(rows[0]);
+  const sub = mapSub(row);
   if (sub.status === 'active' || sub.status === 'trialing') {
     if (sub.cancel_at_period_end) {
-      await client.query(
-        `UPDATE subscriptions SET cancel_at_period_end = FALSE, canceled_at = NULL, updated_at = NOW()
-         WHERE id = $1`,
-        [sub.id]
-      );
+      await subRepo.clearCancelAtPeriodEnd(client, sub.id);
     } else {
       return sub;
     }
   } else if (sub.status === 'canceled' || sub.status === 'expired') {
-    const renewal = computeRenewalDate(new Date(), sub.billing_cycle === 'trial' ? 'monthly' : sub.billing_cycle);
-    await client.query(
-      `UPDATE subscriptions SET
-         status = 'active',
-         canceled_at = NULL,
-         cancel_at_period_end = FALSE,
-         renewal_date = $2,
-         updated_at = NOW()
-       WHERE id = $1`,
-      [sub.id, renewal.toISOString()]
+    const renewal = computeRenewalDate(
+      new Date(),
+      sub.billing_cycle === 'trial' ? 'monthly' : sub.billing_cycle
     );
+    await subRepo.reactivateFromCanceled(client, sub.id, renewal.toISOString());
   } else {
     throw new Error(`Cannot reactivate subscription in status "${sub.status}".`);
   }
@@ -492,26 +402,14 @@ export async function reactivateSubscription(
   return updated;
 }
 
-/** Latest subscription row for a tenant (any status), for admin/manual reconciliation. */
 export async function getLatestSubscription(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<SubscriptionRow | null> {
-  const { rows } = await client.query(
-    `SELECT s.*, p.plan_code, p.name AS plan_name
-     FROM subscriptions s
-     INNER JOIN billing_plans p ON p.id = s.plan_id
-     WHERE s.tenant_id = $1
-     ORDER BY s.updated_at DESC
-     LIMIT 1`,
-    [tenantId]
-  );
-  return rows.length ? mapSub(rows[0]) : null;
+  const row = await subRepo.getLatestWithPlan(client, tenantId);
+  return row ? mapSub(row) : null;
 }
 
-/**
- * Align subscriptions with a manual license applied from the admin portal (tenants table).
- */
 export async function syncManualLicenseToSubscription(
   client: pg.PoolClient,
   tenantId: string,
@@ -532,29 +430,21 @@ export async function syncManualLicenseToSubscription(
 
   if (existing) {
     subscriptionId = existing.id;
-    await client.query(
-      `UPDATE subscriptions SET
-         plan_id = $2,
-         status = 'active',
-         billing_cycle = $3,
-         renewal_date = $4,
-         trial_end_date = NULL,
-         canceled_at = NULL,
-         cancel_at_period_end = FALSE,
-         pending_plan_id = NULL,
-         past_due_at = NULL,
-         updated_at = NOW()
-       WHERE id = $1`,
-      [subscriptionId, plan.id, billingCycle, renewalIso]
-    );
+    await subRepo.syncManualLicenseUpdate(client, subscriptionId, {
+      planId: plan.id,
+      billingCycle,
+      renewalDate: renewalIso,
+    });
   } else {
     subscriptionId = randomUUID();
-    await client.query(
-      `INSERT INTO subscriptions (
-         id, tenant_id, plan_id, status, billing_cycle, start_date, renewal_date
-       ) VALUES ($1, $2, $3, 'active', $4, $5, $6)`,
-      [subscriptionId, tenantId, plan.id, billingCycle, now.toISOString(), renewalIso]
-    );
+    await subRepo.insertManualLicense(client, {
+      id: subscriptionId,
+      tenantId,
+      planId: plan.id,
+      billingCycle,
+      startDate: now.toISOString(),
+      renewalDate: renewalIso,
+    });
   }
 
   await logSubscriptionEvent(client, {
@@ -577,17 +467,9 @@ export async function syncManualLicenseToSubscription(
 }
 
 export async function expireTrialsAndCanceled(client: pg.PoolClient): Promise<number> {
-  const r1 = await client.query(
-    `UPDATE subscriptions SET status = 'expired', updated_at = NOW()
-     WHERE status = 'trialing' AND trial_end_date IS NOT NULL AND trial_end_date < NOW()
-     RETURNING id`
-  );
-  const r2 = await client.query(
-    `UPDATE subscriptions SET status = 'canceled', canceled_at = COALESCE(canceled_at, NOW()), updated_at = NOW()
-     WHERE cancel_at_period_end = TRUE AND renewal_date IS NOT NULL AND renewal_date < NOW() AND status IN ('active', 'trialing')
-     RETURNING id`
-  );
-  return (r1.rowCount ?? 0) + (r2.rowCount ?? 0);
+  const expiredTrials = await subRepo.expireTrials(client);
+  const expiredCanceled = await subRepo.expireCanceledAtPeriodEnd(client);
+  return expiredTrials + expiredCanceled;
 }
 
 export { planModules };

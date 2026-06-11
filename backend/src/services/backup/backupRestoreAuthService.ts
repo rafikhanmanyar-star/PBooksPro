@@ -2,9 +2,9 @@
  * Restore authorization — only Super Admin / Company Admin; short-lived session tokens.
  */
 
-import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { resolveEnterpriseRole } from '../../auth/permissions.js';
+import { BackupRestoreAuthRepository } from '../../modules/backup/repositories/TenantRestoreRepository.js';
 
 const RESTORE_SESSION_TTL_MS = 5 * 60_000;
 export const RESTORE_CONFIRM_PHRASE = 'RESTORE DATABASE';
@@ -22,16 +22,14 @@ export async function createRestoreSession(
     throw new Error(`Confirmation phrase must be exactly "${RESTORE_CONFIRM_PHRASE}".`);
   }
 
-  const id = randomUUID();
   const expiresAt = new Date(Date.now() + RESTORE_SESSION_TTL_MS);
-
-  await client.query(
-    `INSERT INTO backup_restore_sessions (id, tenant_id, user_id, expires_at)
-     VALUES ($1, $2, $3, $4)`,
-    [id, input.tenantId, input.userId, expiresAt.toISOString()]
+  const restoreToken = await new BackupRestoreAuthRepository(input.tenantId).createSession(
+    client,
+    input.userId,
+    expiresAt.toISOString()
   );
 
-  return { restoreToken: id, expiresAt: expiresAt.toISOString() };
+  return { restoreToken, expiresAt: expiresAt.toISOString() };
 }
 
 export async function consumeRestoreSession(
@@ -40,17 +38,10 @@ export async function consumeRestoreSession(
   userId: string,
   tenantId: string
 ): Promise<boolean> {
-  const { rows } = await client.query(
-    `UPDATE backup_restore_sessions SET used = true
-     WHERE id = $1 AND tenant_id = $2 AND user_id = $3
-       AND used = false AND expires_at > NOW()
-     RETURNING id`,
-    [token, tenantId, userId]
-  );
-  return rows.length > 0;
+  return new BackupRestoreAuthRepository(tenantId).consumeSession(client, token, userId);
 }
 
 /** Remove expired restore sessions (best-effort housekeeping). */
 export async function purgeExpiredRestoreSessions(client: pg.PoolClient): Promise<void> {
-  await client.query(`DELETE FROM backup_restore_sessions WHERE expires_at < NOW()`);
+  await BackupRestoreAuthRepository.purgeExpired(client);
 }

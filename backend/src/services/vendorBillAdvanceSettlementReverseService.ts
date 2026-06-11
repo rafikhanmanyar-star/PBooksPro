@@ -1,8 +1,10 @@
 import type pg from 'pg';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { isJournalReversed, reverseJournalEntry } from './journalService.js';
+import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
 import { getBillById, recalculateBillPaymentAggregates, rowToBillApi } from './billsService.js';
 import { getTransactionById } from './transactionsService.js';
+import { TransactionRepository } from '../modules/accounting/repositories/TransactionRepository.js';
 import { syncOwnerSummariesForTransactionChange } from './ownerRentalSummaryService.js';
 import { VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX } from '../constants/vendorSettlement.js';
 import { roundMoney } from '../financial/validation.js';
@@ -33,12 +35,9 @@ export async function reverseVendorBillAdvanceSettlement(
     throw new Error('This journal entry has already been reversed.');
   }
 
-  const j = await client.query(
-    `SELECT id, source_module FROM journal_entries WHERE id = $1 AND tenant_id = $2 FOR UPDATE`,
-    [jeId, tenantId]
-  );
-  if (j.rows.length === 0) throw new Error('Journal entry not found.');
-  const sourceModule = String((j.rows[0] as { source_module?: string }).source_module ?? '').trim();
+  const j = await new JournalRepository(tenantId).getSourceModuleForUpdate(client, jeId);
+  if (!j) throw new Error('Journal entry not found.');
+  const sourceModule = String(j.source_module ?? '').trim();
   if (sourceModule !== 'vendor_bill_advance_clearing') {
     throw new Error('Only vendor bill advance settlement journals can be reversed with this action.');
   }
@@ -74,23 +73,15 @@ export async function reverseVendorBillAdvanceSettlement(
   await new VendorBillAdvanceClearingRepository(tenantId).deleteByJournalEntry(client, jeId);
 
   const vsetRef = `${VENDOR_SETTLEMENT_CASH_TX_REF_PREFIX}${jeId}`;
-  const txSel = await client.query<{ id: string }>(
-    `SELECT id FROM transactions WHERE tenant_id = $1 AND reference = $2 AND deleted_at IS NULL FOR UPDATE`,
-    [tenantId, vsetRef]
-  );
+  const txRepo = new TransactionRepository(tenantId);
+  const txIds = await txRepo.listActiveIdsByReferenceForUpdate(client, vsetRef);
 
   const deletedTransactionIds: string[] = [];
-  for (const t of txSel.rows) {
-    const row = await getTransactionById(client, tenantId, t.id);
+  for (const txId of txIds) {
+    const row = await getTransactionById(client, tenantId, txId);
     if (!row) continue;
     await syncOwnerSummariesForTransactionChange(client, tenantId, row, null);
-    const del = await client.query(
-      `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id`,
-      [t.id, tenantId]
-    );
-    if ((del.rowCount ?? 0) > 0) deletedTransactionIds.push(t.id);
+    if (await txRepo.markDeleted(client, txId)) deletedTransactionIds.push(txId);
   }
 
   for (const bid of billIds) {

@@ -11,6 +11,9 @@ import {
 } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../context/AuthContext';
+import { usePrintReport } from '../../../hooks/usePrintReport';
+import ReportHeader from '../ReportHeader';
+import ReportFooter from '../ReportFooter';
 import { isLocalOnlyMode } from '../../../config/apiUrl';
 import {
   CUSTOM_REPORT_MODULE_PROJECT_SELLING,
@@ -115,6 +118,7 @@ export type BuilderFilterRow = {
 export const CustomReportBuilderPage: React.FC = () => {
   const { user } = useAuth();
   const cap = backendReportCapability(user?.role);
+  const printReport = usePrintReport();
 
   const [moduleKey, setModuleKey] = useState<CustomReportModuleKey>(
     CUSTOM_REPORT_MODULE_PROJECT_SELLING
@@ -482,7 +486,8 @@ export const CustomReportBuilderPage: React.FC = () => {
           <button
             type="button"
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-sm"
-            onClick={() => window.print()}
+            disabled={!preview}
+            onClick={() => printReport({ elementId: 'custom-report-print-area' })}
           >
             Print
           </button>
@@ -975,8 +980,12 @@ export const CustomReportBuilderPage: React.FC = () => {
         </div>
       )}
 
-      <section className="flex-1 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/60">
-        <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wide text-slate-500 flex justify-between print:hidden">
+      <section
+        id="custom-report-print-area"
+        className="printable-area flex-1 flex flex-col min-h-0 border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden bg-white dark:bg-slate-900/60"
+        data-print-scroll-container
+      >
+        <div className="px-3 py-2 border-b border-slate-200 dark:border-slate-700 text-xs font-bold uppercase tracking-wide text-slate-500 flex justify-between no-print">
           <span>
             Preview
             {preview && (
@@ -1013,9 +1022,15 @@ export const CustomReportBuilderPage: React.FC = () => {
             </button>
           </div>
         </div>
-        <div className="flex-1 overflow-auto scrollbar-thin min-h-[200px]" id="custom-report-print-area">
+        <div className="flex-1 overflow-auto scrollbar-thin min-h-[200px] print-report-surface px-3 py-2">
+          <ReportHeader reportTitle={templateName || 'Custom Report'} />
+          {preview && (
+            <p className="text-center text-xs text-slate-600 mb-2 no-print">
+              Showing page {page} ({preview.rows.length} of {preview.totalCount} rows). PDF export includes full filtered data.
+            </p>
+          )}
           {runMutation.isPending && (
-            <p className="p-4 text-sm text-slate-500 print:hidden">Running query…</p>
+            <p className="p-4 text-sm text-slate-500 no-print">Running query…</p>
           )}
           {!runMutation.isPending && preview && (
             <table key={previewTableMountKey} className="min-w-full text-[11px] border-collapse">
@@ -1050,17 +1065,13 @@ export const CustomReportBuilderPage: React.FC = () => {
             </table>
           )}
           {!preview && !runMutation.isPending && (
-            <p className="p-6 text-sm text-slate-500 italic print:hidden">
+            <p className="p-6 text-sm text-slate-500 italic no-print">
               Run preview to fetch rows from PostgreSQL via the audited query engine.
             </p>
           )}
+          <ReportFooter />
         </div>
       </section>
-      <style>{`
-        @media print {
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
     </div>
   );
 };

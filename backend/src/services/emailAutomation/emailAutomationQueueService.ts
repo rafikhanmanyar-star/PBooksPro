@@ -10,6 +10,7 @@ import { isEmailUnsubscribed, signUnsubscribe } from './emailAutomationUnsubscri
 import { getPublicBaseUrl } from './emailAutomationTemplates.js';
 import { sendAutomationEmail } from './emailAutomationSender.js';
 import { logger } from '../../utils/logger.js';
+import { EmailAutomationQueueRepository } from '../../modules/email-automation/repositories/EmailAutomationRepository.js';
 
 export type EnqueueEmailInput = {
   tenantId: string | null;
@@ -25,6 +26,8 @@ export type EnqueueEmailInput = {
   templateKeyOverride?: string;
   customBody?: string;
 };
+
+const queueRepo = new EmailAutomationQueueRepository();
 
 function addDays(base: Date, days: number): Date {
   const d = new Date(base);
@@ -71,26 +74,20 @@ export async function enqueueAutomationEmail(
   const subject = input.subjectOverride ?? tpl!.subject;
 
   try {
-    await client.query(
-      `INSERT INTO email_automation_queue (
-         id, tenant_id, recipient_email, recipient_name, event_type, template_key, subject,
-         scheduled_at, tracking_token, dedupe_key, metadata, campaign_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)`,
-      [
-        id,
-        input.tenantId,
-        email,
-        name,
-        input.eventType,
-        templateKey,
-        subject,
-        scheduledAt,
-        trackingToken,
-        input.dedupeKey,
-        JSON.stringify({ ...input.metadata, tenantName, customBody: input.customBody }),
-        input.campaignId ?? null,
-      ]
-    );
+    await queueRepo.insert(client, {
+      id,
+      tenantId: input.tenantId,
+      email,
+      name,
+      eventType: input.eventType,
+      templateKey,
+      subject,
+      scheduledAt,
+      trackingToken,
+      dedupeKey: input.dedupeKey,
+      metadataJson: JSON.stringify({ ...input.metadata, tenantName, customBody: input.customBody }),
+      campaignId: input.campaignId ?? null,
+    });
     return id;
   } catch (err: unknown) {
     const pgErr = err as { code?: string };
@@ -104,13 +101,7 @@ export async function cancelPendingTrialEmails(
   tenantId: string,
   subscriptionId: string
 ): Promise<void> {
-  await client.query(
-    `UPDATE email_automation_queue SET status = 'canceled'
-     WHERE tenant_id = $1 AND status = 'pending'
-       AND event_type IN ('trial_started', 'trial_day_1', 'trial_day_3', 'trial_day_7', 'trial_day_12', 'trial_day_14', 'trial_expiring')
-       AND dedupe_key LIKE $2`,
-    [tenantId, `${tenantId}:${subscriptionId}:%`]
-  );
+  await queueRepo.cancelPendingTrialEmails(client, tenantId, `${tenantId}:${subscriptionId}:%`);
 }
 
 export async function enrollTrialLifecycleEmails(
@@ -148,24 +139,7 @@ export async function processDueAutomationEmails(
     return { sent: 0, skipped: 0, failed: 0 };
   }
 
-  const { rows } = await client.query<{
-    id: string;
-    tenant_id: string | null;
-    recipient_email: string;
-    recipient_name: string | null;
-    event_type: EmailAutomationEventType;
-    subject: string;
-    tracking_token: string;
-    metadata: Record<string, unknown>;
-  }>(
-    `SELECT id, tenant_id, recipient_email, recipient_name, event_type, subject, tracking_token, metadata
-     FROM email_automation_queue
-     WHERE status = 'pending' AND scheduled_at <= NOW()
-     ORDER BY scheduled_at ASC
-     LIMIT $1
-     FOR UPDATE SKIP LOCKED`,
-    [limit]
-  );
+  const rows = await queueRepo.lockDuePending(client, limit);
 
   let sent = 0;
   let skipped = 0;
@@ -180,10 +154,7 @@ export async function processDueAutomationEmails(
       category
     );
     if (unsubscribed) {
-      await client.query(
-        `UPDATE email_automation_queue SET status = 'skipped_unsubscribed' WHERE id = $1`,
-        [row.id]
-      );
+      await queueRepo.markSkippedUnsubscribed(client, row.id);
       skipped += 1;
       continue;
     }
@@ -208,17 +179,11 @@ export async function processDueAutomationEmails(
         customBody: typeof row.metadata?.customBody === 'string' ? row.metadata.customBody : undefined,
       });
 
-      await client.query(
-        `UPDATE email_automation_queue SET status = 'sent', sent_at = NOW() WHERE id = $1`,
-        [row.id]
-      );
+      await queueRepo.markSent(client, row.id);
       sent += 1;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      await client.query(
-        `UPDATE email_automation_queue SET status = 'failed', error = $2 WHERE id = $1`,
-        [row.id, message]
-      );
+      await queueRepo.markFailed(client, row.id, message);
       const { captureMonitoringEvent } = await import('../monitoring/monitoringCapture.js');
       captureMonitoringEvent({
         category: 'email',
@@ -240,27 +205,9 @@ export async function processDueAutomationEmails(
 }
 
 export async function recordEmailOpen(client: pg.PoolClient, trackingToken: string): Promise<void> {
-  await client.query(
-    `UPDATE email_automation_queue SET opened_at = COALESCE(opened_at, NOW()) WHERE tracking_token = $1`,
-    [trackingToken]
-  );
-  await client.query(
-    `UPDATE marketing_email_queue SET opened_at = COALESCE(opened_at, NOW()) WHERE tracking_token = $1`,
-    [trackingToken]
-  );
+  await queueRepo.recordOpen(client, trackingToken);
 }
 
 export async function recordEmailClick(client: pg.PoolClient, trackingToken: string): Promise<void> {
-  await client.query(
-    `UPDATE email_automation_queue
-     SET clicked_at = COALESCE(clicked_at, NOW()), opened_at = COALESCE(opened_at, NOW())
-     WHERE tracking_token = $1`,
-    [trackingToken]
-  );
-  await client.query(
-    `UPDATE marketing_email_queue
-     SET clicked_at = COALESCE(clicked_at, NOW()), opened_at = COALESCE(opened_at, NOW())
-     WHERE tracking_token = $1`,
-    [trackingToken]
-  );
+  await queueRepo.recordClick(client, trackingToken);
 }

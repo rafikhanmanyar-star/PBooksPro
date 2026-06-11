@@ -3,7 +3,10 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { ContractRepository } from '../modules/vendors/repositories/ContractRepository.js';
+import {
+  ContractRepository,
+  type ContractWriteFields,
+} from '../modules/vendors/repositories/ContractRepository.js';
 
 export type ContractRow = {
   id: string;
@@ -158,6 +161,28 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function contractWriteFields(p: ReturnType<typeof pickBody>): ContractWriteFields {
+  return {
+    contract_number: p.contract_number!,
+    name: p.name!,
+    project_id: p.project_id!,
+    vendor_id: p.vendor_id!,
+    total_amount: p.total_amount,
+    area: p.area != null && Number.isFinite(p.area) ? p.area : null,
+    rate: p.rate != null && Number.isFinite(p.rate) ? p.rate : null,
+    start_date: p.start_date,
+    end_date: p.end_date,
+    status: p.status,
+    category_ids: p.category_ids,
+    expense_category_items: p.expense_category_items,
+    terms_and_conditions: p.terms_and_conditions ?? null,
+    payment_terms: p.payment_terms ?? null,
+    description: p.description ?? null,
+    document_path: p.document_path ?? null,
+    document_id: p.document_id ?? null,
+  };
+}
+
 export async function listContracts(
   client: pg.PoolClient,
   tenantId: string,
@@ -230,43 +255,7 @@ export async function upsertContract(
 
   const oldApi = rowToContractApi(existing);
 
-  const vals = [
-    p.contract_number,
-    p.name,
-    p.project_id,
-    p.vendor_id,
-    p.total_amount,
-    p.area != null && Number.isFinite(p.area) ? p.area : null,
-    p.rate != null && Number.isFinite(p.rate) ? p.rate : null,
-    p.start_date,
-    p.end_date,
-    p.status,
-    p.category_ids,
-    p.expense_category_items,
-    p.terms_and_conditions ?? null,
-    p.payment_terms ?? null,
-    p.description ?? null,
-    p.document_path ?? null,
-    p.document_id ?? null,
-  ];
-
-  const u = await client.query<ContractRow>(
-    `UPDATE contracts SET
-       contract_number = $3, name = $4, project_id = $5, vendor_id = $6,
-       total_amount = $7, area = $8, rate = $9,
-       start_date = $10::date, end_date = $11::date, status = $12,
-       category_ids = $13, expense_category_items = $14,
-       terms_and_conditions = $15, payment_terms = $16, description = $17,
-       document_path = $18, document_id = $19,
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-               start_date, end_date, status, category_ids, expense_category_items,
-               terms_and_conditions, payment_terms, description, document_path, document_id,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  const row = u.rows[0];
+  const row = await new ContractRepository(tenantId).updateUpsert(client, id, contractWriteFields(p));
   if (!row) throw new Error('Upsert failed.');
   await recordDomainMutation(client, {
     tenantId,
@@ -303,44 +292,12 @@ async function insertContract(
       ? String(actorUserId).trim()
       : null;
 
-  const r = await client.query<ContractRow>(
-    `INSERT INTO contracts (
-       id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-       start_date, end_date, status, category_ids, expense_category_items,
-       terms_and_conditions, payment_terms, description, document_path, document_id,
-       user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11::date, $12, $13, $14, $15, $16, $17, $18, $19,
-       $20, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
-               start_date, end_date, status, category_ids, expense_category_items,
-               terms_and_conditions, payment_terms, description, document_path, document_id,
-               user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.contract_number,
-      p.name,
-      p.project_id,
-      p.vendor_id,
-      p.total_amount,
-      p.area != null && Number.isFinite(p.area) ? p.area : null,
-      p.rate != null && Number.isFinite(p.rate) ? p.rate : null,
-      p.start_date,
-      p.end_date,
-      p.status,
-      p.category_ids,
-      p.expense_category_items,
-      p.terms_and_conditions ?? null,
-      p.payment_terms ?? null,
-      p.description ?? null,
-      p.document_path ?? null,
-      p.document_id ?? null,
-      uid,
-    ]
+  const row = await new ContractRepository(tenantId).insertContract(
+    client,
+    id,
+    contractWriteFields(p),
+    uid
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -373,12 +330,8 @@ export async function softDeleteContract(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE contracts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const ok = await new ContractRepository(tenantId).markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const exists = await getContractById(client, tenantId, id);
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -395,12 +348,7 @@ export async function softDeleteContract(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE contracts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await new ContractRepository(tenantId).markDeleted(client, id);
   if (ok) {
     await recordDomainMutation(client, {
       tenantId,

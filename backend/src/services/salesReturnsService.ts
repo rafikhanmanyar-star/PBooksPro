@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdOptional } from '../utils/dateOnly.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { SalesReturnRepository } from '../modules/project-selling/repositories/SalesReturnRepository.js';
+import {
+  SalesReturnRepository,
+  type SalesReturnWriteFields,
+} from '../modules/project-selling/repositories/SalesReturnRepository.js';
 
 export type SalesReturnRow = {
   id: string;
@@ -122,6 +125,25 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function salesReturnWriteFields(p: ReturnType<typeof pickBody>): SalesReturnWriteFields {
+  return {
+    return_number: p.return_number,
+    agreement_id: p.agreement_id,
+    return_date: p.return_date,
+    reason: p.reason,
+    reason_notes: p.reason_notes ?? null,
+    penalty_percentage: p.penalty_percentage,
+    penalty_amount: p.penalty_amount,
+    refund_amount: p.refund_amount,
+    status: p.status,
+    processed_date: p.processed_date ?? null,
+    refunded_date: p.refunded_date ?? null,
+    refund_bill_id: p.refund_bill_id ?? null,
+    created_by: p.created_by ?? null,
+    notes: p.notes ?? null,
+  };
+}
+
 export async function listSalesReturns(
   client: pg.PoolClient,
   tenantId: string,
@@ -193,38 +215,11 @@ export async function upsertSalesReturn(
 
   const oldApi = rowToSalesReturnApi(existing);
 
-  const u = await client.query<SalesReturnRow>(
-    `UPDATE sales_returns SET
-       return_number = $3, agreement_id = $4, return_date = $5::date, reason = $6, reason_notes = $7,
-       penalty_percentage = $8, penalty_amount = $9, refund_amount = $10, status = $11,
-       processed_date = $12::date, refunded_date = $13::date, refund_bill_id = $14,
-       created_by = COALESCE($15, created_by), notes = $16,
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-               penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-               processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-               deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.return_number,
-      p.agreement_id,
-      p.return_date,
-      p.reason,
-      p.reason_notes ?? null,
-      p.penalty_percentage,
-      p.penalty_amount,
-      p.refund_amount,
-      p.status,
-      p.processed_date ?? null,
-      p.refunded_date ?? null,
-      p.refund_bill_id ?? null,
-      p.created_by ?? null,
-      p.notes ?? null,
-    ]
+  const row = await new SalesReturnRepository(tenantId).updateUpsert(
+    client,
+    id,
+    salesReturnWriteFields(p)
   );
-  const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
   await recordDomainMutation(client, {
     tenantId,
@@ -251,39 +246,12 @@ async function insertSalesReturn(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `sr_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<SalesReturnRow>(
-    `INSERT INTO sales_returns (
-       id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-       penalty_percentage, penalty_amount, refund_amount, status,
-       processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5::date, $6, $7, $8, $9, $10, $11, $12::date, $13::date, $14, $15, $16, $17, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
-               penalty_percentage::text, penalty_amount::text, refund_amount::text, status,
-               processed_date, refunded_date, refund_bill_id, created_by, notes, user_id, version,
-               deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.return_number,
-      p.agreement_id,
-      p.return_date,
-      p.reason,
-      p.reason_notes ?? null,
-      p.penalty_percentage,
-      p.penalty_amount,
-      p.refund_amount,
-      p.status,
-      p.processed_date ?? null,
-      p.refunded_date ?? null,
-      p.refund_bill_id ?? null,
-      p.created_by ?? null,
-      p.notes ?? null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-    ]
+  const row = await new SalesReturnRepository(tenantId).insertSalesReturn(
+    client,
+    id,
+    salesReturnWriteFields(p),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
-  const row = r.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -316,12 +284,8 @@ export async function softDeleteSalesReturn(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE sales_returns SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const ok = await new SalesReturnRepository(tenantId).markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const exists = await getSalesReturnById(client, tenantId, id);
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -338,12 +302,7 @@ export async function softDeleteSalesReturn(
     });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE sales_returns SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await new SalesReturnRepository(tenantId).markDeleted(client, id);
   if (ok) {
     await recordDomainMutation(client, {
       tenantId,

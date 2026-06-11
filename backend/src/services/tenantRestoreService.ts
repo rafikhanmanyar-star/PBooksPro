@@ -13,6 +13,11 @@ import {
   normalizeTenantBackupPayload,
   type TenantBackupPayload,
 } from './tenantBackupService.js';
+import { TenantBackupRepository } from '../modules/backup/repositories/TenantBackupRepository.js';
+import { TenantRestoreRepository } from '../modules/backup/repositories/TenantRestoreRepository.js';
+
+const backupRepo = new TenantBackupRepository();
+const restoreRepo = new TenantRestoreRepository();
 
 export type RestoreMode = 'existing_tenant' | 'new_tenant';
 export type ConflictPolicy = 'replace' | 'skip' | 'merge';
@@ -96,12 +101,7 @@ async function tableHasColumn(
   table: string,
   column: string
 ): Promise<boolean> {
-  const r = await client.query(
-    `SELECT 1 FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2 LIMIT 1`,
-    [table, column]
-  );
-  return r.rows.length > 0;
+  return restoreRepo.tableHasColumn(client, table, column);
 }
 
 async function classifyRow(
@@ -116,12 +116,9 @@ async function classifyRow(
     return 'insert';
   }
 
-  const r = await client.query(`SELECT tenant_id FROM ${table} WHERE id = $1 LIMIT 1`, [
-    String(id),
-  ]);
-  if (r.rows.length === 0) return 'insert';
+  const existingTenant = await restoreRepo.getRowTenantId(client, table, String(id));
+  if (existingTenant == null) return 'insert';
 
-  const existingTenant = String(r.rows[0].tenant_id ?? '');
   if (existingTenant !== targetTenantId) {
     return 'cross_tenant_conflict';
   }
@@ -148,10 +145,8 @@ async function analyzeTable(
   };
 
   if (table === 'payroll_tenant_config') {
-    const r = await client.query(`SELECT 1 FROM payroll_tenant_config WHERE tenant_id = $1`, [
-      targetTenantId,
-    ]);
-    if (r.rows.length === 0) {
+    const hasConfig = await restoreRepo.hasPayrollTenantConfig(client, targetTenantId);
+    if (!hasConfig) {
       summary.toInsert = rows.length;
     } else if (policy === 'replace') {
       summary.toUpdate = rows.length;
@@ -252,8 +247,8 @@ export async function buildRestorePreview(
         message: 'Target organization is required for existing-tenant restore.',
       });
     } else {
-      const t = await client.query(`SELECT id, name FROM tenants WHERE id = $1`, [targetTenantId]);
-      if (t.rows.length === 0) {
+      const t = await backupRepo.getTenantById(client, targetTenantId);
+      if (!t) {
         issues.push({
           severity: 'error',
           table: 'tenants',
@@ -261,7 +256,7 @@ export async function buildRestorePreview(
           message: 'Target organization does not exist.',
         });
       } else {
-        targetTenantName = String(t.rows[0].name ?? '');
+        targetTenantName = String(t.name ?? '');
       }
     }
   }
@@ -303,24 +298,6 @@ export async function buildRestorePreview(
   };
 }
 
-function buildUpsertSql(
-  table: string,
-  columns: string[]
-): { insertSql: string; updateSql: string } {
-  const colList = columns.map((c) => `"${c}"`).join(', ');
-  const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-  const insertSql = `INSERT INTO ${table} (${colList}) VALUES (${placeholders})`;
-  const updates = columns
-    .filter((c) => c !== 'id')
-    .map((c) => `"${c}" = EXCLUDED."${c}"`)
-    .join(', ');
-  const updateSql =
-    updates.length > 0
-      ? `${insertSql} ON CONFLICT (id) DO UPDATE SET ${updates}`
-      : `${insertSql} ON CONFLICT (id) DO NOTHING`;
-  return { insertSql, updateSql };
-}
-
 async function upsertRow(
   client: pg.PoolClient,
   table: string,
@@ -330,26 +307,7 @@ async function upsertRow(
 ): Promise<RowAction> {
   if (table === 'payroll_tenant_config') {
     const remapped = remapRowForTarget(row, table, targetTenantId);
-    await client.query(
-      `INSERT INTO payroll_tenant_config (tenant_id, earning_types, deduction_types, default_account_id, default_category_id, default_project_id, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, COALESCE($7::timestamptz, NOW()))
-       ON CONFLICT (tenant_id) DO UPDATE SET
-         earning_types = EXCLUDED.earning_types,
-         deduction_types = EXCLUDED.deduction_types,
-         default_account_id = EXCLUDED.default_account_id,
-         default_category_id = EXCLUDED.default_category_id,
-         default_project_id = EXCLUDED.default_project_id,
-         updated_at = EXCLUDED.updated_at`,
-      [
-        targetTenantId,
-        JSON.stringify(remapped.earning_types ?? []),
-        JSON.stringify(remapped.deduction_types ?? []),
-        remapped.default_account_id ?? null,
-        remapped.default_category_id ?? null,
-        remapped.default_project_id ?? null,
-        remapped.updated_at ?? null,
-      ]
-    );
+    await restoreRepo.upsertPayrollTenantConfig(client, targetTenantId, remapped);
     return 'insert';
   }
 
@@ -370,17 +328,11 @@ async function upsertRow(
   });
 
   if (action === 'insert') {
-    const colList = columns.map((c) => `"${c}"`).join(', ');
-    const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-    await client.query(
-      `INSERT INTO ${table} (${colList}) VALUES (${placeholders})`,
-      values
-    );
+    await restoreRepo.insertRow(client, table, columns, values);
     return 'insert';
   }
 
-  const { updateSql } = buildUpsertSql(table, columns);
-  await client.query(updateSql, values);
+  await restoreRepo.upsertRow(client, table, columns, values);
   return 'update';
 }
 
@@ -406,31 +358,26 @@ export async function executeTenantRestore(
   const normalized = normalizeTenantBackupPayload(payload);
   const targetTenantId = preview.targetTenantId;
 
-  await client.query(
-    `INSERT INTO tenant_restore_runs (
-       id, source_tenant_id, target_tenant_id, mode, conflict_policy,
-       status, preview_report, requested_by, started_at
-     ) VALUES ($1, $2, $3, $4, $5, 'preview', $6, $7, $8)`,
-    [
-      restoreRunId,
-      normalized.sourceTenantId,
-      targetTenantId,
-      opts.mode,
-      opts.conflictPolicy,
-      JSON.stringify(preview),
-      opts.requestedBy ?? null,
-      startedAt,
-    ]
-  );
+  await restoreRepo.insertRestoreRun(client, {
+    id: restoreRunId,
+    sourceTenantId: normalized.sourceTenantId,
+    targetTenantId,
+    mode: opts.mode,
+    conflictPolicy: opts.conflictPolicy,
+    previewReport: preview,
+    requestedBy: opts.requestedBy ?? null,
+    startedAt,
+  });
 
   try {
     await client.query('BEGIN');
 
     if (opts.mode === 'new_tenant') {
-      await client.query(`INSERT INTO tenants (id, name) VALUES ($1, $2)`, [
+      await restoreRepo.insertTenant(
+        client,
         targetTenantId,
-        preview.targetTenantName ?? 'Restored organization',
-      ]);
+        preview.targetTenantName ?? 'Restored organization'
+      );
     }
 
     const resultSummaries: TableRestoreSummary[] = [];
@@ -478,27 +425,13 @@ export async function executeTenantRestore(
       issues: preview.issues.filter((i) => i.severity !== 'error'),
     };
 
-    await client.query(
-      `UPDATE tenant_restore_runs SET
-         status = 'completed',
-         result_summary = $2,
-         completed_at = NOW()
-       WHERE id = $1`,
-      [restoreRunId, JSON.stringify(result)]
-    );
+    await restoreRepo.completeRestoreRun(client, restoreRunId, result);
 
     return result;
   } catch (e) {
     await client.query('ROLLBACK');
     const reason = e instanceof Error ? e.message : String(e);
-    await client.query(
-      `UPDATE tenant_restore_runs SET
-         status = 'rolled_back',
-         failure_reason = $2,
-         completed_at = NOW()
-       WHERE id = $1`,
-      [restoreRunId, reason]
-    );
+    await restoreRepo.failRestoreRun(client, restoreRunId, reason);
     throw new Error(`Restore rolled back: ${reason}`);
   }
 }
@@ -508,14 +441,5 @@ export async function listTenantRestoreRuns(
   targetTenantId: string,
   limit = 20
 ): Promise<unknown[]> {
-  const r = await client.query(
-    `SELECT id, source_tenant_id, target_tenant_id, mode, conflict_policy, status,
-            failure_reason, started_at, completed_at, created_at
-     FROM tenant_restore_runs
-     WHERE target_tenant_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [targetTenantId, limit]
-  );
-  return r.rows;
+  return restoreRepo.listRestoreRuns(client, targetTenantId, limit);
 }

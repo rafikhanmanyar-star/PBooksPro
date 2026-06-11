@@ -1,6 +1,12 @@
 import { usePrintSettings } from '../../hooks/useSelectiveState';
 import React from 'react';
-const ReportHeader: React.FC = () => {
+
+export interface ReportHeaderProps {
+    /** Optional report title rendered below company name */
+    reportTitle?: string;
+}
+
+const ReportHeader: React.FC<ReportHeaderProps> = ({ reportTitle }) => {
     const printSettings = usePrintSettings();
 
     if (!printSettings) return null;
@@ -8,7 +14,7 @@ const ReportHeader: React.FC = () => {
     const { companyName, companyAddress, companyContact, logoUrl, showLogo, headerText } = printSettings;
 
     return (
-        <div className="mb-8 border-b-2 border-slate-800 pb-4 hidden print:block">
+        <div className="report-branding-header mb-8 border-b-2 border-slate-800 pb-4">
             <div className="flex justify-between items-start">
                 <div className="flex gap-4 items-center">
                     {showLogo && logoUrl && (
@@ -17,6 +23,9 @@ const ReportHeader: React.FC = () => {
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900 uppercase tracking-wide">{companyName}</h1>
                         {headerText && <p className="text-sm text-slate-500 font-medium italic mt-1">{headerText}</p>}
+                        {reportTitle && (
+                            <p className="text-base font-semibold text-slate-800 mt-2 normal-case tracking-normal">{reportTitle}</p>
+                        )}
                     </div>
                 </div>
                 <div className="text-right text-sm text-slate-600">

@@ -242,6 +242,39 @@ export class TransactionRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
+  async aggregatePaymentsForPayslip(
+    client: pg.PoolClient,
+    payslipId: string
+  ): Promise<{ sum: number; lastDate: Date | null; cnt: number }> {
+    const r = await client.query<{ sum: string | null; last_date: Date | null; cnt: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS sum, MAX(date) AS last_date, COUNT(*)::text AS cnt
+       FROM transactions
+       WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL`,
+      [this.tenantId, payslipId]
+    );
+    return {
+      sum: Number(r.rows[0]?.sum ?? 0),
+      lastDate: r.rows[0]?.last_date ?? null,
+      cnt: Number(r.rows[0]?.cnt ?? 0),
+    };
+  }
+
+  async getSingleActiveIdForPayslip(client: pg.PoolClient, payslipId: string): Promise<string | null> {
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM transactions WHERE tenant_id = $1 AND payslip_id = $2 AND deleted_at IS NULL LIMIT 1`,
+      [this.tenantId, payslipId]
+    );
+    return r.rows[0]?.id ?? null;
+  }
+
+  async listActiveIdsByReferenceForUpdate(client: pg.PoolClient, reference: string): Promise<string[]> {
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM transactions WHERE tenant_id = $1 AND reference = $2 AND deleted_at IS NULL FOR UPDATE`,
+      [this.tenantId, reference]
+    );
+    return r.rows.map((row) => row.id);
+  }
+
   async markDeleted(client: pg.PoolClient, id: string): Promise<boolean> {
     const r = await client.query(
       `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
@@ -249,5 +282,37 @@ export class TransactionRepository extends TenantRepository {
       [id, this.tenantId]
     );
     return (r.rowCount ?? 0) > 0;
+  }
+
+  async listPayrollExpenseForEmployee(
+    client: pg.PoolClient,
+    employeeId: string
+  ): Promise<
+    Array<{
+      id: string;
+      payslip_id: string | null;
+      amount: string;
+      date: Date;
+      description: string | null;
+      created_at: Date;
+      type: string;
+    }>
+  > {
+    const r = await client.query<{
+      id: string;
+      payslip_id: string | null;
+      amount: string;
+      date: Date;
+      description: string | null;
+      created_at: Date;
+      type: string;
+    }>(
+      `SELECT t.id, t.payslip_id, t.amount::text, t.date, t.description, t.created_at, t.type
+       FROM transactions t
+       INNER JOIN payslips p ON p.id = t.payslip_id AND p.tenant_id = t.tenant_id
+       WHERE t.tenant_id = $1 AND p.employee_id = $2 AND t.deleted_at IS NULL`,
+      [this.tenantId, employeeId]
+    );
+    return r.rows;
   }
 }

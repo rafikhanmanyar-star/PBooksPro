@@ -845,6 +845,29 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
     box-shadow: 0 0 0 1px var(--focus-ring-error);
   }
 
+  /* Alert / confirm message body (NotificationContext, modals) */
+  .ds-alert-notice {
+    background-color: rgb(255 251 235 / 0.95);
+    border: 1px solid rgb(251 191 36 / 0.45);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    color: var(--text-primary);
+  }
+
+  [data-theme="dark"] .ds-alert-notice {
+    background-color: rgb(120 53 15 / 0.28);
+    border-color: rgb(180 83 9 / 0.55);
+  }
+
+  /* Floating notification cards (update toasts, version banners) */
+  .ds-notification-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-modal);
+    overflow: hidden;
+  }
+
   .ds-skeleton {
     @apply animate-shimmer rounded-ds-sm;
     min-height: 1rem;

@@ -101,14 +101,15 @@ export async function upsertPlanAmenity(
   const repo = new PlanAmenityRepository(tenantId);
   const existing = await repo.getByIdIncludingDeleted(client, id);
   if (!existing) {
-    const ins = await client.query<PlanAmenityRow>(
-      `INSERT INTO plan_amenities (
-         id, tenant_id, name, price, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, 1, NULL, NOW(), NOW())
-       RETURNING id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.price, p.is_percentage, p.is_active, p.description]
+    const row = await repo.insertPlanAmenity(
+      client,
+      id,
+      p.name,
+      p.price,
+      p.is_percentage,
+      p.is_active,
+      p.description
     );
-    const row = ins.rows[0];
     await recordDomainMutation(client, {
       tenantId,
       userId: userId ?? null,
@@ -142,15 +143,17 @@ export async function upsertPlanAmenity(
   }
 
   if (existing.deleted_at) {
-    const u = await client.query<PlanAmenityRow>(
-      `UPDATE plan_amenities SET
-         name = $3, price = $4, is_percentage = $5, is_active = $6, description = $7,
-         deleted_at = NULL, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, p.name, p.price, p.is_percentage, p.is_active, p.description]
+    const row = await repo.updateActive(
+      client,
+      id,
+      p.name,
+      p.price,
+      p.is_percentage,
+      p.is_active,
+      p.description,
+      { restoreDeleted: true }
     );
-    const row = u.rows[0];
+    if (!row) throw new Error('Plan amenity restore failed.');
     await recordDomainMutation(client, {
       tenantId,
       userId: userId ?? null,
@@ -166,18 +169,18 @@ export async function upsertPlanAmenity(
     return { row, conflict: false, wasInsert: false };
   }
 
-  const u = await client.query<PlanAmenityRow>(
-    `UPDATE plan_amenities SET
-       name = $3, price = $4, is_percentage = $5, is_active = $6, description = $7,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, p.name, p.price, p.is_percentage, p.is_active, p.description]
+  const row = await repo.updateActive(
+    client,
+    id,
+    p.name,
+    p.price,
+    p.is_percentage,
+    p.is_active,
+    p.description
   );
-  if (u.rows.length === 0) {
+  if (!row) {
     return { row: existing, conflict: true, wasInsert: false };
   }
-  const row = u.rows[0];
   await recordDomainMutation(client, {
     tenantId,
     userId: userId ?? null,
@@ -213,12 +216,8 @@ export async function softDeletePlanAmenity(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const u = await client.query(
-      `UPDATE plan_amenities SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if ((u.rowCount ?? 0) === 0) {
+    const ok = await repo.markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const again = await repo.getByIdIncludingDeleted(client, id);
       if (!again || again.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -237,12 +236,7 @@ export async function softDeletePlanAmenity(
     return { ok: true, conflict: false };
   }
 
-  const u = await client.query(
-    `UPDATE plan_amenities SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (u.rowCount ?? 0) > 0;
+  const ok = await repo.markDeleted(client, id);
   if (ok) {
     await recordDomainMutation(client, {
       tenantId,

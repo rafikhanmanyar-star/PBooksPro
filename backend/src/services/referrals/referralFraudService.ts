@@ -1,7 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import type pg from 'pg';
 import { getReferralProgramConfig } from './referralProgramConfigService.js';
 import { logReferralEvent } from './referralEventService.js';
+import {
+  ReferralFraudRepository,
+  ReferralAttributionRepository,
+} from '../../modules/referrals/repositories/ReferralRepository.js';
 
 export type FraudCheckInput = {
   referrerTenantId: string;
@@ -15,6 +18,9 @@ export type FraudCheckResult = {
   reasons: Array<{ code: string; severity: 'low' | 'medium' | 'high' | 'critical'; details?: Record<string, unknown> }>;
   blocked: boolean;
 };
+
+const fraudRepo = new ReferralFraudRepository();
+const attributionRepo = new ReferralAttributionRepository();
 
 function emailDomain(email: string): string {
   const at = email.lastIndexOf('@');
@@ -30,13 +36,10 @@ export async function runReferralFraudChecks(
   let score = 0;
 
   if (config.blockSameEmailDomain) {
-    const { rows: referrerUsers } = await client.query(
-      `SELECT email FROM users WHERE tenant_id = $1 AND email IS NOT NULL`,
-      [input.referrerTenantId]
-    );
+    const referrerEmails = await fraudRepo.listReferrerEmails(client, input.referrerTenantId);
     const refereeDomain = emailDomain(input.refereeEmail);
-    const sameDomain = referrerUsers.some(
-      (u) => emailDomain(String(u.email)) === refereeDomain && refereeDomain.length > 0
+    const sameDomain = referrerEmails.some(
+      (email) => emailDomain(email) === refereeDomain && refereeDomain.length > 0
     );
     if (sameDomain) {
       reasons.push({ code: 'same_email_domain', severity: 'high', details: { domain: refereeDomain } });
@@ -44,34 +47,25 @@ export async function runReferralFraudChecks(
     }
   }
 
-  const { rows: monthlyCount } = await client.query(
-    `SELECT COUNT(*)::int AS cnt FROM referral_attributions
-     WHERE referrer_tenant_id = $1 AND signed_up_at >= NOW() - INTERVAL '30 days'`,
-    [input.referrerTenantId]
-  );
-  if ((monthlyCount[0]?.cnt ?? 0) >= config.maxReferralsPerMonth) {
+  const monthlyCount = await attributionRepo.countMonthlyByReferrer(client, input.referrerTenantId);
+  if (monthlyCount >= config.maxReferralsPerMonth) {
     reasons.push({ code: 'monthly_cap_exceeded', severity: 'critical' });
     score += 60;
   }
 
   if (input.signupIpHash) {
-    const { rows: ipDupes } = await client.query(
-      `SELECT COUNT(*)::int AS cnt FROM referral_attributions
-       WHERE referrer_tenant_id = $1 AND signup_ip_hash = $2
-         AND signed_up_at >= NOW() - INTERVAL '7 days'`,
-      [input.referrerTenantId, input.signupIpHash]
+    const ipDupes = await attributionRepo.countRecentIpDupes(
+      client,
+      input.referrerTenantId,
+      input.signupIpHash
     );
-    if ((ipDupes[0]?.cnt ?? 0) >= 2) {
+    if (ipDupes >= 2) {
       reasons.push({ code: 'duplicate_ip_cluster', severity: 'medium' });
       score += 25;
     }
   }
 
-  const { rows: emailDupes } = await client.query(
-    `SELECT id FROM referral_attributions WHERE LOWER(referee_email) = LOWER($1) LIMIT 1`,
-    [input.refereeEmail]
-  );
-  if (emailDupes.length) {
+  if (await attributionRepo.hasDuplicateRefereeEmail(client, input.refereeEmail)) {
     reasons.push({ code: 'duplicate_referee_email', severity: 'critical' });
     score += 80;
   }
@@ -87,11 +81,12 @@ export async function recordFraudReviews(
   reasons: FraudCheckResult['reasons']
 ): Promise<void> {
   for (const reason of reasons) {
-    await client.query(
-      `INSERT INTO referral_fraud_reviews (id, attribution_id, reason_code, severity, details)
-       VALUES ($1, $2, $3, $4, $5::jsonb)`,
-      [randomUUID(), attributionId, reason.code, reason.severity, JSON.stringify(reason.details ?? {})]
-    );
+    await fraudRepo.insertReview(client, {
+      attributionId,
+      reasonCode: reason.code,
+      severity: reason.severity,
+      details: reason.details ?? {},
+    });
   }
 }
 
@@ -102,26 +97,15 @@ export async function flagAttributionFraud(
   notes: string,
   reasons: FraudCheckResult['reasons']
 ): Promise<void> {
-  await client.query(
-    `UPDATE referral_attributions SET
-       status = 'fraud_flagged',
-       fraud_score = $2,
-       fraud_notes = $3,
-       updated_at = NOW()
-     WHERE id = $1`,
-    [attributionId, fraudScore, notes]
-  );
+  await attributionRepo.flagFraud(client, attributionId, fraudScore, notes);
   await recordFraudReviews(client, attributionId, reasons);
 
-  const { rows } = await client.query(
-    `SELECT referrer_tenant_id, referee_tenant_id FROM referral_attributions WHERE id = $1`,
-    [attributionId]
-  );
-  if (rows.length) {
+  const attr = await attributionRepo.getById(client, attributionId);
+  if (attr) {
     await logReferralEvent(client, {
       eventType: 'fraud_flagged',
-      referrerTenantId: rows[0].referrer_tenant_id,
-      refereeTenantId: rows[0].referee_tenant_id,
+      referrerTenantId: attr.referrer_tenant_id as string,
+      refereeTenantId: attr.referee_tenant_id as string,
       attributionId,
       payload: { fraudScore, reasons },
     });

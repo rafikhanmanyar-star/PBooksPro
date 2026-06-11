@@ -27,6 +27,7 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | Area | Status |
 |------|--------|
 | `TenantRepository` base class | Implemented |
+| `core/repositories/` (sync/audit infra) | **`ChangeLogRepository`**, **`SyncQueueRepository`**, **`AuditEventRepository`**, **`TenantChartRepository`**, **`TenantJournalMaintenanceRepository`**, **`TenantWipeRepository`** |
 | `FinancialPostingService` + `JournalRepository` | Wired for journal, bill, invoice, transaction, **PEV**, and **investor journal** GL mirrors |
 | `/api/v1` mount + client normalization | Implemented; **`/api` alias removed** (v2 canonical prefix only) |
 | `shared/financial-core/` + `shared/report-engines/` | Packages exist; backend loads esbuild `.mjs` bundles via **`reportEngines/loadReportEngine.ts`** |
@@ -36,13 +37,13 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | `document_metadata` + `DocumentStorageService` | Built in `modules/documents/` |
 | `change_log` + `sync_queue` + `assertLwwVersion()` | Tables + helpers; **`completeEntityMutation()`** combines LWW + audit (opt-in per route) |
 | `recordDomainMutation()` + `withAudit()` | Wired for bills, invoices, documents, transactions, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments, grades, employees, runs, payslips, projects, tenant config)**, **personal categories/transactions/tasks**, **PM cycle allocations**, **plan amenities**, **project received assets**, **app settings (single + bulk)**, **PEV + project expense categories**, **contractor advances/bills**, **investor journal postings**, **vendor bill prepaid settlement (settle + reverse + replace)** |
-| Domain repository strangler | Bills, invoices (**reads + insert/update/soft-delete/payment-aggregate writes**), **transactions (reads + insert/update/soft-delete writes, for-update + including-deleted upsert locks)**, **contacts + vendors + properties + buildings + budgets + projects + units [reads + writes]**, **personal categories [writes]**, **app settings [upsert/delete writes]**, rental agreements, project agreements, accounts, categories, contracts, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments + grades + employees + runs + payslips + projects + tenant config [writes]; salary components [reads])**, **personal transactions + tasks**, **PM cycle allocations**, **plan amenities**, **project received assets**, **project expense (vouchers + categories)**, **contractor advances (insert + remaining/journal/description writes) / bills (insert + adjustments + approve)**, **vendor bill advance clearings (insert + delete-by-journal)**, **journal (investor equity ledger reads + settlement posting via repo)** — list/get delegated to domain repos |
+| Domain repository strangler | Core AppState domains, GL/journal, backup/DR, billing, referrals, onboarding, privacy, marketing, demo, auth, trial, legal, email-automation, organization, **monitoring (events/alerts/health)**, **admin portal license (`AdminLicenseRepository`)**, **transaction journal backfill (`TransactionJournalBackfillRepository`)** — priority services delegate SQL to `modules/*/repositories/` |
 
 ### Not done / partially wired
 
 | Area | Current reality |
 |------|-----------------|
-| **Routes → Services → Repositories** | ~93 flat route files + ~120+ services with inline SQL. Repositories exist for key domains; **bills/invoices reads** delegate to repos; most writes still inline SQL |
+| **Routes → Services → Repositories** | Priority AppState-sync + SaaS plane domains delegate to repos (batches 27–47). **Module routes** live under `modules/*/routes/` for monitoring, legal, trial, onboarding, email-automation, admin-portal (`/api/admin`), and dashboard snapshots; legacy `backend/src/routes/*.ts` re-export for compatibility. Remaining inline SQL: **admin portal tenants/stats/marketplace routes** (repos pending); backup routes still query `users.email` for audit context |
 | **`withAudit()`** | Implemented; delegates to **`recordDomainMutation()`** (audit + change_log) |
 | **`recordDomainMutation()`** | Priority domains above; payroll **salary components** read-only via repo (no upsert routes); no `version` column on payroll tables — LWW deferred |
 | **`change_log` writes** | Via `recordDomainMutation` on priority mutations (incl. **bill/invoice soft delete**); bulk writes via **`appStateBulkMutationService`** (`POST /app-settings/bulk`, bulk personal transaction import); **single app_settings** POST/DELETE also write change_log |
@@ -165,18 +166,33 @@ backend/src/modules/<domain>/repositories/ ← SQL via TenantRepository
 
 | Module | Path | Repositories |
 |--------|------|--------------|
-| accounting | `modules/accounting/` | `JournalRepository`, `FinancialPostingService`, **`AccountRepository`**, **`CategoryRepository`** |
+| accounting | `modules/accounting/` | `JournalRepository`, `FinancialPostingService`, **`AccountRepository`**, **`CategoryRepository`**, **`TransactionRepository`**, **`TransactionJournalBackfillRepository`**, **`AccountingPeriodRepository`**, **`RecordLockRepository`** |
 | dashboard | `modules/dashboard/` | `AnalyticsSnapshotRepository`, `TenantListRepository` |
 | documents | `modules/documents/` | `DocumentRepository`, `DocumentStorageService` (R2) |
 | vendors | `modules/vendors/` | `BillRepository`, `ContractRepository`, **`QuotationRepository`**, `VendorRepository` |
 | customers | `modules/customers/` | `InvoiceRepository`, **`RecurringInvoiceTemplateRepository`** |
 | project-selling | `modules/project-selling/` | `ProjectAgreementRepository`, `ProjectRepository`, `UnitRepository`, `BudgetRepository`, **`InstallmentPlanRepository`**, **`SalesReturnRepository`**, **`PmCycleAllocationRepository`**, **`PlanAmenityRepository`**, **`ProjectReceivedAssetRepository`** |
-| leases | `modules/leases/` | `RentalAgreementRepository` |
+| leases | `modules/leases/` | `RentalAgreementRepository`, **`OwnerBalanceRepository`**, **`MonthlyOwnerSummaryRepository`** |
 | properties | `modules/properties/` | `PropertyRepository` |
 | crm | `modules/crm/` | `ContactRepository` |
-| payroll | `modules/payroll/` | **`PayrollDepartmentRepository`**, **`PayrollGradeRepository`**, **`PayrollEmployeeRepository`**, **`PayrollRunRepository`**, **`PayslipRepository`**, **`PayrollSalaryComponentRepository`**, **`PayrollProjectRepository`**, **`PayrollTenantConfigRepository`** |
+| payroll | `modules/payroll/` | **`PayrollDepartmentRepository`**, **`PayrollGradeRepository`**, **`PayrollEmployeeRepository`**, **`PayrollRunRepository`**, **`PayslipRepository`**, **`PayrollSalaryComponentRepository`**, **`PayrollProjectRepository`**, **`PayrollTenantConfigRepository`**, **`PayrollTransactionRepository`** |
 | personal-finance | `modules/personal-finance/` | **`PersonalCategoryRepository`**, **`PersonalTransactionRepository`**, **`PersonalTaskRepository`** |
 | app-settings | `modules/app-settings/` | **`AppSettingsRepository`** |
+| backup | `modules/backup/` | **`TenantBackupRepository`**, **`TenantRestoreRepository`**, **`BackupJobRepository`**, **`BackupStorageSettingsRepository`**, **`BackupOffsiteRepository`**, **`BackupSecuritySettingsRepository`**, **`BackupRestoreAuthRepository`** |
+| billing | `modules/billing/` | **`BillingPlanRepository`**, **`SubscriptionRepository`**, **`SubscriptionEventRepository`**, **`SubscriptionInvoiceRepository`**, **`BillingCustomerRepository`**, **`SubscriptionUsageRepository`**, **`AdminSubscriptionRepository`**, **`PaddleWebhookRepository`** |
+| dr | `modules/dr/` | **`DrAlertRepository`**, **`DrReportRepository`**, **`DrVerificationRepository`**, **`DrRestoreTestRepository`** |
+| referrals | `modules/referrals/` | **`ReferralProgramConfigRepository`**, **`ReferralCodeRepository`**, **`ReferralAttributionRepository`**, **`ReferralRewardRepository`**, **`ReferralInvitationRepository`**, **`ReferralFraudRepository`**, **`ReferralDashboardRepository`**, **`AdminReferralRepository`**, **`ReferralEventRepository`** |
+| demo | `modules/demo/` | **`DemoEnvironmentRepository`**, **`DemoBookingRepository`**, **`DemoSeedRepository`** (template seed SQL) |
+| onboarding | `modules/onboarding/` | **`OnboardingRepository`** |
+| privacy | `modules/privacy/` | **`PrivacyRequestRepository`**, **`PrivacyAnonymizationRepository`**, **`PrivacyDataExportRepository`** |
+| marketing | `modules/marketing/` | **`MarketingLeadRepository`**, **`MarketingEmailSequenceRepository`** |
+| auth | `modules/auth/` | **`MfaRepository`**, **`UserSessionRepository`**, **`UserTenantRepository`**, **`UserTenantMembershipRepository`** |
+| trial | `modules/trial/` | **`TrialSignupRepository`** |
+| legal | `modules/legal/` | **`LegalAcceptanceRepository`** |
+| email-automation | `modules/email-automation/` | **`EmailAutomationQueueRepository`**, **`EmailAutomationCampaignRepository`**, **`EmailAutomationUnsubscribeRepository`** |
+| organization | `modules/organization/` | **`OrganizationRepository`** |
+| monitoring | `modules/monitoring/` | **`MonitoringEventRepository`**, **`MonitoringAlertRepository`**, **`MonitoringHealthRepository`** |
+| admin-portal | `modules/admin-portal/` | **`AdminLicenseRepository`**, **`AdminUserRepository`** (+ routes under `modules/admin-portal/routes/`) |
 | reporting | `modules/reporting/` | custom report templates, SQL compilers |
 
 Each module scaffold: `routes/`, `services/`, `repositories/`, `validators/`, `types/`.

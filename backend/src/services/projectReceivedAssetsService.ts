@@ -3,7 +3,10 @@ import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd, parseApiDateToYyyyMmDdO
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { ProjectReceivedAssetRepository } from '../modules/project-selling/repositories/ProjectReceivedAssetRepository.js';
+import {
+  ProjectReceivedAssetRepository,
+  type ProjectReceivedAssetWriteFields,
+} from '../modules/project-selling/repositories/ProjectReceivedAssetRepository.js';
 
 export type ProjectReceivedAssetRow = {
   id: string;
@@ -100,6 +103,22 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function assetWriteFields(p: ReturnType<typeof pickBody>): ProjectReceivedAssetWriteFields {
+  return {
+    project_id: p.project_id!,
+    contact_id: p.contact_id!,
+    invoice_id: p.invoice_id ?? null,
+    description: p.description!,
+    asset_type: p.asset_type,
+    recorded_value: p.recorded_value,
+    received_date: p.received_date,
+    sold_date: p.sold_date,
+    sale_amount: p.sale_amount != null && Number.isFinite(p.sale_amount) ? p.sale_amount : null,
+    sale_account_id: p.sale_account_id ?? null,
+    notes: p.notes ?? null,
+  };
+}
+
 export async function listProjectReceivedAssets(
   client: pg.PoolClient,
   tenantId: string,
@@ -183,32 +202,11 @@ export async function upsertProjectReceivedAsset(
     }
   }
 
-  const vals = [
-    p.project_id,
-    p.contact_id,
-    p.invoice_id ?? null,
-    p.description,
-    p.asset_type,
-    p.recorded_value,
-    p.received_date,
-    p.sold_date,
-    p.sale_amount != null && Number.isFinite(p.sale_amount) ? p.sale_amount : null,
-    p.sale_account_id ?? null,
-    p.notes ?? null,
-  ];
-
-  const u = await client.query<ProjectReceivedAssetRow>(
-    `UPDATE project_received_assets SET
-       project_id = $3, contact_id = $4, invoice_id = $5, description = $6, asset_type = $7,
-       recorded_value = $8, received_date = $9::date, sold_date = $10::date, sale_amount = $11,
-       sale_account_id = $12, notes = $13,
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-               received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
+  const row = await new ProjectReceivedAssetRepository(tenantId).updateUpsert(
+    client,
+    id,
+    assetWriteFields(p)
   );
-  const row = u.rows[0];
   if (!row) throw new Error('Upsert failed.');
 
   await recordDomainMutation(client, {
@@ -241,33 +239,12 @@ async function insertProjectReceivedAsset(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `pra_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<ProjectReceivedAssetRow>(
-    `INSERT INTO project_received_assets (
-       id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-       received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
-               received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.project_id,
-      p.contact_id,
-      p.invoice_id ?? null,
-      p.description,
-      p.asset_type,
-      p.recorded_value,
-      p.received_date,
-      p.sold_date,
-      p.sale_amount != null && Number.isFinite(p.sale_amount) ? p.sale_amount : null,
-      p.sale_account_id ?? null,
-      p.notes ?? null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-    ]
+  return new ProjectReceivedAssetRepository(tenantId).insertAsset(
+    client,
+    id,
+    assetWriteFields(p),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
-  return r.rows[0];
 }
 
 export async function softDeleteProjectReceivedAsset(
@@ -290,12 +267,8 @@ export async function softDeleteProjectReceivedAsset(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE project_received_assets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const ok = await repo.markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const exists = await repo.getById(client, id);
       if (!exists) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -314,12 +287,7 @@ export async function softDeleteProjectReceivedAsset(
     return { ok: true, conflict: false };
   }
 
-  const r = await client.query(
-    `UPDATE project_received_assets SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const ok = await repo.markDeleted(client, id);
   if (ok) {
     await recordDomainMutation(client, {
       tenantId,

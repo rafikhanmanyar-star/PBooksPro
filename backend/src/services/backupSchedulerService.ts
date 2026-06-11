@@ -19,6 +19,11 @@ import {
 } from './backup/backupCryptoService.js';
 import { getBackupSecuritySettings } from './backup/backupSecuritySettingsService.js';
 import { logBackupAudit } from './backup/backupAuditService.js';
+import { BackupJobRepository } from '../modules/backup/repositories/BackupJobRepository.js';
+import { TenantBackupRepository } from '../modules/backup/repositories/TenantBackupRepository.js';
+
+const jobRepo = new BackupJobRepository();
+const tenantBackupRepo = new TenantBackupRepository();
 
 export type BackupFrequency = 'daily' | 'weekly' | 'monthly';
 export type BackupJobStatus = 'idle' | 'running' | 'failed' | 'disabled';
@@ -148,26 +153,22 @@ export async function ensureDefaultBackupJobs(client: pg.PoolClient): Promise<vo
   await fs.mkdir(storageRoot, { recursive: true });
 
   for (const def of DEFAULT_JOBS) {
-    const existing = await client.query(`SELECT id FROM backup_jobs WHERE id = $1`, [def.id]);
-    if (existing.rows.length > 0) continue;
+    if (await jobRepo.jobExists(client, def.id)) continue;
 
     const nextRun = computeNextRun(def.frequency);
-    await client.query(
-      `INSERT INTO backup_jobs (
-         id, job_name, backup_type, frequency, next_run, status, retention_days, storage_location
-       ) VALUES ($1, $2, 'full_pg', $3, $4, 'idle', $5, $6)`,
-      [def.id, def.job_name, def.frequency, nextRun.toISOString(), def.retention_days, storageRoot]
-    );
+    await jobRepo.insertDefaultJob(client, {
+      id: def.id,
+      jobName: def.job_name,
+      frequency: def.frequency,
+      nextRun: nextRun.toISOString(),
+      retentionDays: def.retention_days,
+      storageLocation: storageRoot,
+    });
   }
 }
 
 export async function listBackupJobs(client: pg.PoolClient): Promise<BackupJobRow[]> {
-  const r = await client.query(
-    `SELECT * FROM backup_jobs ORDER BY
-       CASE frequency WHEN 'daily' THEN 1 WHEN 'weekly' THEN 2 ELSE 3 END,
-       job_name`
-  );
-  return r.rows.map(mapJob);
+  return jobRepo.listJobs(client);
 }
 
 export async function listBackupHistory(
@@ -176,43 +177,17 @@ export async function listBackupHistory(
 ): Promise<{ items: BackupJobRunRow[]; total: number }> {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 500);
   const offset = Math.max(opts.offset ?? 0, 0);
-  const params: unknown[] = [];
-  let where = '';
-  if (opts.jobId) {
-    params.push(opts.jobId);
-    where = `WHERE r.job_id = $${params.length}`;
-  }
-
-  const countSql = `SELECT COUNT(*)::int AS c FROM backup_job_runs r ${where}`;
-  const countR = await client.query(countSql, params);
-  const total = Number(countR.rows[0]?.c ?? 0);
-
-  params.push(limit, offset);
-  const listSql = `
-    SELECT r.*, j.job_name, j.backup_type, j.frequency
-    FROM backup_job_runs r
-    JOIN backup_jobs j ON j.id = r.job_id
-    ${where}
-    ORDER BY r.started_at DESC
-    LIMIT $${params.length - 1} OFFSET $${params.length}`;
-  const listR = await client.query(listSql, params);
-  return { items: listR.rows.map(mapRun), total };
+  const total = await jobRepo.countRuns(client, opts.jobId);
+  const items = await jobRepo.listRuns(client, { jobId: opts.jobId, limit, offset });
+  return { items, total };
 }
 
 export async function getBackupJob(client: pg.PoolClient, jobId: string): Promise<BackupJobRow | null> {
-  const r = await client.query(`SELECT * FROM backup_jobs WHERE id = $1`, [jobId]);
-  return r.rows[0] ? mapJob(r.rows[0]) : null;
+  return jobRepo.getJob(client, jobId);
 }
 
 export async function getBackupRun(client: pg.PoolClient, runId: string): Promise<BackupJobRunRow | null> {
-  const r = await client.query(
-    `SELECT r.*, j.job_name, j.backup_type, j.frequency
-     FROM backup_job_runs r
-     JOIN backup_jobs j ON j.id = r.job_id
-     WHERE r.id = $1`,
-    [runId]
-  );
-  return r.rows[0] ? mapRun(r.rows[0]) : null;
+  return jobRepo.getRun(client, runId);
 }
 
 async function applyRetention(storageDir: string, retentionDays: number): Promise<void> {
@@ -246,16 +221,8 @@ async function executeBackupJob(
   const runId = randomUUID();
   const startedAt = new Date();
 
-  await client.query(
-    `INSERT INTO backup_job_runs (id, job_id, started_at, attempt_number, success)
-     VALUES ($1, $2, $3, $4, false)`,
-    [runId, job.id, startedAt.toISOString(), attemptNumber]
-  );
-
-  await client.query(
-    `UPDATE backup_jobs SET status = 'running', updated_at = NOW() WHERE id = $1`,
-    [job.id]
-  );
+  await jobRepo.insertRunStart(client, runId, job.id, startedAt.toISOString(), attemptNumber);
+  await jobRepo.setJobStatus(client, job.id, 'running');
 
   let storagePath: string | null = null;
   let sizeBytes: number | null = null;
@@ -298,43 +265,27 @@ async function executeBackupJob(
   const completedAt = new Date();
   const durationMs = completedAt.getTime() - startedAt.getTime();
 
-  await client.query(
-    `UPDATE backup_job_runs SET
-       completed_at = $2,
-       size_bytes = $3,
-       duration_ms = $4,
-       success = $5,
-       failure_reason = $6,
-       storage_path = $7,
-       encrypted = $8,
-       encryption_mode = $9,
-       content_sha256 = $10
-     WHERE id = $1`,
-    [
-      runId,
-      completedAt.toISOString(),
-      sizeBytes,
-      durationMs,
-      success,
-      failureReason,
-      storagePath,
-      encrypted ?? false,
-      encryptionMode,
-      contentSha256,
-    ]
-  );
+  await jobRepo.completeRun(client, runId, {
+    completedAt: completedAt.toISOString(),
+    sizeBytes,
+    durationMs,
+    success,
+    failureReason,
+    storagePath,
+    encrypted: encrypted ?? false,
+    encryptionMode,
+    contentSha256,
+  });
 
   const nextRun = computeNextRun(job.frequency, completedAt);
   const jobStatus: BackupJobStatus = success ? 'idle' : 'failed';
 
-  await client.query(
-    `UPDATE backup_jobs SET
-       last_run = $2,
-       next_run = $3,
-       status = $4,
-       updated_at = NOW()
-     WHERE id = $1`,
-    [job.id, completedAt.toISOString(), nextRun.toISOString(), jobStatus]
+  await jobRepo.updateJobAfterRun(
+    client,
+    job.id,
+    completedAt.toISOString(),
+    nextRun.toISOString(),
+    jobStatus
   );
 
   const run = await getBackupRun(client, runId);
@@ -354,8 +305,7 @@ async function executeBackupJob(
 
   if (success) {
     try {
-      const { rows } = await client.query(`SELECT id FROM tenants ORDER BY created_at ASC LIMIT 1`);
-      const tenantId = rows[0]?.id as string | undefined;
+      const tenantId = await tenantBackupRepo.getFirstTenantId(client);
       if (tenantId) {
         await logBackupAudit(client, {
           tenantId,
@@ -411,7 +361,7 @@ export async function deleteBackupRun(
       /* file may already be gone */
     }
   }
-  await client.query(`DELETE FROM backup_job_runs WHERE id = $1`, [runId]);
+  await jobRepo.deleteRun(client, runId);
   return { deleted: true, storagePath: run.storage_path };
 }
 
@@ -469,13 +419,7 @@ export async function runDueBackupJobs(): Promise<number> {
   let dueJobs: BackupJobRow[] = [];
   try {
     await ensureDefaultBackupJobs(client);
-    const r = await client.query(
-      `SELECT * FROM backup_jobs
-       WHERE status NOT IN ('running', 'disabled')
-         AND next_run <= NOW()
-       ORDER BY next_run ASC`
-    );
-    dueJobs = r.rows.map(mapJob);
+    dueJobs = await jobRepo.listDueJobs(client);
   } finally {
     client.release();
   }

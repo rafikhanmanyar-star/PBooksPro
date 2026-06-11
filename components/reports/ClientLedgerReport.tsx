@@ -29,6 +29,7 @@ import {
 } from './clientLedgerReportEngine';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchClientLedgerReport } from '../../services/api/financialReportsApi';
+import { usePrintReport } from '../../hooks/usePrintReport';
 
 /** @deprecated Use ClientLedgerTreeSelection from clientLedgerReportEngine */
 export type LedgerTreeSelection = ClientLedgerTreeSelection;
@@ -46,9 +47,8 @@ const ClientLedgerReport: React.FC = () => {
     const { openChat } = useWhatsApp();
     const localOnly = isLocalOnlyMode();
 
-    const handlePrint = () => {
-        window.print();
-    };
+    const printReport = usePrintReport();
+    const handlePrint = () => printReport({ elementId: 'print-area' });
     
     // Date Filter State (default: Total = full history range)
     const [dateRangeType, setDateRangeType] = useState<'total' | 'thisMonth' | 'lastMonth' | 'custom'>('total');

@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { QuotationRepository } from '../modules/vendors/repositories/QuotationRepository.js';
+import {
+  QuotationRepository,
+  type QuotationWriteFields,
+} from '../modules/vendors/repositories/QuotationRepository.js';
 
 export type QuotationRow = {
   id: string;
@@ -105,8 +108,6 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
-const SELECT_COLS = `id, tenant_id, vendor_id, name, date, items, total_amount::text, document_id, user_id, version, deleted_at, created_at, updated_at`;
-
 export async function listQuotations(client: pg.PoolClient, tenantId: string): Promise<QuotationRow[]> {
   return new QuotationRepository(tenantId).listActive(client);
 }
@@ -135,6 +136,17 @@ export async function listQuotationsChangedSince(
   return new QuotationRepository(tenantId).listChangedSince(client, since);
 }
 
+function quotationWriteFields(p: ReturnType<typeof pickBody>): QuotationWriteFields {
+  return {
+    vendor_id: p.vendor_id,
+    name: p.name,
+    date: p.date,
+    items_json: JSON.stringify(p.items),
+    total_amount: p.total_amount,
+    document_id: p.document_id ?? null,
+  };
+}
+
 async function insertQuotation(
   client: pg.PoolClient,
   tenantId: string,
@@ -142,23 +154,12 @@ async function insertQuotation(
   p: ReturnType<typeof pickBody>,
   actorUserId: string | null
 ): Promise<QuotationRow> {
-  const r = await client.query<QuotationRow>(
-    `INSERT INTO quotations (id, tenant_id, vendor_id, name, date, items, total_amount, document_id, user_id, version, deleted_at, created_at, updated_at)
-     VALUES ($1, $2, $3, $4, $5::date, $6::jsonb, $7, $8, $9, 1, NULL, NOW(), NOW())
-     RETURNING ${SELECT_COLS}`,
-    [
-      id,
-      tenantId,
-      p.vendor_id,
-      p.name,
-      p.date,
-      JSON.stringify(p.items),
-      p.total_amount,
-      p.document_id ?? null,
-      p.user_id ?? actorUserId,
-    ]
+  const row = await new QuotationRepository(tenantId).insertQuotation(
+    client,
+    id,
+    quotationWriteFields(p),
+    p.user_id ?? actorUserId
   );
-  const row = r.rows[0]!;
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -179,26 +180,14 @@ async function updateQuotationRow(
   id: string,
   p: ReturnType<typeof pickBody>
 ): Promise<QuotationRow> {
-  const r = await client.query<QuotationRow>(
-    `UPDATE quotations SET
-       vendor_id = $3, name = $4, date = $5::date, items = $6::jsonb, total_amount = $7,
-       document_id = $8, user_id = COALESCE($9, user_id), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING ${SELECT_COLS}`,
-    [
-      id,
-      tenantId,
-      p.vendor_id,
-      p.name,
-      p.date,
-      JSON.stringify(p.items),
-      p.total_amount,
-      p.document_id ?? null,
-      p.user_id ?? null,
-    ]
+  const row = await new QuotationRepository(tenantId).updateActive(
+    client,
+    id,
+    quotationWriteFields(p),
+    p.user_id ?? null
   );
-  if (!r.rows[0]) throw new Error('Quotation not found.');
-  return r.rows[0];
+  if (!row) throw new Error('Quotation not found.');
+  return row;
 }
 
 export async function upsertQuotation(
@@ -224,10 +213,7 @@ export async function upsertQuotation(
 
   let existingRow = existing;
   if (existingRow.deleted_at) {
-    await client.query(
-      `UPDATE quotations SET deleted_at = NULL, version = 1, updated_at = NOW() WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId]
-    );
+    await new QuotationRepository(tenantId).reviveDeleted(client, id);
     existingRow = { ...existingRow, deleted_at: null, version: 1 };
   }
 
@@ -278,11 +264,7 @@ export async function softDeleteQuotation(
     if (lww.conflict) return { ok: false, conflict: true };
   }
 
-  await client.query(
-    `UPDATE quotations SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
+  await new QuotationRepository(tenantId).markDeleted(client, id);
   await recordDomainMutation(client, {
     tenantId,
     userId: ex.user_id,

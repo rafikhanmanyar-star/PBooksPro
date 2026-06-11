@@ -3,7 +3,10 @@ import { randomUUID } from 'crypto';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { AccountRepository } from '../modules/accounting/repositories/AccountRepository.js';
+import {
+  AccountRepository,
+  type AccountWriteFields,
+} from '../modules/accounting/repositories/AccountRepository.js';
 
 export type AccountRow = {
   id: string;
@@ -182,6 +185,22 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function toAccountWriteFields(
+  p: ReturnType<typeof pickBody>,
+  openingStored: number
+): AccountWriteFields {
+  return {
+    name: p.name,
+    type: p.type,
+    balance: Number.isFinite(p.balance) ? p.balance : 0,
+    opening_balance: openingStored,
+    description: p.description ?? null,
+    is_permanent: p.is_permanent,
+    parent_account_id:
+      p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
+  };
+}
+
 export async function listAccounts(client: pg.PoolClient, tenantId: string): Promise<AccountRow[]> {
   return new AccountRepository(tenantId).listActive(client);
 }
@@ -214,27 +233,13 @@ export async function createAccount(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `acc_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<AccountRow>(
-    `INSERT INTO accounts (
-       id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.name,
-      p.type,
-      Number.isFinite(p.balance) ? p.balance : 0,
-      p.opening_balance ?? 0,
-      p.description ?? null,
-      p.is_permanent,
-      p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-    ]
+  const repo = new AccountRepository(tenantId);
+  const row = await repo.insertAccount(
+    client,
+    id,
+    toAccountWriteFields(p, p.opening_balance ?? 0),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
-  const row = r.rows[0];
   await auditAccountMutation(client, tenantId, row.id, 'create', {
     userId: actorUserId,
   });
@@ -268,6 +273,8 @@ export async function updateAccount(
     if (lww.conflict) return { row: null, conflict: true };
   }
 
+  const repo = new AccountRepository(tenantId);
+
   if (prior.tenant_id === GLOBAL_SYSTEM_TENANT_ID) {
     if (prior.deleted_at) {
       return { row: null, conflict: false };
@@ -276,78 +283,39 @@ export async function updateAccount(
     const openingStored = resolveOpeningForUpdate(p.opening_balance, prior.opening_balance);
     const balanceNext = Number.isFinite(p.balance) ? p.balance : numFromRow(prior.balance);
 
-    if (expectedVersion !== undefined) {
-      const u = await client.query<AccountRow>(
-        `UPDATE accounts SET
-           balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
-         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $5
-         RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-        [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored, expectedVersion]
-      );
-      if (u.rows.length === 0) {
+    const u = await repo.updateSystemBalance(
+      client,
+      id,
+      balanceNext,
+      openingStored,
+      expectedVersion
+    );
+    if (!u) {
+      if (expectedVersion !== undefined) {
         const exists = await getAccountById(client, tenantId, id);
         if (!exists) return { row: null, conflict: false };
         return { row: null, conflict: true };
       }
-      const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
-      await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
-      return { row, conflict: false };
+      return { row: null, conflict: false };
     }
-
-    const u = await client.query<AccountRow>(
-      `UPDATE accounts SET
-         balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-      [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored]
-    );
-    if (!u.rows[0]) return { row: null, conflict: false };
-    const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+    const row = (await getAccountById(client, tenantId, id)) ?? u;
     await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
     return { row, conflict: false };
   }
 
   const openingStored = resolveOpeningForUpdate(p.opening_balance, prior.opening_balance);
+  const fields = toAccountWriteFields(p, openingStored);
 
-  const vals = [
-    p.name,
-    p.type,
-    Number.isFinite(p.balance) ? p.balance : 0,
-    openingStored,
-    p.description ?? null,
-    p.is_permanent,
-    p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
-  ];
-
-  if (expectedVersion !== undefined) {
-    const u = await client.query<AccountRow>(
-      `UPDATE accounts SET
-         name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $10
-       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...vals, expectedVersion]
-    );
-    if (u.rows.length === 0) {
+  const u = await repo.updateTenantActive(client, id, fields, expectedVersion);
+  if (!u) {
+    if (expectedVersion !== undefined) {
       const exists = await getAccountById(client, tenantId, id);
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: true };
     }
-    const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
-    await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
-    return { row, conflict: false };
+    return { row: null, conflict: false };
   }
-
-  const u = await client.query<AccountRow>(
-    `UPDATE accounts SET
-       name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  if (!u.rows[0]) return { row: null, conflict: false };
-  const row = (await getAccountById(client, tenantId, id)) ?? u.rows[0];
+  const row = (await getAccountById(client, tenantId, id)) ?? u;
   await auditAccountMutation(client, tenantId, id, 'update', { oldValue: oldApi });
   return { row, conflict: false };
 }
@@ -389,14 +357,8 @@ export async function upsertAccount(
     const oldApi = rowToAccountApi(existing);
     const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
     const balanceNext = Number.isFinite(p.balance) ? p.balance : numFromRow(existing.balance);
-    const u = await client.query<AccountRow>(
-      `UPDATE accounts SET
-         balance = $3, opening_balance = $4, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-      [id, GLOBAL_SYSTEM_TENANT_ID, balanceNext, openingStored]
-    );
-    const row = u.rows[0];
+    const repo = new AccountRepository(tenantId);
+    const row = await repo.updateSystemBalance(client, id, balanceNext, openingStored);
     if (!row) throw new Error('System account upsert failed.');
     const withBalance = await getAccountById(client, tenantId, id);
     const out = withBalance ?? row;
@@ -417,28 +379,14 @@ export async function upsertAccount(
 
   const openingStored = resolveOpeningForUpdate(p.opening_balance, existing.opening_balance);
   const oldApi = rowToAccountApi(existing);
+  const repo = new AccountRepository(tenantId);
 
-  const vals = [
-    p.name,
-    p.type,
-    Number.isFinite(p.balance) ? p.balance : 0,
-    openingStored,
-    p.description ?? null,
-    p.is_permanent,
-    p.parent_account_id && String(p.parent_account_id).trim() ? String(p.parent_account_id).trim() : null,
-    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null,
-  ];
-
-  const u = await client.query<AccountRow>(
-    `UPDATE accounts SET
-       name = $3, type = $4, balance = $5, opening_balance = $6, description = $7, is_permanent = $8, parent_account_id = $9,
-       user_id = COALESCE($10, user_id),
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, name, type, balance, opening_balance, description, is_permanent, parent_account_id, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
+  const row = await repo.updateUpsertRestore(
+    client,
+    id,
+    toAccountWriteFields(p, openingStored),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null
   );
-  const row = u.rows[0];
   if (!row) throw new Error('Account upsert failed.');
   const withBalance = await getAccountById(client, tenantId, id);
   const out = withBalance ?? row;
@@ -465,12 +413,9 @@ export async function softDeleteAccount(
     });
     if (lww.conflict) return { ok: false, conflict: true };
 
-    const r = await client.query(
-      `UPDATE accounts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
+    const repo = new AccountRepository(tenantId);
+    const ok = await repo.markDeleted(client, id, expectedVersion);
+    if (!ok) {
       const ex = await getAccountById(client, tenantId, id);
       if (!ex) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
@@ -478,12 +423,8 @@ export async function softDeleteAccount(
     await auditAccountMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
     return { ok: true, conflict: false };
   }
-  const r = await client.query(
-    `UPDATE accounts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  const ok = (r.rowCount ?? 0) > 0;
+  const repo = new AccountRepository(tenantId);
+  const ok = await repo.markDeleted(client, id);
   if (ok) {
     await auditAccountMutation(client, tenantId, id, 'delete', { oldValue: oldApi });
   }

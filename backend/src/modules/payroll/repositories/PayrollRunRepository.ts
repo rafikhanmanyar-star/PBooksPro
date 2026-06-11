@@ -143,4 +143,16 @@ export class PayrollRunRepository extends TenantRepository {
     );
     return (r.rowCount ?? 0) > 0;
   }
+
+  async getPeriodLabelsByIds(
+    client: pg.PoolClient,
+    runIds: string[]
+  ): Promise<Array<{ id: string; month: string; year: number; period_end: Date | null }>> {
+    if (runIds.length === 0) return [];
+    const r = await client.query<{ id: string; month: string; year: number; period_end: Date | null }>(
+      `SELECT id, month, year, period_end FROM payroll_runs WHERE tenant_id = $1 AND id = ANY($2::text[])`,
+      [this.tenantId, runIds]
+    );
+    return r.rows;
+  }
 }

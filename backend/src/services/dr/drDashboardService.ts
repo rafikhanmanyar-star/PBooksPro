@@ -14,6 +14,11 @@ import {
 } from './drAlertService.js';
 import { getLastPassedRestoreTest } from './drRestoreTestService.js';
 import { getLastPassedVerification } from './drVerificationService.js';
+import { BackupJobRepository } from '../../modules/backup/repositories/BackupJobRepository.js';
+import { BackupOffsiteRepository } from '../../modules/backup/repositories/BackupSettingsRepository.js';
+
+const jobRepo = new BackupJobRepository();
+const offsiteRepo = new BackupOffsiteRepository();
 
 export type DrDashboard = {
   lastBackup: {
@@ -68,57 +73,31 @@ async function sumLocalBackupBytes(root: string): Promise<{ bytes: number; fileC
 }
 
 async function sumOffsiteBytes(client: pg.PoolClient): Promise<number> {
-  const { rows } = await client.query(
-    `SELECT COALESCE(SUM(size_bytes), 0)::bigint AS total FROM backup_offsite_uploads WHERE status = 'completed'`
-  );
-  return Number(rows[0]?.total ?? 0);
+  return offsiteRepo.sumCompletedBytes(client);
 }
 
 export async function getDrDashboard(client: pg.PoolClient): Promise<DrDashboard> {
   await checkAndRaiseStaleBackupAlert(client);
 
-  const { rows: lastRows } = await client.query(
-    `SELECT r.id, r.completed_at, r.started_at, r.success, r.size_bytes, j.job_name
-     FROM backup_job_runs r
-     LEFT JOIN backup_jobs j ON j.id = r.job_id
-     ORDER BY COALESCE(r.completed_at, r.started_at) DESC
-     LIMIT 1`
-  );
-
-  const { rows: lastSuccessRows } = await client.query(
-    `SELECT r.id, r.completed_at, r.size_bytes, j.job_name
-     FROM backup_job_runs r
-     LEFT JOIN backup_jobs j ON j.id = r.job_id
-     WHERE r.success = true
-     ORDER BY r.completed_at DESC NULLS LAST
-     LIMIT 1`
-  );
+  const lastBackupRow = await jobRepo.getLastRun(client);
+  const lastSuccessRow = await jobRepo.getLastSuccessfulRun(client);
 
   const lastRestore = await getLastPassedRestoreTest(client);
   const lastVerification = await getLastPassedVerification(client);
   const settings = await getNotificationSettings(client);
   const criticalAlerts = await countUnacknowledgedCritical(client);
 
-  const { rows: offsiteOkRows } = await client.query(
-    `SELECT 1 FROM backup_offsite_uploads u
-     INNER JOIN backup_job_runs r ON r.id = u.run_id
-     WHERE r.success = true AND u.status = 'completed'
-     ORDER BY u.completed_at DESC NULLS LAST
-     LIMIT 1`
-  );
+  const offsiteUploadOk = await offsiteRepo.hasCompletedForSuccessfulRun(client);
 
   const storageRoot = getBackupStorageRoot();
   const local = await sumLocalBackupBytes(storageRoot);
   const offsiteBytes = await sumOffsiteBytes(client);
 
-  const lastBackupRow = lastRows[0];
-  const lastSuccessRow = lastSuccessRows[0];
-
   const backupHealth = computeBackupHealthScore({
     lastSuccessfulBackupAt: lastSuccessRow?.completed_at ?? null,
     lastVerificationPassedAt: lastVerification?.completed_at ?? null,
     lastRestoreTestPassedAt: lastRestore?.completed_at ?? null,
-    offsiteUploadOk: offsiteOkRows.length > 0,
+    offsiteUploadOk,
     unacknowledgedCriticalAlerts: criticalAlerts,
     schedulerEnabled: isBackupSchedulerEnabled(),
     staleBackupHours: settings.stale_backup_hours,

@@ -256,4 +256,50 @@ export class PayslipRepository extends TenantRepository {
       [runId, this.tenantId]
     );
   }
+
+  async getLedgerRecalcContext(
+    client: pg.PoolClient,
+    payslipId: string
+  ): Promise<{ net_pay: string; payroll_run_id: string; employee_id: string } | null> {
+    const r = await client.query<{ net_pay: string; payroll_run_id: string; employee_id: string }>(
+      `SELECT net_pay::text, payroll_run_id, employee_id FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [payslipId, this.tenantId]
+    );
+    return r.rows[0] ?? null;
+  }
+
+  async updatePaymentFromLedger(
+    client: pg.PoolClient,
+    payslipId: string,
+    payment: {
+      isPaid: boolean;
+      paidAmount: number;
+      transactionId: string | null;
+      paidAt: Date | null;
+    }
+  ): Promise<void> {
+    await client.query(
+      `UPDATE payslips SET
+         is_paid = $3,
+         paid_amount = $4,
+         paid_at = CASE WHEN $4::numeric > 0 THEN $6::timestamptz ELSE NULL END,
+         transaction_id = $5,
+         updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+      [payslipId, this.tenantId, payment.isPaid, payment.paidAmount, payment.transactionId, payment.paidAt]
+    );
+  }
+
+  async listForLedgerRebuild(
+    client: pg.PoolClient,
+    employeeId: string
+  ): Promise<Array<{ id: string; payroll_run_id: string; net_pay: string; created_at: Date }>> {
+    const r = await client.query<{ id: string; payroll_run_id: string; net_pay: string; created_at: Date }>(
+      `SELECT id, payroll_run_id, net_pay::text, created_at FROM payslips
+       WHERE tenant_id = $1 AND employee_id = $2 AND deleted_at IS NULL
+       ORDER BY created_at ASC`,
+      [this.tenantId, employeeId]
+    );
+    return r.rows;
+  }
 }

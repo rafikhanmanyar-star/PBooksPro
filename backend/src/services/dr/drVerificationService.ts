@@ -8,6 +8,11 @@ import fs from 'node:fs/promises';
 import type pg from 'pg';
 import { getBackupRun } from '../backupSchedulerService.js';
 import { readBackupPlaintextFromPath } from '../backup/backupFileService.js';
+import { BackupJobRepository } from '../../modules/backup/repositories/BackupJobRepository.js';
+import { DrVerificationRepository } from '../../modules/dr/repositories/DrRepository.js';
+
+const jobRepo = new BackupJobRepository();
+const verificationRepo = new DrVerificationRepository();
 
 export type DrVerificationRunRow = {
   id: string;
@@ -213,14 +218,7 @@ function mapRow(row: pg.QueryResultRow): DrVerificationRunRow {
 export async function getLatestSuccessfulBackupRun(
   client: pg.PoolClient
 ): Promise<{ id: string; storage_path: string; size_bytes: string | null } | null> {
-  const { rows } = await client.query(
-    `SELECT id, storage_path, size_bytes FROM backup_job_runs
-     WHERE success = true AND storage_path IS NOT NULL
-     ORDER BY completed_at DESC NULLS LAST
-     LIMIT 1`
-  );
-  if (rows.length === 0) return null;
-  return rows[0];
+  return jobRepo.getLatestSuccessfulRunWithPath(client);
 }
 
 export async function runVerificationForBackupRun(
@@ -261,62 +259,44 @@ async function executeVerification(
   const id = randomUUID();
   const startedAt = new Date().toISOString();
 
-  await client.query(
-    `INSERT INTO dr_verification_runs (id, backup_run_id, status, verification_type, file_path, started_at, requested_by)
-     VALUES ($1, $2, 'running', 'integrity', $3, $4, $5)`,
-    [id, opts.backupRunId, opts.filePath, startedAt, opts.requestedBy]
-  );
+  await verificationRepo.insertRunning(client, {
+    id,
+    backupRunId: opts.backupRunId,
+    filePath: opts.filePath,
+    startedAt,
+    requestedBy: opts.requestedBy,
+  });
 
   const analysis = await analyzeBackupFileFromPath(opts.filePath);
   const passed = analysis.issues.length === 0 && analysis.integrityScore >= 80;
   const status = passed ? 'passed' : 'failed';
   const failureReason = passed ? null : analysis.issues.join(' ');
 
-  await client.query(
-    `UPDATE dr_verification_runs SET
-       status = $2,
-       file_size_bytes = $3,
-       sha256 = $4,
-       pg_restore_list_ok = $5,
-       toc_entry_count = $6,
-       integrity_score = $7,
-       issues = $8::jsonb,
-       completed_at = NOW(),
-       failure_reason = $9
-     WHERE id = $1`,
-    [
-      id,
-      status,
-      analysis.fileSizeBytes,
-      analysis.sha256 || null,
-      analysis.pgRestoreListOk,
-      analysis.tocEntryCount,
-      analysis.integrityScore,
-      JSON.stringify(analysis.issues),
-      failureReason,
-    ]
-  );
+  const row = await verificationRepo.complete(client, id, {
+    status,
+    fileSizeBytes: analysis.fileSizeBytes,
+    sha256: analysis.sha256 || null,
+    pgRestoreListOk: analysis.pgRestoreListOk,
+    tocEntryCount: analysis.tocEntryCount,
+    integrityScore: analysis.integrityScore,
+    issues: analysis.issues,
+    failureReason,
+  });
 
-  const { rows } = await client.query(`SELECT * FROM dr_verification_runs WHERE id = $1`, [id]);
-  return mapRow(rows[0]);
+  return mapRow(row);
 }
 
 export async function listVerificationRuns(
   client: pg.PoolClient,
   limit = 50
 ): Promise<DrVerificationRunRow[]> {
-  const { rows } = await client.query(
-    `SELECT * FROM dr_verification_runs ORDER BY started_at DESC LIMIT $1`,
-    [limit]
-  );
+  const rows = await verificationRepo.list(client, limit);
   return rows.map(mapRow);
 }
 
 export async function getLastPassedVerification(
   client: pg.PoolClient
 ): Promise<DrVerificationRunRow | null> {
-  const { rows } = await client.query(
-    `SELECT * FROM dr_verification_runs WHERE status = 'passed' ORDER BY completed_at DESC NULLS LAST LIMIT 1`
-  );
-  return rows.length ? mapRow(rows[0]) : null;
+  const row = await verificationRepo.getLastPassed(client);
+  return row ? mapRow(row) : null;
 }

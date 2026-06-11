@@ -1,15 +1,19 @@
 /**
  * Centralized print service for consistent printing across the application.
  *
- * For React components printing PO, Invoice, Bill, Agreement, or Ledger layouts,
- * use the context-based flow: wrap the app with PrintProvider and call
- * usePrintContext().print(type, data) to open the print overlay and trigger
- * window.print() with the correct layout (see context/PrintContext and
- * components/print/PrintController).
+ * Reports: usePrintReport() or usePrintContext().print('REPORT', { elementId }).
+ * Forms (PO, Invoice, Bill, Agreement, Ledger, Payslip): usePrintContext().print(type, data).
+ * Legacy direct print: printPrintableArea / printFromTemplate (prefer context flow).
  */
 
 import { PrintSettings } from '../types';
-import { STANDARD_PRINT_STYLES } from '../utils/printStyles';
+import { STANDARD_PRINT_STYLES, REPORT_PRINT_SURFACE_STYLES } from '../utils/printStyles';
+import type { ReportPrintPdfWhatsApp } from '../components/print/ReportLayout';
+
+export interface PrintReportOptions {
+  elementId?: string;
+  pdfWhatsApp?: ReportPrintPdfWhatsApp;
+}
 
 /**
  * Print options for printPrintableArea
@@ -132,9 +136,19 @@ const injectPrintStyles = (): void => {
 
   const style = document.createElement('style');
   style.id = styleId;
-  style.textContent = STANDARD_PRINT_STYLES;
+  style.textContent = `${STANDARD_PRINT_STYLES}\n${REPORT_PRINT_SURFACE_STYLES}`;
   document.head.appendChild(style);
   stylesInjected = true;
+};
+
+/** Ensure report surface styles are present (idempotent). */
+export const ensureReportPrintStyles = (): void => {
+  const styleId = 'report-print-surface-styles';
+  if (document.getElementById(styleId)) return;
+  const style = document.createElement('style');
+  style.id = styleId;
+  style.textContent = REPORT_PRINT_SURFACE_STYLES;
+  document.head.appendChild(style);
 };
 
 /**

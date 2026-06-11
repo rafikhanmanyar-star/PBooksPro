@@ -42,11 +42,8 @@ async function assertUserInTenant(
   userId: string,
   tenantId: string
 ): Promise<void> {
-  const r = await client.query<{ c: string }>(
-    `SELECT COUNT(*)::text AS c FROM users WHERE id = $1 AND tenant_id = $2`,
-    [userId, tenantId]
-  );
-  if (Number(r.rows[0]?.c ?? 0) === 0) {
+  const ok = await new PersonalTaskRepository(tenantId).userBelongsToTenant(client, userId);
+  if (!ok) {
     throw new Error('User not found for tenant.');
   }
 }
@@ -98,14 +95,18 @@ export async function createPersonalTask(
 
   const id = randomUUID();
 
-  const r = await client.query<PersonalTaskRow>(
-    `INSERT INTO personal_tasks (
-       id, user_id, title, description, created_date, target_date, status, progress, priority
-     ) VALUES ($1, $2, $3, $4, $5::date, $6::date, $7, $8, $9)
-     RETURNING id, user_id, title, description, created_date, target_date, status, progress, priority, created_at, updated_at`,
-    [id, userId, title, description, createdDate, targetDate, status, progress, priority]
+  const row = await new PersonalTaskRepository(tenantId).insertTask(
+    client,
+    id,
+    userId,
+    title,
+    description,
+    createdDate,
+    targetDate,
+    status,
+    progress,
+    priority
   );
-  const row = r.rows[0];
   if (!row) throw new Error('Failed to create task.');
 
   await recordDomainMutation(client, {
@@ -209,20 +210,17 @@ export async function updatePersonalTask(
   const priority =
     body.priority !== undefined ? normalizePriority(body.priority, existing.priority) : existing.priority;
 
-  const r = await client.query<PersonalTaskRow>(
-    `UPDATE personal_tasks SET
-       title = $1,
-       description = $2,
-       target_date = $3::date,
-       status = $4,
-       progress = $5,
-       priority = $6,
-       updated_at = NOW()
-     WHERE id = $7 AND user_id = $8
-     RETURNING id, user_id, title, description, created_date, target_date, status, progress, priority, created_at, updated_at`,
-    [title, description, targetDate, status, progress, priority, id, userId]
+  const row = await new PersonalTaskRepository(tenantId).updateActive(
+    client,
+    id,
+    userId,
+    title,
+    description,
+    targetDate,
+    status,
+    progress,
+    priority
   );
-  const row = r.rows[0] ?? null;
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
@@ -247,7 +245,7 @@ export async function deletePersonalTask(
 ): Promise<boolean> {
   const existing = await new PersonalTaskRepository(tenantId).getForUser(client, userId, id);
   if (!existing) return false;
-  await client.query(`DELETE FROM personal_tasks WHERE id = $1 AND user_id = $2`, [id, userId]);
+  await new PersonalTaskRepository(tenantId).deleteForUser(client, id, userId);
   await recordDomainMutation(client, {
     tenantId,
     userId,

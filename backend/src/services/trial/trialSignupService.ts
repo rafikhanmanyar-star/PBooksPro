@@ -15,6 +15,9 @@ import { getRequiredDocuments } from '../../constants/legalDocuments.js';
 import { isEnvFlagEnabled } from '../../utils/envFlag.js';
 import { ensureUserTenantMembership } from '../auth/userTenantService.js';
 import { assertUserIdentityAvailable } from '../auth/userIdentityService.js';
+import { TrialSignupRepository } from '../../modules/trial/repositories/TrialSignupRepository.js';
+
+const trialSignupRepo = new TrialSignupRepository();
 
 export type TrialSignupInput = {
   name: string;
@@ -87,17 +90,14 @@ function defaultLegalAcceptances() {
 
 async function allocateUniqueUsername(
   client: pg.PoolClient,
-  tenantId: string,
+  _tenantId: string,
   email: string
 ): Promise<string> {
   let base = usernameFromEmail(email);
   for (let i = 0; i < 20; i++) {
     const candidate = i === 0 ? base : `${base.slice(0, 28)}_${i}`;
-    const exists = await client.query(
-      `SELECT 1 FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`,
-      [candidate]
-    );
-    if (!exists.rows.length) return candidate;
+    const exists = await trialSignupRepo.usernameExistsGlobally(client, candidate);
+    if (!exists) return candidate;
   }
   return `admin_${randomBytes(3).toString('hex')}`;
 }
@@ -106,8 +106,8 @@ async function allocateTenantId(client: pg.PoolClient, companyName: string): Pro
   for (let i = 0; i < 12; i++) {
     const id = generateTenantId(companyName);
     if (RESERVED_TENANT_IDS.has(id)) continue;
-    const exists = await client.query(`SELECT 1 FROM tenants WHERE id = $1`, [id]);
-    if (!exists.rows.length) return id;
+    const exists = await trialSignupRepo.tenantIdExists(client, id);
+    if (!exists) return id;
   }
   throw new Error('Could not allocate a unique organization ID.');
 }
@@ -159,17 +159,21 @@ export async function createTrialSignup(
     const userId = `user_${randomUUID().replace(/-/g, '')}`;
     const passwordHash = await bcrypt.hash(input.password, 10);
 
-    await client.query(
-      `INSERT INTO tenants (id, name, company_name, email, phone)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [tenantId, company, company, email, mobile]
-    );
+    await trialSignupRepo.insertTenant(client, {
+      tenantId,
+      company,
+      email,
+      mobile,
+    });
 
-    await client.query(
-      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active, last_tenant_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $2)`,
-      [userId, tenantId, username, name, 'Admin', passwordHash, email]
-    );
+    await trialSignupRepo.insertAdminUser(client, {
+      userId,
+      tenantId,
+      username,
+      name,
+      passwordHash,
+      email,
+    });
 
     await ensureUserTenantMembership(client, userId, tenantId, 'Admin');
 

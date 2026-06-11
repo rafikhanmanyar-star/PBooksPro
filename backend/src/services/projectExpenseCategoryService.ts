@@ -91,14 +91,7 @@ export async function upsertProjectExpenseCategory(
       if (conflict) return { row: existing, wasInsert: false, conflict: true };
     }
 
-    const r = await client.query<ProjectExpenseCategoryRow>(
-      `UPDATE project_expense_categories SET
-         name = $1, description = $2, is_active = $3, version = version + 1, updated_at = NOW()
-       WHERE tenant_id = $4 AND id = $5 AND deleted_at IS NULL
-       RETURNING id, tenant_id, name, description, is_active, version, created_at, updated_at, deleted_at`,
-      [name, description, isActive, tenantId, id]
-    );
-    const row = r.rows[0];
+    const row = await repo.updateActive(client, id, name, description, isActive);
     if (!row) throw new Error('Category not found after update.');
 
     await auditPeCategory(client, {
@@ -112,13 +105,7 @@ export async function upsertProjectExpenseCategory(
     return { row, wasInsert: false };
   }
 
-  const r = await client.query<ProjectExpenseCategoryRow>(
-    `INSERT INTO project_expense_categories (id, tenant_id, name, description, is_active)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, tenant_id, name, description, is_active, version, created_at, updated_at, deleted_at`,
-    [id, tenantId, name, description, isActive]
-  );
-  const row = r.rows[0];
+  const row = await repo.insertCategory(client, id, name, description, isActive);
 
   await auditPeCategory(client, {
     tenantId,
@@ -152,11 +139,7 @@ export async function softDeleteProjectExpenseCategory(
     if (conflict) return { ok: false, conflict: true };
   }
 
-  await client.query(
-    `UPDATE project_expense_categories SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-    [tenantId, id]
-  );
+  await repo.markDeleted(client, id);
 
   await auditPeCategory(client, {
     tenantId,

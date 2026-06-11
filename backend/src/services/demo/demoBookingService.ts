@@ -7,6 +7,7 @@ import {
   sendDemoBookingConfirmation,
 } from './demoBookingEmailService.js';
 import { logger } from '../../utils/logger.js';
+import { DemoBookingRepository } from '../../modules/demo/repositories/DemoRepository.js';
 
 export type DemoBookingRow = {
   id: string;
@@ -59,6 +60,8 @@ export type CreateDemoBookingInput = {
   honeypot?: string;
   metadata?: Record<string, unknown>;
 };
+
+const bookingRepo = new DemoBookingRepository();
 
 function bookingRefFromId(id: string): string {
   return `DEMO-${id.slice(0, 8).toUpperCase()}`;
@@ -136,58 +139,38 @@ export async function createDemoBooking(
     },
   });
 
-  const insert = await client.query<DemoBookingRow>(
-    `INSERT INTO demo_bookings (
-       id, booking_ref, lead_id, full_name, company_name, email, mobile_number, city,
-       user_count, business_type, preferred_date, preferred_time, additional_notes,
-       status, utm_source, utm_medium, utm_campaign, page_url, user_agent, ip_address,
-       calendar_provider, calendar_event_url, metadata
-     ) VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'pending',
-       $14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb
-     )
-     RETURNING *`,
-    [
-      id,
-      bookingRef,
-      leadResult.lead.id,
-      input.fullName.trim(),
-      input.companyName.trim(),
-      email,
-      input.mobileNumber.trim(),
-      input.city.trim(),
-      input.userCount,
-      input.businessType,
-      input.preferredDate || null,
-      input.preferredTime || null,
-      input.additionalNotes?.trim() || null,
-      input.utmSource ?? null,
-      input.utmMedium ?? null,
-      input.utmCampaign ?? null,
-      input.pageUrl ?? null,
-      input.userAgent ?? null,
-      input.ipAddress ?? null,
-      calendlyUrl ? 'calendly' : null,
-      calendlyUrl,
-      JSON.stringify(input.metadata ?? {}),
-    ]
-  );
+  const booking = await bookingRepo.insert(client, [
+    id,
+    bookingRef,
+    leadResult.lead.id,
+    input.fullName.trim(),
+    input.companyName.trim(),
+    email,
+    input.mobileNumber.trim(),
+    input.city.trim(),
+    input.userCount,
+    input.businessType,
+    input.preferredDate || null,
+    input.preferredTime || null,
+    input.additionalNotes?.trim() || null,
+    input.utmSource ?? null,
+    input.utmMedium ?? null,
+    input.utmCampaign ?? null,
+    input.pageUrl ?? null,
+    input.userAgent ?? null,
+    input.ipAddress ?? null,
+    calendlyUrl ? 'calendly' : null,
+    calendlyUrl,
+    JSON.stringify(input.metadata ?? {}),
+  ]);
 
-  const booking = insert.rows[0];
   let emailsSent = false;
 
   if (process.env.DEMO_BOOKING_EMAIL_ENABLED !== 'false') {
     try {
       await sendDemoBookingConfirmation(booking);
       await sendDemoBookingAdminNotification(booking);
-      await client.query(
-        `UPDATE demo_bookings SET
-           confirmation_email_sent_at = NOW(),
-           admin_notified_at = NOW(),
-           updated_at = NOW()
-         WHERE id = $1`,
-        [booking.id]
-      );
+      await bookingRepo.markEmailsSent(client, booking.id);
       emailsSent = true;
     } catch (err) {
       logger.warn('demo_booking_email_failed', {
@@ -201,10 +184,5 @@ export async function createDemoBooking(
 }
 
 export async function getDemoBookingByRef(ref: string): Promise<DemoBookingRow | null> {
-  const pool = getPool();
-  const r = await pool.query<DemoBookingRow>(
-    `SELECT * FROM demo_bookings WHERE booking_ref = $1 LIMIT 1`,
-    [ref.trim().toUpperCase()]
-  );
-  return r.rows[0] ?? null;
+  return bookingRepo.getByRef(getPool(), ref);
 }

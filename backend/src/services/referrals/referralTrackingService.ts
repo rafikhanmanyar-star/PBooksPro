@@ -10,6 +10,9 @@ import { getReferralProgramConfig } from './referralProgramConfigService.js';
 import { flagAttributionFraud, runReferralFraudChecks } from './referralFraudService.js';
 import { logReferralEvent } from './referralEventService.js';
 import { issueReferralRewardsForAttribution } from './referralRewardService.js';
+import { ReferralAttributionRepository } from '../../modules/referrals/repositories/ReferralRepository.js';
+
+const attributionRepo = new ReferralAttributionRepository();
 
 export async function recordReferralClick(
   client: pg.PoolClient,
@@ -50,18 +53,17 @@ export async function attributeReferralSignup(
 
   let invitationId: string | null = null;
   if (input.inviteToken) {
-    const { rows: invites } = await client.query(
-      `SELECT id, invitee_email, status, expires_at FROM referral_invitations
-       WHERE invite_token = $1 AND referrer_tenant_id = $2 LIMIT 1`,
-      [input.inviteToken, codeRow.tenantId]
+    const inv = await attributionRepo.getInvitationByToken(
+      client,
+      input.inviteToken,
+      codeRow.tenantId
     );
-    if (!invites.length) return { attributed: false };
-    const inv = invites[0];
-    if (new Date(inv.expires_at) < new Date()) return { attributed: false };
-    if (inv.invitee_email.toLowerCase() !== input.refereeEmail.toLowerCase()) {
+    if (!inv) return { attributed: false };
+    if (new Date(inv.expires_at as string) < new Date()) return { attributed: false };
+    if (String(inv.invitee_email).toLowerCase() !== input.refereeEmail.toLowerCase()) {
       return { attributed: false, blocked: true };
     }
-    invitationId = inv.id;
+    invitationId = inv.id as string;
   }
 
   const ipHash = hashSignupIp(input.signupIp);
@@ -75,32 +77,23 @@ export async function attributeReferralSignup(
   const attributionId = randomUUID();
   const status = fraud.blocked ? 'fraud_flagged' : 'signed_up';
 
-  await client.query(
-    `INSERT INTO referral_attributions (
-       id, referrer_tenant_id, referee_tenant_id, referral_code_id, invitation_id,
-       status, referee_email, signup_ip_hash, fraud_score, fraud_notes
-     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-    [
-      attributionId,
-      codeRow.tenantId,
-      input.refereeTenantId,
-      codeRow.id,
-      invitationId,
-      status,
-      input.refereeEmail,
-      ipHash,
-      fraud.score,
-      fraud.reasons.map((r) => r.code).join(', ') || null,
-    ]
-  );
+  await attributionRepo.insert(client, {
+    id: attributionId,
+    referrerTenantId: codeRow.tenantId,
+    refereeTenantId: input.refereeTenantId,
+    referralCodeId: codeRow.id,
+    invitationId,
+    status,
+    refereeEmail: input.refereeEmail,
+    signupIpHash: ipHash,
+    fraudScore: fraud.score,
+    fraudNotes: fraud.reasons.map((r) => r.code).join(', ') || null,
+  });
 
   await incrementReferralCodeMetric(client, codeRow.id, 'total_signups');
 
   if (invitationId) {
-    await client.query(
-      `UPDATE referral_invitations SET status = 'signed_up', updated_at = NOW() WHERE id = $1`,
-      [invitationId]
-    );
+    await attributionRepo.markInvitationSignedUp(client, invitationId);
   }
 
   await logReferralEvent(client, {
@@ -133,39 +126,29 @@ export async function processReferralConversion(
   const config = await getReferralProgramConfig(client);
   if (!config.isEnabled) return;
 
-  const { rows } = await client.query(
-    `SELECT * FROM referral_attributions
-     WHERE referee_tenant_id = $1 AND status IN ('signed_up', 'trialing')
-     LIMIT 1`,
-    [refereeTenantId]
-  );
-  if (!rows.length) return;
+  const attr = await attributionRepo.getPendingConversion(client, refereeTenantId);
+  if (!attr) return;
 
-  const attr = rows[0];
   if (attr.status === 'fraud_flagged' || attr.status === 'rejected') return;
 
-  const signedUpAt = new Date(attr.signed_up_at);
+  const signedUpAt = new Date(attr.signed_up_at as string);
   const daysSince = (Date.now() - signedUpAt.getTime()) / (1000 * 60 * 60 * 24);
   if (daysSince < config.minDaysToConvert) return;
 
   if (config.requirePaidConversion && !options?.paidConversion) return;
 
-  await client.query(
-    `UPDATE referral_attributions SET status = 'converted', converted_at = NOW(), updated_at = NOW()
-     WHERE id = $1`,
-    [attr.id]
-  );
+  await attributionRepo.markConverted(client, attr.id as string);
 
-  await incrementReferralCodeMetric(client, attr.referral_code_id, 'total_conversions');
+  await incrementReferralCodeMetric(client, attr.referral_code_id as string, 'total_conversions');
 
   await logReferralEvent(client, {
     eventType: 'conversion',
-    referrerTenantId: attr.referrer_tenant_id,
-    refereeTenantId: attr.referee_tenant_id,
-    attributionId: attr.id,
+    referrerTenantId: attr.referrer_tenant_id as string,
+    refereeTenantId: attr.referee_tenant_id as string,
+    attributionId: attr.id as string,
   });
 
-  await issueReferralRewardsForAttribution(client, attr.id);
+  await issueReferralRewardsForAttribution(client, attr.id as string);
 }
 
 export async function ensureReferrerCode(

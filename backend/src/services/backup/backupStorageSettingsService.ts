@@ -7,21 +7,13 @@ import {
 import { createOffsiteStorageProvider } from './storage/providerFactory.js';
 import type { StorageProviderConfig, StorageProviderId } from './storage/types.js';
 import { STORAGE_PROVIDER_LABELS } from './storage/types.js';
+import {
+  BackupStorageSettingsRepository,
+  BACKUP_STORAGE_SETTINGS_ID,
+  type BackupStorageSettingsRow,
+} from '../../modules/backup/repositories/BackupSettingsRepository.js';
 
-export type BackupStorageSettingsRow = {
-  id: string;
-  provider: StorageProviderId;
-  access_key_encrypted: string;
-  secret_key_encrypted: string;
-  bucket_name: string;
-  region: string | null;
-  endpoint_url: string | null;
-  enabled: boolean;
-  auto_upload: boolean;
-  created_at: string;
-  updated_at: string;
-};
-
+export type { BackupStorageSettingsRow };
 export type BackupStorageSettingsPublic = {
   id: string;
   provider: StorageProviderId;
@@ -49,11 +41,11 @@ export type SaveBackupStorageSettingsInput = {
   secretKey?: string;
 };
 
-const SETTINGS_ID = 'default';
+const storageRepo = new BackupStorageSettingsRepository();
 
 function rowToConfig(row: BackupStorageSettingsRow): StorageProviderConfig {
   return {
-    provider: row.provider,
+    provider: row.provider as StorageProviderId,
     accessKey: decryptSecret(row.access_key_encrypted),
     secretKey: decryptSecret(row.secret_key_encrypted),
     bucketName: row.bucket_name,
@@ -65,14 +57,13 @@ function rowToConfig(row: BackupStorageSettingsRow): StorageProviderConfig {
 export async function getStorageSettingsRow(
   client: pg.PoolClient
 ): Promise<BackupStorageSettingsRow | null> {
-  const r = await client.query(`SELECT * FROM backup_storage_settings WHERE id = $1`, [SETTINGS_ID]);
-  return r.rows[0] ? (r.rows[0] as BackupStorageSettingsRow) : null;
+  return storageRepo.getRow(client);
 }
 
 export function toPublicSettings(row: BackupStorageSettingsRow | null): BackupStorageSettingsPublic {
   if (!row) {
     return {
-      id: SETTINGS_ID,
+      id: BACKUP_STORAGE_SETTINGS_ID,
       provider: 'aws_s3',
       providerLabel: STORAGE_PROVIDER_LABELS.aws_s3,
       bucketName: '',
@@ -99,8 +90,8 @@ export function toPublicSettings(row: BackupStorageSettingsRow | null): BackupSt
 
   return {
     id: row.id,
-    provider: row.provider,
-    providerLabel: STORAGE_PROVIDER_LABELS[row.provider],
+    provider: row.provider as StorageProviderId,
+    providerLabel: STORAGE_PROVIDER_LABELS[row.provider as StorageProviderId],
     bucketName: row.bucket_name,
     region: row.region,
     endpointUrl: row.endpoint_url,
@@ -130,49 +121,21 @@ export async function saveStorageSettings(
     secretEnc = encryptSecret(input.secretKey.trim());
   }
 
+  const payload = {
+    provider: input.provider,
+    accessEnc,
+    secretEnc,
+    bucketName: input.bucketName.trim(),
+    region: input.region?.trim() || null,
+    endpointUrl: input.endpointUrl?.trim() || null,
+    enabled: input.enabled ?? existing?.enabled ?? false,
+    autoUpload: input.autoUpload ?? existing?.auto_upload ?? true,
+  };
+
   if (existing) {
-    await client.query(
-      `UPDATE backup_storage_settings SET
-         provider = $2,
-         access_key_encrypted = $3,
-         secret_key_encrypted = $4,
-         bucket_name = $5,
-         region = $6,
-         endpoint_url = $7,
-         enabled = $8,
-         auto_upload = $9,
-         updated_at = NOW()
-       WHERE id = $1`,
-      [
-        SETTINGS_ID,
-        input.provider,
-        accessEnc,
-        secretEnc,
-        input.bucketName.trim(),
-        input.region?.trim() || null,
-        input.endpointUrl?.trim() || null,
-        input.enabled ?? existing.enabled,
-        input.autoUpload ?? existing.auto_upload,
-      ]
-    );
+    await storageRepo.update(client, payload);
   } else {
-    await client.query(
-      `INSERT INTO backup_storage_settings (
-         id, provider, access_key_encrypted, secret_key_encrypted,
-         bucket_name, region, endpoint_url, enabled, auto_upload
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        SETTINGS_ID,
-        input.provider,
-        accessEnc,
-        secretEnc,
-        input.bucketName.trim(),
-        input.region?.trim() || null,
-        input.endpointUrl?.trim() || null,
-        input.enabled ?? false,
-        input.autoUpload ?? true,
-      ]
-    );
+    await storageRepo.insert(client, payload);
   }
 
   const row = await getStorageSettingsRow(client);
@@ -219,4 +182,4 @@ export async function testStorageConnection(
   await provider.testConnection();
 }
 
-export { rowToConfig, SETTINGS_ID };
+export { rowToConfig, BACKUP_STORAGE_SETTINGS_ID as SETTINGS_ID };

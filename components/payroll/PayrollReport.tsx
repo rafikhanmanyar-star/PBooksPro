@@ -26,14 +26,16 @@ import { PayrollEmployee } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { syncPayrollFromServer } from './services/payrollSync';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 import { formatCurrency } from './utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from './utils/payslipPaymentState';
 import { toLocalDateString } from '../../utils/dateUtils';
 
 const PayrollReport: React.FC = () => {
   const { tenant } = useAuth();
-  const { print: triggerPrint } = usePrintContext();
+  const printReport = usePrintReport();
   const tenantId = tenant?.id || '';
   
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
@@ -252,7 +254,7 @@ const PayrollReport: React.FC = () => {
         </div>
         <div className="flex gap-2">
           <button 
-            onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+            onClick={() => printReport()}
             className="px-3 sm:px-5 py-2 sm:py-2.5 bg-app-card border border-app-border rounded-xl text-app-text font-bold text-xs sm:text-sm flex items-center gap-2 hover:bg-app-toolbar transition-colors"
           >
             <Printer size={16} /> <span className="hidden sm:inline">Print</span>
@@ -269,7 +271,8 @@ const PayrollReport: React.FC = () => {
       </div>
 
       {/* Summary Cards */}
-      <div id="printable-area" className="printable-area space-y-4 sm:space-y-8">
+      <div id="printable-area" className="printable-area print-report-surface space-y-4 sm:space-y-8">
+      <ReportHeader reportTitle="Payroll Analytics & Reports" />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-app-card p-4 sm:p-6 rounded-xl sm:rounded-2xl border border-app-border shadow-ds-card">
           <p className="text-[10px] font-black text-app-muted uppercase tracking-widest mb-1">Total Employees</p>
@@ -563,6 +566,7 @@ const PayrollReport: React.FC = () => {
             </div>
           </div>
         </div>
+      <ReportFooter />
       </div>
     </div>
   );
