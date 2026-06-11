@@ -80,7 +80,7 @@ personalFinanceRouter.post('/personal-categories', async (req: AuthedRequest, re
     return;
   }
   try {
-    const row = await withTransaction((c) => createPersonalCategory(c, tenantId, req.body || {}));
+    const row = await withTransaction((c) => createPersonalCategory(c, tenantId, req.body || {}, req.userId));
     const apiRow = rowToPersonalCategoryApi(row);
     emitEntityEvent(tenantId, 'created', 'personal_category', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, 201);
@@ -98,7 +98,7 @@ personalFinanceRouter.put('/personal-categories/:id', async (req: AuthedRequest,
   }
   const { id } = req.params;
   try {
-    const row = await withTransaction((c) => updatePersonalCategory(c, tenantId, id, req.body || {}));
+    const row = await withTransaction((c) => updatePersonalCategory(c, tenantId, id, req.body || {}, req.userId));
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -124,7 +124,7 @@ personalFinanceRouter.delete('/personal-categories/:id', async (req: AuthedReque
   const version =
     typeof versionRaw === 'string' && versionRaw !== '' ? parseInt(versionRaw, 10) : undefined;
   try {
-    const row = await withTransaction((c) => softDeletePersonalCategory(c, tenantId, id, version));
+    const row = await withTransaction((c) => softDeletePersonalCategory(c, tenantId, id, version, req.userId));
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -175,7 +175,7 @@ personalFinanceRouter.post('/personal-transactions/bulk', async (req: AuthedRequ
   }
   try {
     const result = await withTransaction((c) =>
-      bulkCreatePersonalTransactions(c, tenantId, items as Record<string, unknown>[])
+      bulkCreatePersonalTransactions(c, tenantId, items as Record<string, unknown>[], req.userId)
     );
     sendSuccess(res, result, 201);
   } catch (e) {
@@ -216,7 +216,7 @@ personalFinanceRouter.post('/personal-transactions', async (req: AuthedRequest, 
     return;
   }
   try {
-    const row = await withTransaction((c) => createPersonalTransaction(c, tenantId, req.body || {}));
+    const row = await withTransaction((c) => createPersonalTransaction(c, tenantId, req.body || {}, req.userId));
     const apiRow = rowToPersonalTransactionApi(row);
     emitEntityEvent(tenantId, 'created', 'personal_transaction', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, 201);
@@ -234,7 +234,7 @@ personalFinanceRouter.put('/personal-transactions/:id', async (req: AuthedReques
   }
   const { id } = req.params;
   try {
-    const row = await withTransaction((c) => updatePersonalTransaction(c, tenantId, id, req.body || {}));
+    const row = await withTransaction((c) => updatePersonalTransaction(c, tenantId, id, req.body || {}, req.userId));
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -260,7 +260,7 @@ personalFinanceRouter.delete('/personal-transactions/:id', async (req: AuthedReq
   const version =
     typeof versionRaw === 'string' && versionRaw !== '' ? parseInt(versionRaw, 10) : undefined;
   try {
-    const row = await withTransaction((c) => softDeletePersonalTransaction(c, tenantId, id, version));
+    const row = await withTransaction((c) => softDeletePersonalTransaction(c, tenantId, id, version, req.userId));
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;

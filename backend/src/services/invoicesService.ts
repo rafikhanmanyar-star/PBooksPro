@@ -5,7 +5,7 @@ import { enforceLockForSave } from './recordLocksService.js';
 import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from './invoiceJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { InvoiceRepository } from '../modules/customers/repositories/InvoiceRepository.js';
+import { InvoiceRepository, type InvoiceWriteFields } from '../modules/customers/repositories/InvoiceRepository.js';
 
 export type InvoiceRow = {
   id: string;
@@ -122,6 +122,37 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function trimOptId(v: string | null | undefined): string | null {
+  return v != null && String(v).trim() ? String(v).trim() : null;
+}
+
+function invoiceWriteFieldsFromPick(p: ReturnType<typeof pickBody>): InvoiceWriteFields {
+  return {
+    invoice_number: p.invoice_number,
+    contact_id: p.contact_id,
+    amount: p.amount,
+    paid_amount: p.paid_amount,
+    status: p.status,
+    issue_date: p.issue_date,
+    due_date: p.due_date,
+    invoice_type: p.invoice_type,
+    description: p.description ?? null,
+    project_id: trimOptId(p.project_id),
+    building_id: trimOptId(p.building_id),
+    property_id: trimOptId(p.property_id),
+    unit_id: trimOptId(p.unit_id),
+    category_id: trimOptId(p.category_id),
+    agreement_id: trimOptId(p.agreement_id),
+    security_deposit_charge:
+      p.security_deposit_charge != null && Number.isFinite(p.security_deposit_charge)
+        ? p.security_deposit_charge
+        : null,
+    service_charges:
+      p.service_charges != null && Number.isFinite(p.service_charges) ? p.service_charges : null,
+    rental_month: p.rental_month && String(p.rental_month).trim() ? String(p.rental_month).trim() : null,
+  };
+}
+
 export async function listInvoices(
   client: pg.PoolClient,
   tenantId: string,
@@ -206,8 +237,6 @@ export async function upsertInvoice(
     return { row, conflict: false, wasInsert: true };
   }
 
-  await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
-
   const expectedVersion = p.version;
   if (expectedVersion !== undefined) {
     const lww = await checkEntityLwwConflict(client, {
@@ -219,43 +248,14 @@ export async function upsertInvoice(
     if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
   }
 
-  const vals = [
-    p.invoice_number,
-    p.contact_id,
-    p.amount,
-    p.paid_amount,
-    p.status,
-    p.issue_date,
-    p.due_date,
-    p.invoice_type,
-    p.description ?? null,
-    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-    p.unit_id && String(p.unit_id).trim() ? String(p.unit_id).trim() : null,
-    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-    p.agreement_id && String(p.agreement_id).trim() ? String(p.agreement_id).trim() : null,
-    p.security_deposit_charge != null && Number.isFinite(p.security_deposit_charge)
-      ? p.security_deposit_charge
-      : null,
-    p.service_charges != null && Number.isFinite(p.service_charges) ? p.service_charges : null,
-    p.rental_month && String(p.rental_month).trim() ? String(p.rental_month).trim() : null,
-  ];
+  await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
 
-  const u = await client.query<InvoiceRow>(
-    `UPDATE invoices SET
-       invoice_number = $3, contact_id = $4, amount = $5, paid_amount = $6, status = $7,
-       issue_date = $8::date, due_date = $9::date, invoice_type = $10, description = $11,
-       project_id = $12, building_id = $13, property_id = $14, unit_id = $15, category_id = $16, agreement_id = $17,
-       security_deposit_charge = $18, service_charges = $19, rental_month = $20,
-       deleted_at = NULL, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2
-     RETURNING id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-               invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-               security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  const row = u.rows[0];
+  const locked = await new InvoiceRepository(tenantId).lockByIdIncludingDeletedForUpdate(client, id);
+  if (!locked) throw new Error('Invoice not found for update.');
+
+  const row = await new InvoiceRepository(tenantId).updateActive(client, id, invoiceWriteFieldsFromPick(p), {
+    restoreDeleted: true,
+  });
   if (!row) throw new Error('Upsert failed.');
   const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
   return { row: finalized, conflict: false, wasInsert: false };
@@ -273,42 +273,11 @@ export async function createInvoice(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `inv_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<InvoiceRow>(
-    `INSERT INTO invoices (
-       id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type,
-       description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-       security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8::date, $9::date, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-               invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-               security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.invoice_number,
-      p.contact_id,
-      p.amount,
-      p.paid_amount,
-      p.status,
-      p.issue_date,
-      p.due_date,
-      p.invoice_type,
-      p.description ?? null,
-      p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-      p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-      p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-      p.unit_id && String(p.unit_id).trim() ? String(p.unit_id).trim() : null,
-      p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-      p.agreement_id && String(p.agreement_id).trim() ? String(p.agreement_id).trim() : null,
-      p.security_deposit_charge != null && Number.isFinite(p.security_deposit_charge)
-        ? p.security_deposit_charge
-        : null,
-      p.service_charges != null && Number.isFinite(p.service_charges) ? p.service_charges : null,
-      p.rental_month && String(p.rental_month).trim() ? String(p.rental_month).trim() : null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-    ]
+  await new InvoiceRepository(tenantId).insert(
+    client,
+    id,
+    invoiceWriteFieldsFromPick(p),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
   const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
   return finalized;
@@ -321,74 +290,34 @@ export async function updateInvoice(
   body: Record<string, unknown>,
   actorUserId?: string | null
 ): Promise<{ row: InvoiceRow | null; conflict: boolean }> {
+  const existing = await getInvoiceById(client, tenantId, id);
+  if (!existing) return { row: null, conflict: false };
+
   await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
   const p = pickBody(body);
   const expectedVersion = p.version;
 
+  if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'invoices',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: existing, conflict: true };
+  }
+
+  const locked = await new InvoiceRepository(tenantId).getByIdForUpdate(client, id);
+  if (!locked) return { row: null, conflict: false };
+
   if (!p.invoice_number) throw new Error('invoiceNumber is required.');
   if (!p.contact_id) throw new Error('contactId is required.');
 
-  const vals = [
-    p.invoice_number,
-    p.contact_id,
-    p.amount,
-    p.paid_amount,
-    p.status,
-    p.issue_date,
-    p.due_date,
-    p.invoice_type,
-    p.description ?? null,
-    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-    p.unit_id && String(p.unit_id).trim() ? String(p.unit_id).trim() : null,
-    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-    p.agreement_id && String(p.agreement_id).trim() ? String(p.agreement_id).trim() : null,
-    p.security_deposit_charge != null && Number.isFinite(p.security_deposit_charge)
-      ? p.security_deposit_charge
-      : null,
-    p.service_charges != null && Number.isFinite(p.service_charges) ? p.service_charges : null,
-    p.rental_month && String(p.rental_month).trim() ? String(p.rental_month).trim() : null,
-  ];
-
-  if (expectedVersion !== undefined) {
-    const u = await client.query<InvoiceRow>(
-      `UPDATE invoices SET
-         invoice_number = $3, contact_id = $4, amount = $5, paid_amount = $6, status = $7,
-         issue_date = $8::date, due_date = $9::date, invoice_type = $10, description = $11,
-         project_id = $12, building_id = $13, property_id = $14, unit_id = $15, category_id = $16, agreement_id = $17,
-         security_deposit_charge = $18, service_charges = $19, rental_month = $20,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $21
-       RETURNING id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-                 invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-                 security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...vals, expectedVersion]
-    );
-    if (u.rows.length === 0) {
-      const exists = await getInvoiceById(client, tenantId, id);
-      if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
-    }
-    const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
-    return { row: finalized, conflict: false };
-  }
-
-  const u = await client.query<InvoiceRow>(
-    `UPDATE invoices SET
-       invoice_number = $3, contact_id = $4, amount = $5, paid_amount = $6, status = $7,
-       issue_date = $8::date, due_date = $9::date, invoice_type = $10, description = $11,
-       project_id = $12, building_id = $13, property_id = $14, unit_id = $15, category_id = $16, agreement_id = $17,
-       security_deposit_charge = $18, service_charges = $19, rental_month = $20,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-               invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-               security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  if (!u.rows[0]) return { row: null, conflict: false };
-  const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
+  const row = await new InvoiceRepository(tenantId).updateActive(client, id, invoiceWriteFieldsFromPick(p));
+  if (!row) return { row: null, conflict: false };
+  const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id, {
+    actorUserId: actorUserId ?? null,
+  });
   return { row: finalized, conflict: false };
 }
 
@@ -399,32 +328,42 @@ export async function softDeleteInvoice(
   expectedVersion?: number,
   actorUserId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getInvoiceById(client, tenantId, id);
+  if (!before) return { ok: false, conflict: false };
+
   await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
+
   if (expectedVersion !== undefined) {
-    const r = await client.query(
-      `UPDATE invoices SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
-      const ex = await getInvoiceById(client, tenantId, id);
-      if (!ex) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
-    if (r.rowCount) {
-      await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);
-    }
-    return { ok: true, conflict: false };
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'invoices',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
   }
-  const r = await client.query(
-    `UPDATE invoices SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  if ((r.rowCount ?? 0) > 0) {
-    await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);
+
+  const invoiceRepo = new InvoiceRepository(tenantId);
+  const deleted = await invoiceRepo.softDelete(client, id);
+  if (!deleted) return { ok: false, conflict: false };
+
+  await reverseInvoiceJournalMirror(client, tenantId, id, actorUserId ?? null);
+  const after = await getInvoiceByIdIncludingDeleted(client, tenantId, id);
+  if (after) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? after.user_id,
+      module: 'invoices',
+      entityType: 'invoice',
+      entityId: id,
+      action: 'delete',
+      summary: `Invoice ${after.invoice_number} deleted`,
+      oldValue: rowToInvoiceApi(before),
+      newValue: rowToInvoiceApi(after),
+      version: after.version,
+    });
   }
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  return { ok: true, conflict: false };
 }
 
 /** Includes soft-deleted rows (for incremental sync tombstones). */
@@ -433,15 +372,7 @@ export async function listInvoicesChangedSince(
   tenantId: string,
   since: Date
 ): Promise<InvoiceRow[]> {
-  const r = await client.query<InvoiceRow>(
-    `SELECT id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
-            invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
-            security_deposit_charge, service_charges, rental_month, user_id, version, deleted_at, created_at, updated_at
-     FROM invoices WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new InvoiceRepository(tenantId).listChangedSince(client, since);
 }
 
 /**
@@ -453,11 +384,7 @@ export async function recalculateInvoicePaymentAggregates(
   tenantId: string,
   invoiceId: string
 ): Promise<void> {
-  const invR = await client.query<Pick<InvoiceRow, 'amount' | 'status'>>(
-    `SELECT amount, status FROM invoices WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [invoiceId, tenantId]
-  );
-  const inv = invR.rows[0];
+  const inv = await getInvoiceById(client, tenantId, invoiceId);
   if (!inv) return;
   if (inv.status === 'Draft') return;
 
@@ -475,9 +402,5 @@ export async function recalculateInvoicePaymentAggregates(
   else if (paid > 0.1) newStatus = 'Partially Paid';
   else newStatus = 'Unpaid';
 
-  await client.query(
-    `UPDATE invoices SET paid_amount = $3, status = $4, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [invoiceId, tenantId, paid, newStatus]
-  );
+  await new InvoiceRepository(tenantId).setPaymentAggregates(client, invoiceId, paid, newStatus);
 }

@@ -595,6 +595,20 @@ export class AppStateApiService {
 
     applyChangeLogToMergedState(merged, response.changeLog);
 
+    try {
+      const { isLocalOnlyMode } = await import('../../config/apiUrl');
+      const { getCurrentTenantId } = await import('../database/tenantUtils');
+      if (!isLocalOnlyMode()) {
+        const tid = getCurrentTenantId();
+        if (tid && response.changeLog?.length) {
+          const { applyPayrollChangeLogToStorage } = await import('./payrollChangeLogMerge');
+          await applyPayrollChangeLogToStorage(tid, response.changeLog);
+        }
+      }
+    } catch (e) {
+      logger.warnCategory('sync', 'payroll changeLog merge skipped', e);
+    }
+
     if (response.appSettings && typeof response.appSettings === 'object') {
       Object.assign(merged, this.buildSettingsPartialFromFlat(response.appSettings as Record<string, any>));
     }

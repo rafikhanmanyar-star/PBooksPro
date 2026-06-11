@@ -1,6 +1,9 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { PmCycleAllocationRepository } from '../modules/project-selling/repositories/PmCycleAllocationRepository.js';
 
 export type PmCycleAllocationRow = {
   id: string;
@@ -123,15 +126,7 @@ export async function listPmCycleAllocationsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<PmCycleAllocationRow[]> {
-  const r = await client.query<PmCycleAllocationRow>(
-    `SELECT id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-            amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM pm_cycle_allocations WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new PmCycleAllocationRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function listPmCycleAllocations(
@@ -139,26 +134,7 @@ export async function listPmCycleAllocations(
   tenantId: string,
   filters?: { projectId?: string; cycleId?: string; status?: string }
 ): Promise<PmCycleAllocationRow[]> {
-  const params: unknown[] = [tenantId];
-  let q = `SELECT id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-           amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-           user_id, version, deleted_at, created_at, updated_at
-           FROM pm_cycle_allocations WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  if (filters?.projectId) {
-    params.push(filters.projectId);
-    q += ` AND project_id = $${params.length}`;
-  }
-  if (filters?.cycleId) {
-    params.push(filters.cycleId);
-    q += ` AND cycle_id = $${params.length}`;
-  }
-  if (filters?.status) {
-    params.push(filters.status);
-    q += ` AND status = $${params.length}`;
-  }
-  q += ' ORDER BY allocation_date DESC, cycle_id ASC';
-  const r = await client.query<PmCycleAllocationRow>(q, params);
-  return r.rows;
+  return new PmCycleAllocationRepository(tenantId).listActive(client, filters);
 }
 
 export async function getPmCycleAllocationById(
@@ -166,14 +142,32 @@ export async function getPmCycleAllocationById(
   tenantId: string,
   id: string
 ): Promise<PmCycleAllocationRow | null> {
-  const r = await client.query<PmCycleAllocationRow>(
-    `SELECT id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-            amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PmCycleAllocationRepository(tenantId).getById(client, id);
+}
+
+async function auditPmCycleAllocation(
+  client: pg.PoolClient,
+  tenantId: string,
+  action: 'create' | 'update' | 'delete',
+  row: PmCycleAllocationRow | null,
+  userId: string | null | undefined,
+  prior?: PmCycleAllocationRow | null,
+  entityId?: string
+): Promise<void> {
+  const id = entityId ?? row?.id;
+  if (!id) return;
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: userId ?? row?.user_id ?? null,
+    module: 'project_selling',
+    entityType: 'pm_cycle_allocation',
+    entityId: id,
+    action,
+    summary: `PM cycle allocation ${id} ${action}`,
+    newValue: row && action !== 'delete' ? rowToPmCycleAllocationApi(row) : undefined,
+    oldValue: prior ? rowToPmCycleAllocationApi(prior) : undefined,
+    version: row?.version,
+  });
 }
 
 async function updateRowValues(
@@ -184,6 +178,14 @@ async function updateRowValues(
   expectedVersion: number | undefined
 ): Promise<{ row: PmCycleAllocationRow | null; conflict: boolean }> {
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'pm_cycle_allocations',
+      entityId: rowId,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { row: null, conflict: true };
+
     const u = await client.query<PmCycleAllocationRow>(
       `UPDATE pm_cycle_allocations SET
          project_id = $3, cycle_id = $4, cycle_label = $5, frequency = $6,
@@ -278,19 +280,20 @@ export async function upsertPmCycleAllocation(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `pmca_${randomUUID().replace(/-/g, '')}`;
 
-  const byId = await client.query<PmCycleAllocationRow>(
-    `SELECT id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-            amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  if (byId.rows[0] && !byId.rows[0].deleted_at) {
+  const repo = new PmCycleAllocationRepository(tenantId);
+  const byId = await repo.getByIdIncludingDeleted(client, id);
+  if (byId && !byId.deleted_at) {
     const { row, conflict } = await updateRowValues(client, tenantId, id, p, p.version);
     if (conflict) throw new Error('Record was modified by another user');
-    if (row) return row;
+    if (row) {
+      await auditPmCycleAllocation(client, tenantId, 'update', row, authUserId, byId);
+      return row;
+    }
   }
-  if (byId.rows[0]?.deleted_at) {
+  if (byId?.deleted_at) {
+    if (p.version !== undefined && byId.version !== p.version) {
+      throw new Error('Record was modified by another user');
+    }
     const u = await client.query<PmCycleAllocationRow>(
       `UPDATE pm_cycle_allocations SET
          project_id = $3, cycle_id = $4, cycle_label = $5, frequency = $6,
@@ -323,22 +326,21 @@ export async function upsertPmCycleAllocation(
         p.user_id,
       ]
     );
-    if (u.rows[0]) return u.rows[0];
+    if (u.rows[0]) {
+      await auditPmCycleAllocation(client, tenantId, 'update', u.rows[0], authUserId, byId);
+      return u.rows[0];
+    }
   }
 
-  const triple = await client.query<PmCycleAllocationRow>(
-    `SELECT id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
-            amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,
-            user_id, version, deleted_at, created_at, updated_at
-     FROM pm_cycle_allocations
-     WHERE tenant_id = $1 AND project_id = $2 AND cycle_id = $3 AND deleted_at IS NULL`,
-    [tenantId, p.project_id, p.cycle_id]
-  );
-  if (triple.rows[0]) {
-    const existingId = triple.rows[0].id;
+  const triple = await repo.getByProjectAndCycle(client, p.project_id, p.cycle_id);
+  if (triple) {
+    const existingId = triple.id;
     const { row, conflict } = await updateRowValues(client, tenantId, existingId, p, p.version);
     if (conflict) throw new Error('Record was modified by another user');
-    if (row) return row;
+    if (row) {
+      await auditPmCycleAllocation(client, tenantId, 'update', row, authUserId, triple);
+      return row;
+    }
   }
 
   const ins = await client.query<PmCycleAllocationRow>(
@@ -374,31 +376,42 @@ export async function upsertPmCycleAllocation(
       p.user_id,
     ]
   );
-  return ins.rows[0];
+  const inserted = ins.rows[0];
+  await auditPmCycleAllocation(client, tenantId, 'create', inserted, authUserId);
+  return inserted;
 }
 
 export async function softDeletePmCycleAllocation(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  userId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const repo = new PmCycleAllocationRepository(tenantId);
+  const prior = await repo.getById(client, id);
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'pm_cycle_allocations',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const r = await client.query(
       `UPDATE pm_cycle_allocations SET deleted_at = NOW(), updated_at = NOW(), version = version + 1
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
       [id, tenantId, expectedVersion]
     );
     if (r.rowCount === 0) {
-      const meta = await client.query<{ deleted_at: Date | null }>(
-        `SELECT deleted_at FROM pm_cycle_allocations WHERE id = $1 AND tenant_id = $2`,
-        [id, tenantId]
-      );
-      const row = meta.rows[0];
-      if (!row) return { ok: false, conflict: false };
-      if (row.deleted_at) return { ok: false, conflict: false };
+      const meta = await repo.getByIdIncludingDeleted(client, id);
+      if (!meta) return { ok: false, conflict: false };
+      if (meta.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await auditPmCycleAllocation(client, tenantId, 'delete', null, userId, prior, id);
     return { ok: true, conflict: false };
   }
   const r = await client.query(
@@ -406,5 +419,9 @@ export async function softDeletePmCycleAllocation(
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  const ok = (r.rowCount ?? 0) > 0;
+  if (ok) {
+    await auditPmCycleAllocation(client, tenantId, 'delete', null, userId, prior, id);
+  }
+  return { ok, conflict: false };
 }

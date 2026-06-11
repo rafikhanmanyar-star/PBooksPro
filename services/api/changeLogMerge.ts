@@ -22,6 +22,11 @@ export const CHANGE_LOG_ENTITY_MAP: Record<string, keyof AppState> = {
   document: 'documents',
   quotation: 'quotations',
   recurring_invoice_template: 'recurringInvoiceTemplates',
+  personal_category: 'personalCategories',
+  personal_transaction: 'personalTransactions',
+  pm_cycle_allocation: 'pmCycleAllocations',
+  plan_amenity: 'planAmenities',
+  project_received_asset: 'projectReceivedAssets',
 };
 
 export type ChangeLogEntry = {

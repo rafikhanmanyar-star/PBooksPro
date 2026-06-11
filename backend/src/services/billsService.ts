@@ -5,7 +5,7 @@ import { enforceLockForSave } from './recordLocksService.js';
 import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPostingService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
-import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
+import { BillRepository, type BillWriteFields } from '../modules/vendors/repositories/BillRepository.js';
 
 export type BillRow = {
   id: string;
@@ -171,6 +171,35 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
+function trimOptId(v: string | null | undefined): string | null {
+  return v != null && String(v).trim() ? String(v).trim() : null;
+}
+
+function billWriteFieldsFromPick(p: ReturnType<typeof pickBody>): BillWriteFields {
+  return {
+    bill_number: p.bill_number,
+    contact_id: p.contact_id,
+    vendor_id: p.vendor_id,
+    amount: p.amount,
+    paid_amount: p.paid_amount,
+    status: p.status,
+    issue_date: p.issue_date,
+    due_date: p.due_date,
+    description: p.description ?? null,
+    category_id: trimOptId(p.category_id),
+    project_id: trimOptId(p.project_id),
+    building_id: trimOptId(p.building_id),
+    property_id: trimOptId(p.property_id),
+    project_agreement_id: trimOptId(p.project_agreement_id),
+    contract_id: trimOptId(p.contract_id),
+    staff_id: trimOptId(p.staff_id),
+    expense_bearer_type: trimOptId(p.expense_bearer_type),
+    expense_category_items: p.expense_category_items,
+    document_path: trimOptId(p.document_path),
+    document_id: trimOptId(p.document_id),
+  };
+}
+
 export async function listBills(
   client: pg.PoolClient,
   tenantId: string,
@@ -227,18 +256,7 @@ export async function getBillByTenantAndBillNumberIncludingDeleted(
   tenantId: string,
   billNumber: string
 ): Promise<BillRow | null> {
-  const num = billNumber.trim();
-  if (!num) return null;
-  const r = await client.query<BillRow>(
-    `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-            description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-            expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     FROM bills WHERE tenant_id = $1 AND bill_number = $2
-     ORDER BY CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END
-     LIMIT 1`,
-    [tenantId, num]
-  );
-  return r.rows[0] ?? null;
+  return new BillRepository(tenantId).getByTenantAndBillNumberIncludingDeleted(client, billNumber);
 }
 
 function isDuplicateBillNumberConstraint(e: unknown): boolean {
@@ -275,44 +293,12 @@ export async function createBill(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
-  const r = await client.query<BillRow>(
-    `INSERT INTO bills (
-       id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-       description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-       expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 1, NULL, NOW(), NOW()
-     )
-     RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-               description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-               expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-    [
-      id,
-      tenantId,
-      p.bill_number,
-      p.contact_id,
-      p.vendor_id,
-      p.amount,
-      p.paid_amount,
-      p.status,
-      p.issue_date,
-      p.due_date,
-      p.description ?? null,
-      p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-      p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-      p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-      p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-      p.project_agreement_id && String(p.project_agreement_id).trim() ? String(p.project_agreement_id).trim() : null,
-      p.contract_id && String(p.contract_id).trim() ? String(p.contract_id).trim() : null,
-      p.staff_id && String(p.staff_id).trim() ? String(p.staff_id).trim() : null,
-      p.expense_bearer_type && String(p.expense_bearer_type).trim() ? String(p.expense_bearer_type).trim() : null,
-      p.expense_category_items,
-      p.document_path && String(p.document_path).trim() ? String(p.document_path).trim() : null,
-      p.document_id && String(p.document_id).trim() ? String(p.document_id).trim() : null,
-      p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId,
-    ]
+  return new BillRepository(tenantId).insert(
+    client,
+    id,
+    billWriteFieldsFromPick(p),
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId
   );
-  return r.rows[0];
 }
 
 export async function updateBill(
@@ -324,69 +310,22 @@ export async function updateBill(
   const p = pickBody(body);
   if (!p.bill_number) throw new Error('billNumber is required.');
   const expectedVersion = p.version;
-
-  const vals = [
-    p.bill_number,
-    p.contact_id,
-    p.vendor_id,
-    p.amount,
-    p.paid_amount,
-    p.status,
-    p.issue_date,
-    p.due_date,
-    p.description ?? null,
-    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-    p.project_agreement_id && String(p.project_agreement_id).trim() ? String(p.project_agreement_id).trim() : null,
-    p.contract_id && String(p.contract_id).trim() ? String(p.contract_id).trim() : null,
-    p.staff_id && String(p.staff_id).trim() ? String(p.staff_id).trim() : null,
-    p.expense_bearer_type && String(p.expense_bearer_type).trim() ? String(p.expense_bearer_type).trim() : null,
-    p.expense_category_items,
-    p.document_path && String(p.document_path).trim() ? String(p.document_path).trim() : null,
-    p.document_id && String(p.document_id).trim() ? String(p.document_id).trim() : null,
-  ];
+  const fields = billWriteFieldsFromPick(p);
+  const billRepo = new BillRepository(tenantId);
 
   if (expectedVersion !== undefined) {
-    const u = await client.query<BillRow>(
-      `UPDATE bills SET
-         bill_number = $3, contact_id = $4, vendor_id = $5, amount = $6, paid_amount = $7, status = $8,
-         issue_date = $9::date, due_date = $10::date, description = $11,
-         category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
-         contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-         document_path = $21, document_id = $22,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $23
-       RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-                 description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-                 expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...vals, expectedVersion]
-    );
-    if (u.rows.length === 0) {
+    const u = await billRepo.updateActiveWithExpectedVersion(client, id, fields, expectedVersion);
+    if (!u.row) {
       const exists = await getBillById(client, tenantId, id);
       if (!exists) return { row: null, conflict: false };
-      return { row: null, conflict: true };
+      return { row: null, conflict: u.conflict };
     }
     const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
     return { row: finalized, conflict: false };
   }
 
-  const u = await client.query<BillRow>(
-    `UPDATE bills SET
-       bill_number = $3, contact_id = $4, vendor_id = $5, amount = $6, paid_amount = $7, status = $8,
-       issue_date = $9::date, due_date = $10::date, description = $11,
-       category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
-       contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-       document_path = $21, document_id = $22,
-       version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-     RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-               description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-               expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-    [id, tenantId, ...vals]
-  );
-  if (!u.rows[0]) return { row: null, conflict: false };
+  const row = await billRepo.updateActive(client, id, fields);
+  if (!row) return { row: null, conflict: false };
   const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
   return { row: finalized, conflict: false };
 }
@@ -408,97 +347,40 @@ async function upsertBillByTenantAndBillNumber(
   const expectedVer =
     typeof p.version === 'number' && Number.isFinite(p.version) ? Math.trunc(p.version) : null;
 
-  const hadRowBefore = await client.query(
-    `SELECT id FROM bills WHERE tenant_id = $1 AND bill_number = $2 LIMIT 1`,
-    [tenantId, p.bill_number]
-  );
+  const billRepo = new BillRepository(tenantId);
+  const existingByNumber = await billRepo.getByTenantAndBillNumberIncludingDeleted(client, p.bill_number);
 
-  if (hadRowBefore.rows.length > 0) {
-    const lockId = String(hadRowBefore.rows[0].id);
-    await enforceLockForSave(client, tenantId, 'bill', lockId, actorUserId);
+  if (existingByNumber) {
+    await enforceLockForSave(client, tenantId, 'bill', existingByNumber.id, actorUserId);
+    const locked = await billRepo.lockByIdIncludingDeletedForUpdate(client, existingByNumber.id);
+    if (!locked) throw new Error('Bill not found for update.');
+    if (expectedVer != null) {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'bills',
+        entityId: existingByNumber.id,
+        clientVersion: expectedVer,
+      });
+      if (lww.conflict) return { row: existingByNumber, conflict: true, wasInsert: false };
+    }
   }
 
-  const vals: unknown[] = [
+  const u = await billRepo.upsertOnTenantBillNumber(
+    client,
     proposeId,
-    tenantId,
-    p.bill_number,
-    p.contact_id,
-    p.vendor_id,
-    p.amount,
-    p.paid_amount,
-    p.status,
-    p.issue_date,
-    p.due_date,
-    p.description ?? null,
-    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-    p.project_agreement_id && String(p.project_agreement_id).trim()
-      ? String(p.project_agreement_id).trim()
-      : null,
-    p.contract_id && String(p.contract_id).trim() ? String(p.contract_id).trim() : null,
-    p.staff_id && String(p.staff_id).trim() ? String(p.staff_id).trim() : null,
-    p.expense_bearer_type && String(p.expense_bearer_type).trim()
-      ? String(p.expense_bearer_type).trim()
-      : null,
-    p.expense_category_items,
-    p.document_path && String(p.document_path).trim() ? String(p.document_path).trim() : null,
-    p.document_id && String(p.document_id).trim() ? String(p.document_id).trim() : null,
+    billWriteFieldsFromPick(p),
     userIdResolved,
-    expectedVer,
-  ];
-
-  const u = await client.query<BillRow>(
-    `INSERT INTO bills (
-       id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-       description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-       expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     ) VALUES (
-       $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
-       1, NULL, NOW(), NOW()
-     )
-     ON CONFLICT ON CONSTRAINT bills_tenant_id_bill_number_key
-     DO UPDATE SET
-       bill_number = EXCLUDED.bill_number,
-       contact_id = EXCLUDED.contact_id,
-       vendor_id = EXCLUDED.vendor_id,
-       amount = EXCLUDED.amount,
-       paid_amount = EXCLUDED.paid_amount,
-       status = EXCLUDED.status,
-       issue_date = EXCLUDED.issue_date,
-       due_date = EXCLUDED.due_date,
-       description = EXCLUDED.description,
-       category_id = EXCLUDED.category_id,
-       project_id = EXCLUDED.project_id,
-       building_id = EXCLUDED.building_id,
-       property_id = EXCLUDED.property_id,
-       project_agreement_id = EXCLUDED.project_agreement_id,
-       contract_id = EXCLUDED.contract_id,
-       staff_id = EXCLUDED.staff_id,
-       expense_bearer_type = EXCLUDED.expense_bearer_type,
-       expense_category_items = EXCLUDED.expense_category_items,
-       document_path = EXCLUDED.document_path,
-       document_id = EXCLUDED.document_id,
-       user_id = COALESCE(EXCLUDED.user_id, bills.user_id),
-       deleted_at = NULL,
-       version = bills.version + 1,
-       updated_at = NOW()
-     WHERE $24::integer IS NULL OR bills.version = $24::integer
-     RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-               description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-               expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-    vals
+    expectedVer
   );
 
-  const row = u.rows[0];
+  const row = u.row;
   if (!row) {
     const stale = await getBillByTenantAndBillNumberIncludingDeleted(client, tenantId, p.bill_number);
     if (!stale) throw new Error('Bill upsert failed: conflict on version.');
     return { row: stale, conflict: true, wasInsert: false };
   }
 
-  const wasInsert = hadRowBefore.rows.length === 0;
+  const wasInsert = !existingByNumber;
   const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
     action: wasInsert ? 'create' : 'update',
     actorUserId,
@@ -566,47 +448,17 @@ export async function upsertBill(
 
   await enforceLockForSave(client, tenantId, 'bill', id, actorUserId);
 
-  const vals = [
-    p.bill_number,
-    p.contact_id,
-    p.vendor_id,
-    p.amount,
-    p.paid_amount,
-    p.status,
-    p.issue_date,
-    p.due_date,
-    p.description ?? null,
-    p.category_id && String(p.category_id).trim() ? String(p.category_id).trim() : null,
-    p.project_id && String(p.project_id).trim() ? String(p.project_id).trim() : null,
-    p.building_id && String(p.building_id).trim() ? String(p.building_id).trim() : null,
-    p.property_id && String(p.property_id).trim() ? String(p.property_id).trim() : null,
-    p.project_agreement_id && String(p.project_agreement_id).trim() ? String(p.project_agreement_id).trim() : null,
-    p.contract_id && String(p.contract_id).trim() ? String(p.contract_id).trim() : null,
-    p.staff_id && String(p.staff_id).trim() ? String(p.staff_id).trim() : null,
-    p.expense_bearer_type && String(p.expense_bearer_type).trim() ? String(p.expense_bearer_type).trim() : null,
-    p.expense_category_items,
-    p.document_path && String(p.document_path).trim() ? String(p.document_path).trim() : null,
-    p.document_id && String(p.document_id).trim() ? String(p.document_id).trim() : null,
-    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : null,
-  ];
+  const locked = await new BillRepository(tenantId).lockByIdIncludingDeletedForUpdate(client, id);
+  if (!locked) return { row: existingById, conflict: false, wasInsert: false };
+
+  const userIdResolved =
+    p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId;
 
   try {
-    const u = await client.query<BillRow>(
-      `UPDATE bills SET
-         bill_number = $3, contact_id = $4, vendor_id = $5, amount = $6, paid_amount = $7, status = $8,
-         issue_date = $9::date, due_date = $10::date, description = $11,
-         category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
-         contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-         document_path = $21, document_id = $22,
-         user_id = COALESCE($23, user_id),
-         deleted_at = NULL, version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2
-       RETURNING id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-                 description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-                 expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...vals]
-    );
-    const row = u.rows[0];
+    const row = await new BillRepository(tenantId).updateActive(client, id, billWriteFieldsFromPick(p), {
+      userId: userIdResolved,
+      restoreDeleted: true,
+    });
     if (!row) throw new Error('Bill upsert failed.');
     const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
       action: 'update',
@@ -625,31 +477,45 @@ export async function softDeleteBill(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  actorUserId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const before = await getBillById(client, tenantId, id);
+  if (!before) return { ok: false, conflict: false };
+
+  await enforceLockForSave(client, tenantId, 'bill', id, actorUserId);
+
   if (expectedVersion !== undefined) {
-    const r = await client.query(
-      `UPDATE bills SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
-      const ex = await getBillById(client, tenantId, id);
-      if (!ex) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
-    await reverseBillJournalMirror(client, tenantId, id, null);
-    return { ok: true, conflict: false };
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'bills',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
   }
-  const r = await client.query(
-    `UPDATE bills SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  if ((r.rowCount ?? 0) > 0) {
-    await reverseBillJournalMirror(client, tenantId, id, null);
+
+  const billRepo = new BillRepository(tenantId);
+  const deleted = await billRepo.softDelete(client, id);
+  if (!deleted) return { ok: false, conflict: false };
+
+  await reverseBillJournalMirror(client, tenantId, id, actorUserId ?? null);
+  const after = await getBillByIdIncludingDeleted(client, tenantId, id);
+  if (after) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: actorUserId ?? after.user_id,
+      module: 'bills',
+      entityType: 'bill',
+      entityId: id,
+      action: 'delete',
+      summary: `Bill ${after.bill_number} deleted`,
+      oldValue: rowToBillApi(before),
+      newValue: rowToBillApi(after),
+      version: after.version,
+    });
   }
-  return { ok: (r.rowCount ?? 0) > 0, conflict: false };
+  return { ok: true, conflict: false };
 }
 
 export async function listBillsChangedSince(
@@ -657,15 +523,7 @@ export async function listBillsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<BillRow[]> {
-  const r = await client.query<BillRow>(
-    `SELECT id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
-            description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-            expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
-     FROM bills WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new BillRepository(tenantId).listChangedSince(client, since);
 }
 
 /** Recompute paid_amount + status from ledger (matches client applyTxToBillCopy). */
@@ -674,11 +532,7 @@ export async function recalculateBillPaymentAggregates(
   tenantId: string,
   billId: string
 ): Promise<void> {
-  const bR = await client.query<Pick<BillRow, 'amount' | 'status'>>(
-    `SELECT amount, status FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [billId, tenantId]
-  );
-  const b = bR.rows[0];
+  const b = await getBillById(client, tenantId, billId);
   if (!b) return;
 
   /** Income + Expense rows with bill_id (matches client applyTransactionEffect; Income = security-deposit bill payment). */
@@ -706,9 +560,5 @@ export async function recalculateBillPaymentAggregates(
   else if (paid > threshold) newStatus = 'Partially Paid';
   else newStatus = 'Unpaid';
 
-  await client.query(
-    `UPDATE bills SET paid_amount = $3, status = $4, version = version + 1, updated_at = NOW()
-     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [billId, tenantId, paid, newStatus]
-  );
+  await new BillRepository(tenantId).setPaymentAggregates(client, billId, paid, newStatus);
 }

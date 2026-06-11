@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../utils/apiResponse.js';
 import type { AuthedRequest } from '../middleware/authMiddleware.js';
 import { requireAdminRole } from '../middleware/authMiddleware.js';
-import { getPool } from '../db/pool.js';
+import { getPool, withTransaction } from '../db/pool.js';
 import type { PersonalTaskRow } from '../services/personalTasksService.js';
 import {
   createPersonalTask,
@@ -134,14 +134,10 @@ tasksRouter.post('/tasks', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const pool = getPool();
-    const client = await pool.connect();
-    try {
-      const row = await createPersonalTask(client, tenantId, userId, (req.body || {}) as Record<string, unknown>);
-      sendSuccess(res, rowToPersonalTaskApi(row), 201);
-    } finally {
-      client.release();
-    }
+    const row = await withTransaction((client) =>
+      createPersonalTask(client, tenantId, userId, (req.body || {}) as Record<string, unknown>)
+    );
+    sendSuccess(res, rowToPersonalTaskApi(row), 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -157,18 +153,14 @@ tasksRouter.put('/tasks/:id', async (req: AuthedRequest, res) => {
   }
   const { id } = req.params;
   try {
-    const pool = getPool();
-    const client = await pool.connect();
-    try {
-      const row = await updatePersonalTask(client, tenantId, userId, id, (req.body || {}) as Record<string, unknown>);
-      if (!row) {
-        sendFailure(res, 404, 'NOT_FOUND', 'Not found');
-        return;
-      }
-      sendSuccess(res, rowToPersonalTaskApi(row));
-    } finally {
-      client.release();
+    const row = await withTransaction((client) =>
+      updatePersonalTask(client, tenantId, userId, id, (req.body || {}) as Record<string, unknown>)
+    );
+    if (!row) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
     }
+    sendSuccess(res, rowToPersonalTaskApi(row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -184,18 +176,12 @@ tasksRouter.delete('/tasks/:id', async (req: AuthedRequest, res) => {
   }
   const { id } = req.params;
   try {
-    const pool = getPool();
-    const client = await pool.connect();
-    try {
-      const ok = await deletePersonalTask(client, tenantId, userId, id);
-      if (!ok) {
-        sendFailure(res, 404, 'NOT_FOUND', 'Not found');
-        return;
-      }
-      sendSuccess(res, { ok: true });
-    } finally {
-      client.release();
+    const ok = await withTransaction((client) => deletePersonalTask(client, tenantId, userId, id));
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
     }
+    sendSuccess(res, { ok: true });
   } catch (e) {
     handleRouteError(res, e);
   }

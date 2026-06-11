@@ -3,21 +3,55 @@
  */
 import type pg from 'pg';
 import { roundMoney } from '../financial/validation.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import {
   type CreateJournalBody,
   type InvestorTransactionType,
 } from './journalService.js';
 import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
+import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
 import { createTransaction } from './transactionsService.js';
+
+async function auditInvestorJournalEntry(
+  client: pg.PoolClient,
+  tenantId: string,
+  journalEntryId: string,
+  body: CreateJournalBody
+): Promise<void> {
+  const debitTotal = roundMoney(
+    body.lines.reduce((sum, line) => sum + (line.debitAmount ?? 0), 0)
+  );
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: body.createdBy ?? null,
+    module: 'investor_module',
+    entityType: 'investor_journal_entry',
+    entityId: journalEntryId,
+    action: 'create',
+    auditAction: body.investorTransactionType ?? 'investor_posting',
+    summary: body.description ?? 'Investor journal entry posted',
+    newValue: {
+      journalEntryId,
+      entryDate: body.entryDate,
+      reference: body.reference ?? undefined,
+      projectId: body.projectId ?? undefined,
+      investorId: body.investorId ?? undefined,
+      investorTransactionType: body.investorTransactionType ?? undefined,
+      amount: debitTotal,
+    },
+  });
+}
 
 async function postInvestorJournalEntry(
   client: pg.PoolClient,
   tenantId: string,
   body: CreateJournalBody
 ): Promise<{ journalEntryId: string }> {
-  return createFinancialPostingService(tenantId).postJournal(client, body, {
+  const result = await createFinancialPostingService(tenantId).postJournal(client, body, {
     actorUserId: body.createdBy,
   });
+  await auditInvestorJournalEntry(client, tenantId, result.journalEntryId, body);
+  return result;
 }
 
 /** Matches `EquityLedgerSubtype` in client `types.ts` — ledger UI reads `transactions`, not journal-only rows. */
@@ -113,14 +147,11 @@ export async function getEquityAccountBalanceThrough(
   equityAccountId: string,
   asOfYyyyMmDd: string
 ): Promise<number> {
-  const r = await client.query<{ s: string }>(
-    `SELECT COALESCE(SUM(jl.credit_amount - jl.debit_amount), 0)::text AS s
-     FROM journal_lines jl
-     INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
-     WHERE je.tenant_id = $1 AND jl.account_id = $2 AND je.entry_date <= $3::date`,
-    [tenantId, equityAccountId, asOfYyyyMmDd]
+  return new JournalRepository(tenantId).getEquityAccountBalanceThrough(
+    client,
+    equityAccountId,
+    asOfYyyyMmDd
   );
-  return roundMoney(Number(r.rows[0]?.s ?? 0));
 }
 
 /** Dr Cash / Cr Investor equity */
@@ -377,50 +408,21 @@ export async function fetchInvestorEquityLedger(
   investorEquityAccountId: string,
   options: { from?: string; to?: string; projectId?: string | 'all' }
 ): Promise<InvestorLedgerRow[]> {
-  const params: unknown[] = [tenantId, investorEquityAccountId];
-  let dateCond = '';
-  if (options.from) {
-    dateCond += ` AND je.entry_date >= $${params.length + 1}::date`;
-    params.push(options.from);
-  }
-  if (options.to) {
-    dateCond += ` AND je.entry_date <= $${params.length + 1}::date`;
-    params.push(options.to);
-  }
-  let projCond = '';
-  if (options.projectId && options.projectId !== 'all') {
-    projCond = ` AND (je.project_id = $${params.length + 1} OR jl.project_id = $${params.length + 1})`;
-    params.push(options.projectId);
-  }
-
-  const r = await client.query(
-    `SELECT je.id AS journal_entry_id, je.entry_date::text AS entry_date,
-            je.investor_transaction_type, je.reference, je.description,
-            jl.account_id, a.name AS account_name,
-            jl.debit_amount::float AS debit, jl.credit_amount::float AS credit,
-            COALESCE(jl.project_id, je.project_id) AS project_id
-     FROM journal_lines jl
-     INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
-     INNER JOIN accounts a ON a.id = jl.account_id
-     WHERE je.tenant_id = $1
-       AND jl.account_id = $2
-       AND a.deleted_at IS NULL
-       ${dateCond}
-       ${projCond}
-     ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`,
-    params
+  const rows = await new JournalRepository(tenantId).listInvestorEquityLedgerLines(
+    client,
+    investorEquityAccountId,
+    options
   );
-  return (r.rows as Record<string, unknown>[]).map((row) => ({
-    journalEntryId: String(row.journal_entry_id),
+  return rows.map((row) => ({
+    journalEntryId: row.journal_entry_id,
     entryDate: String(row.entry_date).slice(0, 10),
-    investorTransactionType:
-      row.investor_transaction_type != null ? String(row.investor_transaction_type) : null,
-    reference: row.reference != null ? String(row.reference) : null,
-    description: row.description != null ? String(row.description) : null,
-    accountId: String(row.account_id),
-    accountName: String(row.account_name),
-    debit: roundMoney(Number(row.debit)),
-    credit: roundMoney(Number(row.credit)),
+    investorTransactionType: row.investor_transaction_type,
+    reference: row.reference,
+    description: row.description,
+    accountId: row.account_id,
+    accountName: row.account_name,
+    debit: roundMoney(row.debit),
+    credit: roundMoney(row.credit),
     projectId: row.project_id != null ? String(row.project_id) : null,
   }));
 }

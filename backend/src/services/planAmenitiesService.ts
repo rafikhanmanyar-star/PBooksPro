@@ -1,5 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { PlanAmenityRepository } from '../modules/project-selling/repositories/PlanAmenityRepository.js';
 
 export type PlanAmenityRow = {
   id: string;
@@ -64,15 +67,7 @@ export async function listPlanAmenities(
   tenantId: string,
   filters?: { activeOnly?: boolean }
 ): Promise<PlanAmenityRow[]> {
-  let q = `SELECT id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
-     FROM plan_amenities WHERE tenant_id = $1 AND deleted_at IS NULL`;
-  const params: unknown[] = [tenantId];
-  if (filters?.activeOnly) {
-    q += ` AND is_active = 1`;
-  }
-  q += ` ORDER BY name ASC`;
-  const r = await client.query<PlanAmenityRow>(q, params);
-  return r.rows;
+  return new PlanAmenityRepository(tenantId).listActive(client, filters);
 }
 
 export async function getPlanAmenityById(
@@ -80,31 +75,22 @@ export async function getPlanAmenityById(
   tenantId: string,
   id: string
 ): Promise<PlanAmenityRow | null> {
-  const r = await client.query<PlanAmenityRow>(
-    `SELECT id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
-     FROM plan_amenities WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PlanAmenityRepository(tenantId).getById(client, id);
 }
 
-async function getByIdIncludingDeleted(
+export async function listPlanAmenitiesChangedSince(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
-): Promise<PlanAmenityRow | null> {
-  const r = await client.query<PlanAmenityRow>(
-    `SELECT id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
-     FROM plan_amenities WHERE id = $1 AND tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  since: Date
+): Promise<PlanAmenityRow[]> {
+  return new PlanAmenityRepository(tenantId).listChangedSince(client, since);
 }
 
 export async function upsertPlanAmenity(
   client: pg.PoolClient,
   tenantId: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  userId?: string | null
 ): Promise<{ row: PlanAmenityRow; conflict: boolean; wasInsert: boolean }> {
   const p = pickBody(body);
   if (!p.name) throw new Error('name is required.');
@@ -112,7 +98,8 @@ export async function upsertPlanAmenity(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `amenity_${randomUUID().replace(/-/g, '')}`;
 
-  const existing = await getByIdIncludingDeleted(client, tenantId, id);
+  const repo = new PlanAmenityRepository(tenantId);
+  const existing = await repo.getByIdIncludingDeleted(client, id);
   if (!existing) {
     const ins = await client.query<PlanAmenityRow>(
       `INSERT INTO plan_amenities (
@@ -121,11 +108,37 @@ export async function upsertPlanAmenity(
        RETURNING id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`,
       [id, tenantId, p.name, p.price, p.is_percentage, p.is_active, p.description]
     );
-    return { row: ins.rows[0], conflict: false, wasInsert: true };
+    const row = ins.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'project_selling',
+      entityType: 'plan_amenity',
+      entityId: row.id,
+      action: 'create',
+      summary: `Plan amenity ${row.name} created`,
+      newValue: rowToPlanAmenityApi(row),
+      version: row.version,
+    });
+    return { row, conflict: false, wasInsert: true };
   }
 
-  if (p.version !== undefined && existing.version !== p.version) {
-    return { row: existing, conflict: true, wasInsert: false };
+  const oldApi = rowToPlanAmenityApi(existing);
+
+  if (p.version !== undefined) {
+    if (existing.deleted_at) {
+      if (existing.version !== p.version) {
+        return { row: existing, conflict: true, wasInsert: false };
+      }
+    } else {
+      const lww = await checkEntityLwwConflict(client, {
+        tenantId,
+        table: 'plan_amenities',
+        entityId: id,
+        clientVersion: p.version,
+      });
+      if (lww.conflict) return { row: existing, conflict: true, wasInsert: false };
+    }
   }
 
   if (existing.deleted_at) {
@@ -137,7 +150,20 @@ export async function upsertPlanAmenity(
        RETURNING id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`,
       [id, tenantId, p.name, p.price, p.is_percentage, p.is_active, p.description]
     );
-    return { row: u.rows[0], conflict: false, wasInsert: false };
+    const row = u.rows[0];
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'project_selling',
+      entityType: 'plan_amenity',
+      entityId: row.id,
+      action: 'update',
+      summary: `Plan amenity ${row.name} restored`,
+      newValue: rowToPlanAmenityApi(row),
+      oldValue: oldApi,
+      version: row.version,
+    });
+    return { row, conflict: false, wasInsert: false };
   }
 
   const u = await client.query<PlanAmenityRow>(
@@ -151,46 +177,83 @@ export async function upsertPlanAmenity(
   if (u.rows.length === 0) {
     return { row: existing, conflict: true, wasInsert: false };
   }
-  return { row: u.rows[0], conflict: false, wasInsert: false };
+  const row = u.rows[0];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: userId ?? null,
+    module: 'project_selling',
+    entityType: 'plan_amenity',
+    entityId: row.id,
+    action: 'update',
+    summary: `Plan amenity ${row.name} updated`,
+    newValue: rowToPlanAmenityApi(row),
+    oldValue: oldApi,
+    version: row.version,
+  });
+  return { row, conflict: false, wasInsert: false };
 }
 
 export async function softDeletePlanAmenity(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  userId?: string | null
 ): Promise<{ ok: boolean; conflict: boolean }> {
+  const repo = new PlanAmenityRepository(tenantId);
+  const ex = await repo.getByIdIncludingDeleted(client, id);
+  const oldApi = ex && !ex.deleted_at ? rowToPlanAmenityApi(ex) : undefined;
+
   if (expectedVersion !== undefined) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'plan_amenities',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
+
     const u = await client.query(
       `UPDATE plan_amenities SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
       [id, tenantId, expectedVersion]
     );
     if ((u.rowCount ?? 0) === 0) {
-      const ex = await getByIdIncludingDeleted(client, tenantId, id);
-      if (!ex || ex.deleted_at) return { ok: false, conflict: false };
+      const again = await repo.getByIdIncludingDeleted(client, id);
+      if (!again || again.deleted_at) return { ok: false, conflict: false };
       return { ok: false, conflict: true };
     }
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'project_selling',
+      entityType: 'plan_amenity',
+      entityId: id,
+      action: 'delete',
+      summary: `Plan amenity ${id} deleted`,
+      oldValue: oldApi,
+      version: expectedVersion + 1,
+    });
     return { ok: true, conflict: false };
   }
+
   const u = await client.query(
     `UPDATE plan_amenities SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
      WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
-  return { ok: (u.rowCount ?? 0) > 0, conflict: false };
-}
-
-export async function listPlanAmenitiesChangedSince(
-  client: pg.PoolClient,
-  tenantId: string,
-  since: Date
-): Promise<PlanAmenityRow[]> {
-  const r = await client.query<PlanAmenityRow>(
-    `SELECT id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at
-     FROM plan_amenities WHERE tenant_id = $1 AND updated_at > $2
-     ORDER BY updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  const ok = (u.rowCount ?? 0) > 0;
+  if (ok) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: userId ?? null,
+      module: 'project_selling',
+      entityType: 'plan_amenity',
+      entityId: id,
+      action: 'delete',
+      summary: `Plan amenity ${id} deleted`,
+      oldValue: oldApi,
+    });
+  }
+  return { ok, conflict: false };
 }

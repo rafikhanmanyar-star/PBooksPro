@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { reverseVendorBillAdvanceSettlement } from './vendorBillAdvanceSettlementReverseService.js';
 import { settleVendorBillsBatchWithAdvances, type VendorBillAdvanceSettleLineInput } from './vendorBillAdvanceSettleService.js';
 import { getBillById, type BillRow } from './billsService.js';
@@ -63,6 +64,23 @@ export async function replaceVendorBillAdvanceSettlement(
     reference: typeof input.reference === 'string' ? input.reference : null,
     description: typeof input.description === 'string' ? input.description : null,
     batchId: typeof input.batchId === 'string' ? input.batchId : null,
+  });
+
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'bills',
+    entityType: 'vendor_bill_settlement',
+    entityId: jeId,
+    action: 'update',
+    auditAction: 'replace',
+    summary: `Vendor bill settlement replaced for bill ${bid}`,
+    newValue: {
+      replacedJournalEntryId: jeId,
+      newJournalEntries: settle.journalEntries,
+      billId: bid,
+      reversalJournalEntryId: rev.reversalJournalEntryId,
+    },
   });
 
   const bills: BillRow[] = [];

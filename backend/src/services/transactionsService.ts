@@ -19,6 +19,7 @@ import {
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
+import { TransactionRepository } from '../modules/accounting/repositories/TransactionRepository.js';
 
 /**
  * Recompute payslip paid_amount, is_paid, paid_at, transaction_id from non-deleted ledger rows
@@ -311,86 +312,12 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
-const SELECT_ROW = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,
-    t.account_id, t.from_account_id, t.to_account_id, t.category_id, t.contact_id, t.vendor_id, t.project_id,
-    t.building_id, t.property_id, t.unit_id, t.invoice_id, t.bill_id, t.payslip_id, t.contract_id, t.agreement_id,
-    t.batch_id, t.project_asset_id, t.owner_id, t.is_system, t.version, t.deleted_at, t.created_at, t.updated_at`;
-
 export async function listTransactions(
   client: pg.PoolClient,
   tenantId: string,
   filters: ListTransactionFilters = {}
 ): Promise<TransactionRow[]> {
-  const params: unknown[] = [tenantId];
-  const rentalOnly = filters.rentalInvoiceOnly === true;
-  let fromClause = 'FROM transactions t';
-  if (rentalOnly) {
-    fromClause += ` INNER JOIN invoices i ON i.id = t.invoice_id AND i.tenant_id = t.tenant_id`;
-  }
-  let where = ' WHERE t.tenant_id = $1 AND t.deleted_at IS NULL';
-  if (rentalOnly) {
-    where += ` AND i.deleted_at IS NULL AND i.invoice_type IN ('Rental', 'Security Deposit', 'Service Charge')`;
-  }
-
-  if (filters.projectId) {
-    params.push(filters.projectId);
-    where += ` AND t.project_id = $${params.length}`;
-  }
-  if (filters.startDate) {
-    params.push(filters.startDate);
-    where += ` AND t.date >= $${params.length}::date`;
-  }
-  if (filters.endDate) {
-    params.push(filters.endDate);
-    where += ` AND t.date <= $${params.length}::date`;
-  }
-  if (filters.type) {
-    params.push(filters.type);
-    where += ` AND t.type = $${params.length}`;
-  }
-  if (filters.invoiceId) {
-    params.push(filters.invoiceId);
-    where += ` AND t.invoice_id = $${params.length}`;
-  }
-  if (filters.ownerId) {
-    params.push(filters.ownerId);
-    where += ` AND t.owner_id = $${params.length}`;
-  }
-  if (filters.propertyId) {
-    params.push(filters.propertyId);
-    where += ` AND t.property_id = $${params.length}`;
-  }
-
-  const useKeyset =
-    typeof filters.cursorDate === 'string' &&
-    filters.cursorDate.trim() !== '' &&
-    typeof filters.cursorId === 'string' &&
-    filters.cursorId.trim() !== '';
-
-  if (useKeyset) {
-    params.push(filters.cursorDate!.trim(), filters.cursorId!.trim());
-    const dIdx = params.length - 1;
-    const idIdx = params.length;
-    where += ` AND (t.date < $${dIdx}::date OR (t.date = $${dIdx}::date AND t.id < $${idIdx}))`;
-  }
-
-  /** Default page size 200; callers may request up to 500k for tenant-scoped bulk sync / reports. */
-  const limit = Math.min(Math.max(filters.limit ?? 200, 1), 500_000);
-  const offset = useKeyset ? 0 : Math.max(filters.offset ?? 0, 0);
-  params.push(limit);
-  let q: string;
-  if (useKeyset) {
-    const limitIdx = params.length;
-    q = `${SELECT_ROW} ${fromClause} ${where} ORDER BY t.date DESC, t.id DESC LIMIT $${limitIdx}`;
-  } else {
-    params.push(offset);
-    const limitIdx = params.length - 1;
-    const offsetIdx = params.length;
-    q = `${SELECT_ROW} ${fromClause} ${where} ORDER BY t.date DESC, t.id DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`;
-  }
-
-  const r = await client.query<TransactionRow>(q, params);
-  return r.rows;
+  return new TransactionRepository(tenantId).list(client, filters);
 }
 
 export async function getTransactionById(
@@ -398,11 +325,7 @@ export async function getTransactionById(
   tenantId: string,
   id: string
 ): Promise<TransactionRow | null> {
-  const r = await client.query<TransactionRow>(
-    `${SELECT_ROW} FROM transactions t WHERE t.id = $1 AND t.tenant_id = $2 AND t.deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new TransactionRepository(tenantId).getById(client, id);
 }
 
 export async function getTransactionByIdIncludingDeleted(
@@ -410,11 +333,7 @@ export async function getTransactionByIdIncludingDeleted(
   tenantId: string,
   id: string
 ): Promise<TransactionRow | null> {
-  const r = await client.query<TransactionRow>(
-    `${SELECT_ROW} FROM transactions t WHERE t.id = $1 AND t.tenant_id = $2`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new TransactionRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
 function rowToProjectCashTxRow(row: TransactionRow): ProjectCashTxRow {
@@ -667,48 +586,11 @@ export async function updateTransaction(
     if (lww.conflict) {
       return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [] };
     }
+  }
 
-    const u = await client.query<TransactionRow>(
-      `UPDATE transactions SET
-         type = $3, subtype = $4, amount = $5, date = $6::date, description = $7, reference = $8,
-         account_id = $9, from_account_id = $10, to_account_id = $11, category_id = $12, contact_id = $13, vendor_id = $14,
-         project_id = $15, building_id = $16, property_id = $17, unit_id = $18, invoice_id = $19, bill_id = $20, payslip_id = $21,
-         contract_id = $22, agreement_id = $23, batch_id = $24, project_asset_id = $25, owner_id = $26, is_system = $27,
-         version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
-       RETURNING id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
-                 category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-                 contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`,
-      [id, tenantId, ...fieldVals]
-    );
-    if (u.rows.length === 0) {
-      return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
-    }
-    const row = u.rows[0];
-    await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id], [
-      before?.payslip_id,
-      row.payslip_id,
-    ]);
-    await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
-    if (!isVendorSettlementCashMirrorReference(row.reference)) {
-      await syncTransactionJournalMirror(client, tenantId, row, row.user_id);
-    }
-    const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
-    const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
-    await recordDomainMutation(client, {
-      tenantId,
-      userId: row.user_id,
-      module: 'transactions',
-      entityType: 'transaction',
-      entityId: row.id,
-      action: 'update',
-      auditAction: 'edit',
-      summary: `${row.type} transaction updated (${row.amount})`,
-      oldValue: before ? { id: before.id, type: before.type, amount: before.amount } : null,
-      newValue: { id: row.id, type: row.type, amount: row.amount },
-      version: row.version,
-    });
-    return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
+  const locked = await new TransactionRepository(tenantId).getByIdForUpdate(client, id);
+  if (!locked) {
+    return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
   }
 
   const u = await client.query<TransactionRow>(
@@ -804,6 +686,17 @@ export async function upsertTransaction(
     }
   }
 
+  const locked = await new TransactionRepository(tenantId).lockByIdIncludingDeletedForUpdate(client, id);
+  if (!locked) {
+    return {
+      row: existing,
+      conflict: false,
+      wasInsert: false,
+      affectedInvoiceIds: [],
+      affectedBillIds: [],
+    };
+  }
+
   const categoryResolvedUpsert = await resolveExpenseCategoryFromBill(
     client,
     tenantId,
@@ -883,6 +776,23 @@ export async function upsertTransaction(
   }
   const affectedInvoiceIds = [...new Set([existing.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([existing.bill_id, row.bill_id].filter(Boolean))] as string[];
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: row.user_id,
+    module: 'transactions',
+    entityType: 'transaction',
+    entityId: row.id,
+    action: existing.deleted_at ? 'create' : 'update',
+    auditAction: existing.deleted_at ? undefined : 'edit',
+    summary: existing.deleted_at
+      ? `${row.type} transaction restored (${row.amount})`
+      : `${row.type} transaction updated (${row.amount})`,
+    oldValue: existing.deleted_at
+      ? null
+      : { id: existing.id, type: existing.type, amount: existing.amount },
+    newValue: { id: row.id, type: row.type, amount: row.amount },
+    version: row.version,
+  });
   return { row, conflict: false, wasInsert: false, affectedInvoiceIds, affectedBillIds };
 }
 
@@ -913,24 +823,24 @@ export async function softDeleteTransaction(
   await syncOwnerSummariesForTransactionChange(client, tenantId, row, null);
 
   if (expectedVersion !== undefined) {
-    const r = await client.query(
-      `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $3`,
-      [id, tenantId, expectedVersion]
-    );
-    if (r.rowCount === 0) {
-      const ex = await getTransactionById(client, tenantId, id);
-      if (!ex) return { ok: false, conflict: false };
-      return { ok: false, conflict: true };
-    }
-  } else {
-    const r = await client.query(
-      `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [id, tenantId]
-    );
-    if ((r.rowCount ?? 0) === 0) return { ok: false, conflict: false };
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'transactions',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { ok: false, conflict: true };
   }
+
+  const locked = await new TransactionRepository(tenantId).getByIdForUpdate(client, id);
+  if (!locked) return { ok: false, conflict: false };
+
+  const r = await client.query(
+    `UPDATE transactions SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [id, tenantId]
+  );
+  if ((r.rowCount ?? 0) === 0) return { ok: false, conflict: false };
 
   await reverseTransactionJournalMirror(client, tenantId, id, row.user_id);
 
@@ -948,6 +858,7 @@ export async function softDeleteTransaction(
     await recalculatePayslipPaymentFromLedger(client, tenantId, payslipId);
   }
 
+  const after = await getTransactionByIdIncludingDeleted(client, tenantId, id);
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -956,8 +867,9 @@ export async function softDeleteTransaction(
     entityId: row.id,
     action: 'delete',
     summary: `${row.type} transaction deleted (${row.amount})`,
-    oldValue: { id: row.id, type: row.type, amount: row.amount },
-    version: row.version,
+    oldValue: rowToTransactionApi(row),
+    newValue: after ? rowToTransactionApi(after) : undefined,
+    version: after?.version ?? row.version + 1,
   });
 
   return { ok: true, conflict: false, recalculatedInvoiceId, recalculatedBillId };
@@ -968,11 +880,5 @@ export async function listTransactionsChangedSince(
   tenantId: string,
   since: Date
 ): Promise<TransactionRow[]> {
-  const r = await client.query<TransactionRow>(
-    `${SELECT_ROW} FROM transactions t
-     WHERE t.tenant_id = $1 AND t.updated_at > $2
-     ORDER BY t.updated_at ASC`,
-    [tenantId, since]
-  );
-  return r.rows;
+  return new TransactionRepository(tenantId).listChangedSince(client, since);
 }

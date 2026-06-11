@@ -1,10 +1,13 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
-import { insertJournalEntry } from './journalService.js';
+import { recordDomainMutation } from '../core/recordDomainMutation.js';
+import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
 import { roundMoney } from '../financial/validation.js';
 import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
 import { getContactById } from './contactsService.js';
 import { getVendorById } from './vendorsService.js';
+import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
+import { ContractorBillRepository } from '../modules/vendors/repositories/ContractorBillRepository.js';
 
 const MONEY_EPS = 0.005;
 
@@ -99,6 +102,53 @@ export function rowBillToApi(row: ContractorBillRow): Record<string, unknown> {
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
   };
+}
+
+async function auditContractorAdvance(
+  client: pg.PoolClient,
+  params: {
+    tenantId: string;
+    userId: string | null;
+    entityId: string;
+    action: 'create' | 'update';
+    summary: string;
+    row: ContractorAdvanceRow;
+  }
+): Promise<void> {
+  await recordDomainMutation(client, {
+    tenantId: params.tenantId,
+    userId: params.userId,
+    module: 'contractors',
+    entityType: 'contractor_advance',
+    entityId: params.entityId,
+    action: params.action,
+    summary: params.summary,
+    newValue: rowAdvanceToApi(params.row),
+  });
+}
+
+async function auditContractorBill(
+  client: pg.PoolClient,
+  params: {
+    tenantId: string;
+    userId: string | null;
+    entityId: string;
+    action: 'create' | 'update';
+    summary: string;
+    row: ContractorBillRow;
+    extra?: Record<string, unknown>;
+  }
+): Promise<void> {
+  await recordDomainMutation(client, {
+    tenantId: params.tenantId,
+    userId: params.userId,
+    module: 'contractors',
+    entityType: 'contractor_bill',
+    entityId: params.entityId,
+    action: params.action,
+    summary: params.summary,
+    newValue: params.extra ? { ...rowBillToApi(params.row), ...params.extra } : rowBillToApi(params.row),
+  });
 }
 
 export async function assertContactInTenant(client: pg.PoolClient, tenantId: string, contactId: string): Promise<void> {
@@ -242,7 +292,7 @@ export async function createContractorAdvance(
     ]
   );
 
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+  const { journalEntryId } = await new JournalRepository(tenantId).insertEntry(client, {
     entryDate: input.advanceDate,
     reference: input.reference?.trim() || `ADV:${id}`,
     description: input.description ?? 'Contractor advance payment',
@@ -271,15 +321,17 @@ export async function createContractorAdvance(
     [journalEntryId, id, tenantId]
   );
 
-  const r = await client.query<ContractorAdvanceRow>(
-    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
-       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
-       created_at, updated_at, deleted_at
-    FROM contractor_advances WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, id]
-  );
-  const row = r.rows[0];
+  const row = await new ContractorAdvanceRepository(tenantId).getById(client, id);
   if (!row) throw new Error('Advance not found after create.');
+
+  await auditContractorAdvance(client, {
+    tenantId,
+    userId: createdBy,
+    entityId: id,
+    action: 'create',
+    summary: `Contractor advance ${id} recorded`,
+    row,
+  });
   return row;
 }
 
@@ -338,15 +390,17 @@ export async function createContractorBill(
     }
     throw e;
   }
-  const r = await client.query<ContractorBillRow>(
-    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
-       description, project_id, construction_expense_account_id, residual_account_id,
-       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
-     FROM contractor_bills WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, id]
-  );
-  const row = r.rows[0];
+  const row = await new ContractorBillRepository(tenantId).getById(client, id);
   if (!row) throw new Error('Bill not found after create.');
+
+  await auditContractorBill(client, {
+    tenantId,
+    userId: createdBy,
+    entityId: id,
+    action: 'create',
+    summary: `Contractor bill ${bn ?? id} created`,
+    row,
+  });
   return row;
 }
 
@@ -371,14 +425,10 @@ export async function approveContractorBill(
     throw new Error('At least one adjustment is required.');
   }
 
-  const br = await client.query<ContractorBillRow>(
-    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
-       description, project_id, construction_expense_account_id, residual_account_id,
-       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
-     FROM contractor_bills WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL FOR UPDATE`,
-    [tenantId, billId]
-  );
-  const bill = br.rows[0];
+  const billRepo = new ContractorBillRepository(tenantId);
+  const advanceRepo = new ContractorAdvanceRepository(tenantId);
+
+  const bill = await billRepo.getByIdForUpdate(client, billId);
   if (!bill) throw new Error('Bill not found.');
   if (bill.status !== 'draft') {
     throw new Error('Bill is not in draft status; cannot approve again.');
@@ -406,16 +456,7 @@ export async function approveContractorBill(
 
   const advanceRowsMap = new Map<string, ContractorAdvanceRow>();
   for (const aid of uniqAdvanceIds) {
-    const ar = await client.query<ContractorAdvanceRow>(
-      `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
-          cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
-          created_at, updated_at, deleted_at
-       FROM contractor_advances
-       WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL
-       FOR UPDATE`,
-      [tenantId, aid]
-    );
-    const row = ar.rows[0];
+    const row = await advanceRepo.getByIdForUpdate(client, aid);
     if (!row) throw new Error(`Advance not found: ${aid}`);
     if (row.contractor_contact_id !== contractorId) {
       throw new Error(`Advance ${aid} belongs to another contractor than this bill.`);
@@ -475,7 +516,7 @@ export async function approveContractorBill(
     lines.push({ accountId: residualAcct, debitAmount: 0, creditAmount: residual, projectId });
   }
 
-  const { journalEntryId } = await insertJournalEntry(client, tenantId, {
+  const { journalEntryId } = await new JournalRepository(tenantId).insertEntry(client, {
     entryDate,
     reference: opts?.reference?.trim() ? opts.reference.trim() : `CTR-BILL:${billId}`,
     description: opts?.description ?? bill.description ?? 'Contractor bill approved',
@@ -492,15 +533,32 @@ export async function approveContractorBill(
     [journalEntryId, tenantId, billId]
   );
 
-  const refreshed = await client.query<ContractorBillRow>(
-    `SELECT id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
-       description, project_id, construction_expense_account_id, residual_account_id,
-       approval_journal_entry_id, created_by, created_at, updated_at, deleted_at
-     FROM contractor_bills WHERE tenant_id = $1 AND id = $2`,
-    [tenantId, billId]
-  );
-  const updatedBill = refreshed.rows[0];
+  const updatedBill = await billRepo.getById(client, billId);
   if (!updatedBill) throw new Error('Bill not found after approval.');
+
+  await auditContractorBill(client, {
+    tenantId,
+    userId: createdBy,
+    entityId: billId,
+    action: 'update',
+    summary: `Contractor bill ${updatedBill.bill_number ?? billId} approved`,
+    row: updatedBill,
+    extra: { journalEntryId },
+  });
+
+  for (const aid of uniqAdvanceIds) {
+    const refreshedAdvance = await advanceRepo.getById(client, aid);
+    if (!refreshedAdvance) continue;
+    await auditContractorAdvance(client, {
+      tenantId,
+      userId: createdBy,
+      entityId: aid,
+      action: 'update',
+      summary: `Advance ${aid} applied to bill ${billId}`,
+      row: refreshedAdvance,
+    });
+  }
+
   return { bill: updatedBill, journalEntryId };
 }
 
@@ -510,15 +568,7 @@ export async function getContractorAdvanceById(
   tenantId: string,
   id: string
 ): Promise<ContractorAdvanceRow | null> {
-  const r = await client.query<ContractorAdvanceRow>(
-    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
-       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
-       created_at, updated_at, deleted_at
-     FROM contractor_advances
-     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
-    [tenantId, id]
-  );
-  return r.rows[0] ?? null;
+  return new ContractorAdvanceRepository(tenantId).getById(client, id);
 }
 
 export async function listContractorAdvances(
@@ -526,16 +576,7 @@ export async function listContractorAdvances(
   tenantId: string,
   contractorContactId: string
 ): Promise<ContractorAdvanceRow[]> {
-  const r = await client.query<ContractorAdvanceRow>(
-    `SELECT id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
-       cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,
-       created_at, updated_at, deleted_at
-     FROM contractor_advances
-     WHERE tenant_id = $1 AND contractor_contact_id = $2 AND deleted_at IS NULL
-     ORDER BY advance_date ASC, id ASC`,
-    [tenantId, contractorContactId]
-  );
-  return r.rows;
+  return new ContractorAdvanceRepository(tenantId).listByContractor(client, contractorContactId);
 }
 
 export type LedgerAdjustmentLine = {

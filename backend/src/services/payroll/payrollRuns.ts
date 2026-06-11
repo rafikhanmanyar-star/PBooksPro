@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../core/recordDomainMutation.js';
 import { PayrollRunRepository } from '../../modules/payroll/repositories/PayrollRunRepository.js';
+import { PayslipRepository } from '../../modules/payroll/repositories/PayslipRepository.js';
 import {
   computeMonthlyPayslip,
   isPayrollPeriodBeforeJoiningDate,
@@ -12,7 +13,7 @@ import { ExpenseCashValidationBatchContext } from '../../financial/expenseCashVa
 import { createTransaction, rowToTransactionApi } from '../transactionsService.js';
 import { enforceLockForSave } from '../recordLocksService.js';
 import { dateStr, j, numStr, optStr } from './payrollHelpers.js';
-import { rowToPayrollRunApi } from './payrollRowMappers.js';
+import { rowToPayrollRunApi, rowToPayslipApi } from './payrollRowMappers.js';
 import { employeeRowToLike, listEmployees } from './payrollEmployees.js';
 import {
   type BulkPayPayslipLine,
@@ -27,6 +28,33 @@ async function enforcePayrollRunLock(
   actorUserId?: string | null
 ): Promise<void> {
   await enforceLockForSave(client, tenantId, 'payroll', runId, actorUserId);
+}
+
+async function auditPayslipMutation(
+  client: pg.PoolClient,
+  tenantId: string,
+  payslipId: string,
+  action: 'create' | 'update' | 'delete',
+  userId: string | null | undefined,
+  prior?: PayslipRow | null
+): Promise<void> {
+  const repo = new PayslipRepository(tenantId);
+  const row =
+    action === 'delete'
+      ? prior ?? (await repo.getByIdIncludingDeleted(client, payslipId))
+      : await repo.getById(client, payslipId);
+  if (!row && action !== 'delete') return;
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: userId ?? null,
+    module: 'payroll',
+    entityType: 'payslip',
+    entityId: payslipId,
+    action,
+    summary: `Payslip ${payslipId} ${action}`,
+    newValue: row && action !== 'delete' ? rowToPayslipApi(row) : undefined,
+    oldValue: prior ? rowToPayslipApi(prior) : row && action === 'delete' ? rowToPayslipApi(row) : undefined,
+  });
 }
 
 export async function listPayrollRuns(client: pg.PoolClient, tenantId: string): Promise<PayrollRunRow[]> {
@@ -147,7 +175,27 @@ export async function recalculatePayrollRunAggregates(
                created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at`,
     [runId, tenantId, totalAmt, count, newStatus, paidAt]
   );
-  return u.rows[0] ?? null;
+  const updated = u.rows[0] ?? null;
+  if (
+    updated &&
+    (run.total_amount !== updated.total_amount ||
+      run.employee_count !== updated.employee_count ||
+      run.status !== updated.status ||
+      String(run.paid_at ?? '') !== String(updated.paid_at ?? ''))
+  ) {
+    await recordDomainMutation(client, {
+      tenantId,
+      userId: updated.updated_by ?? updated.created_by,
+      module: 'payroll',
+      entityType: 'payroll_run',
+      entityId: updated.id,
+      action: 'update',
+      summary: `Payroll run ${updated.month} ${updated.year} aggregates recalculated`,
+      newValue: rowToPayrollRunApi(updated),
+      oldValue: rowToPayrollRunApi(run),
+    });
+  }
+  return updated;
 }
 
 export async function updatePayrollRun(
@@ -222,10 +270,14 @@ export async function deletePayrollRun(
 ): Promise<boolean> {
   await enforcePayrollRunLock(client, tenantId, id, actorUserId);
   const prior = await getPayrollRun(client, tenantId, id);
+  const payslipsToDelete = await listPayslipsByRun(client, tenantId, id);
   await client.query(
     `UPDATE payslips SET deleted_at = NOW(), updated_at = NOW() WHERE payroll_run_id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
     [id, tenantId]
   );
+  for (const ps of payslipsToDelete) {
+    await auditPayslipMutation(client, tenantId, ps.id, 'delete', actorUserId, ps);
+  }
   const u = await client.query(`UPDATE payroll_runs SET deleted_at = NOW(), updated_at = NOW() WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`, [
     id,
     tenantId,
@@ -251,14 +303,7 @@ export async function listPayslipsByRun(
   tenantId: string,
   runId: string
 ): Promise<PayslipRow[]> {
-  const r = await client.query<PayslipRow>(
-    `SELECT id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
-            total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
-            assignment_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at
-     FROM payslips WHERE tenant_id = $1 AND payroll_run_id = $2 AND deleted_at IS NULL ORDER BY id ASC`,
-    [tenantId, runId]
-  );
-  return r.rows;
+  return new PayslipRepository(tenantId).listByRun(client, runId);
 }
 
 export async function listPayslipsByEmployee(
@@ -266,14 +311,7 @@ export async function listPayslipsByEmployee(
   tenantId: string,
   employeeId: string
 ): Promise<PayslipRow[]> {
-  const r = await client.query<PayslipRow>(
-    `SELECT id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
-            total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
-            assignment_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at
-     FROM payslips WHERE tenant_id = $1 AND employee_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC`,
-    [tenantId, employeeId]
-  );
-  return r.rows;
+  return new PayslipRepository(tenantId).listByEmployee(client, employeeId);
 }
 
 export async function getPayslip(
@@ -281,14 +319,7 @@ export async function getPayslip(
   tenantId: string,
   id: string
 ): Promise<PayslipRow | null> {
-  const r = await client.query<PayslipRow>(
-    `SELECT id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
-            total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
-            assignment_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at
-     FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-    [id, tenantId]
-  );
-  return r.rows[0] ?? null;
+  return new PayslipRepository(tenantId).getById(client, id);
 }
 
 const PAYSIP_BATCH_ROWS = 50;
@@ -454,6 +485,7 @@ export async function processPayrollRun(
       newCount++;
       newAmount += computed.net_pay;
       touchedEmployeeIds.add(emp.id);
+      await auditPayslipMutation(client, tenantId, reviveId, 'create', actorUserId);
       continue;
     }
 
@@ -477,6 +509,9 @@ export async function processPayrollRun(
     const slice = toInsert.slice(c, c + PAYSIP_BATCH_ROWS);
     const { sql, params } = buildPayslipBatchInsert(slice);
     await client.query(sql, params);
+    for (const row of slice) {
+      await auditPayslipMutation(client, tenantId, row.id, 'create', actorUserId);
+    }
   }
 
   const sumQ = await client.query<{ total_amt: string; cnt: string }>(
@@ -495,6 +530,18 @@ export async function processPayrollRun(
   );
   const updated = u.rows[0];
   if (!updated) throw new Error('Failed to update payroll run.');
+
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId ?? updated.updated_by ?? updated.created_by,
+    module: 'payroll',
+    entityType: 'payroll_run',
+    entityId: updated.id,
+    action: 'update',
+    summary: `Payroll run ${updated.month} ${updated.year} processed (${newCount} new payslip(s))`,
+    newValue: rowToPayrollRunApi(updated),
+    oldValue: rowToPayrollRunApi(run),
+  });
 
   const { syncPayrollLedgerForEmployee } = await import('../payrollLedgerService.js');
   for (const eid of touchedEmployeeIds) {
@@ -557,6 +604,9 @@ export async function updatePayslipAmounts(
   );
   await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
   const updated = await getPayslip(client, tenantId, payslipId);
+  if (updated) {
+    await auditPayslipMutation(client, tenantId, payslipId, 'update', actorUserId, ps);
+  }
   const empId = ps.employee_id;
   const { syncPayrollLedgerForEmployee } = await import('../payrollLedgerService.js');
   await syncPayrollLedgerForEmployee(client, tenantId, empId);
@@ -578,6 +628,7 @@ export async function softDeletePayslip(
     [payslipId, tenantId]
   );
   if ((u.rowCount ?? 0) === 0) return false;
+  await auditPayslipMutation(client, tenantId, payslipId, 'delete', actorUserId, ps);
   await recalculatePayrollRunAggregates(client, tenantId, runId);
   const { syncPayrollLedgerForEmployee } = await import('../payrollLedgerService.js');
   await syncPayrollLedgerForEmployee(client, tenantId, ps.employee_id);
@@ -634,6 +685,7 @@ export async function payPayslip(
 
   const row = await getPayslip(client, tenantId, payslipId);
   if (!row) throw new Error('Failed to load payslip after payment.');
+  await auditPayslipMutation(client, tenantId, payslipId, 'update', userId, ps);
   if (!options?.skipRecalculate) {
     await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
   }

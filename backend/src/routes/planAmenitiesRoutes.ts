@@ -54,7 +54,9 @@ planAmenitiesRouter.post('/plan-amenities', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const result = await withTransaction((client) => upsertPlanAmenity(client, tenantId, req.body as Record<string, unknown>));
+    const result = await withTransaction((client) =>
+      upsertPlanAmenity(client, tenantId, req.body as Record<string, unknown>, req.userId)
+    );
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
@@ -78,7 +80,7 @@ planAmenitiesRouter.put('/plan-amenities/:id', async (req: AuthedRequest, res) =
   const { id } = req.params;
   try {
     const body = { ...(req.body as Record<string, unknown>), id };
-    const result = await withTransaction((client) => upsertPlanAmenity(client, tenantId, body));
+    const result = await withTransaction((client) => upsertPlanAmenity(client, tenantId, body, req.userId));
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
@@ -104,7 +106,13 @@ planAmenitiesRouter.delete('/plan-amenities/:id', async (req: AuthedRequest, res
     typeof versionRaw === 'string' && versionRaw.trim() !== '' ? parseInt(versionRaw, 10) : undefined;
   try {
     const { ok, conflict } = await withTransaction((client) =>
-      softDeletePlanAmenity(client, tenantId, id, Number.isFinite(expectedVersion as number) ? expectedVersion : undefined)
+      softDeletePlanAmenity(
+        client,
+        tenantId,
+        id,
+        Number.isFinite(expectedVersion as number) ? expectedVersion : undefined,
+        req.userId
+      )
     );
     if (conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');

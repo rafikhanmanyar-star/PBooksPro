@@ -35,8 +35,8 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | `analytics_snapshots` + dashboard API + scheduler | Implemented; dashboard also uses legacy metrics/KPI paths in parallel |
 | `document_metadata` + `DocumentStorageService` | Built in `modules/documents/` |
 | `change_log` + `sync_queue` + `assertLwwVersion()` | Tables + helpers; **`completeEntityMutation()`** combines LWW + audit (opt-in per route) |
-| `recordDomainMutation()` + `withAudit()` | Wired for bills, invoices, documents, transactions, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll departments/grades/employees/runs**, PEV |
-| Domain repository strangler | Bills, invoices, contacts, vendors, properties, buildings, rental agreements, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments, grades, employees, runs)** — list/get delegated to domain repos |
+| `recordDomainMutation()` + `withAudit()` | Wired for bills, invoices, documents, transactions, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments, grades, employees, runs, payslips, projects, tenant config)**, **personal categories/transactions/tasks**, **PM cycle allocations**, **plan amenities**, **project received assets**, **app settings (single + bulk)**, **PEV + project expense categories**, **contractor advances/bills**, **investor journal postings**, **vendor bill prepaid settlement (settle + reverse + replace)** |
+| Domain repository strangler | Bills, invoices (**reads + insert/update/soft-delete/payment-aggregate writes**), **transactions (list/get/changed-since, for-update + including-deleted upsert locks)**, contacts, vendors, properties, buildings, rental agreements, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments, grades, employees, runs, payslips, salary components, projects, tenant config)**, **personal finance (categories, transactions, tasks)**, **PM cycle allocations**, **plan amenities**, **project received assets**, **app settings**, **project expense (vouchers + categories)**, **contractor advances/bills**, **vendor bill advance clearings**, **journal (investor equity ledger reads + settlement posting via repo)** — list/get delegated to domain repos |
 
 ### Not done / partially wired
 
@@ -44,10 +44,10 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 |------|-----------------|
 | **Routes → Services → Repositories** | ~93 flat route files + ~120+ services with inline SQL. Repositories exist for key domains; **bills/invoices reads** delegate to repos; most writes still inline SQL |
 | **`withAudit()`** | Implemented; delegates to **`recordDomainMutation()`** (audit + change_log) |
-| **`recordDomainMutation()`** | Priority domains above; payroll **payslips/projects/config/salary components** CRUD still ad hoc (no `version` column on payroll tables — LWW deferred) |
-| **`change_log` writes** | Via `recordDomainMutation` on priority mutations; **`appStateBulkService` does not write change_log** |
-| **`assertLwwVersion()` (LWW)** | Wired on priority upserts/updates via **`checkEntityLwwConflict()`** (transactions, bills, invoices, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, **quotations**, **recurring invoice templates**) |
-| **`change_log` in incremental sync** | **`GET /state/changes`** includes `changeLog[]`; **Electron client merges `changeLog` in `loadStateViaIncrementalSync()`** via `services/api/changeLogMerge.ts` |
+| **`recordDomainMutation()`** | Priority domains above; payroll **salary components** read-only via repo (no upsert routes); no `version` column on payroll tables — LWW deferred |
+| **`change_log` writes** | Via `recordDomainMutation` on priority mutations (incl. **bill/invoice soft delete**); bulk writes via **`appStateBulkMutationService`** (`POST /app-settings/bulk`, bulk personal transaction import); **single app_settings** POST/DELETE also write change_log |
+| **`assertLwwVersion()` (LWW)** | Wired on priority upserts/updates via **`checkEntityLwwConflict()`** (transactions, bills, invoices, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, **quotations**, **recurring invoice templates**, **personal categories**, **personal transactions**, **PM cycle allocations**, **plan amenities**, **project received assets**, **project expense vouchers**, **project expense categories**) |
+| **`change_log` in incremental sync** | **`GET /state/changes`** includes `changeLog[]`; **Electron client merges `changeLog` in `loadStateViaIncrementalSync()`** via `services/api/changeLogMerge.ts` (AppState) and **`services/api/payrollChangeLogMerge.ts`** (payroll localStorage) |
 | **Documents on R2** | Phase 3 ✅ — `document_metadata` only; legacy `documents` blocked by trigger (migration 111) |
 | **Domain module migration** | Repositories scaffolded (vendors, customers, crm, leases, properties, project-selling); **no module routes/services** except dashboard + documents storage + accounting posting |
 | **Report engines** | Logic in `shared/report-engines/`; backend uses centralized **`loadReportEngine()`** over esbuild bundles (direct TS import deferred) |
@@ -170,11 +170,13 @@ backend/src/modules/<domain>/repositories/ ← SQL via TenantRepository
 | documents | `modules/documents/` | `DocumentRepository`, `DocumentStorageService` (R2) |
 | vendors | `modules/vendors/` | `BillRepository`, `ContractRepository`, **`QuotationRepository`**, `VendorRepository` |
 | customers | `modules/customers/` | `InvoiceRepository`, **`RecurringInvoiceTemplateRepository`** |
-| project-selling | `modules/project-selling/` | `ProjectAgreementRepository`, `ProjectRepository`, `UnitRepository`, `BudgetRepository`, **`InstallmentPlanRepository`**, **`SalesReturnRepository`** |
+| project-selling | `modules/project-selling/` | `ProjectAgreementRepository`, `ProjectRepository`, `UnitRepository`, `BudgetRepository`, **`InstallmentPlanRepository`**, **`SalesReturnRepository`**, **`PmCycleAllocationRepository`**, **`PlanAmenityRepository`**, **`ProjectReceivedAssetRepository`** |
 | leases | `modules/leases/` | `RentalAgreementRepository` |
 | properties | `modules/properties/` | `PropertyRepository` |
 | crm | `modules/crm/` | `ContactRepository` |
-| payroll | `modules/payroll/` | **`PayrollDepartmentRepository`**, **`PayrollGradeRepository`**, **`PayrollEmployeeRepository`**, **`PayrollRunRepository`** |
+| payroll | `modules/payroll/` | **`PayrollDepartmentRepository`**, **`PayrollGradeRepository`**, **`PayrollEmployeeRepository`**, **`PayrollRunRepository`**, **`PayslipRepository`**, **`PayrollSalaryComponentRepository`**, **`PayrollProjectRepository`**, **`PayrollTenantConfigRepository`** |
+| personal-finance | `modules/personal-finance/` | **`PersonalCategoryRepository`**, **`PersonalTransactionRepository`**, **`PersonalTaskRepository`** |
+| app-settings | `modules/app-settings/` | **`AppSettingsRepository`** |
 | reporting | `modules/reporting/` | custom report templates, SQL compilers |
 
 Each module scaffold: `routes/`, `services/`, `repositories/`, `validators/`, `types/`.
@@ -413,7 +415,7 @@ When adding SQLite tables/columns, update `schema.ts` and re-extract — keep al
 
 - **`change_log`:** inbound change feed per tenant (entity_type, entity_id, action, payload, version)
 - **`sync_queue`:** outbound mutations awaiting push
-- Written by `recordDomainMutation()` and `appStateBulkService` on mutations
+- Written by `recordDomainMutation()` and **`appStateBulkMutationService`** on bulk mutation paths (`app_settings` bulk upsert, personal transaction bulk import)
 - Phase 1 conflict policy: **last-write-wins** comparing `version` + `updated_at` (409 on conflict)
 
 ### Report Engines
