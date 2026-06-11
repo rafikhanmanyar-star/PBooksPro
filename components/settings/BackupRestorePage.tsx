@@ -34,19 +34,19 @@ const BackupRestorePage: React.FC = () => {
         return (
             <div className="p-4 sm:p-6">
                 <div className="max-w-2xl mx-auto">
-                    <div className="p-5 sm:p-6 border border-slate-200 rounded-xl bg-slate-50/50 shadow-sm">
+                    <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-bg/50 shadow-ds-card">
                         {showSqliteCompanyBackup ? (
                             <CompanyBackupRestore />
                         ) : showPostgresBackup ? (
                             <PostgresBackupRestore />
                         ) : (
                             <>
-                                <h4 className="text-lg font-semibold text-slate-800 mb-1">Company Backup</h4>
-                                <p className="text-sm text-slate-600 mb-4">
+                                <h4 className="text-lg font-semibold text-app-text mb-1">Company Backup</h4>
+                                <p className="text-sm text-app-muted mb-4">
                                     Create and restore backups of your current company database. Backups are stored locally and can be restored anytime.
                                 </p>
-                                <div className="py-8 px-4 text-center rounded-lg bg-slate-100/80 border border-slate-200">
-                                    <p className="text-sm text-slate-600">
+                                <div className="py-8 px-4 text-center rounded-lg bg-app-surface-2/80 border border-app-border">
+                                    <p className="text-sm text-app-muted">
                                         {isLocalOnlyMode() && !companyCtx?.activeCompany
                                             ? 'Select or create a company to manage backups.'
                                             : isLocalOnlyMode()
@@ -65,7 +65,7 @@ const BackupRestorePage: React.FC = () => {
     };
 
     const renderImport = () => (
-        <div className="flex flex-col min-h-[400px] bg-white">
+        <div className="flex flex-col min-h-[400px] bg-app-card">
             <ImportExportWizard
                 embedded
                 startAtImport
@@ -77,14 +77,14 @@ const BackupRestorePage: React.FC = () => {
     const renderSelectiveExport = () => (
         <div className="p-4 sm:p-6">
             <div className="max-w-2xl mx-auto">
-                <div className="p-5 sm:p-6 border border-slate-200 rounded-xl bg-slate-50/50 shadow-sm">
-                    <h4 className="text-lg font-semibold text-slate-800 mb-1">Selective Export</h4>
-                    <p className="text-sm text-slate-600 mb-4">
+                <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-bg/50 shadow-ds-card">
+                    <h4 className="text-lg font-semibold text-app-text mb-1">Selective Export</h4>
+                    <p className="text-sm text-app-muted mb-4">
                         Select specific data types to export as CSV or Excel. Choose formats and run the export.
                     </p>
                     <button
                         onClick={() => setIsExportDataModalOpen(true)}
-                        className="w-full p-4 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-sm transition-all text-left group flex items-center gap-3"
+                        className="w-full p-4 bg-app-card border border-app-border rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-ds-card transition-all text-left group flex items-center gap-3"
                     >
                         <span className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -94,8 +94,8 @@ const BackupRestorePage: React.FC = () => {
                             </svg>
                         </span>
                         <div>
-                            <div className="font-semibold text-slate-700 group-hover:text-blue-700">Select data types and export</div>
-                            <p className="text-xs text-slate-500">Choose formats (CSV or Excel) and run export</p>
+                            <div className="font-semibold text-app-text group-hover:text-blue-700">Select data types and export</div>
+                            <p className="text-xs text-app-muted">Choose formats (CSV or Excel) and run export</p>
                         </div>
                     </button>
                 </div>
@@ -142,7 +142,7 @@ const BackupRestorePage: React.FC = () => {
                     onTabClick={setActiveTab}
                 />
             </div>
-            <div className="flex-grow min-h-[400px] bg-white rounded-b-lg -mt-px">
+            <div className="flex-grow min-h-[400px] bg-app-card rounded-b-lg -mt-px">
                 {renderTabContent()}
             </div>
 

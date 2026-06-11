@@ -62,13 +62,13 @@ const BuildingForm: React.FC<BuildingFormProps> = ({ onSubmit, onCancel, onDelet
                         {nameError && <p className="text-red-500 text-xs mt-1">{nameError}</p>}
                     </div>
                     <div>
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Color</label>
+                        <label className="block text-sm font-medium text-app-muted mb-1">Color</label>
                         <div className="flex items-center gap-2">
                             <input 
                                 type="color" 
                                 value={color} 
                                 onChange={(e) => setColor(e.target.value)}
-                                className="h-10 w-20 sm:w-20 rounded-md cursor-pointer border border-slate-300 p-1 bg-white touch-manipulation"
+                                className="h-10 w-20 sm:w-20 rounded-md cursor-pointer border border-app-border p-1 bg-app-card touch-manipulation"
                             />
                         </div>
                     </div>

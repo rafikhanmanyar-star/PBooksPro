@@ -98,16 +98,16 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" role="dialog" aria-modal="true">
-      <div className="w-full max-w-lg rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl max-h-[90vh] overflow-y-auto">
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
+      <div className="w-full max-w-lg rounded-xl bg-app-card border border-app-border shadow-ds-modal max-h-[90vh] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-app-border flex justify-between items-center">
+          <h2 className="text-lg font-semibold text-app-text">
             {mode === 'create' ? 'New task' : 'Edit task'}
           </h2>
           <button
             type="button"
             onClick={onClose}
             disabled={saving}
-            className="text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-1 rounded-lg disabled:opacity-50"
+            className="text-app-muted hover:text-app-text p-1 rounded-lg disabled:opacity-50"
             aria-label="Close"
           >
             ✕
@@ -115,44 +115,44 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
         </div>
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
           {error && (
-            <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 px-3 py-2 rounded-lg">{error}</div>
+            <div className="text-sm text-ds-danger bg-app-highlight px-3 py-2 rounded-lg">{error}</div>
           )}
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Title *</label>
+            <label className="block text-xs font-medium text-app-muted mb-1">Title *</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-app-border bg-app-card text-app-text"
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Description</label>
+            <label className="block text-xs font-medium text-app-muted mb-1">Description</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={3}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+              className="w-full rounded-lg border border-app-border bg-app-card text-app-text"
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Target date *</label>
+              <label className="block text-xs font-medium text-app-muted mb-1">Target date *</label>
               <input
                 type="date"
                 value={targetDate}
                 onChange={(e) => setTargetDate(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-app-border bg-app-card text-app-text"
                 required
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Priority</label>
+              <label className="block text-xs font-medium text-app-muted mb-1">Priority</label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as PersonalTaskApi['priority'])}
-                className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+                className="w-full rounded-lg border border-app-border bg-app-card text-app-text"
               >
                 {PRIORITIES.map((p) => (
                   <option key={p} value={p}>
@@ -165,11 +165,11 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
           {mode === 'edit' && (
             <>
               <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">Status</label>
+                <label className="block text-xs font-medium text-app-muted mb-1">Status</label>
                 <select
                   value={status}
                   onChange={(e) => setStatus(e.target.value as PersonalTaskApi['status'])}
-                  className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm"
+                  className="w-full rounded-lg border border-app-border bg-app-card text-app-text"
                 >
                   {STATUSES.map((s) => (
                     <option key={s} value={s}>
@@ -179,7 +179,7 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
                 </select>
               </div>
               <div>
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-1">
+                <label className="block text-xs font-medium text-app-muted mb-1">
                   Progress: {progress}%
                 </label>
                 <input
@@ -196,7 +196,7 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
                   max={100}
                   value={progress}
                   onChange={(e) => setProgress(Math.min(100, Math.max(0, parseInt(e.target.value, 10) || 0)))}
-                  className="mt-1 w-24 rounded border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-2 py-1 text-sm"
+                  className="mt-1 w-24 rounded border border-app-border bg-app-card text-app-text px-2 py-1 text-sm"
                 />
               </div>
             </>
@@ -206,7 +206,7 @@ const TaskEditModal: React.FC<TaskEditModalProps> = ({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-4 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50"
+              className="px-4 py-2 text-sm rounded-lg border border-app-border hover:bg-app-table-hover disabled:opacity-50"
             >
               Cancel
             </button>

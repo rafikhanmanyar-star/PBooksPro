@@ -85,6 +85,7 @@ export type LoginEventRow = {
 export type UnifiedAuditRow = {
   id: string;
   source: 'audit_event' | 'login_event';
+  tenantId: string;
   occurredAt: string;
   userId: string | null;
   email: string | null;
@@ -129,6 +130,11 @@ export async function appendAuditEvent(
   client: pg.PoolClient,
   input: AppendAuditEventInput
 ): Promise<string> {
+  const tenantId = input.tenantId?.trim();
+  if (!tenantId) {
+    throw new Error('appendAuditEvent requires a tenantId');
+  }
+
   const id = randomUUID();
   const ctx = input.ctx ?? {};
   await client.query(
@@ -140,7 +146,7 @@ export async function appendAuditEvent(
      )`,
     [
       id,
-      input.tenantId,
+      tenantId,
       input.userId ?? null,
       input.email ?? null,
       input.module,
@@ -257,6 +263,7 @@ function rowToUnifiedFromAudit(row: AuditEventRow): UnifiedAuditRow {
   return {
     id: row.id,
     source: 'audit_event',
+    tenantId: row.tenant_id,
     occurredAt: new Date(row.occurred_at).toISOString(),
     userId: row.user_id,
     email: row.email,
@@ -279,6 +286,7 @@ function rowToUnifiedFromLogin(row: LoginEventRow): UnifiedAuditRow {
   return {
     id: row.id,
     source: 'login_event',
+    tenantId: row.tenant_id,
     occurredAt: new Date(row.login_time).toISOString(),
     userId: row.user_id,
     email: row.email,
@@ -380,8 +388,12 @@ export async function listUnifiedAuditTrail(
   ]);
 
   const merged = [
-    ...auditRes.rows.map(rowToUnifiedFromAudit),
-    ...loginRes.rows.map(rowToUnifiedFromLogin),
+    ...auditRes.rows
+      .filter((row) => row.tenant_id === tenantId)
+      .map(rowToUnifiedFromAudit),
+    ...loginRes.rows
+      .filter((row) => row.tenant_id === tenantId)
+      .map(rowToUnifiedFromLogin),
   ];
 
   merged.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
@@ -396,6 +408,16 @@ export async function listUnifiedAuditTrail(
   }
 
   return deduped.slice(offset, offset + limit);
+}
+
+/** Defense-in-depth: drop rows whose source tenant does not match the session tenant. */
+export function filterUnifiedAuditRowsForTenant(
+  rows: UnifiedAuditRow[],
+  tenantId: string
+): UnifiedAuditRow[] {
+  const expected = tenantId.trim();
+  if (!expected) return [];
+  return rows.filter((row) => row.tenantId === expected);
 }
 
 export async function listAuditModules(

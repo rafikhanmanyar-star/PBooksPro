@@ -37,8 +37,8 @@ function ColumnSettingsMenu({
     onChange: (v: VisibilityState) => void;
 }) {
     return (
-        <div className="rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 shadow-lg p-3 max-h-72 overflow-y-auto w-56 text-xs">
-            <p className="font-semibold text-slate-700 dark:text-slate-200 mb-2">Columns</p>
+        <div className="rounded-xl border border-app-border bg-app-popover shadow-ds-modal p-3 max-h-72 overflow-y-auto w-56 text-xs text-app-text">
+            <p className="font-semibold text-app-text mb-2">Columns</p>
             {columnIds.map((c) => (
                 <label key={c.id} className="flex items-center gap-2 py-1 cursor-pointer">
                     <input type="checkbox" checked={visibility[c.id] !== false} onChange={(e) => onChange({ ...visibility, [c.id]: e.target.checked })} />
@@ -83,7 +83,7 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                 header: ({ table }) => (
                     <input
                         type="checkbox"
-                        className="rounded border-slate-300 dark:border-slate-600"
+                        className="rounded border-app-border"
                         checked={table.getIsAllPageRowsSelected()}
                         ref={(el) => {
                             if (el) el.indeterminate = table.getIsSomePageRowsSelected();
@@ -95,7 +95,7 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                 cell: ({ row }) => (
                     <input
                         type="checkbox"
-                        className="rounded border-slate-300 dark:border-slate-600"
+                        className="rounded border-app-border"
                         checked={row.getIsSelected()}
                         disabled={!row.getCanSelect()}
                         onChange={row.getToggleSelectedHandler()}
@@ -122,7 +122,7 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                 cell: (ctx) => (
                     <button
                         type="button"
-                        className="text-left font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                        className="text-left font-medium text-ds-primary hover:underline"
                         onClick={() => onRowOpen(ctx.row.original.projectId)}
                     >
                         {String(ctx.getValue())}
@@ -237,7 +237,7 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
         return (
             <div className="space-y-2 animate-pulse p-4">
                 {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="h-10 rounded-lg bg-slate-200/80 dark:bg-slate-700/60" />
+                    <div key={i} className="h-10 rounded-lg bg-app-surface-2" />
                 ))}
             </div>
         );
@@ -245,9 +245,9 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
 
     if (!rows.length) {
         return (
-            <div className="flex flex-col items-center justify-center py-20 px-6 text-center rounded-2xl border border-dashed border-slate-200 dark:border-slate-700 bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-950">
-                <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">No projects match your filters</p>
-                <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-lg">
+            <div className="flex flex-col items-center justify-center py-20 px-6 text-center rounded-2xl border border-dashed border-app-border bg-app-surface-2">
+                <p className="text-lg font-semibold text-app-text">No projects match your filters</p>
+                <p className="mt-2 text-sm text-app-muted max-w-lg">
                     Distributable funds exclude receivables and accrual profit — only liquid cash after reserves and vendor payables is withdrawable.
                 </p>
             </div>
@@ -257,9 +257,9 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
     const stickyProjectColIndex = 2;
 
     return (
-        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/50 shadow-sm overflow-hidden">
-            <div className="flex justify-end px-2 py-1 border-b border-slate-100 dark:border-slate-800 relative">
-                <button type="button" className="text-xs font-medium text-indigo-600 dark:text-indigo-400 px-2 py-1" onClick={() => setColMenuOpen((v) => !v)}>
+        <div className="rounded-2xl border border-app-border bg-app-card shadow-ds-card overflow-hidden">
+            <div className="flex justify-end px-2 py-1 border-b border-app-border relative">
+                <button type="button" className="text-xs font-medium text-ds-primary px-2 py-1 hover:bg-app-table-hover rounded" onClick={() => setColMenuOpen((v) => !v)}>
                     Column settings
                 </button>
                 {colMenuOpen && (
@@ -270,15 +270,15 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-xs min-w-[1600px]">
-                    <thead className="sticky top-0 z-20 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur border-b border-slate-200 dark:border-slate-700">
+                    <thead className="sticky top-0 z-20 bg-app-table-header backdrop-blur border-b border-app-border">
                         {table.getHeaderGroups().map((hg) => (
                             <tr key={hg.id}>
                                 {hg.headers.map((h, hi) => (
                                     <th
                                         key={h.id}
-                                        className={`text-left font-semibold text-slate-600 dark:text-slate-300 px-2 py-2 whitespace-nowrap relative ${
+                                        className={`text-left font-semibold text-app-muted px-2 py-2 whitespace-nowrap relative ${
                                             hi === stickyProjectColIndex
-                                                ? 'sticky left-0 z-30 bg-slate-50/95 dark:bg-slate-900/95 border-r border-slate-200/80 dark:border-slate-700'
+                                                ? 'sticky left-0 z-30 bg-app-table-header border-r border-app-border'
                                                 : ''
                                         }`}
                                         style={{ width: h.getSize() }}
@@ -313,15 +313,15 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                                 key={row.id}
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
-                                className={`border-b border-slate-100 dark:border-slate-800/80 hover:bg-indigo-500/[0.04] cursor-pointer ${ri % 2 === 1 ? 'bg-slate-50/40 dark:bg-slate-800/25' : ''}`}
+                                className={`border-b border-app-border hover:bg-app-table-hover cursor-pointer ${ri % 2 === 1 ? 'bg-app-surface-2/40' : ''}`}
                                 onClick={() => onRowOpen(row.original.projectId)}
                             >
                                 {row.getVisibleCells().map((cell, ci) => (
                                     <td
                                         key={cell.id}
-                                        className={`px-2 py-1.5 tabular-nums text-slate-800 dark:text-slate-200 ${
-                                            ci === stickyProjectColIndex ? 'sticky left-0 z-10 bg-white/95 dark:bg-slate-900/95 border-r border-slate-100 dark:border-slate-800' : ''
-                                        } ${ri % 2 === 1 && ci === stickyProjectColIndex ? 'bg-slate-50/90 dark:bg-slate-800/40' : ''}`}
+                                        className={`px-2 py-1.5 tabular-nums text-app-text ${
+                                            ci === stickyProjectColIndex ? 'sticky left-0 z-10 bg-app-card border-r border-app-border' : ''
+                                        } ${ri % 2 === 1 && ci === stickyProjectColIndex ? 'bg-app-surface-2/60' : ''}`}
                                         style={{ width: cell.column.getSize() }}
                                         onClick={(e) => {
                                             if ((e.target as HTMLElement).closest('input,button,a')) e.stopPropagation();
@@ -334,10 +334,10 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                         ))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-slate-100/90 dark:bg-slate-800/90 text-xs text-slate-900 dark:text-slate-50 border-t-2 border-slate-200 dark:border-slate-600">
+                        <tr className="bg-app-table-header text-xs text-app-text border-t-2 border-app-border">
                             <td colSpan={table.getVisibleLeafColumns().length} className="px-3 py-2.5">
                                 <span className="font-semibold">Totals (filtered):</span>
-                                <span className="text-slate-600 dark:text-slate-300">
+                                <span className="text-app-muted">
                                     {' '}
                                     Investor cap {money(totals.investorCapital)} · Allocated {money(totals.allocatedProfit)} · Equity {money(totals.investorEquity)} · Cash{' '}
                                     {money(totals.availableCash)} · Reserved {money(totals.reservedFunds)} · Payables {money(totals.pendingPayables)} · Distributable{' '}
@@ -348,14 +348,14 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                     </tfoot>
                 </table>
             </div>
-            <div className="flex items-center justify-between px-3 py-2 border-t border-slate-200 dark:border-slate-700 text-xs bg-slate-50/50 dark:bg-slate-900/60">
-                <div className="text-slate-500">
+            <div className="flex items-center justify-between px-3 py-2 border-t border-app-border text-xs bg-app-surface-2">
+                <div className="text-app-muted">
                     Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount()} · {rows.length} rows
                 </div>
                 <div className="flex gap-2">
                     <button
                         type="button"
-                        className="px-2 py-1 rounded-md border border-slate-200 dark:border-slate-600 disabled:opacity-40"
+                        className="px-2 py-1 rounded-md border border-app-border text-app-text hover:bg-app-table-hover disabled:opacity-40"
                         disabled={!table.getCanPreviousPage()}
                         onClick={() => table.previousPage()}
                     >
@@ -363,7 +363,7 @@ export const FundAvailabilityDataTable: React.FC<FundAvailabilityDataTableProps>
                     </button>
                     <button
                         type="button"
-                        className="px-2 py-1 rounded-md border border-slate-200 dark:border-slate-600 disabled:opacity-40"
+                        className="px-2 py-1 rounded-md border border-app-border text-app-text hover:bg-app-table-hover disabled:opacity-40"
                         disabled={!table.getCanNextPage()}
                         onClick={() => table.nextPage()}
                     >

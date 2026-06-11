@@ -172,7 +172,7 @@ const InvestmentManagementPage: React.FC = () => {
                 </select>
             </div>
 
-            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col bg-white dark:bg-slate-900/20">
+            <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col bg-app-bg">
                 {activeTab === 'Overview' ? (
                     <InvestmentDashboard />
                 ) : (

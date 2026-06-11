@@ -105,29 +105,29 @@ const AccountingPeriodsSection: React.FC<Props> = ({ isAdmin }) => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Accounting Periods</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-lg font-semibold text-app-text">Accounting Periods</h2>
+        <p className="text-sm text-app-muted mt-1">
           Open fiscal periods for posting. Closing a period generates journal entries that transfer P&amp;L to
           Current Year Earnings (and Retained Earnings on year-end). Posting into closed periods is blocked.
         </p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3">
-        <h3 className="text-sm font-medium text-slate-700">Open new period</h3>
+      <div className="rounded-lg border border-app-border bg-app-bg p-4 space-y-3">
+        <h3 className="text-sm font-medium text-app-text">Open new period</h3>
         <div className="flex flex-wrap gap-3 items-end">
           <div>
-            <label className="block text-xs text-slate-500 mb-1">Start date</label>
+            <label className="block text-xs text-app-muted mb-1">Start date</label>
             <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
           </div>
           <div>
-            <label className="block text-xs text-slate-500 mb-1">End date</label>
+            <label className="block text-xs text-app-muted mb-1">End date</label>
             <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
           </div>
           <Button onClick={() => void handleOpen()} disabled={busyId === 'open'}>
             Open Period
           </Button>
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
+        <label className="flex items-center gap-2 text-sm text-app-muted">
           <input
             type="checkbox"
             checked={yearEndOnClose}
@@ -138,13 +138,13 @@ const AccountingPeriodsSection: React.FC<Props> = ({ isAdmin }) => {
       </div>
 
       {loading ? (
-        <p className="text-sm text-slate-400">Loading periods…</p>
+        <p className="text-sm text-app-muted">Loading periods…</p>
       ) : periods.length === 0 ? (
-        <p className="text-sm text-slate-500">No accounting periods defined yet.</p>
+        <p className="text-sm text-app-muted">No accounting periods defined yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200">
+        <div className="overflow-x-auto rounded-lg border border-app-border">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-left text-slate-600">
+            <thead className="bg-app-bg text-left text-app-muted">
               <tr>
                 <th className="px-3 py-2 font-medium">Period</th>
                 <th className="px-3 py-2 font-medium">Status</th>
@@ -155,7 +155,7 @@ const AccountingPeriodsSection: React.FC<Props> = ({ isAdmin }) => {
             </thead>
             <tbody>
               {periods.map((p) => (
-                <tr key={p.id} className="border-t border-slate-100">
+                <tr key={p.id} className="border-t border-app-border">
                   <td className="px-3 py-2">
                     {p.startDate} – {p.endDate}
                   </td>
@@ -164,16 +164,16 @@ const AccountingPeriodsSection: React.FC<Props> = ({ isAdmin }) => {
                       className={
                         p.status === 'open'
                           ? 'inline-flex rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700'
-                          : 'inline-flex rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600'
+                          : 'inline-flex rounded-full bg-app-surface-2 px-2 py-0.5 text-xs font-medium text-app-muted'
                       }
                     >
                       {p.status}
                     </span>
                   </td>
-                  <td className="px-3 py-2 text-slate-500">
+                  <td className="px-3 py-2 text-app-muted">
                     {p.closedAt ? new Date(p.closedAt).toLocaleString() : '—'}
                   </td>
-                  <td className="px-3 py-2 font-mono text-xs text-slate-500">
+                  <td className="px-3 py-2 font-mono text-xs text-app-muted">
                     {p.closingJournalEntryId?.slice(0, 8) ?? '—'}
                   </td>
                   <td className="px-3 py-2 text-right space-x-2">

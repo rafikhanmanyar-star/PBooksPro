@@ -123,11 +123,11 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-slate-600 mb-1">Status</label>
+                            <label className="block text-sm font-medium text-app-muted mb-1">Status</label>
                             <select
                                 value={status}
                                 onChange={(e) => setStatus(e.target.value as UnitOccupancyStatus)}
-                                className="block w-full px-3 py-2 border border-slate-300 rounded-md shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="block w-full px-3 py-2 border border-app-border rounded-md shadow-ds-card text-sm focus:outline-none focus:ring-2 focus:ring-ds-primary"
                                 aria-label="Unit status"
                             >
                                 <option value="available">Available</option>

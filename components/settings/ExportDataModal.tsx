@@ -86,7 +86,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
             <div className="space-y-6">
                 {/* Format Selection */}
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-app-text mb-2">
                         Export Format
                     </label>
                     <div className="flex gap-4">
@@ -120,7 +120,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                 {/* Data Type Selection */}
                 <div>
                     <div className="flex justify-between items-center mb-3">
-                        <label className="block text-sm font-medium text-gray-700">
+                        <label className="block text-sm font-medium text-app-text">
                             Select Data Types to Export
                         </label>
                         <div className="flex gap-2">
@@ -132,7 +132,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                             >
                                 Select All
                             </button>
-                            <span className="text-gray-400">|</span>
+                            <span className="text-app-muted">|</span>
                             <button
                                 type="button"
                                 onClick={deselectAll}
@@ -144,18 +144,18 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                         </div>
                     </div>
                     
-                    <div className="border border-gray-200 rounded-lg p-4 max-h-96 overflow-y-auto">
+                    <div className="border border-app-border rounded-lg p-4 max-h-96 overflow-y-auto">
                         {Object.entries(schemasByCategory).map(([category, schemas]) => (
                             schemas.length > 0 && (
                                 <div key={category} className="mb-4 last:mb-0">
-                                    <h3 className="text-sm font-semibold text-gray-800 mb-2">
+                                    <h3 className="text-sm font-semibold text-app-text mb-2">
                                         {categoryLabels[category] || category}
                                     </h3>
                                     <div className="space-y-1 ml-4">
                                         {schemas.map((schema) => (
                                             <label
                                                 key={schema.key}
-                                                className="flex items-center cursor-pointer hover:bg-gray-50 p-1 rounded"
+                                                className="flex items-center cursor-pointer hover:bg-app-bg p-1 rounded"
                                             >
                                                 <input
                                                     type="checkbox"
@@ -164,7 +164,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                                                     className="mr-2"
                                                     disabled={isExporting}
                                                 />
-                                                <span className="text-sm text-gray-700">
+                                                <span className="text-sm text-app-text">
                                                     {schema.displayName}
                                                 </span>
                                             </label>
@@ -176,7 +176,7 @@ const ExportDataModal: React.FC<ExportDataModalProps> = ({ isOpen, onClose }) =>
                     </div>
                     
                     {selectedTypes.size > 0 && (
-                        <p className="mt-2 text-xs text-gray-500">
+                        <p className="mt-2 text-xs text-app-muted">
                             {selectedTypes.size} type{selectedTypes.size !== 1 ? 's' : ''} selected
                         </p>
                     )}

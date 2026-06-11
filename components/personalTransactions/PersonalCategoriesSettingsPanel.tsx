@@ -172,7 +172,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
 
   const SortHeader: React.FC<{ label: string; sortKey: SortKey }> = ({ label, sortKey }) => (
     <th
-      className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200"
+      className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover transition-colors select-none sticky top-0 bg-app-card z-10 border-b border-app-border"
       onClick={() => handleSort(sortKey)}
     >
       <div className="flex items-center gap-2">
@@ -201,8 +201,8 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
 
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 shrink-0">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">Personal categories</h2>
-          <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 max-w-2xl">
+          <h2 className="text-2xl font-bold text-app-text tracking-tight">Personal categories</h2>
+          <p className="text-app-muted text-sm mt-1 max-w-2xl">
             Manage income and expense categories used only for Personal transactions. They are separate from Chart of Accounts
             categories in Settings.
           </p>
@@ -213,16 +213,16 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search categories..."
-              className="w-full sm:w-64 bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-600 shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg pl-10"
+              className="w-full sm:w-64 bg-app-card border-app-border dark:border-app-border shadow-ds-card focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg pl-10"
             />
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted group-focus-within:text-indigo-500 transition-colors">
               <div className="w-4 h-4">{ICONS.fileText}</div>
             </div>
             {searchQuery ? (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-app-muted hover:text-slate-600"
                 aria-label="Clear search"
               >
                 <div className="w-4 h-4">{ICONS.x}</div>
@@ -242,11 +242,11 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
             {isAddMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsAddMenuOpen(false)} aria-hidden />
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-800 rounded-lg shadow-xl border border-slate-200 dark:border-slate-600 z-50 py-1">
+                <div className="absolute right-0 mt-2 w-56 bg-app-card rounded-lg shadow-xl border border-app-border dark:border-app-border z-50 py-1">
                   <button
                     type="button"
                     onClick={() => openAdd('Income')}
-                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300 flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-4 py-2.5 text-sm text-app-text hover:bg-app-highlight hover:text-ds-success flex items-center gap-2 transition-colors"
                   >
                     <div className="w-4 h-4">{ICONS.arrowUp}</div>
                     <span>Income category</span>
@@ -254,7 +254,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => openAdd('Expense')}
-                    className="w-full text-left px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 flex items-center gap-2 transition-colors"
+                    className="w-full text-left px-4 py-2.5 text-sm text-app-text hover:bg-app-highlight hover:text-ds-danger flex items-center gap-2 transition-colors"
                   >
                     <div className="w-4 h-4">{ICONS.arrowDown}</div>
                     <span>Expense category</span>
@@ -280,8 +280,8 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
             onClick={() => setTypeFilter(id)}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
               typeFilter === id
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/80 hover:border-slate-300'
+                ? 'bg-indigo-600 text-white shadow-ds-card'
+                : 'bg-app-card border border-app-border text-app-muted hover:bg-app-table-hover'
             }`}
           >
             {label}
@@ -290,27 +290,27 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
       </div>
 
       <div className="flex-1 min-h-0 flex flex-col">
-        <div className="bg-white dark:bg-slate-900/40 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col max-h-[70vh]">
+        <div className="bg-app-card rounded-xl border border-app-border dark:border-app-border shadow-ds-card overflow-hidden flex flex-col max-h-[70vh]">
           <div className="overflow-x-auto flex-grow min-h-0">
-            <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-700">
-              <thead className="bg-white dark:bg-slate-900/40">
+            <table className="min-w-full divide-y divide-app-border">
+              <thead className="bg-app-card">
                 <tr>
                   <SortHeader label="Name" sortKey="name" />
                   <SortHeader label="Type" sortKey="type" />
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-white dark:bg-slate-900/40 z-10 border-b border-slate-200 dark:border-slate-700">
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-app-muted uppercase tracking-wider sticky top-0 bg-app-card z-10 border-b border-app-border dark:border-app-border">
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white dark:bg-slate-900/20 divide-y divide-slate-50 dark:divide-slate-800">
+              <tbody className="bg-app-card divide-y divide-app-border">
                 {filteredSorted.map((row, index) => (
                   <tr
                     key={row.id}
-                    className={`transition-colors duration-200 group hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 ${
-                      index % 2 !== 0 ? 'bg-slate-50/50 dark:bg-slate-800/30' : ''
+                    className={`transition-colors duration-200 group hover:bg-app-highlight/30 ${
+                      index % 2 !== 0 ? 'bg-app-surface-2/40' : ''
                     }`}
                   >
-                    <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700 dark:text-slate-200 font-medium">
+                    <td className="px-4 py-3 whitespace-nowrap text-sm text-app-text font-medium">
                       {row.name}
                     </td>
                     <td className="px-4 py-3 whitespace-nowrap text-sm">
@@ -350,7 +350,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
                 ))}
                 {filteredSorted.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="px-4 py-12 text-center text-slate-400">
+                    <td colSpan={3} className="px-4 py-12 text-center text-app-muted">
                       No categories found. Add one with Add New, or adjust filters.
                     </td>
                   </tr>

@@ -167,7 +167,7 @@ const PostgresBackupRestore: React.FC = () => {
 
   if (loadError) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-ds-warning">
         <div className="flex items-start gap-2">
           <AlertTriangle className="w-5 h-5 flex-shrink-0" />
           <div>
@@ -180,17 +180,17 @@ const PostgresBackupRestore: React.FC = () => {
   }
 
   if (!caps) {
-    return <p className="text-sm text-gray-500">Loading…</p>;
+    return <p className="text-sm text-app-muted">Loading…</p>;
   }
 
   if (!caps.backupRestoreEnabled) {
     return (
       <div className="space-y-2">
-        <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+        <h3 className="text-base font-semibold text-app-text flex items-center gap-2">
           <Database className="w-5 h-5 text-green-600" />
           PostgreSQL backup
         </h3>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+        <div className="rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-text">
           {caps.hint}
         </div>
       </div>
@@ -200,11 +200,11 @@ const PostgresBackupRestore: React.FC = () => {
   return (
     <div className="space-y-4">
       <div>
-        <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+        <h3 className="text-base font-semibold text-app-text flex items-center gap-2">
           <Database className="w-5 h-5 text-green-600" />
           PostgreSQL backup
         </h3>
-        <p className="text-sm text-gray-500 mt-0.5">
+        <p className="text-sm text-app-muted mt-0.5">
           Downloads are AES-256 encrypted ({caps.encryptedFormat ?? 'PBKENC'}). Optional backup password
           adds an extra layer for offline storage. Restore requires Super Admin or Company Admin
           authorization.
@@ -216,7 +216,7 @@ const PostgresBackupRestore: React.FC = () => {
           className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${
             restorePolicy.canRestore
               ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-              : 'border-amber-200 bg-amber-50 text-amber-900'
+              : 'border-amber-200 bg-amber-50 text-ds-warning'
           }`}
         >
           <Lock className="w-5 h-5 flex-shrink-0 mt-0.5" />
@@ -250,7 +250,7 @@ const PostgresBackupRestore: React.FC = () => {
               message.type === 'success'
                 ? 'text-green-700'
                 : message.type === 'warning'
-                  ? 'text-amber-700'
+                  ? 'text-ds-warning'
                   : 'text-red-700'
             }`}
           >
@@ -266,12 +266,12 @@ const PostgresBackupRestore: React.FC = () => {
         </p>
         <p>
           Backups are encrypted with AES-256-GCM before download and local storage. Set{' '}
-          <code className="bg-white/80 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> on the server.
+          <code className="bg-app-card/80 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> on the server.
         </p>
       </div>
 
-      <div className="rounded-lg border border-slate-200 p-3 space-y-2">
-        <label className="flex items-center gap-2 text-sm text-slate-700">
+      <div className="rounded-lg border border-app-border p-3 space-y-2">
+        <label className="flex items-center gap-2 text-sm text-app-text">
           <input
             type="checkbox"
             checked={useBackupPassword}
@@ -282,7 +282,7 @@ const PostgresBackupRestore: React.FC = () => {
         {useBackupPassword && (
           <input
             type="password"
-            className="w-full max-w-sm border border-slate-200 rounded-lg px-3 py-2 text-sm"
+            className="w-full max-w-sm border border-app-border rounded-lg px-3 py-2 text-sm"
             placeholder="Backup password (min 8 characters)"
             value={backupPassword}
             onChange={(e) => setBackupPassword(e.target.value)}
@@ -335,14 +335,14 @@ const PostgresBackupRestore: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="password"
-              className="border border-slate-200 rounded-lg px-3 py-2 text-sm"
+              className="border border-app-border rounded-lg px-3 py-2 text-sm"
               placeholder="Backup file password (if any)"
               value={restorePassword}
               onChange={(e) => setRestorePassword(e.target.value)}
             />
             <label
-              className={`flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium transition-colors ${
-                busy ? 'opacity-50 pointer-events-none' : 'hover:bg-gray-50 cursor-pointer'
+              className={`flex items-center gap-2 px-4 py-2 border border-app-border text-app-text rounded-lg font-medium transition-colors ${
+                busy ? 'opacity-50 pointer-events-none' : 'hover:bg-app-bg cursor-pointer'
               }`}
             >
               <Upload className="w-4 h-4" />

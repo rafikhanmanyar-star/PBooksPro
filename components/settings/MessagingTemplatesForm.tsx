@@ -47,7 +47,7 @@ const TemplateField: React.FC<{
       onChange={(e) => onChange(e.target.value)}
       rows={4}
     />
-    <div className="text-xs text-slate-500 mt-1">
+    <div className="text-xs text-app-muted mt-1">
       <strong>Placeholders:</strong> {placeholders.join(', ')}
     </div>
   </div>
@@ -129,8 +129,8 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
           />
         </div>
 
-        <div className="border-t border-slate-200 pt-4">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Payout Templates</h3>
+        <div className="border-t border-app-border pt-4">
+          <h3 className="text-sm font-semibold text-app-text mb-3">Payout Templates</h3>
           <div className="space-y-4">
             <TemplateField
               label="Owner Payout Ledger"
@@ -154,7 +154,7 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
         </div>
 
         <div
-          className="sticky bottom-0 z-10 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-app-modal pt-4 dark:border-app-border"
+          className="sticky bottom-0 z-10 mt-4 flex flex-wrap items-center justify-end gap-2 border-t border-app-border bg-app-modal pt-4"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >

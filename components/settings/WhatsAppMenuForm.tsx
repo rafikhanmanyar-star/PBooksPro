@@ -239,7 +239,7 @@ const WhatsAppMenuForm: React.FC = () => {
   if (loading) {
     return (
       <div className="flex justify-center items-center p-8">
-        <div className="text-slate-500">Loading menu configuration...</div>
+        <div className="text-app-muted">Loading menu configuration...</div>
       </div>
     );
   }
@@ -247,10 +247,10 @@ const WhatsAppMenuForm: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Enable Toggle */}
-      <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-200">
+      <div className="flex items-center justify-between p-4 bg-app-bg rounded-lg border border-app-border">
         <div>
-          <h3 className="font-semibold text-slate-800">Auto-Reply Menu</h3>
-          <p className="text-sm text-slate-500 mt-0.5">
+          <h3 className="font-semibold text-app-text">Auto-Reply Menu</h3>
+          <p className="text-sm text-app-muted mt-0.5">
             Automatically send a menu when a client messages you on WhatsApp.
           </p>
         </div>
@@ -260,11 +260,11 @@ const WhatsAppMenuForm: React.FC = () => {
           aria-checked={config.enabled}
           onClick={() => setConfig(prev => ({ ...prev, enabled: !prev.enabled }))}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${
-            config.enabled ? 'bg-green-600' : 'bg-gray-300'
+            config.enabled ? 'bg-green-600' : 'bg-app-surface-2'
           }`}
         >
           <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            className={`inline-block h-4 w-4 transform rounded-full bg-app-card transition-transform ${
               config.enabled ? 'translate-x-6' : 'translate-x-1'
             }`}
           />
@@ -273,21 +273,21 @@ const WhatsAppMenuForm: React.FC = () => {
 
       {/* Welcome Message */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Welcome Message</label>
+        <label className="block text-sm font-medium text-app-text mb-1">Welcome Message</label>
         <textarea
           value={config.welcomeMessage}
           onChange={e => setConfig(prev => ({ ...prev, welcomeMessage: e.target.value }))}
           rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm transition-colors"
+          className="w-full px-3 py-2 border border-app-border rounded-lg shadow-ds-card placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm transition-colors"
           placeholder="Welcome! Please select an option:"
         />
-        <p className="mt-1 text-xs text-slate-500">This message is sent before the numbered menu options.</p>
+        <p className="mt-1 text-xs text-app-muted">This message is sent before the numbered menu options.</p>
       </div>
 
       {/* Menu Items */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <label className="block text-sm font-medium text-slate-700">Menu Items</label>
+          <label className="block text-sm font-medium text-app-text">Menu Items</label>
           <button
             type="button"
             onClick={addMenuItem}
@@ -301,22 +301,22 @@ const WhatsAppMenuForm: React.FC = () => {
         </div>
 
         {config.menuItems.length === 0 ? (
-          <div className="text-center py-8 border-2 border-dashed border-slate-200 rounded-lg">
-            <p className="text-sm text-slate-400">No menu items yet. Click "Add Item" to get started.</p>
+          <div className="text-center py-8 border-2 border-dashed border-app-border rounded-lg">
+            <p className="text-sm text-app-muted">No menu items yet. Click "Add Item" to get started.</p>
           </div>
         ) : (
           <div className="space-y-3">
             {config.menuItems.map((item, index) => (
-              <div key={item.id} className="border border-slate-200 rounded-lg overflow-hidden">
+              <div key={item.id} className="border border-app-border rounded-lg overflow-hidden">
                 {/* Item Header */}
-                <div className="flex items-start gap-3 p-3 bg-white">
+                <div className="flex items-start gap-3 p-3 bg-app-card">
                   {/* Number */}
                   <div className="flex-shrink-0 pt-1">
                     <input
                       type="text"
                       value={item.number}
                       onChange={e => updateMenuItem(item.id, { number: e.target.value })}
-                      className="w-10 text-center px-1 py-1 border border-gray-300 rounded text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                      className="w-10 text-center px-1 py-1 border border-app-border rounded text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                       title="Menu number"
                     />
                   </div>
@@ -340,7 +340,7 @@ const WhatsAppMenuForm: React.FC = () => {
                           onChange={() => updateMenuItem(item.id, { type: 'reply' })}
                           className="text-green-600 focus:ring-green-500"
                         />
-                        <span className="text-slate-600">Direct Reply</span>
+                        <span className="text-app-muted">Direct Reply</span>
                       </label>
                       <label className="inline-flex items-center gap-1.5 text-xs cursor-pointer">
                         <input
@@ -350,7 +350,7 @@ const WhatsAppMenuForm: React.FC = () => {
                           onChange={() => updateMenuItem(item.id, { type: 'submenu' })}
                           className="text-green-600 focus:ring-green-500"
                         />
-                        <span className="text-slate-600">Sub-Menu</span>
+                        <span className="text-app-muted">Sub-Menu</span>
                       </label>
                     </div>
 
@@ -360,7 +360,7 @@ const WhatsAppMenuForm: React.FC = () => {
                         value={item.replyText || ''}
                         onChange={e => updateMenuItem(item.id, { replyText: e.target.value })}
                         rows={2}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-xs transition-colors"
+                        className="w-full px-3 py-2 border border-app-border rounded-lg shadow-ds-card placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-xs transition-colors"
                         placeholder="Reply text sent when client selects this option..."
                       />
                     )}
@@ -370,7 +370,7 @@ const WhatsAppMenuForm: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => toggleExpand(item.id)}
-                        className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                        className="inline-flex items-center gap-1 text-xs text-ds-primary hover:text-app-text font-medium"
                       >
                         <svg
                           className={`w-3.5 h-3.5 transition-transform ${expandedItems.has(item.id) ? 'rotate-90' : ''}`}
@@ -387,7 +387,7 @@ const WhatsAppMenuForm: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => removeMenuItem(item.id)}
-                    className="flex-shrink-0 p-1 text-slate-400 hover:text-red-500 transition-colors"
+                    className="flex-shrink-0 p-1 text-app-muted hover:text-red-500 transition-colors"
                     title="Remove item"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -398,10 +398,10 @@ const WhatsAppMenuForm: React.FC = () => {
 
                 {/* Expanded Sub-Menu Section */}
                 {item.type === 'submenu' && item.subMenu && expandedItems.has(item.id) && (
-                  <div className="border-t border-slate-200 bg-slate-50 p-3 space-y-3">
+                  <div className="border-t border-app-border bg-app-bg p-3 space-y-3">
                     {/* Sub-Menu Message */}
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Sub-Menu Message</label>
+                      <label className="block text-xs font-medium text-app-muted mb-1">Sub-Menu Message</label>
                       <input
                         type="text"
                         value={item.subMenu.message}
@@ -410,7 +410,7 @@ const WhatsAppMenuForm: React.FC = () => {
                             subMenu: { ...item.subMenu!, message: e.target.value },
                           })
                         }
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                        className="w-full px-2 py-1.5 border border-app-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                         placeholder="Sub-menu header message"
                       />
                     </div>
@@ -418,13 +418,13 @@ const WhatsAppMenuForm: React.FC = () => {
                     {/* Sub-Menu Items */}
                     <div className="space-y-2">
                       {item.subMenu.items.map(subItem => (
-                        <div key={subItem.id} className="flex items-start gap-2 p-2 bg-white rounded border border-slate-200">
+                        <div key={subItem.id} className="flex items-start gap-2 p-2 bg-app-card rounded border border-app-border">
                           {/* Number */}
                           <input
                             type="text"
                             value={subItem.number}
                             onChange={e => updateSubMenuItem(item.id, subItem.id, { number: e.target.value })}
-                            className="w-8 text-center px-1 py-1 border border-gray-300 rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                            className="w-8 text-center px-1 py-1 border border-app-border rounded text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                             title="Sub-menu number"
                           />
 
@@ -433,12 +433,12 @@ const WhatsAppMenuForm: React.FC = () => {
                               type="text"
                               value={subItem.label}
                               onChange={e => updateSubMenuItem(item.id, subItem.id, { label: e.target.value })}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                              className="w-full px-2 py-1 border border-app-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                               placeholder={subItem.type === 'back' ? 'Back to Main Menu' : 'Sub-item label'}
                             />
 
                             {subItem.type === 'back' ? (
-                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-slate-100 text-slate-500 rounded">
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-medium bg-app-surface-2 text-app-muted rounded">
                                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                                 </svg>
@@ -449,7 +449,7 @@ const WhatsAppMenuForm: React.FC = () => {
                                 value={subItem.replyText || ''}
                                 onChange={e => updateSubMenuItem(item.id, subItem.id, { replyText: e.target.value })}
                                 rows={2}
-                                className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
+                                className="w-full px-2 py-1.5 border border-app-border rounded text-xs focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500"
                                 placeholder="Reply text for this sub-option..."
                               />
                             )}
@@ -459,7 +459,7 @@ const WhatsAppMenuForm: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => removeSubMenuItem(item.id, subItem.id)}
-                            className="flex-shrink-0 p-0.5 text-slate-400 hover:text-red-500 transition-colors"
+                            className="flex-shrink-0 p-0.5 text-app-muted hover:text-red-500 transition-colors"
                             title="Remove sub-item"
                           >
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -474,7 +474,7 @@ const WhatsAppMenuForm: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => addSubMenuItem(item.id)}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-indigo-600 bg-indigo-50 border border-indigo-200 rounded hover:bg-indigo-100 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-ds-primary bg-app-highlight border border-ds-primary/30 rounded hover:bg-app-highlight transition-colors"
                     >
                       <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -491,15 +491,15 @@ const WhatsAppMenuForm: React.FC = () => {
 
       {/* Invalid Option Message */}
       <div>
-        <label className="block text-sm font-medium text-slate-700 mb-1">Invalid Option Message</label>
+        <label className="block text-sm font-medium text-app-text mb-1">Invalid Option Message</label>
         <textarea
           value={config.invalidOptionMessage}
           onChange={e => setConfig(prev => ({ ...prev, invalidOptionMessage: e.target.value }))}
           rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm transition-colors"
+          className="w-full px-3 py-2 border border-app-border rounded-lg shadow-ds-card placeholder:text-app-muted focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-green-500 text-sm transition-colors"
           placeholder="Sorry, that option is not valid. Please reply with a number from the menu."
         />
-        <p className="mt-1 text-xs text-slate-500">Sent when a client replies with a number that doesn't match any option.</p>
+        <p className="mt-1 text-xs text-app-muted">Sent when a client replies with a number that doesn't match any option.</p>
       </div>
 
       {/* Session Timeout */}
@@ -519,9 +519,9 @@ const WhatsAppMenuForm: React.FC = () => {
           <div className="bg-green-50 px-4 py-2 border-b border-green-200">
             <h4 className="text-sm font-semibold text-green-800">Menu Preview</h4>
           </div>
-          <div className="p-4 bg-white">
+          <div className="p-4 bg-app-card">
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 max-w-sm">
-              <pre className="text-sm text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">
+              <pre className="text-sm text-app-text whitespace-pre-wrap font-sans leading-relaxed">
                 {formatMenuPreview()}
               </pre>
             </div>

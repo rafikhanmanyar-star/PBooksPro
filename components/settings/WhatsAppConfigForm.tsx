@@ -536,7 +536,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
   if (loading && !config) {
     return (
       <div className="flex justify-center items-center p-8">
-        <div className="text-slate-500">Loading configuration...</div>
+        <div className="text-app-muted">Loading configuration...</div>
       </div>
     );
   }
@@ -673,7 +673,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
           <button
             type="button"
             onClick={() => setVerifyToken(generateVerifyToken())}
-            className="mt-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium"
+            className="mt-1 text-xs text-ds-primary hover:text-ds-primary font-medium"
           >
             Generate New Token
           </button>
@@ -693,15 +693,15 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       {/* Localhost Development Notice */}
       {(webhookUrl.includes('localhost') || webhookUrl.includes('127.0.0.1') || webhookUrl === '') && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-          <h4 className="font-semibold text-amber-900 mb-2 flex items-center gap-2">
+          <h4 className="font-semibold text-ds-warning mb-2 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
             Localhost Development Setup Required
           </h4>
           <p className="text-sm text-amber-800 mb-3">
             Meta requires a publicly accessible HTTPS URL for webhooks. For localhost development, you need to use <strong>ngrok</strong> to create a secure tunnel.
           </p>
-          <div className="bg-white rounded p-3 border border-amber-200">
-            <p className="text-sm font-semibold text-amber-900 mb-2">Quick Setup:</p>
+          <div className="bg-app-card rounded p-3 border border-amber-200">
+            <p className="text-sm font-semibold text-ds-warning mb-2">Quick Setup:</p>
             <ol className="list-decimal list-inside space-y-1 text-sm text-amber-800">
               <li>Install ngrok: <code className="bg-amber-100 px-1 rounded">npm install -g ngrok</code> or download from <a href="https://ngrok.com/download" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">ngrok.com</a></li>
               <li>Start your API server on localhost (e.g., port 3000)</li>
@@ -709,7 +709,7 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
               <li>Copy the HTTPS URL from ngrok (e.g., <code className="bg-amber-100 px-1 rounded">https://abc123.ngrok-free.app</code>)</li>
               <li>Enter webhook URL: <code className="bg-amber-100 px-1 rounded">https://abc123.ngrok-free.app/api/whatsapp/webhook</code></li>
             </ol>
-            <p className="text-xs text-amber-700 mt-2">
+            <p className="text-xs text-ds-warning mt-2">
               📖 <strong>Note:</strong> Free ngrok URLs change every restart. For production, deploy to a hosting service (Render, Heroku, etc.) and use the production URL.
             </p>
           </div>
@@ -737,14 +737,14 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
       {/* Test Message Section */}
       {config && connectionStatus === 'connected' && (
         <>
-          <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4">
-            <h4 className="font-semibold text-indigo-900 mb-3 flex items-center gap-2">
+          <div className="bg-app-highlight border border-ds-primary/30 rounded-lg p-4">
+            <h4 className="font-semibold text-app-text mb-3 flex items-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
               </svg>
               Send Test Message
             </h4>
-            <p className="text-sm text-indigo-700 mb-4">
+            <p className="text-sm text-ds-primary mb-4">
               Send a test message to verify your WhatsApp integration is working correctly.
             </p>
             <div className="space-y-3">
@@ -762,17 +762,17 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">
+                <label className="block text-sm font-medium text-app-text mb-1">
                   Message
                 </label>
                 <textarea
                   value={testMessage}
                   onChange={(e) => setTestMessage(e.target.value)}
                   rows={3}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 text-sm"
+                  className="w-full px-3 py-2 border border-app-border rounded-lg focus:ring-2 focus:ring-ds-primary focus:border-ds-primary text-sm"
                   placeholder="Enter your test message"
                 />
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-app-muted">
                   Note: For production, you may need approved message templates for initial messages to new contacts.
                 </p>
               </div>
@@ -845,27 +845,27 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
                     key={msg.id}
                     className={`p-3 rounded-lg border ${
                       msg.direction === 'incoming'
-                        ? 'bg-white border-green-300 text-left'
-                        : 'bg-indigo-50 border-indigo-300 text-right'
+                        ? 'bg-app-card border-green-300 text-left'
+                        : 'bg-app-highlight border-ds-primary/40 text-right'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1">
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={`text-xs font-medium ${
-                            msg.direction === 'incoming' ? 'text-green-700' : 'text-indigo-700'
+                            msg.direction === 'incoming' ? 'text-green-700' : 'text-ds-primary'
                           }`}>
                             {msg.direction === 'incoming' ? '📥 Received' : '📤 Sent'}
                           </span>
-                          <span className="text-xs text-slate-500">
+                          <span className="text-xs text-app-muted">
                             {msg.phoneNumber.substring(0, 5)}***
                           </span>
-                          <span className="text-xs text-slate-400">
+                          <span className="text-xs text-app-muted">
                             {new Date(msg.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
                         <p className={`text-sm ${
-                          msg.direction === 'incoming' ? 'text-slate-800' : 'text-indigo-800'
+                          msg.direction === 'incoming' ? 'text-app-text' : 'text-app-text'
                         }`}>
                           {msg.messageText || '(Media message)'}
                         </p>
@@ -877,12 +877,12 @@ const WhatsAppConfigForm: React.FC<WhatsAppConfigFormProps> = ({ onClose }) => {
                           ? 'bg-blue-100 text-blue-700'
                           : msg.status === 'read'
                           ? 'bg-purple-100 text-purple-700'
-                          : 'bg-slate-100 text-slate-700'
+                          : 'bg-app-surface-2 text-app-text'
                       }`}>
                         {msg.status}
                       </span>
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">
+                    <div className="text-xs text-app-muted mt-1">
                       {new Date(msg.timestamp).toLocaleString()}
                     </div>
                   </div>

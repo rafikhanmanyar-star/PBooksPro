@@ -126,9 +126,9 @@ const DatabaseAnalyzer: React.FC = () => {
             <button 
                 onClick={analyzeDatabase}
                 disabled={isLoading}
-                className="p-3 bg-white border border-slate-200 rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-sm transition-all text-left group"
+                className="p-3 bg-app-card border border-app-border rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-ds-card transition-all text-left group"
             >
-                <div className="font-semibold text-slate-700 group-hover:text-blue-700 mb-1 flex items-center gap-2">
+                <div className="font-semibold text-app-text group-hover:text-blue-700 mb-1 flex items-center gap-2">
                     {isLoading ? (
                         <>
                             <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
@@ -144,7 +144,7 @@ const DatabaseAnalyzer: React.FC = () => {
                         </>
                     )}
                 </div>
-                <p className="text-xs text-slate-500">View tables, row counts, and data structure.</p>
+                <p className="text-xs text-app-muted">View tables, row counts, and data structure.</p>
             </button>
 
             <Modal 
@@ -158,26 +158,26 @@ const DatabaseAnalyzer: React.FC = () => {
             >
                 <div className="space-y-4">
                     {/* Database Info */}
-                    <div className="p-4 bg-slate-50 rounded-lg border border-slate-200">
-                        <h3 className="font-semibold text-slate-800 mb-3">Database Status</h3>
+                    <div className="p-4 bg-app-bg rounded-lg border border-app-border">
+                        <h3 className="font-semibold text-app-text mb-3">Database Status</h3>
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                                <span className="text-slate-600">Status:</span>
+                                <span className="text-app-muted">Status:</span>
                                 <span className={`ml-2 font-medium ${dbInfo.isReady ? 'text-green-600' : 'text-red-600'}`}>
                                     {dbInfo.isReady ? 'Ready' : 'Not Ready'}
                                 </span>
                             </div>
                             <div>
-                                <span className="text-slate-600">Storage:</span>
-                                <span className="ml-2 font-medium text-slate-800">{dbInfo.storageMode}</span>
+                                <span className="text-app-muted">Storage:</span>
+                                <span className="ml-2 font-medium text-app-text">{dbInfo.storageMode}</span>
                             </div>
                             <div>
-                                <span className="text-slate-600">Size:</span>
-                                <span className="ml-2 font-medium text-slate-800">{formatBytes(dbInfo.size)}</span>
+                                <span className="text-app-muted">Size:</span>
+                                <span className="ml-2 font-medium text-app-text">{formatBytes(dbInfo.size)}</span>
                             </div>
                             <div>
-                                <span className="text-slate-600">Tables:</span>
-                                <span className="ml-2 font-medium text-slate-800">{tables.length}</span>
+                                <span className="text-app-muted">Tables:</span>
+                                <span className="ml-2 font-medium text-app-text">{tables.length}</span>
                             </div>
                         </div>
                         {dbInfo.error && (
@@ -195,12 +195,12 @@ const DatabaseAnalyzer: React.FC = () => {
                                 onClick={() => setSelectedTable(table.name)}
                                 className={`p-3 rounded-lg border text-left transition-all ${
                                     selectedTable === table.name
-                                        ? 'bg-indigo-50 border-indigo-300 shadow-sm'
-                                        : 'bg-white border-slate-200 hover:bg-slate-50'
+                                        ? 'bg-app-highlight border-ds-primary/40 shadow-ds-card'
+                                        : 'bg-app-card border-app-border hover:bg-app-bg'
                                 }`}
                             >
-                                <div className="font-semibold text-slate-800 mb-1">{table.name}</div>
-                                <div className="text-xs text-slate-600">
+                                <div className="font-semibold text-app-text mb-1">{table.name}</div>
+                                <div className="text-xs text-app-muted">
                                     {table.rowCount >= 0 ? (
                                         <>
                                             <span className="font-medium">{table.rowCount.toLocaleString()}</span> rows
@@ -219,19 +219,19 @@ const DatabaseAnalyzer: React.FC = () => {
                     {/* Table Details */}
                     {selectedTableInfo && (
                         <div className="border-t pt-4">
-                            <h3 className="font-semibold text-slate-800 mb-3">
-                                Table: <span className="text-indigo-600">{selectedTableInfo.name}</span>
+                            <h3 className="font-semibold text-app-text mb-3">
+                                Table: <span className="text-ds-primary">{selectedTableInfo.name}</span>
                             </h3>
                             
                             {/* Columns */}
                             {selectedTableInfo.columns.length > 0 && (
                                 <div className="mb-4">
-                                    <h4 className="text-sm font-medium text-slate-700 mb-2">Columns ({selectedTableInfo.columns.length}):</h4>
+                                    <h4 className="text-sm font-medium text-app-text mb-2">Columns ({selectedTableInfo.columns.length}):</h4>
                                     <div className="flex flex-wrap gap-2">
                                         {selectedTableInfo.columns.map(col => (
                                             <span 
                                                 key={col}
-                                                className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-mono"
+                                                className="px-2 py-1 bg-app-surface-2 text-app-text rounded text-xs font-mono"
                                             >
                                                 {col}
                                             </span>
@@ -243,25 +243,25 @@ const DatabaseAnalyzer: React.FC = () => {
                             {/* Sample Data */}
                             {selectedTableInfo.sampleData.length > 0 && (
                                 <div>
-                                    <h4 className="text-sm font-medium text-slate-700 mb-2">
+                                    <h4 className="text-sm font-medium text-app-text mb-2">
                                         Sample Data (showing {selectedTableInfo.sampleData.length} of {selectedTableInfo.rowCount} rows):
                                     </h4>
-                                    <div className="overflow-x-auto border border-slate-200 rounded-lg">
+                                    <div className="overflow-x-auto border border-app-border rounded-lg">
                                         <table className="min-w-full text-xs">
-                                            <thead className="bg-slate-50">
+                                            <thead className="bg-app-bg">
                                                 <tr>
                                                     {selectedTableInfo.columns.map(col => (
-                                                        <th key={col} className="px-3 py-2 text-left text-slate-600 font-semibold border-b">
+                                                        <th key={col} className="px-3 py-2 text-left text-app-muted font-semibold border-b">
                                                             {col}
                                                         </th>
                                                     ))}
                                                 </tr>
                                             </thead>
-                                            <tbody className="divide-y divide-slate-200">
+                                            <tbody className="divide-y divide-app-border">
                                                 {selectedTableInfo.sampleData.map((row, idx) => (
-                                                    <tr key={idx} className="hover:bg-slate-50">
+                                                    <tr key={idx} className="hover:bg-app-bg">
                                                         {selectedTableInfo.columns.map(col => (
-                                                            <td key={col} className="px-3 py-2 text-slate-700 border-b">
+                                                            <td key={col} className="px-3 py-2 text-app-text border-b">
                                                                 {typeof row[col] === 'object' 
                                                                     ? JSON.stringify(row[col])
                                                                     : String(row[col] ?? 'NULL')
@@ -277,7 +277,7 @@ const DatabaseAnalyzer: React.FC = () => {
                             )}
 
                             {selectedTableInfo.rowCount === 0 && (
-                                <div className="text-center py-8 text-slate-500 text-sm">
+                                <div className="text-center py-8 text-app-muted text-sm">
                                     Table is empty (no rows)
                                 </div>
                             )}

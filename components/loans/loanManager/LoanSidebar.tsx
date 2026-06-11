@@ -146,22 +146,22 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Search */}
-      <div className="p-3 border-b border-slate-200 shrink-0">
+      <div className="p-3 border-b border-app-border shrink-0">
         <div className="relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
             <span className="w-5 h-5">{ICONS.search}</span>
           </div>
           <Input
             placeholder="Search lender or borrower…"
             value={searchQuery}
             onChange={e => onSearchChange(e.target.value)}
-            className="pl-10 pr-10 w-full min-w-0 rounded-xl border-slate-200"
+            className="pl-10 pr-10 w-full min-w-0 rounded-xl border-app-border"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => onSearchChange('')}
-              className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-slate-600"
+              className="absolute inset-y-0 right-0 flex items-center pr-3 text-app-muted hover:text-app-text"
               aria-label="Clear search"
             >
               <span className="w-5 h-5">{ICONS.x}</span>
@@ -178,13 +178,13 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
             onClick={() => setAdvancedOpen(!advancedOpen)}
             className={`
               flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-medium border transition-colors
-              ${hasActiveFilters ? 'border-blue-300 bg-blue-50 text-blue-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}
+              ${hasActiveFilters ? 'border-ds-primary/40 bg-app-highlight text-ds-primary' : 'border-app-border bg-app-card text-app-muted hover:bg-app-table-hover'}
             `}
           >
             <span className="w-4 h-4">{ICONS.filter}</span>
             Filters
             {appliedCount > 0 && (
-              <span className="ml-1 min-w-[20px] h-5 px-1.5 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center">
+              <span className="ml-1 min-w-[20px] h-5 px-1.5 rounded-full bg-ds-primary text-white text-xs flex items-center justify-center">
                 {appliedCount}
               </span>
             )}
@@ -193,15 +193,15 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
           {advancedOpen && (
             <>
               <div className="fixed inset-0 z-10" aria-hidden onClick={() => setAdvancedOpen(false)} />
-              <div className="absolute left-0 top-full mt-1 z-20 w-[280px] bg-white rounded-2xl shadow-lg border border-slate-200 p-4">
-                <div className="text-sm font-semibold text-slate-800 mb-3">Advanced filters</div>
+              <div className="absolute left-0 top-full mt-1 z-20 w-[280px] bg-app-popover rounded-2xl shadow-ds-modal border border-app-border p-4">
+                <div className="text-sm font-semibold text-app-text mb-3">Advanced filters</div>
                 <div className="space-y-3 text-sm">
                   <div>
-                    <label className="block text-slate-600 mb-1">Status</label>
+                    <label className="block text-app-muted mb-1">Status</label>
                     <select
                       value={advancedFilter.status}
                       onChange={e => onAdvancedFilterChange({ ...advancedFilter, status: e.target.value as LoanStatusUI | '' })}
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                      className="w-full rounded-lg border border-app-border px-3 py-2"
                       aria-label="Filter by status"
                     >
                       <option value="">Any</option>
@@ -212,7 +212,7 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Amount (PKR)</label>
+                    <label className="block text-app-muted mb-1">Amount (PKR)</label>
                     <select
                       value={advancedFilter.amountRange}
                       onChange={e =>
@@ -221,7 +221,7 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                           amountRange: e.target.value as AdvancedFilterState['amountRange'],
                         })
                       }
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                      className="w-full rounded-lg border border-app-border px-3 py-2"
                       aria-label="Filter by amount range"
                     >
                       <option value="">Any</option>
@@ -231,13 +231,13 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Due date</label>
+                    <label className="block text-app-muted mb-1">Due date</label>
                     <select
                       value={advancedFilter.dueDate}
                       onChange={e =>
                         onAdvancedFilterChange({ ...advancedFilter, dueDate: e.target.value as AdvancedFilterState['dueDate'] })
                       }
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                      className="w-full rounded-lg border border-app-border px-3 py-2"
                       aria-label="Filter by due date"
                     >
                       <option value="">Any</option>
@@ -247,7 +247,7 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-slate-600 mb-1">Loan type</label>
+                    <label className="block text-app-muted mb-1">Loan type</label>
                     <select
                       value={advancedFilter.loanType}
                       onChange={e =>
@@ -256,7 +256,7 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                           loanType: e.target.value as AdvancedFilterState['loanType'],
                         })
                       }
-                      className="w-full rounded-lg border border-slate-200 px-3 py-2"
+                      className="w-full rounded-lg border border-app-border px-3 py-2"
                       aria-label="Filter by loan type"
                     >
                       <option value="">Any</option>
@@ -269,14 +269,14 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                   <button
                     type="button"
                     onClick={handleClearAdvanced}
-                    className="flex-1 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-medium hover:bg-slate-50"
+                    className="flex-1 py-2 rounded-xl border border-app-border text-app-muted text-sm font-medium hover:bg-app-table-hover"
                   >
                     Clear all
                   </button>
                   <button
                     type="button"
                     onClick={handleApplyAdvanced}
-                    className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                    className="flex-1 py-2 rounded-xl bg-ds-primary text-white text-sm font-medium hover:bg-ds-primary-hover"
                   >
                     Apply
                   </button>
@@ -290,7 +290,7 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
       {/* Tree */}
       <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3 pb-4">
         {filteredByQuickAndSearch.length === 0 ? (
-          <div className="py-8 text-center text-slate-500 text-sm">
+          <div className="py-8 text-center text-app-muted text-sm">
             {searchQuery.trim() ? 'No results found.' : 'No active loans found.'}
           </div>
         ) : (
@@ -301,9 +301,9 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => toggleGroup('to_receive')}
-                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-app-text hover:bg-app-table-hover transition-colors"
                 >
-                  <span className="w-5 h-5 flex items-center justify-center text-slate-500">
+                  <span className="w-5 h-5 flex items-center justify-center text-app-muted">
                     {treeExpanded.to_receive ? (
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -337,9 +337,9 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => toggleGroup('to_return')}
-                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-app-text hover:bg-app-table-hover transition-colors"
                 >
-                  <span className="w-5 h-5 flex items-center justify-center text-slate-500">
+                  <span className="w-5 h-5 flex items-center justify-center text-app-muted">
                     {treeExpanded.to_return ? (
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -373,9 +373,9 @@ export const LoanSidebar: React.FC<LoanSidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => toggleGroup('completed')}
-                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+                  className="flex items-center gap-2 w-full py-2 px-2 rounded-xl text-left font-semibold text-app-text hover:bg-app-table-hover transition-colors"
                 >
-                  <span className="w-5 h-5 flex items-center justify-center text-slate-500">
+                  <span className="w-5 h-5 flex items-center justify-center text-app-muted">
                     {treeExpanded.completed ? (
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -426,7 +426,7 @@ function TreeItem({
         ? 'bg-red-500'
         : item.statusUI === 'Partial'
           ? 'bg-amber-500'
-          : 'bg-slate-300';
+          : 'bg-app-muted';
   const dueLabel = '—'; // No due date in schema; show placeholder
 
   return (
@@ -435,7 +435,7 @@ function TreeItem({
       onClick={onSelect}
       className={`
         w-full flex items-center gap-3 py-2.5 px-3 rounded-xl text-left transition-all duration-200
-        ${selected ? 'bg-blue-50 border-l-4 border-blue-600 shadow-sm' : 'hover:bg-slate-50 border-l-4 border-transparent'}
+        ${selected ? 'bg-app-highlight border-l-4 border-ds-primary shadow-ds-card' : 'hover:bg-app-table-hover border-l-4 border-transparent'}
       `}
     >
       <div
@@ -444,14 +444,14 @@ function TreeItem({
         {initial}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="font-semibold text-slate-800 truncate">{item.contactName}</div>
-        <div className="text-xs text-slate-500">{dueLabel}</div>
+        <div className="font-semibold text-app-text truncate">{item.contactName}</div>
+        <div className="text-xs text-app-muted">{dueLabel}</div>
       </div>
       <div className="shrink-0 text-right font-bold tabular-nums text-sm">
         {item.treeGroup === 'completed' ? (
-          <span className="text-slate-500">—</span>
+          <span className="text-app-muted">—</span>
         ) : (
-          <span className={item.netBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+          <span className={item.netBalance > 0 ? 'text-ds-danger' : 'text-ds-success'}>
             {formatPKR(item.netBalance)}
           </span>
         )}

@@ -33,7 +33,6 @@ interface LoanDetailPanelProps {
 
 export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
   contactName,
-  contactNo,
   netBalance,
   statusUI,
   dueLabel,
@@ -51,44 +50,44 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
   const progressPct = progressTotal > 0 ? Math.min(100, (totalCollectedOrRepaid / progressTotal) * 100) : 0;
   const statusBadgeClass =
     statusUI === 'Completed'
-      ? 'bg-emerald-100 text-emerald-800'
+      ? 'bg-app-highlight text-ds-success'
       : statusUI === 'Overdue'
-        ? 'bg-red-100 text-red-800'
+        ? 'bg-app-highlight text-ds-danger'
         : statusUI === 'Partial'
-          ? 'bg-amber-100 text-amber-800'
-          : 'bg-slate-100 text-slate-700';
+          ? 'bg-app-highlight text-ds-warning'
+          : 'bg-app-surface-2 text-app-muted';
 
   return (
-    <div className="h-full flex flex-col min-h-0 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+    <div className="h-full flex flex-col min-h-0 bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden">
       {/* Header card */}
-      <div className="p-6 md:p-8 bg-gradient-to-br from-slate-50 to-white border-b border-slate-200 shrink-0">
+      <div className="p-6 md:p-8 bg-app-surface-2 border-b border-app-border shrink-0">
         <div className="flex items-start gap-4">
-          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold text-xl shrink-0">
+          <div className="w-14 h-14 rounded-full bg-app-highlight flex items-center justify-center text-ds-primary font-bold text-xl shrink-0">
             {initial}
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-bold text-slate-800 truncate">{contactName}</h2>
+            <h2 className="text-xl font-bold text-app-text truncate">{contactName}</h2>
             <div className="mt-1 text-2xl md:text-3xl font-bold tabular-nums">
-              <span className={netBalance > 0 ? 'text-rose-600' : 'text-emerald-600'}>
+              <span className={netBalance > 0 ? 'text-ds-danger' : 'text-ds-success'}>
                 {formatPKR(netBalance)}
               </span>
-              <span className="text-slate-500 font-normal text-lg ml-2">Remaining</span>
+              <span className="text-app-muted font-normal text-lg ml-2">Remaining</span>
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-3">
-              <span className="text-sm text-slate-500">Due: {dueLabel}</span>
+              <span className="text-sm text-app-muted">Due: {dueLabel}</span>
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${statusBadgeClass}`}>
                 {statusUI}
               </span>
             </div>
             {progressTotal > 0 && (
               <div className="mt-4">
-                <div className="flex justify-between text-xs text-slate-500 mb-1">
+                <div className="flex justify-between text-xs text-app-muted mb-1">
                   <span>Repayment progress</span>
                   <span>{Math.round(progressPct)}%</span>
                 </div>
-                <div className="h-2 rounded-full bg-slate-200 overflow-hidden">
+                <div className="h-2 rounded-full bg-app-border overflow-hidden">
                   <div
-                    className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                    className="h-full rounded-full bg-ds-success transition-all duration-300"
                     style={{ width: `${progressPct}%` }}
                   />
                 </div>
@@ -99,7 +98,7 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
       </div>
 
       {/* Sticky actions */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-end gap-2 p-3 bg-white/95 backdrop-blur border-b border-slate-200 shrink-0">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center justify-end gap-2 p-3 bg-app-card/95 backdrop-blur border-b border-app-border shrink-0">
         <Button
           size="sm"
           variant="secondary"
@@ -117,7 +116,7 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
           variant="secondary"
           onClick={onSendReminder}
           title="Send reminder"
-          className="text-green-600 bg-green-50 hover:bg-green-100 border-green-200"
+          className="text-ds-success border-ds-success/30 hover:bg-app-highlight"
         >
           <span className="w-4 h-4">{ICONS.whatsapp}</span>
         </Button>
@@ -133,38 +132,37 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
 
       {/* Transaction timeline */}
       <div className="flex-1 min-h-0 overflow-y-auto p-4 md:p-6">
-        <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-4">Transaction history</h3>
+        <h3 className="text-sm font-semibold text-app-muted uppercase tracking-wider mb-4">Transaction history</h3>
         {transactions.length === 0 ? (
-          <p className="text-slate-500 text-sm">No transactions yet.</p>
+          <p className="text-app-muted text-sm">No transactions yet.</p>
         ) : (
           <div className="relative space-y-0">
-            {/* vertical line */}
-            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-slate-200" />
-            {transactions.map((tx, i) => {
+            <div className="absolute left-[11px] top-2 bottom-2 w-0.5 bg-app-border" />
+            {transactions.map((tx) => {
               const isInflow = tx.receive > 0;
               return (
                 <div key={tx.id} className="relative flex gap-4 pb-6 last:pb-0">
                   <div
                     className={`relative z-10 w-6 h-6 rounded-full shrink-0 mt-0.5 ${
-                      isInflow ? 'bg-emerald-500' : 'bg-rose-500'
+                      isInflow ? 'bg-ds-success' : 'bg-ds-danger'
                     }`}
                   />
                   <div className="flex-1 min-w-0 pt-0">
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                       <div>
-                        <span className={isInflow ? 'text-emerald-700 font-medium' : 'text-rose-700 font-medium'}>
+                        <span className={isInflow ? 'text-ds-success font-medium' : 'text-ds-danger font-medium'}>
                           {isInflow ? `+ ${formatPKR(tx.receive)}` : `− ${formatPKR(tx.give)}`}
                         </span>
-                        <span className="text-slate-600 ml-2">
+                        <span className="text-app-muted ml-2">
                           {isInflow ? 'Received' : 'Given'}
                         </span>
                         {tx.description && (
-                          <p className="text-slate-500 text-sm mt-0.5 truncate max-w-md">{tx.description}</p>
+                          <p className="text-app-muted text-sm mt-0.5 truncate max-w-md">{tx.description}</p>
                         )}
                       </div>
                       <div className="flex flex-col items-end gap-0.5">
-                        <div className="text-sm text-slate-500 tabular-nums">{formatDate(tx.date)}</div>
-                        <div className={`text-sm font-semibold tabular-nums ${tx.balance > 0 ? 'text-rose-600' : tx.balance < 0 ? 'text-emerald-600' : 'text-slate-500'}`}>
+                        <div className="text-sm text-app-muted tabular-nums">{formatDate(tx.date)}</div>
+                        <div className={`text-sm font-semibold tabular-nums ${tx.balance > 0 ? 'text-ds-danger' : tx.balance < 0 ? 'text-ds-success' : 'text-app-muted'}`}>
                           Balance: {formatPKR(tx.balance)}
                         </div>
                       </div>
@@ -172,7 +170,7 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
                     <button
                       type="button"
                       onClick={() => onEditLoan(tx.id)}
-                      className="mt-1 text-xs text-blue-600 hover:underline"
+                      className="mt-1 text-xs text-ds-primary hover:underline"
                     >
                       Edit
                     </button>
@@ -185,14 +183,14 @@ export const LoanDetailPanel: React.FC<LoanDetailPanelProps> = ({
       </div>
     </div>
   );
-}
+};
 
 export const LoanDetailEmpty: React.FC = () => (
-  <div className="h-full flex flex-col items-center justify-center text-slate-400 bg-slate-50/50 rounded-2xl border border-slate-200 p-8">
-    <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center mb-4">
-      <span className="text-2xl text-slate-400">👤</span>
+  <div className="h-full flex flex-col items-center justify-center text-app-muted bg-app-card rounded-2xl border border-app-border p-8">
+    <div className="w-16 h-16 rounded-full bg-app-surface-2 flex items-center justify-center mb-4">
+      <span className="text-2xl text-app-muted">👤</span>
     </div>
-    <p className="text-slate-600 font-medium">Select a contact to view loan details</p>
-    <p className="text-sm mt-1">Choose a lender or borrower from the list</p>
+    <p className="text-app-text font-medium">Select a contact to view loan details</p>
+    <p className="text-sm mt-1 text-app-muted">Choose a lender or borrower from the list</p>
   </div>
 );

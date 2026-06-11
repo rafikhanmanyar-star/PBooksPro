@@ -111,7 +111,7 @@ const SettingsPage: React.FC = () => {
         projectAgreementSettings,
         editingEntity } = state;
     const dispatch = useDispatchOnly();
-    const { user: authUser } = useAuth();
+    const { user: authUser, tenant: authTenant } = useAuth();
     const { showConfirm, showToast, showAlert } = useNotification();
     const { setVisibleKpiIds } = useKpis();
     const { isOffline } = useOffline();
@@ -315,7 +315,7 @@ const SettingsPage: React.FC = () => {
             {
                 key: 'name', label: 'Name', render: (val, row) => (
                     <div style={{ paddingLeft: `${(row.level || 0) * 20}px` }} className="flex items-center gap-2">
-                        {row.level && row.level > 0 ? <span className="text-slate-300">└</span> : null}
+                        {row.level && row.level > 0 ? <span className="text-app-muted">└</span> : null}
                         {val}
                     </div>
                 )
@@ -326,9 +326,9 @@ const SettingsPage: React.FC = () => {
                 label: 'P&L classification',
                 render: (val, row) =>
                     row.entityKind !== 'CATEGORY' ? (
-                        <span className="text-slate-400">—</span>
+                        <span className="text-app-muted">—</span>
                     ) : val === 'Default (inferred)' ? (
-                        <span className="text-slate-500 italic">Default (inferred)</span>
+                        <span className="text-app-muted italic">Default (inferred)</span>
                     ) : (
                         val
                     ) },
@@ -339,8 +339,8 @@ const SettingsPage: React.FC = () => {
             {
                 key: 'name', label: 'Name', render: (val, row) => (
                     <div className="flex items-center gap-2">
-                        {row.originalItem.color && <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: row.originalItem.color }}></div>}
-                        <span className="font-medium text-slate-700">{val}</span>
+                        {row.originalItem.color && <div className="w-3 h-3 rounded-full shadow-ds-card" style={{ backgroundColor: row.originalItem.color }}></div>}
+                        <span className="font-medium text-app-text">{val}</span>
                     </div>
                 )
             },
@@ -352,8 +352,8 @@ const SettingsPage: React.FC = () => {
             {
                 key: 'name', label: 'Name', render: (val, row) => (
                     <div className="flex items-center gap-2">
-                        {row.originalItem.color && <div className="w-3 h-3 rounded-full shadow-sm" style={{ backgroundColor: row.originalItem.color }}></div>}
-                        <span className="font-medium text-slate-700">{val}</span>
+                        {row.originalItem.color && <div className="w-3 h-3 rounded-full shadow-ds-card" style={{ backgroundColor: row.originalItem.color }}></div>}
+                        <span className="font-medium text-app-text">{val}</span>
                     </div>
                 )
             },
@@ -627,10 +627,10 @@ const SettingsPage: React.FC = () => {
     };
 
     const SortHeader: React.FC<{ label: string; sortKey: string; align?: string }> = ({ label, sortKey, align = 'left' }) => (
-        <th className={`px-4 py-3 text-${align} text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-colors select-none sticky top-0 bg-white z-10 border-b border-slate-200`} onClick={() => handleSort(sortKey)}>
+        <th className={`px-4 py-3 text-${align} text-xs font-semibold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover transition-colors select-none sticky top-0 bg-app-table-header z-10 border-b border-app-border`} onClick={() => handleSort(sortKey)}>
             <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : 'justify-start'}`}>
                 {label}
-                {sortConfig.key === sortKey && <span className="text-indigo-600 font-bold">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
+                {sortConfig.key === sortKey && <span className="text-ds-primary font-bold">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>}
             </div>
         </th>
     );
@@ -638,34 +638,34 @@ const SettingsPage: React.FC = () => {
     const renderTable = () => {
         const columns = columnConfig[activeCategory] || [];
         return (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden flex flex-col max-h-[70vh]">
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col max-h-[70vh]">
                 <div className="overflow-x-auto flex-grow">
-                    <table className="min-w-full divide-y divide-slate-100">
-                        <thead className="bg-white">
+                    <table className="min-w-full divide-y divide-app-border">
+                        <thead className="bg-app-table-header">
                             <tr>
                                 {columns.map(col => <SortHeader key={col.key} label={col.label} sortKey={col.key} align={col.isNumeric ? 'right' : 'left'} />)}
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider sticky top-0 bg-white z-10 border-b border-slate-200">Actions</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-app-muted uppercase tracking-wider sticky top-0 bg-app-table-header z-10 border-b border-app-border">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-50">
+                        <tbody className="bg-app-card divide-y divide-app-border">
                             {tableData.map((item, index) => {
                                 const isAccountsTable = activeCategory === 'accounts';
                                 return (
-                                    <tr key={item.id} onClick={() => handleRowClick(item)} className={`cursor-pointer transition-all duration-200 group hover:bg-indigo-50/30 ${isAccountsTable && index % 2 !== 0 ? 'bg-slate-50/50' : ''}`}>
+                                    <tr key={item.id} onClick={() => handleRowClick(item)} className={`cursor-pointer transition-all duration-200 group hover:bg-app-table-hover ${isAccountsTable && index % 2 !== 0 ? 'bg-app-surface-2/40' : ''}`}>
                                         {columns.map(col => (
-                                            <td key={col.key} className={`px-4 py-3 whitespace-nowrap text-sm ${col.isNumeric ? 'text-right' : 'text-slate-700'}`}>
-                                                {col.render ? col.render(item[col.key], item) : (col.isNumeric ? <span className={`font-semibold ${item[col.key] >= 0 ? 'text-slate-700' : 'text-rose-600'}`}>{CURRENCY} {(item[col.key] || 0).toLocaleString()}</span> : item[col.key])}
+                                            <td key={col.key} className={`px-4 py-3 whitespace-nowrap text-sm ${col.isNumeric ? 'text-right' : 'text-app-text'}`}>
+                                                {col.render ? col.render(item[col.key], item) : (col.isNumeric ? <span className={`font-semibold ${item[col.key] >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>{CURRENCY} {(item[col.key] || 0).toLocaleString()}</span> : item[col.key])}
                                             </td>
                                         ))}
                                         <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                                             <div className={`flex justify-end gap-2 transition-opacity ${activeCategory === 'properties' ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
-                                                <button onClick={(e) => handleEdit(e, item)} className="text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 p-1.5 rounded-md transition-colors" title="Edit"><div className="w-4 h-4">{ICONS.edit}</div></button>
+                                                <button onClick={(e) => handleEdit(e, item)} className="text-ds-primary hover:text-app-text bg-app-highlight hover:bg-app-highlight p-1.5 rounded-md transition-colors" title="Edit"><div className="w-4 h-4">{ICONS.edit}</div></button>
                                             </div>
                                         </td>
                                     </tr>
                                 );
                             })}
-                            {tableData.length === 0 && <tr><td colSpan={columns.length + 1} className="px-4 py-12 text-center text-slate-400">No items found.</td></tr>}
+                            {tableData.length === 0 && <tr><td colSpan={columns.length + 1} className="px-4 py-12 text-center text-app-muted">No items found.</td></tr>}
                         </tbody>
                     </table>
                 </div>
@@ -684,10 +684,10 @@ const SettingsPage: React.FC = () => {
         };
         const idPrefix = type.toLowerCase().replace(/_/g, '-').replace(/update-|-settings/g, '');
         return (
-            <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div className="p-5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-center mb-4">
-                    <h4 className="font-bold text-slate-700">{title}</h4>
-                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
+                    <h4 className="font-bold text-app-text">{title}</h4>
+                    <span className="text-xs font-mono bg-app-surface-2 px-2 py-1 rounded text-app-muted">
                         {localSettings.prefix}{String(localSettings.nextNumber).padStart(localSettings.padding, '0')}
                     </span>
                 </div>
@@ -719,10 +719,10 @@ const SettingsPage: React.FC = () => {
             showToast('Project Invoices updated!', 'success');
         };
         return (
-            <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div className="p-5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-center mb-4">
-                    <h4 className="font-bold text-slate-700">Project Invoices</h4>
-                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
+                    <h4 className="font-bold text-app-text">Project Invoices</h4>
+                    <span className="text-xs font-mono bg-app-surface-2 px-2 py-1 rounded text-app-muted">
                         {localSettings.prefix}
                         {String(localSettings.nextNumber).padStart(localSettings.padding, '0')}
                     </span>
@@ -763,11 +763,11 @@ const SettingsPage: React.FC = () => {
                             onChange={(e) => handleChange('autoSendBillPaymentWhatsApp', e.target.checked)}
                             className="rounded text-accent focus:ring-accent h-4 w-4"
                         />
-                        <span className="text-sm font-medium text-slate-700">
+                        <span className="text-sm font-medium text-app-text">
                             Offer WhatsApp after project bill payment
                         </span>
                     </label>
-                    <p className="text-xs text-slate-500 mt-1 ml-6">
+                    <p className="text-xs text-app-muted mt-1 ml-6">
                         When enabled, recording a payment against a project or contract bill (vendor or contact with a
                         mobile number) prompts to send the bill payment message from Communication → Messaging Templates.
                     </p>
@@ -782,46 +782,46 @@ const SettingsPage: React.FC = () => {
     const preferenceTabs = ['General', 'ID Sequences', 'Communication', 'Tools'];
 
     const renderToggle = (label: string, description: string, checked: boolean, onChange: (val: boolean) => void) => (
-        <div className="flex items-center justify-between p-5 bg-white rounded-xl border border-slate-200 shadow-sm transition-all hover:border-indigo-200">
+        <div className="flex items-center justify-between p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card transition-all hover:border-ds-primary/40">
             <div className="pr-4">
-                <p className="font-semibold text-slate-800 text-lg">{label}</p>
-                <p className="text-sm text-slate-500 mt-1">{description}</p>
+                <p className="font-semibold text-app-text text-lg">{label}</p>
+                <p className="text-sm text-app-muted mt-1">{description}</p>
             </div>
             <label className="relative inline-flex items-center cursor-pointer flex-shrink-0">
                 <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="sr-only peer" aria-label={label} />
-                <div className="w-12 h-7 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-indigo-600"></div>
+                <div className="w-12 h-7 bg-app-surface-2 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-app-border after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-ds-primary"></div>
             </label>
         </div>
     );
 
     const renderGeneralSettings = () => (
         <div className="space-y-4">
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-1">Appearance</h4>
-                <p className="text-sm text-slate-500 mb-4">Choose light or dark theme. The same setting is available from the header (moon / sun). Your choice is saved on this device.</p>
+            <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
+                <h4 className="font-semibold text-app-text mb-1">Appearance</h4>
+                <p className="text-sm text-app-muted mb-4">Choose light or dark theme. The same setting is available from the header (moon / sun). Your choice is saved on this device.</p>
                 <div className="flex flex-wrap items-center gap-3">
                     <button
                         type="button"
                         onClick={() => setTheme('light')}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'light' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'light' ? 'border-ds-primary bg-app-highlight text-app-text' : 'border-app-border bg-app-card text-app-text hover:border-app-border'}`}
                     >
                         Light
                     </button>
                     <button
                         type="button"
                         onClick={() => setTheme('dark')}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'dark' ? 'border-indigo-500 bg-indigo-50 text-indigo-800' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'}`}
+                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'dark' ? 'border-ds-primary bg-app-highlight text-app-text' : 'border-app-border bg-app-card text-app-text hover:border-app-border'}`}
                     >
                         Dark
                     </button>
-                    <span className="text-xs text-slate-500">Header: {theme === 'dark' ? '☀️' : '🌙'} toggles the same setting.</span>
+                    <span className="text-xs text-app-muted">Header: {theme === 'dark' ? '☀️' : '🌙'} toggles the same setting.</span>
                 </div>
             </div>
             {spellCtx?.isElectronSpell && (
-                <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm space-y-4">
+                <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card space-y-4">
                     <div>
-                        <h4 className="font-semibold text-slate-800 text-lg">Spelling (desktop app)</h4>
-                        <p className="text-sm text-slate-500 mt-1">
+                        <h4 className="font-semibold text-app-text text-lg">Spelling (desktop app)</h4>
+                        <p className="text-sm text-app-muted mt-1">
                             Uses the built-in offline dictionary. Right-click a highlighted word for suggestions or to add it to your dictionary. Settings are stored on this computer.
                         </p>
                     </div>
@@ -838,12 +838,12 @@ const SettingsPage: React.FC = () => {
                         (val) => void spellCtx.updateSettings({ autocorrectEnabled: val })
                     )}
                     <div className="pt-1">
-                        <label htmlFor="spellchecker-language" className="block text-sm font-medium text-slate-700 mb-2">
+                        <label htmlFor="spellchecker-language" className="block text-sm font-medium text-app-text mb-2">
                             Spell check language
                         </label>
                         <select
                             id="spellchecker-language"
-                            className="block w-full max-w-md border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500"
+                            className="block w-full max-w-md border border-app-border rounded-lg px-3 py-2 text-sm text-app-text bg-app-card focus:ring-2 focus:ring-ds-primary/50 focus:border-ds-primary"
                             value={spellCtx.settings.spellcheckerLanguage}
                             onChange={(e) => void spellCtx.updateSettings({ spellcheckerLanguage: e.target.value })}
                             disabled={spellCtx.loading}
@@ -863,20 +863,20 @@ const SettingsPage: React.FC = () => {
             {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
             {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
 
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-1">Date display time zone</h4>
-                <p className="text-sm text-slate-500 mb-2">
+            <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
+                <h4 className="font-semibold text-app-text mb-1">Date display time zone</h4>
+                <p className="text-sm text-app-muted mb-2">
                     When dates are stored with a time from the server (for example UTC), the app picks the calendar day in this time zone so lists and forms match what you selected (fixes a one-day shift in many regions).
                     {typeof Intl !== 'undefined' && Intl.DateTimeFormat ? (
-                        <span className="block mt-1 text-xs text-slate-600">
+                        <span className="block mt-1 text-xs text-app-muted">
                             This device: {Intl.DateTimeFormat().resolvedOptions().timeZone}
                         </span>
                     ) : null}
                 </p>
-                <label htmlFor="display-timezone" className="block text-sm font-medium text-slate-700 mb-2">
+                <label htmlFor="display-timezone" className="block text-sm font-medium text-app-text mb-2">
                     Calendar dates
                 </label>
-                <p className="text-xs text-slate-500 mb-2">Type a city or region (e.g. Dubai, Tokyo) or part of the zone name to filter.</p>
+                <p className="text-xs text-app-muted mb-2">Type a city or region (e.g. Dubai, Tokyo) or part of the zone name to filter.</p>
                 <div className="max-w-lg">
                     <ComboBox
                         id="display-timezone"
@@ -908,44 +908,44 @@ const SettingsPage: React.FC = () => {
                 </div>
             </div>
 
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-2">WhatsApp sending</h4>
-                <p className="text-sm text-slate-500 mb-4">Choose how WhatsApp actions work across the app: use the in-app chat panel (API) or open WhatsApp so you can send the message yourself (manual).</p>
+            <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
+                <h4 className="font-semibold text-app-text mb-2">WhatsApp sending</h4>
+                <p className="text-sm text-app-muted mb-4">Choose how WhatsApp actions work across the app: use the in-app chat panel (API) or open WhatsApp so you can send the message yourself (manual).</p>
                 <div className="space-y-3" role="radiogroup" aria-label="WhatsApp sending mode">
-                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors">
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-app-border hover:border-ds-primary/40 transition-colors">
                         <input
                             type="radio"
                             name="whatsapp-mode"
                             value="api"
                             checked={whatsAppMode === 'api'}
                             onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'api' })}
-                            className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                            className="mt-1 rounded-full text-ds-primary focus:ring-ds-primary h-4 w-4"
                         />
                         <div>
-                            <span className="font-medium text-slate-800">WhatsApp API</span>
-                            <p className="text-xs text-slate-500 mt-0.5">Use WhatsApp Business API and the in-app chat panel to send and receive messages.</p>
+                            <span className="font-medium text-app-text">WhatsApp API</span>
+                            <p className="text-xs text-app-muted mt-0.5">Use WhatsApp Business API and the in-app chat panel to send and receive messages.</p>
                         </div>
                     </label>
-                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-slate-200 hover:border-indigo-200 transition-colors">
+                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-app-border hover:border-ds-primary/40 transition-colors">
                         <input
                             type="radio"
                             name="whatsapp-mode"
                             value="manual"
                             checked={whatsAppMode === 'manual'}
                             onChange={() => dispatch({ type: 'SET_WHATSAPP_MODE', payload: 'manual' })}
-                            className="mt-1 rounded-full text-indigo-600 focus:ring-indigo-500 h-4 w-4"
+                            className="mt-1 rounded-full text-ds-primary focus:ring-ds-primary h-4 w-4"
                         />
                         <div>
-                            <span className="font-medium text-slate-800">Manual WhatsApp</span>
-                            <p className="text-xs text-slate-500 mt-0.5">Create the message and open WhatsApp (desktop or web) so you can send it yourself.</p>
+                            <span className="font-medium text-app-text">Manual WhatsApp</span>
+                            <p className="text-xs text-app-muted mt-0.5">Create the message and open WhatsApp (desktop or web) so you can send it yourself.</p>
                         </div>
                     </label>
                 </div>
             </div>
 
-            <div className="p-5 bg-white rounded-xl border border-slate-200 shadow-sm">
-                <h4 className="font-semibold text-slate-800 mb-2">Default Project</h4>
-                <p className="text-sm text-slate-500 mb-4">Set a default project that will be automatically selected in all forms.</p>
+            <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
+                <h4 className="font-semibold text-app-text mb-2">Default Project</h4>
+                <p className="text-sm text-app-muted mb-4">Set a default project that will be automatically selected in all forms.</p>
                 <ComboBox
                     label=""
                     items={[{ id: '', name: 'None (No Default)' }, ...projects]}
@@ -968,10 +968,10 @@ const SettingsPage: React.FC = () => {
             showToast('Rental Invoices updated!', 'success');
         };
         return (
-            <div className="p-5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-shadow">
+            <div className="p-5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:shadow-md transition-shadow">
                 <div className="flex justify-between items-center mb-4">
-                    <h4 className="font-bold text-slate-700">Rental Invoices</h4>
-                    <span className="text-xs font-mono bg-slate-100 px-2 py-1 rounded text-slate-500">
+                    <h4 className="font-bold text-app-text">Rental Invoices</h4>
+                    <span className="text-xs font-mono bg-app-surface-2 px-2 py-1 rounded text-app-muted">
                         {localSettings.prefix}{String(localSettings.nextNumber).padStart(localSettings.padding, '0')}
                     </span>
                 </div>
@@ -988,9 +988,9 @@ const SettingsPage: React.FC = () => {
                             onChange={e => handleChange('autoSendInvoiceWhatsApp', e.target.checked)}
                             className="rounded text-accent focus:ring-accent h-4 w-4"
                         />
-                        <span className="text-sm font-medium text-slate-700">Auto-send invoice via WhatsApp when created</span>
+                        <span className="text-sm font-medium text-app-text">Auto-send invoice via WhatsApp when created</span>
                     </label>
-                    <p className="text-xs text-slate-500 mt-1 ml-6">When enabled, newly created rental/security deposit invoices are sent to the tenant via WhatsApp automatically.</p>
+                    <p className="text-xs text-app-muted mt-1 ml-6">When enabled, newly created rental/security deposit invoices are sent to the tenant via WhatsApp automatically.</p>
                 </div>
                 <Button variant="secondary" onClick={handleSave} className="mt-1 w-full">Update Settings</Button>
             </div>
@@ -1007,14 +1007,14 @@ const SettingsPage: React.FC = () => {
     );
 
     const renderActionCard = (title: string, desc: string, icon: React.ReactNode, onClick: () => void, colorClass = "indigo") => (
-        <button onClick={onClick} className={`p-6 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md hover:border-${colorClass}-300 transition-all text-left group h-full w-full`}>
+        <button onClick={onClick} className={`p-6 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:shadow-md hover:border-${colorClass}-300 transition-all text-left group h-full w-full`}>
             <div className="flex items-center gap-4 mb-3">
                 <div className={`p-3 bg-${colorClass}-50 rounded-lg text-${colorClass}-600 group-hover:text-${colorClass}-800 transition-colors`}>
                     {icon}
                 </div>
-                <h4 className={`font-bold text-lg text-slate-700 group-hover:text-${colorClass}-700`}>{title}</h4>
+                <h4 className={`font-bold text-lg text-app-text group-hover:text-${colorClass}-700`}>{title}</h4>
             </div>
-            <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
+            <p className="text-sm text-app-muted leading-relaxed">{desc}</p>
         </button>
     );
 
@@ -1038,7 +1038,7 @@ const SettingsPage: React.FC = () => {
             <div className="flex-shrink-0">
                 <Tabs variant="browser" tabs={preferenceTabs} activeTab={activePreferenceTab} onTabClick={setActivePreferenceTab} />
             </div>
-            <div className="bg-white rounded-b-lg -mt-px animate-in fade-in slide-in-from-bottom-2 duration-300 p-6">
+            <div className="bg-app-card rounded-b-lg -mt-px animate-in fade-in slide-in-from-bottom-2 duration-300 p-6">
                 {activePreferenceTab === 'General' && renderGeneralSettings()}
                 {activePreferenceTab === 'ID Sequences' && renderIDSequences()}
                 {activePreferenceTab === 'Communication' && renderCommunicationBranding()}
@@ -1050,15 +1050,15 @@ const SettingsPage: React.FC = () => {
     const renderDataManagement = () => (
         <div className="space-y-6">
             {features.applicationUpdates && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-6">
                     <UpdateCheck />
                 </div>
             )}
 
             {features.offlineMode && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                    <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
-                        <div className="p-2 bg-emerald-50 text-emerald-600 rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
+                <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-6">
+                    <h4 className="font-bold text-app-text mb-4 flex items-center gap-2">
+                        <div className="p-2 bg-emerald-50 text-ds-success rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
@@ -1066,31 +1066,31 @@ const SettingsPage: React.FC = () => {
             )}
 
             {perms.canReadAuditLogs && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <h4 className="font-bold text-slate-800 mb-4 text-lg">Transaction Audits & Logs</h4>
-                <button onClick={() => setIsTransactionLogOpen(true)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-indigo-50 hover:border-indigo-200 transition-all text-left flex items-center justify-between group">
+            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-6">
+                <h4 className="font-bold text-app-text mb-4 text-lg">Transaction Audits & Logs</h4>
+                <button onClick={() => setIsTransactionLogOpen(true)} className="w-full p-4 bg-app-bg border border-app-border rounded-xl hover:bg-app-highlight hover:border-ds-primary/40 transition-all text-left flex items-center justify-between group">
                     <div>
-                        <span className="font-semibold text-slate-700 block">View Transaction Log</span>
-                        <span className="text-xs text-slate-500">Track history, deleted items, and restore data.</span>
+                        <span className="font-semibold text-app-text block">View Transaction Log</span>
+                        <span className="text-xs text-app-muted">Track history, deleted items, and restore data.</span>
                     </div>
-                    <div className="text-slate-400 group-hover:text-indigo-600 shift-x-1 transition-transform">→</div>
+                    <div className="text-app-muted group-hover:text-ds-primary shift-x-1 transition-transform">→</div>
                 </button>
             </div>
             )}
 
-            <div className="bg-white rounded-xl border border-rose-100 shadow-sm p-6">
-                <h3 className="font-bold text-lg mb-4 text-rose-800 flex items-center gap-2">{ICONS.alertTriangle} Danger Zone</h3>
+            <div className="bg-app-card rounded-xl border border-rose-100 shadow-ds-card p-6">
+                <h3 className="font-bold text-lg mb-4 text-ds-danger flex items-center gap-2">{ICONS.alertTriangle} Danger Zone</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {perms.canManageUsers && (
                         <button onClick={() => setIsClearTransactionsModalOpen(true)} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
-                            <div className="font-bold text-rose-700 mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
-                            <p className="text-xs text-rose-600/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
+                            <div className="font-bold text-ds-danger mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
+                            <p className="text-xs text-ds-danger/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
                             <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
                         </button>
                     )}
-                    <button onClick={handleFactoryReset} className="p-4 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-900 transition-all text-left group">
+                    <button onClick={handleFactoryReset} className="p-4 bg-app-text border border-app-border rounded-xl hover:bg-app-text/90 transition-all text-left group">
                         <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
-                        <p className="text-xs text-slate-400 leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
+                        <p className="text-xs text-app-muted leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
                     </button>
                 </div>
             </div>
@@ -1101,8 +1101,8 @@ const SettingsPage: React.FC = () => {
 
     if (showDetail) {
         return (
-            <div className="p-6 bg-slate-50 h-full overflow-auto">
-                <div className="bg-white rounded-2xl shadow-sm border border-slate-200">
+            <div className="p-6 bg-app-bg h-full overflow-auto">
+                <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border">
                     <SettingsDetailPage goBack={() => { }} />
                 </div>
             </div>
@@ -1110,13 +1110,13 @@ const SettingsPage: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col md:flex-row h-full bg-slate-50 overflow-hidden font-sans">
+        <div className="flex flex-col md:flex-row h-full bg-app-bg overflow-hidden font-sans">
             {/* SIDEBAR */}
-            <div className={`w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 flex flex-col flex-shrink-0 z-20 transition-all duration-300`}>
-                <div className="p-4 md:p-6 border-b border-slate-100 flex items-center justify-between md:block">
+            <div className={`w-full md:w-64 bg-app-card border-b md:border-b-0 md:border-r border-app-border flex flex-col flex-shrink-0 z-20 transition-all duration-300`}>
+                <div className="p-4 md:p-6 border-b border-app-border flex items-center justify-between md:block">
                     <div>
-                        <h1 className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-violet-600 tracking-tight">Settings</h1>
-                        <p className="text-[10px] md:text-xs text-slate-400 font-medium mt-1 uppercase tracking-wider">Control Panel</p>
+                        <h1 className="text-xl md:text-2xl font-black bg-clip-text text-transparent bg-gradient-to-r from-ds-primary to-violet-600 tracking-tight">Settings</h1>
+                        <p className="text-[10px] md:text-xs text-app-muted font-medium mt-1 uppercase tracking-wider">Control Panel</p>
                     </div>
                 </div>
 
@@ -1127,13 +1127,13 @@ const SettingsPage: React.FC = () => {
 
                         return (
                             <div key={groupIdx} className="flex flex-row md:flex-col gap-1 md:gap-0">
-                                <h3 className="hidden md:block px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{group.title}</h3>
+                                <h3 className="hidden md:block px-3 text-[10px] font-bold text-app-muted uppercase tracking-wider mb-2">{group.title}</h3>
                                 <div className="flex flex-row md:flex-col gap-1">
                                     {visibleItems.map(item => (
                                         <button
                                             key={item.id}
                                             onClick={() => { setActiveCategory(item.id); setSearchQuery(''); }}
-                                            className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 group ${activeCategory === item.id ? 'bg-indigo-50 text-indigo-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'}`}
+                                            className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 group ${activeCategory === item.id ? 'bg-ds-primary text-white shadow-ds-card' : 'text-app-muted hover:bg-app-highlight hover:text-app-text'}`}
                                         >
                                             <div className={`transition-transform duration-200 ${activeCategory === item.id ? 'scale-110' : 'group-hover:scale-110'}`}>{item.icon}</div>
                                             {item.label}
@@ -1147,21 +1147,21 @@ const SettingsPage: React.FC = () => {
             </div>
 
             {/* MAIN CONTENT AREA */}
-            <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
+            <div className="flex-1 flex flex-col min-w-0 bg-app-bg">
                 {/* Offline Banner */}
                 {isOffline && (
                     <div className="px-8 py-4 bg-amber-50 border-b-2 border-amber-200">
                         <div className="flex items-center gap-3">
                             <div className="flex-shrink-0">
-                                <svg className="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <svg className="w-6 h-6 text-ds-warning" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                                 </svg>
                             </div>
                             <div className="flex-1">
-                                <p className="text-sm font-semibold text-amber-900">
+                                <p className="text-sm font-semibold text-ds-warning">
                                     Settings changes are disabled while offline
                                 </p>
-                                <p className="text-xs text-amber-700 mt-0.5">
+                                <p className="text-xs text-ds-warning mt-0.5">
                                     You can view settings, but changes won't be saved until you're back online.
                                 </p>
                             </div>
@@ -1170,11 +1170,11 @@ const SettingsPage: React.FC = () => {
                 )}
 
                 {/* Header */}
-                <div className={`px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-slate-50/95 backdrop-blur z-30 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'py-2' : 'py-6'}`}>
+                <div className={`px-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4 sticky top-0 bg-app-bg/95 backdrop-blur z-30 ${activeCategory === 'contacts' || activeCategory === 'assets' ? 'py-2' : 'py-6'}`}>
                     {activeCategory !== 'contacts' && activeCategory !== 'assets' && (
                         <div>
-                            <h2 className="text-3xl font-bold text-slate-800 tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
-                            <p className="text-slate-500 text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
+                            <h2 className="text-3xl font-bold text-app-text tracking-tight">{flatCategories.find(c => c.id === activeCategory)?.label}</h2>
+                            <p className="text-app-muted text-sm mt-1">Manage your {flatCategories.find(c => c.id === activeCategory)?.label.toLowerCase()} preferences and data.</p>
                         </div>
                     )}
                     {(activeCategory === 'contacts' || activeCategory === 'assets') && <div></div>}
@@ -1187,19 +1187,19 @@ const SettingsPage: React.FC = () => {
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}
                                         placeholder="Search..."
-                                        className="w-64 bg-white border-slate-200 shadow-sm focus:ring-2 focus:ring-indigo-100 transition-all rounded-lg pl-10"
+                                        className="w-64 bg-app-card border-app-border shadow-ds-card focus:ring-2 focus:ring-ds-primary/20 transition-all rounded-lg pl-10"
                                     />
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted group-focus-within:text-ds-primary transition-colors">
                                         <div className="w-4 h-4">{ICONS.fileText}</div>
                                     </div>
-                                    {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"><div className="w-4 h-4">{ICONS.x}</div></button>}
+                                    {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-app-muted hover:text-app-muted"><div className="w-4 h-4">{ICONS.x}</div></button>}
                                 </div>
                                 {activeCategory === 'accounts' ? (
                                     <div className="relative">
                                         <Button
                                             onClick={() => setIsAddNewMenuOpen(!isAddNewMenuOpen)}
                                             disabled={isOffline}
-                                            className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                                            className="bg-ds-primary hover:bg-ds-primary-hover text-white shadow-lg shadow-ds-primary/20 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                                         >
                                             <div className="w-5 h-5">{ICONS.plus}</div>
                                             <span className="font-semibold">Add New</span>
@@ -1211,24 +1211,24 @@ const SettingsPage: React.FC = () => {
                                                     className="fixed inset-0 z-40"
                                                     onClick={() => setIsAddNewMenuOpen(false)}
                                                 />
-                                                <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-slate-200 z-50 py-1">
+                                                <div className="absolute right-0 mt-2 w-56 bg-app-popover rounded-lg shadow-xl border border-app-border z-50 py-1">
                                                     <button
                                                         onClick={() => handleAddNew('ACCOUNT')}
-                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 flex items-center gap-2 transition-colors"
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-app-text hover:bg-app-highlight hover:text-ds-primary flex items-center gap-2 transition-colors"
                                                     >
                                                         <div className="w-4 h-4">{ICONS.wallet}</div>
                                                         <span>Account</span>
                                                     </button>
                                                     <button
                                                         onClick={() => handleAddNew('CATEGORY_INCOME')}
-                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 transition-colors"
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-app-text hover:bg-emerald-50 hover:text-emerald-700 flex items-center gap-2 transition-colors"
                                                     >
                                                         <div className="w-4 h-4">{ICONS.arrowUp}</div>
                                                         <span>Income Category</span>
                                                     </button>
                                                     <button
                                                         onClick={() => handleAddNew('CATEGORY_EXPENSE')}
-                                                        className="w-full text-left px-4 py-2.5 text-sm text-slate-700 hover:bg-rose-50 hover:text-rose-700 flex items-center gap-2 transition-colors"
+                                                        className="w-full text-left px-4 py-2.5 text-sm text-app-text hover:bg-rose-50 hover:text-ds-danger flex items-center gap-2 transition-colors"
                                                     >
                                                         <div className="w-4 h-4">{ICONS.arrowDown}</div>
                                                         <span>Expense Category</span>
@@ -1238,7 +1238,7 @@ const SettingsPage: React.FC = () => {
                                         )}
                                     </div>
                                 ) : (
-                                    <Button onClick={() => handleAddNew()} className="bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2">
+                                    <Button onClick={() => handleAddNew()} className="bg-ds-primary hover:bg-ds-primary-hover text-white shadow-lg shadow-ds-primary/20 border-0 rounded-lg px-4 py-2.5 flex items-center gap-2">
                                         <div className="w-5 h-5">{ICONS.plus}</div>
                                         <span className="font-semibold">Add New</span>
                                     </Button>
@@ -1265,8 +1265,8 @@ const SettingsPage: React.FC = () => {
                                         onClick={() => setAccountsTypeFilter(id)}
                                         className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                                             accountsTypeFilter === id
-                                                ? 'bg-indigo-600 text-white shadow-sm'
-                                                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'
+                                                ? 'bg-ds-primary text-white shadow-ds-card'
+                                                : 'bg-app-card border border-app-border text-app-muted hover:bg-app-highlight hover:border-app-border'
                                         }`}
                                     >
                                         {label}
@@ -1276,25 +1276,25 @@ const SettingsPage: React.FC = () => {
                         )}
                         {isTableViewCategory ? renderTable() : null}
                         {activeCategory === 'users' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                 <UserManagement />
                             </Suspense>
                         )}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <CustomerBillingPortal />
                             </div>
                         )}
                         {activeCategory === 'setup-wizard' && onboarding?.canManage && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6 space-y-4">
-                                <h2 className="text-lg font-semibold text-slate-800">Organization setup wizard</h2>
-                                <p className="text-sm text-slate-600">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6 space-y-4">
+                                <h2 className="text-lg font-semibold text-app-text">Organization setup wizard</h2>
+                                <p className="text-sm text-app-muted">
                                   Resume guided onboarding for company profile, fiscal year, properties, and users.
                                   Progress is saved automatically.
                                 </p>
                                 {onboarding.state && (
-                                  <p className="text-sm text-slate-500">
+                                  <p className="text-sm text-app-muted">
                                     Status: <span className="font-medium capitalize">{onboarding.state.status.replace('_', ' ')}</span>
                                     {' · '}
                                     {onboarding.state.progressPercent}% complete
@@ -1320,48 +1320,48 @@ const SettingsPage: React.FC = () => {
                             </div>
                         )}
                         {activeCategory === 'admin-subscriptions' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <AdminSubscriptionDashboard />
                             </div>
                         )}
                         {activeCategory === 'admin-monitoring' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <AdminMonitoringDashboard />
                             </div>
                         )}
                         {activeCategory === 'admin-referrals' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <AdminReferralDashboard />
                             </div>
                         )}
                         {activeCategory === 'backup' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                 <BackupRestorePage />
                             </Suspense>
                         )}
                         {activeCategory === 'privacy' && !isLocalOnlyMode() && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
-                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
+                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                     <PrivacyCenter />
                                 </Suspense>
                             </div>
                         )}
                         {activeCategory === 'mfa' && !isLocalOnlyMode() && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-6">
-                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
+                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                     <MfaSettingsSection />
                                 </Suspense>
                             </div>
                         )}
                         {activeCategory === 'data' && renderDataManagement()}
                         {activeCategory === 'application-update' && features.applicationUpdates && (
-                            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                            <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-6">
                                 <UpdateCheck />
                             </div>
                         )}
                         {activeCategory === 'about' && <AboutSection />}
                         {activeCategory === 'help' && (
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden p-4 sm:p-6">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-4 sm:p-6">
                                 <CustomerSuccessCenter
                                     onOpenSettingsTab={setActiveCategory}
                                     initialSection={helpDeepLink?.section}
@@ -1370,12 +1370,12 @@ const SettingsPage: React.FC = () => {
                             </div>
                         )}
                         {activeCategory === 'contacts' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                 <ContactsManagement />
                             </Suspense>
                         )}
                         {activeCategory === 'assets' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-slate-400">Loading...</div>}>
+                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                 <AssetsManagement />
                             </Suspense>
                         )}
@@ -1392,7 +1392,7 @@ const SettingsPage: React.FC = () => {
                             <PermissionManagementSection />
                         )}
                         {activeCategory === 'audit-trail' && perms.canReadAuditLogs && !isLocalOnlyMode() && (
-                            <EnterpriseAuditViewer />
+                            <EnterpriseAuditViewer key={authTenant?.id ?? 'no-tenant'} />
                         )}
                         {activeCategory === 'accounting-periods' && !isLocalOnlyMode() && (
                             <AccountingPeriodsSection isAdmin={perms.canManageUsers} />

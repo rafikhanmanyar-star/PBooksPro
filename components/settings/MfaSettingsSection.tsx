@@ -108,7 +108,7 @@ const MfaSettingsSection: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-slate-400">
+      <div className="flex items-center justify-center py-12 text-app-muted">
         <Loader2 className="h-6 w-6 animate-spin" />
       </div>
     );
@@ -117,13 +117,13 @@ const MfaSettingsSection: React.FC = () => {
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3">
-        <Shield className="mt-1 h-6 w-6 text-indigo-600" />
+        <Shield className="mt-1 h-6 w-6 text-ds-primary" />
         <div>
-          <h3 className="text-lg font-semibold text-slate-800">Multi-factor authentication</h3>
-          <p className="mt-1 text-sm text-slate-600">
+          <h3 className="text-lg font-semibold text-app-text">Multi-factor authentication</h3>
+          <p className="mt-1 text-sm text-app-muted">
             Use an authenticator app (Google Authenticator, Authy, etc.) for an extra layer of security.
             {status?.required && (
-              <span className="block mt-1 font-medium text-amber-700">
+              <span className="block mt-1 font-medium text-ds-warning">
                 Required for your role ({user?.role}).
               </span>
             )}
@@ -141,22 +141,22 @@ const MfaSettingsSection: React.FC = () => {
       )}
 
       {status && (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+        <div className="rounded-lg border border-app-border bg-app-bg px-4 py-3 text-sm">
           <p>
             Status:{' '}
-            <span className={status.enabled ? 'font-semibold text-emerald-700' : 'font-semibold text-slate-600'}>
+            <span className={status.enabled ? 'font-semibold text-emerald-700' : 'font-semibold text-app-muted'}>
               {status.enabled ? 'Enabled' : 'Disabled'}
             </span>
           </p>
           {status.enabled && (
-            <p className="mt-1 text-slate-600">Recovery codes remaining: {status.backupCodesRemaining}</p>
+            <p className="mt-1 text-app-muted">Recovery codes remaining: {status.backupCodesRemaining}</p>
           )}
         </div>
       )}
 
       {backupCodes && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm">
-          <p className="font-semibold text-amber-900">Save these recovery codes now</p>
+          <p className="font-semibold text-ds-warning">Save these recovery codes now</p>
           <ul className="mt-2 space-y-1 font-mono text-xs">
             {backupCodes.map((c) => (
               <li key={c}>{c}</li>
@@ -176,8 +176,8 @@ const MfaSettingsSection: React.FC = () => {
       )}
 
       {otpauthUri && !status?.enabled && (
-        <div className="space-y-4 rounded-xl border border-slate-200 p-4">
-          <p className="text-sm text-slate-600">Scan with your authenticator app, then enter the verification code.</p>
+        <div className="space-y-4 rounded-xl border border-app-border p-4">
+          <p className="text-sm text-app-muted">Scan with your authenticator app, then enter the verification code.</p>
           <div className="flex flex-col items-center">
             <img
               src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(otpauthUri)}`}
@@ -186,7 +186,7 @@ const MfaSettingsSection: React.FC = () => {
               height={160}
             />
             {setupSecret && (
-              <p className="mt-2 break-all text-center font-mono text-xs text-slate-500">{setupSecret}</p>
+              <p className="mt-2 break-all text-center font-mono text-xs text-app-muted">{setupSecret}</p>
             )}
           </div>
           <form onSubmit={confirmEnable} className="flex flex-col gap-3 sm:flex-row sm:items-end">
@@ -198,7 +198,7 @@ const MfaSettingsSection: React.FC = () => {
                 maxLength={8}
                 value={enableCode}
                 onChange={(e) => setEnableCode(e.target.value.replace(/\D/g, ''))}
-                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2"
+                className="mt-1 block w-full rounded-md border border-app-border px-3 py-2"
                 required
               />
             </label>
@@ -210,15 +210,15 @@ const MfaSettingsSection: React.FC = () => {
       )}
 
       {status?.enabled && !status.required && (
-        <form onSubmit={handleDisable} className="space-y-3 rounded-xl border border-slate-200 p-4">
-          <p className="text-sm text-slate-600">Enter your current authenticator code to disable MFA.</p>
+        <form onSubmit={handleDisable} className="space-y-3 rounded-xl border border-app-border p-4">
+          <p className="text-sm text-app-muted">Enter your current authenticator code to disable MFA.</p>
           <input
             type="text"
             inputMode="numeric"
             maxLength={8}
             value={disableCode}
             onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, ''))}
-            className="block w-full max-w-xs rounded-md border border-slate-300 px-3 py-2"
+            className="block w-full max-w-xs rounded-md border border-app-border px-3 py-2"
             required
           />
           <Button type="submit" variant="secondary" disabled={busy || disableCode.length < 6}>
@@ -228,7 +228,7 @@ const MfaSettingsSection: React.FC = () => {
       )}
 
       {status?.enabled && status.required && (
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-app-muted">
           MFA cannot be disabled while it is required for your role.
         </p>
       )}

@@ -29,7 +29,7 @@ export type AuditTrailFilters = {
 };
 
 export const auditTrailApi = {
-  async listEvents(filters: AuditTrailFilters = {}): Promise<{ items: AuditTrailItem[]; count: number }> {
+  async listEvents(filters: AuditTrailFilters = {}): Promise<{ items: AuditTrailItem[]; count: number; tenantId?: string }> {
     const q = new URLSearchParams();
     if (filters.userId) q.set('userId', filters.userId);
     if (filters.startDate) q.set('startDate', filters.startDate);
@@ -39,7 +39,9 @@ export const auditTrailApi = {
     if (filters.limit != null) q.set('limit', String(filters.limit));
     if (filters.offset != null) q.set('offset', String(filters.offset));
     const qs = q.toString();
-    return apiClient.get<{ items: AuditTrailItem[]; count: number }>(`/audit/events${qs ? `?${qs}` : ''}`);
+    return apiClient.get<{ items: AuditTrailItem[]; count: number; tenantId?: string }>(
+      `/audit/events${qs ? `?${qs}` : ''}`
+    );
   },
 
   async getFilterOptions(): Promise<{ modules: string[]; actions: string[] }> {

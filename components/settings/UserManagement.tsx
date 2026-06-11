@@ -253,21 +253,21 @@ const UserManagement: React.FC = () => {
     if (loading) {
         return (
             <div className="flex justify-center items-center p-8">
-                <div className="text-slate-500">Loading users...</div>
+                <div className="text-app-muted">Loading users...</div>
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            <div className="flex justify-between items-center bg-white p-4 rounded-lg border border-slate-200 shadow-sm">
+            <div className="flex justify-between items-center bg-app-card p-4 rounded-lg border border-app-border shadow-ds-card">
                 <div>
-                    <h3 className="text-lg font-bold text-slate-800">
+                    <h3 className="text-lg font-bold text-app-text">
                         {companyCtx?.activeCompany
                             ? `${companyCtx.activeCompany.company_name} — Users`
                             : 'Organization Users'}
                     </h3>
-                    <p className="text-sm text-slate-500">
+                    <p className="text-sm text-app-muted">
                         Manage users and assign roles.
                         {useCompanyBridge && ' Passwords are securely hashed.'}
                     </p>
@@ -277,44 +277,44 @@ const UserManagement: React.FC = () => {
                 </Button>
             </div>
 
-            <div className="bg-white rounded-lg border border-slate-200 shadow-sm overflow-x-auto">
+            <div className="bg-app-card rounded-lg border border-app-border shadow-ds-card overflow-x-auto">
                 {users.length === 0 ? (
-                    <div className="p-8 text-center text-slate-500">
+                    <div className="p-8 text-center text-app-muted">
                         No users found. Click "Add User" to create your first user.
                     </div>
                 ) : (
-                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                        <thead className="bg-slate-50">
+                    <table className="min-w-full divide-y divide-app-border text-sm">
+                        <thead className="bg-app-bg">
                             <tr>
-                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Name</th>
-                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Username</th>
-                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Email</th>
-                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Role</th>
-                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Status</th>
-                                <th className="px-4 py-3 text-right font-semibold text-slate-600">Actions</th>
+                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Name</th>
+                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Username</th>
+                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Email</th>
+                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Role</th>
+                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Status</th>
+                                <th className="px-4 py-3 text-right font-semibold text-app-muted">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <tbody className="divide-y divide-app-border">
                             {users.map(user => (
-                                <tr key={user.id} className="hover:bg-slate-50">
-                                    <td className="px-4 py-3 text-slate-800 font-medium">{user.name}</td>
-                                    <td className="px-4 py-3 text-slate-600">{user.username}</td>
-                                    <td className="px-4 py-3 text-slate-600">{user.email || '-'}</td>
+                                <tr key={user.id} className="hover:bg-app-bg">
+                                    <td className="px-4 py-3 text-app-text font-medium">{user.name}</td>
+                                    <td className="px-4 py-3 text-app-muted">{user.username}</td>
+                                    <td className="px-4 py-3 text-app-muted">{user.email || '-'}</td>
                                     <td className="px-4 py-3">
                                         <span className={`px-2 py-1 rounded-full text-xs font-bold ${
                                             user.role === 'Admin' || user.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800' :
                                             user.role === 'Manager' ? 'bg-blue-100 text-blue-800' :
-                                            user.role === 'Accounts' ? 'bg-slate-100 text-slate-800' :
-                                            user.role === 'Project Manager' ? 'bg-indigo-100 text-indigo-800' :
+                                            user.role === 'Accounts' ? 'bg-app-surface-2 text-app-text' :
+                                            user.role === 'Project Manager' ? 'bg-app-highlight text-app-text' :
                                             user.role === 'Team Lead' ? 'bg-violet-100 text-violet-800' :
-                                            'bg-gray-100 text-gray-800'
+                                            'bg-app-surface-2 text-app-text'
                                         }`}>
                                             {user.role === 'SUPER_ADMIN' ? 'Super Admin' : user.role}
                                         </span>
                                     </td>
                                     <td className="px-4 py-3">
                                         {user.force_password_change ? (
-                                            <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-700">
+                                            <span className="px-2 py-1 rounded-full text-xs font-bold bg-amber-100 text-ds-warning">
                                                 No password set
                                             </span>
                                         ) : (
@@ -327,7 +327,7 @@ const UserManagement: React.FC = () => {
                                         <div className="flex justify-end gap-2">
                                             <button
                                                 onClick={() => openModal(user)}
-                                                className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                                                className="p-1 text-app-muted hover:text-ds-primary transition-colors"
                                                 title="Edit User"
                                             >
                                                 <div className="w-4 h-4">{ICONS.edit}</div>
@@ -335,7 +335,7 @@ const UserManagement: React.FC = () => {
                                             {useCompanyBridge && (
                                                 <button
                                                     onClick={() => handleResetPassword(user)}
-                                                    className="p-1 text-slate-400 hover:text-amber-600 transition-colors"
+                                                    className="p-1 text-app-muted hover:text-ds-warning transition-colors"
                                                     title="Reset Password"
                                                 >
                                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -344,7 +344,7 @@ const UserManagement: React.FC = () => {
                                             {currentUser && user.id !== currentUser.id && (
                                                 <button
                                                     onClick={() => handleDelete(user)}
-                                                    className="p-1 text-slate-400 hover:text-rose-600 transition-colors"
+                                                    className="p-1 text-app-muted hover:text-ds-danger transition-colors"
                                                     title="Delete User"
                                                 >
                                                     <div className="w-4 h-4">{ICONS.trash}</div>
@@ -381,12 +381,12 @@ const UserManagement: React.FC = () => {
                     />
 
                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                        <label className="block text-sm font-medium text-app-text mb-1">
                             {userToEdit ? 'New Password (Optional)' : useCompanyBridge ? 'Password (Optional)' : 'Password'}
                         </label>
                         <input
                             type="password"
-                            className="block w-full px-3 py-2 border border-slate-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-accent/50 sm:text-sm"
+                            className="block w-full px-3 py-2 border border-app-border rounded-lg shadow-ds-card focus:outline-none focus:ring-2 focus:ring-accent/50 sm:text-sm"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
                             placeholder={userToEdit ? "Leave blank to keep current" : useCompanyBridge ? "Leave blank — user sets on first login" : ""}
@@ -395,7 +395,7 @@ const UserManagement: React.FC = () => {
                             data-form-type="other"
                         />
                         {useCompanyBridge && !userToEdit && !password && (
-                            <p className="text-xs text-slate-400 mt-1">
+                            <p className="text-xs text-app-muted mt-1">
                                 If left blank, the user will be prompted to set a password on their first login.
                             </p>
                         )}
@@ -417,8 +417,8 @@ const UserManagement: React.FC = () => {
                         </optgroup>
                     </Select>
 
-                    <div className="pt-2 text-xs text-slate-500 bg-slate-50 p-3 rounded-lg overflow-y-auto max-h-40">
-                        <p className="font-bold text-slate-700 mb-1">
+                    <div className="pt-2 text-xs text-app-muted bg-app-bg p-3 rounded-lg overflow-y-auto max-h-40">
+                        <p className="font-bold text-app-text mb-1">
                             {ENTERPRISE_ROLE_LABELS[resolveEnterpriseRole(role)]}
                         </p>
                         <p>Permissions are enforced server-side. See Settings → Permissions for the full matrix.</p>

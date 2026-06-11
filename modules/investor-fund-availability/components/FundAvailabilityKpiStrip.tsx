@@ -14,7 +14,7 @@ import type { FundAvailabilitySummary } from '../types/fundAvailability.types';
 import { formatCompactMoney } from '../utils/financialFormat';
 
 const cardBase =
-    'relative overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/60 shadow-sm shadow-slate-200/40 dark:shadow-black/20 p-4 transition-all duration-200 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600';
+    'relative overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-ds-card p-4 transition-all duration-200 hover:shadow-ds-modal hover:border-app-border';
 
 export const FundAvailabilityKpiStrip: React.FC<{
     summary: FundAvailabilitySummary;
@@ -28,7 +28,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Capital + allocated profit − withdrawals',
             icon: Scale,
             accent: 'from-indigo-500/15 to-transparent',
-            iconWrap: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+            iconWrap: 'bg-app-highlight text-ds-primary',
         },
         {
             label: 'Available cash',
@@ -36,7 +36,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Project-scoped liquid balances',
             icon: Banknote,
             accent: 'from-emerald-500/15 to-transparent',
-            iconWrap: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+            iconWrap: 'bg-app-highlight text-ds-success',
         },
         {
             label: 'Distributable funds',
@@ -44,7 +44,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Cash − reserves − payables',
             icon: Wallet,
             accent: 'from-sky-500/15 to-transparent',
-            iconWrap: 'bg-sky-500/10 text-sky-700 dark:text-sky-400',
+            iconWrap: 'bg-app-highlight text-ds-primary',
         },
         {
             label: 'Total withdrawn',
@@ -52,7 +52,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Cash returned to investors',
             icon: TrendingDown,
             accent: 'from-rose-500/10 to-transparent',
-            iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            iconWrap: 'bg-app-highlight text-ds-danger',
         },
         {
             label: 'Reserved (ops)',
@@ -60,7 +60,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Policy holdback on liquidity',
             icon: PiggyBank,
             accent: 'from-amber-500/10 to-transparent',
-            iconWrap: 'bg-amber-500/10 text-amber-800 dark:text-amber-400',
+            iconWrap: 'bg-app-highlight text-ds-warning',
         },
         {
             label: 'Pending payables',
@@ -68,7 +68,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Protected before distributions',
             icon: ShieldAlert,
             accent: 'from-orange-500/10 to-transparent',
-            iconWrap: 'bg-orange-500/10 text-orange-700 dark:text-orange-400',
+            iconWrap: 'bg-app-highlight text-ds-warning',
         },
         {
             label: 'Healthy projects',
@@ -76,7 +76,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Adequate distributable liquidity',
             icon: CircleDollarSign,
             accent: 'from-emerald-500/10 to-transparent',
-            iconWrap: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+            iconWrap: 'bg-app-highlight text-ds-success',
         },
         {
             label: 'Warning',
@@ -84,7 +84,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'Tight liquidity vs equity',
             icon: AlertTriangle,
             accent: 'from-amber-500/10 to-transparent',
-            iconWrap: 'bg-amber-500/10 text-amber-800 dark:text-amber-400',
+            iconWrap: 'bg-app-highlight text-ds-warning',
         },
         {
             label: 'Blocked / overdrawn',
@@ -92,7 +92,7 @@ export const FundAvailabilityKpiStrip: React.FC<{
             sub: 'No / unsafe payout',
             icon: AlertTriangle,
             accent: 'from-red-500/10 to-transparent',
-            iconWrap: 'bg-red-500/10 text-red-600 dark:text-red-400',
+            iconWrap: 'bg-app-highlight text-ds-danger',
         },
     ];
 
@@ -112,9 +112,9 @@ export const FundAvailabilityKpiStrip: React.FC<{
                             <it.icon className="h-5 w-5" strokeWidth={2} />
                         </div>
                         <div className="min-w-0 flex-1">
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{it.label}</p>
-                            <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 dark:text-slate-50">{it.value}</p>
-                            <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400 leading-snug">{it.sub}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-app-muted">{it.label}</p>
+                            <p className="mt-1 text-lg font-bold tabular-nums text-app-text">{it.value}</p>
+                            <p className="mt-0.5 text-[11px] text-app-muted leading-snug">{it.sub}</p>
                         </div>
                     </div>
                 </motion.div>

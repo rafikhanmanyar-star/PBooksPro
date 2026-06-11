@@ -216,7 +216,7 @@ const BackupHistoryPage: React.FC = () => {
   if (isLocalOnlyMode()) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+        <div className="max-w-4xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
           Automated backup history is available in LAN / server mode with PostgreSQL.
         </div>
       </div>
@@ -226,7 +226,7 @@ const BackupHistoryPage: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+        <div className="max-w-4xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
           You do not have permission to view backup history.
         </div>
       </div>
@@ -238,11 +238,11 @@ const BackupHistoryPage: React.FC = () => {
       <div className="max-w-5xl mx-auto space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-app-text flex items-center gap-2">
               <HardDrive className="w-5 h-5 text-green-600" />
               Backup History
             </h3>
-            <p className="text-sm text-slate-500 mt-0.5">
+            <p className="text-sm text-app-muted mt-0.5">
               Scheduled full PostgreSQL backups — daily 02:00, weekly Sunday 01:00, monthly 1st 01:00
               (server local time).
             </p>
@@ -261,7 +261,7 @@ const BackupHistoryPage: React.FC = () => {
           </p>
           {storageRoot && (
             <p>
-              Storage: <code className="bg-white/60 px-1 rounded">{storageRoot}</code>
+              Storage: <code className="bg-app-card/60 px-1 rounded">{storageRoot}</code>
             </p>
           )}
         </div>
@@ -271,11 +271,11 @@ const BackupHistoryPage: React.FC = () => {
             {jobs.map((job) => (
               <div
                 key={job.id}
-                className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                className="rounded-lg border border-app-border bg-app-card p-3 shadow-ds-card"
               >
-                <p className="font-medium text-slate-800 text-sm">{job.job_name}</p>
-                <p className="text-xs text-slate-500 capitalize mt-0.5">{job.frequency}</p>
-                <div className="mt-2 text-xs text-slate-600 space-y-1">
+                <p className="font-medium text-app-text text-sm">{job.job_name}</p>
+                <p className="text-xs text-app-muted capitalize mt-0.5">{job.frequency}</p>
+                <div className="mt-2 text-xs text-app-muted space-y-1">
                   <p className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     Next: {formatDateTime(job.next_run)}
@@ -292,7 +292,7 @@ const BackupHistoryPage: React.FC = () => {
                           ? 'text-blue-600'
                           : job.status === 'failed'
                             ? 'text-red-600'
-                            : 'text-slate-700'
+                            : 'text-app-text'
                       }
                     >
                       {job.status}
@@ -329,52 +329,52 @@ const BackupHistoryPage: React.FC = () => {
               ))}
             </Select>
           </div>
-          <p className="text-xs text-slate-500 pb-2">{total} run(s) recorded</p>
+          <p className="text-xs text-app-muted pb-2">{total} run(s) recorded</p>
         </div>
 
-        <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+        <div className="border border-app-border rounded-lg overflow-hidden bg-app-card">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
+              <thead className="bg-app-bg border-b border-app-border">
                 <tr>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Job</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Started</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Completed</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Duration</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Size</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Attempt</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Result</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600">Cloud</th>
-                  <th className="text-left px-3 py-2 font-medium text-slate-600" />
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Job</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Started</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Completed</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Duration</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Size</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Attempt</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Result</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted">Cloud</th>
+                  <th className="text-left px-3 py-2 font-medium text-app-muted" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-app-border">
                 {loading && runs.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={9} className="px-3 py-8 text-center text-app-muted">
                       Loading…
                     </td>
                   </tr>
                 )}
                 {!loading && runs.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                    <td colSpan={9} className="px-3 py-8 text-center text-app-muted">
                       No backup runs yet.
                     </td>
                   </tr>
                 )}
                 {runs.map((run) => (
-                  <tr key={run.id} className="hover:bg-slate-50/80">
-                    <td className="px-3 py-2 text-slate-800">{run.job_name ?? run.job_id}</td>
-                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                  <tr key={run.id} className="hover:bg-app-bg/80">
+                    <td className="px-3 py-2 text-app-text">{run.job_name ?? run.job_id}</td>
+                    <td className="px-3 py-2 text-app-muted whitespace-nowrap">
                       {formatDateTime(run.started_at)}
                     </td>
-                    <td className="px-3 py-2 text-slate-600 whitespace-nowrap">
+                    <td className="px-3 py-2 text-app-muted whitespace-nowrap">
                       {formatDateTime(run.completed_at)}
                     </td>
-                    <td className="px-3 py-2 text-slate-600">{formatDuration(run.duration_ms)}</td>
-                    <td className="px-3 py-2 text-slate-600">{formatBytes(run.size_bytes)}</td>
-                    <td className="px-3 py-2 text-slate-600">{run.attempt_number}</td>
+                    <td className="px-3 py-2 text-app-muted">{formatDuration(run.duration_ms)}</td>
+                    <td className="px-3 py-2 text-app-muted">{formatBytes(run.size_bytes)}</td>
+                    <td className="px-3 py-2 text-app-muted">{run.attempt_number}</td>
                     <td className="px-3 py-2">
                       {run.success ? (
                         <span className="inline-flex items-center gap-1 text-green-700">
@@ -391,7 +391,7 @@ const BackupHistoryPage: React.FC = () => {
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-slate-600">
+                    <td className="px-3 py-2 text-app-muted">
                       {(() => {
                         const upload = uploadsByRun[run.id];
                         if (!upload) return run.success ? '—' : '—';
@@ -454,7 +454,7 @@ const BackupHistoryPage: React.FC = () => {
                                 type="button"
                                 onClick={() => void handleRestoreFromCloud(run.id)}
                                 disabled={cloudActionRunId === run.id}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-amber-700 hover:text-amber-900 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-ds-warning hover:text-ds-warning disabled:opacity-50"
                               >
                                 Restore cloud
                               </button>

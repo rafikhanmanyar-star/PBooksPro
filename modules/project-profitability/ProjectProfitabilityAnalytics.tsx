@@ -147,17 +147,17 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
         focusedProjectId != null ? projects.find((p) => p.id === focusedProjectId)?.name : null;
 
     return (
-        <div className="flex flex-col h-full min-h-0 space-y-4">
+        <div className="flex flex-col h-full min-h-0 space-y-4 bg-app-bg">
             <style>{STANDARD_PRINT_STYLES}</style>
 
             <div className="flex flex-col gap-3 shrink-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                        <h3 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">Project Profitability Analytics</h3>
-                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl leading-relaxed">
+                        <h3 className="text-2xl font-bold tracking-tight text-app-text">Project Profitability Analytics</h3>
+                        <p className="text-ds-body text-app-muted mt-1 max-w-3xl leading-relaxed">
                             {selectedProjectName ? (
                                 <>
-                                    Viewing <span className="font-semibold text-indigo-600 dark:text-indigo-400">{selectedProjectName}</span> as of{' '}
+                                    Viewing <span className="font-semibold text-ds-primary">{selectedProjectName}</span> as of{' '}
                                     {formatDate(endDate)}. KPIs and charts reflect this project; open the drilldown panel for revenue, expense, and investor detail.
                                 </>
                             ) : (
@@ -195,7 +195,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                             Refresh
                         </Button>
                         <details className="relative">
-                            <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800">
+                            <summary className="list-none cursor-pointer inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-app-border bg-app-card text-ds-body font-medium text-app-text hover:bg-app-table-hover">
                                 <Settings2 className="h-4 w-4" />
                                 Columns
                             </summary>
@@ -219,11 +219,11 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
             {displaySummary && (
                 <div className="print:hidden space-y-4">
                     <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Project summary</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-app-muted mb-2">Project summary</p>
                         <ProjectSummaryKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
                     </div>
                     <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Profitability</p>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-app-muted mb-2">Profitability</p>
                         <ProfitabilityKpiStrip summary={displaySummary} isFetching={summaryQuery.isFetching} />
                     </div>
                 </div>
@@ -232,57 +232,57 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
             <div id="project-profitability-print" className="printable-area flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
                 <div className="hidden print:block">
                     <ReportHeader />
-                    <p className="text-center text-sm text-slate-600 mt-2">
+                    <p className="text-center text-sm text-app-muted mt-2">
                         {CURRENCY} · As of {formatDate(endDate)}
                     </p>
                 </div>
 
                 {displaySummary && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 print:hidden shrink-0">
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Sales trend</p>
+                        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Sales trend</p>
                             <SalesTrendChart points={monthlyChartPoints} />
                         </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Collection trend</p>
+                        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Collection trend</p>
                             <CollectionTrendChart points={collectionQuery.data ?? []} />
                         </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">
+                        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">
                                 {focusedProjectId ? 'Revenue vs expense' : 'Expense vs revenue (top projects)'}
                             </p>
                             <RevenueVsExpenseChart rows={filteredRows} />
                         </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Unit status distribution</p>
+                        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Unit status distribution</p>
                             <UnitStatusDonutChart rows={filteredRows} />
                         </div>
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Profitability trend</p>
+                        <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Profitability trend</p>
                             <MonthlyProfitTrendChart points={monthlyChartPoints} />
                         </div>
                         {!focusedProjectId && (
                             <>
-                                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Top net profit</p>
+                                <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Top net profit</p>
                                     <TopProfitableProjectsChart rows={filteredRows} />
                                 </div>
-                                <div className="rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm">
-                                    <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Project status</p>
+                                <div className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+                                    <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">Project status</p>
                                     <ProjectStatusDonutChart rows={filteredRows} />
                                 </div>
                             </>
                         )}
                         <div
-                            className={`rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/80 dark:bg-slate-900/40 p-4 shadow-sm ${focusedProjectId ? 'xl:col-span-2' : ''}`}
+                            className={`rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card ${focusedProjectId ? 'xl:col-span-2' : ''}`}
                         >
-                            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">ROI comparison</p>
+                            <p className="text-xs font-bold uppercase tracking-wider text-app-muted mb-2">ROI comparison</p>
                             <RoiComparisonChart rows={filteredRows} />
                         </div>
                     </div>
                 )}
 
-                <div className="flex-1 min-h-0 overflow-auto border border-slate-200 dark:border-slate-700 rounded-2xl bg-white dark:bg-slate-900/40">
+                <div className="flex-1 min-h-0 overflow-auto border border-app-border rounded-2xl bg-app-card">
                     <ProfitabilityDataTable
                         rows={filteredRows}
                         isLoading={summaryQuery.isLoading}

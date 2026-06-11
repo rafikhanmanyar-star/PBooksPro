@@ -20,7 +20,7 @@ interface KpiStripProps {
 }
 
 const cardBase =
-    'relative overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/60 shadow-sm shadow-slate-200/40 dark:shadow-black/20 p-4 transition-all duration-200 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600';
+    'relative overflow-hidden rounded-2xl border border-app-border bg-app-card shadow-ds-card p-4 transition-all duration-200 hover:shadow-ds-modal hover:border-app-border';
 
 export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetching }) => {
     const s = summary;
@@ -31,7 +31,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'P&L income (inception → as of)',
             icon: TrendingUp,
             accent: 'from-emerald-500/20 to-transparent',
-            iconWrap: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+            iconWrap: 'bg-app-highlight text-ds-success',
         },
         {
             label: 'Total expense',
@@ -39,7 +39,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Accrued + posted costs',
             icon: Scale,
             accent: 'from-rose-500/15 to-transparent',
-            iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            iconWrap: 'bg-app-highlight text-ds-danger',
         },
         {
             label: 'Net profit',
@@ -47,7 +47,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Revenue − expense',
             icon: Gem,
             accent: 'from-indigo-500/15 to-transparent',
-            iconWrap: s.netProfit >= 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            iconWrap: s.netProfit >= 0 ? 'bg-app-highlight text-ds-success' : 'bg-app-highlight text-ds-danger',
         },
         {
             label: 'Adjusted profit',
@@ -55,7 +55,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Incl. unsold inventory value',
             icon: Activity,
             accent: 'from-violet-500/15 to-transparent',
-            iconWrap: s.adjustedProfit >= 0 ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            iconWrap: s.adjustedProfit >= 0 ? 'bg-app-highlight text-ds-success' : 'bg-app-highlight text-ds-danger',
         },
         {
             label: 'ROI %',
@@ -63,7 +63,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'On aggregate investor capital',
             icon: Target,
             accent: 'from-sky-500/15 to-transparent',
-            iconWrap: (s.roiPctAggregate ?? 0) >= 0 ? 'bg-sky-500/10 text-sky-600 dark:text-sky-400' : 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
+            iconWrap: (s.roiPctAggregate ?? 0) >= 0 ? 'bg-app-highlight text-ds-primary' : 'bg-app-highlight text-app-muted',
         },
         {
             label: 'Active projects',
@@ -71,7 +71,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Not completed',
             icon: Building2,
             accent: 'from-slate-500/10 to-transparent',
-            iconWrap: 'bg-slate-500/10 text-slate-600 dark:text-slate-300',
+            iconWrap: 'bg-app-highlight text-app-muted',
         },
         {
             label: 'Profitable',
@@ -79,7 +79,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Net profit > 0',
             icon: ArrowUpRight,
             accent: 'from-emerald-500/15 to-transparent',
-            iconWrap: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+            iconWrap: 'bg-app-highlight text-ds-success',
         },
         {
             label: 'Loss projects',
@@ -87,7 +87,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Net profit < 0',
             icon: ArrowDownRight,
             accent: 'from-rose-500/15 to-transparent',
-            iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+            iconWrap: 'bg-app-highlight text-ds-danger',
         },
         {
             label: 'Unsold inventory',
@@ -95,7 +95,7 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
             sub: 'Units × market price',
             icon: Warehouse,
             accent: 'from-amber-500/15 to-transparent',
-            iconWrap: 'bg-amber-500/10 text-amber-700 dark:text-amber-400',
+            iconWrap: 'bg-app-highlight text-ds-warning',
         },
     ];
 
@@ -112,9 +112,9 @@ export const ProfitabilityKpiStrip: React.FC<KpiStripProps> = ({ summary, isFetc
                     <div className={`pointer-events-none absolute inset-0 bg-gradient-to-br ${it.accent}`} />
                     <div className="relative flex items-start justify-between gap-2">
                         <div>
-                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{it.label}</p>
-                            <p className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">{it.value}</p>
-                            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-snug">{it.sub}</p>
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-app-muted">{it.label}</p>
+                            <p className="mt-1.5 text-xl font-bold tabular-nums tracking-tight text-app-text">{it.value}</p>
+                            <p className="mt-1 text-xs text-app-muted leading-snug">{it.sub}</p>
                         </div>
                         <div className={`rounded-xl p-2.5 ${it.iconWrap}`}>
                             <it.icon className="h-5 w-5" strokeWidth={1.75} />

@@ -14,15 +14,15 @@ function statusBadgeClass(status: PrivacyRequestStatus): string {
     case 'completed':
       return 'bg-emerald-50 text-emerald-700 border-emerald-200';
     case 'pending':
-      return 'bg-amber-50 text-amber-700 border-amber-200';
+      return 'bg-amber-50 text-ds-warning border-amber-200';
     case 'processing':
       return 'bg-blue-50 text-blue-700 border-blue-200';
     case 'rejected':
-      return 'bg-slate-100 text-slate-600 border-slate-200';
+      return 'bg-app-surface-2 text-app-muted border-app-border';
     case 'failed':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
+      return 'bg-rose-50 text-ds-danger border-rose-200';
     default:
-      return 'bg-slate-50 text-slate-600 border-slate-200';
+      return 'bg-app-bg text-app-muted border-app-border';
   }
 }
 
@@ -153,19 +153,19 @@ const PrivacyCenter: React.FC = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-slate-800">Privacy Center</h2>
-        <p className="text-sm text-slate-500 mt-1">
+        <h2 className="text-lg font-semibold text-app-text">Privacy Center</h2>
+        <p className="text-sm text-app-muted mt-1">
           Manage your personal data, export copies, and submit privacy requests. All actions are logged for compliance.
         </p>
         {user && (
-          <p className="text-xs text-slate-400 mt-2">
-            Signed in as <span className="font-medium text-slate-600">{user.name || user.username}</span>
+          <p className="text-xs text-app-muted mt-2">
+            Signed in as <span className="font-medium text-app-muted">{user.name || user.username}</span>
           </p>
         )}
       </div>
 
       {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-ds-danger">{error}</div>
       )}
       {success && (
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
@@ -174,9 +174,9 @@ const PrivacyCenter: React.FC = () => {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-800">Download data</h3>
-          <p className="text-sm text-slate-500 mt-1 mb-4">
+        <section className="rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
+          <h3 className="font-semibold text-app-text">Download data</h3>
+          <p className="text-sm text-app-muted mt-1 mb-4">
             Download a JSON copy of your personal data including profile, activity logs, and legal acceptances.
           </p>
           <div className="flex flex-wrap gap-2">
@@ -205,9 +205,9 @@ const PrivacyCenter: React.FC = () => {
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-800">Request export</h3>
-          <p className="text-sm text-slate-500 mt-1 mb-4">
+        <section className="rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
+          <h3 className="font-semibold text-app-text">Request export</h3>
+          <p className="text-sm text-app-muted mt-1 mb-4">
             Submit a formal export request for audit tracking when immediate download is not sufficient.
           </p>
           <Button
@@ -231,13 +231,13 @@ const PrivacyCenter: React.FC = () => {
           </Button>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-800">Request deletion</h3>
-          <p className="text-sm text-slate-500 mt-1 mb-3">
+        <section className="rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
+          <h3 className="font-semibold text-app-text">Request deletion</h3>
+          <p className="text-sm text-app-muted mt-1 mb-3">
             Ask for your account and associated personal data to be deleted or anonymized.
           </p>
           <textarea
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+            className="w-full rounded-lg border border-app-border px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-ds-primary/40"
             placeholder="Describe what data you want deleted and why…"
             value={deletionNotes}
             onChange={(e) => setDeletionNotes(e.target.value)}
@@ -253,13 +253,13 @@ const PrivacyCenter: React.FC = () => {
           </Button>
         </section>
 
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h3 className="font-semibold text-slate-800">Request correction</h3>
-          <p className="text-sm text-slate-500 mt-1 mb-3">
+        <section className="rounded-xl border border-app-border bg-app-card p-5 shadow-ds-card">
+          <h3 className="font-semibold text-app-text">Request correction</h3>
+          <p className="text-sm text-app-muted mt-1 mb-3">
             Report inaccurate personal data and describe the correction needed.
           </p>
           <textarea
-            className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+            className="w-full rounded-lg border border-app-border px-3 py-2 text-sm min-h-[80px] focus:outline-none focus:ring-2 focus:ring-ds-primary/40"
             placeholder="What information is incorrect and what should it be?"
             value={correctionNotes}
             onChange={(e) => setCorrectionNotes(e.target.value)}
@@ -276,25 +276,25 @@ const PrivacyCenter: React.FC = () => {
         </section>
       </div>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h3 className="font-semibold text-slate-800">Privacy request history</h3>
-          <p className="text-sm text-slate-500 mt-0.5">
+      <section className="rounded-xl border border-app-border bg-app-card shadow-ds-card overflow-hidden">
+        <div className="px-5 py-4 border-b border-app-border">
+          <h3 className="font-semibold text-app-text">Privacy request history</h3>
+          <p className="text-sm text-app-muted mt-0.5">
             {isAdmin ? 'All organization privacy requests' : 'Your privacy requests'}
           </p>
         </div>
 
         {loading ? (
           <div className="flex justify-center py-12">
-            <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+            <div className="w-8 h-8 border-4 border-ds-primary border-t-transparent rounded-full animate-spin" />
           </div>
         ) : requests.length === 0 ? (
-          <p className="text-sm text-slate-500 px-5 py-8 text-center">No privacy requests yet.</p>
+          <p className="text-sm text-app-muted px-5 py-8 text-center">No privacy requests yet.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr className="bg-app-bg text-left text-xs uppercase tracking-wide text-app-muted">
                   <th className="px-5 py-3 font-medium">Type</th>
                   <th className="px-5 py-3 font-medium">Status</th>
                   <th className="px-5 py-3 font-medium">Requested</th>
@@ -302,10 +302,10 @@ const PrivacyCenter: React.FC = () => {
                   {isAdmin && <th className="px-5 py-3 font-medium">Actions</th>}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-app-border">
                 {requests.map((req) => (
-                  <tr key={req.id} className="hover:bg-slate-50/50">
-                    <td className="px-5 py-3 text-slate-800">{typeLabel(req.request_type)}</td>
+                  <tr key={req.id} className="hover:bg-app-bg/50">
+                    <td className="px-5 py-3 text-app-text">{typeLabel(req.request_type)}</td>
                     <td className="px-5 py-3">
                       <span
                         className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium border ${statusBadgeClass(req.status)}`}
@@ -313,10 +313,10 @@ const PrivacyCenter: React.FC = () => {
                         {req.status}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                    <td className="px-5 py-3 text-app-muted whitespace-nowrap">
                       {formatDate(req.requested_at)}
                     </td>
-                    <td className="px-5 py-3 text-slate-600 whitespace-nowrap">
+                    <td className="px-5 py-3 text-app-muted whitespace-nowrap">
                       {formatDate(req.completed_at)}
                     </td>
                     {isAdmin && (
@@ -335,7 +335,7 @@ const PrivacyCenter: React.FC = () => {
                           <div className="flex flex-col gap-2 min-w-[200px]">
                             <input
                               type="text"
-                              className="rounded border border-slate-200 px-2 py-1 text-xs"
+                              className="rounded border border-app-border px-2 py-1 text-xs"
                               placeholder="Admin notes (optional)"
                               value={adminNotes[req.id] ?? ''}
                               onChange={(e) =>
@@ -363,7 +363,7 @@ const PrivacyCenter: React.FC = () => {
                           </div>
                         )}
                         {req.metadata?.notes && typeof req.metadata.notes === 'string' && (
-                          <p className="text-xs text-slate-500 mt-1 max-w-xs truncate" title={req.metadata.notes}>
+                          <p className="text-xs text-app-muted mt-1 max-w-xs truncate" title={req.metadata.notes}>
                             {req.metadata.notes}
                           </p>
                         )}

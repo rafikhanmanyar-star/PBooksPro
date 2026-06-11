@@ -58,7 +58,7 @@ export async function findAccountsByLoginIdentifier(
             t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
             COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
      FROM user_tenants ut
-     JOIN users u ON u.id = ut.user_id AND u.tenant_id = ut.tenant_id
+     JOIN users u ON u.id = ut.user_id
      JOIN tenants t ON t.id = ut.tenant_id
      WHERE u.is_active = TRUE
        AND ut.tenant_id !~ '^__'
@@ -125,8 +125,8 @@ export async function getUserTenantsForUser(
   currentTenantId: string
 ): Promise<TenantCompanySummary[]> {
   const normalizedEmail = await db.query<{ email: string | null; username: string }>(
-    `SELECT email, username FROM users WHERE id = $1 AND tenant_id = $2`,
-    [userId, currentTenantId]
+    `SELECT email, username FROM users WHERE id = $1`,
+    [userId]
   );
   const row = normalizedEmail.rows[0];
   if (!row) return [];
@@ -162,7 +162,7 @@ export async function findAccountForTenantByLoginIdentifier(
             t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
             COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
      FROM user_tenants ut
-     JOIN users u ON u.id = ut.user_id AND u.tenant_id = ut.tenant_id
+     JOIN users u ON u.id = ut.user_id
      JOIN tenants t ON t.id = ut.tenant_id
      WHERE ut.tenant_id = $1 AND u.is_active = TRUE
        AND (
@@ -216,7 +216,7 @@ export async function userHasTenantAccess(
             t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
             COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
      FROM user_tenants ut
-     JOIN users u ON u.id = ut.user_id AND u.tenant_id = ut.tenant_id
+     JOIN users u ON u.id = ut.user_id
      JOIN tenants t ON t.id = ut.tenant_id
      WHERE ut.tenant_id = $1 AND u.is_active = TRUE
        AND (

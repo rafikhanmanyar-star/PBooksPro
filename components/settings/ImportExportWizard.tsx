@@ -724,11 +724,11 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
   // Step 1: Choose Action
   if (currentStep === 'choose') {
     return (
-      <div className="flex flex-col h-full bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="flex flex-col h-full bg-app-card">
+        <div className="flex items-center justify-between p-4 border-b border-app-border">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">Settings › Import/Export Data</div>
-            <h1 className="text-2xl font-bold text-slate-800">Import/Export Data</h1>
+            <div className="text-sm text-app-muted mb-1">Settings › Import/Export Data</div>
+            <h1 className="text-2xl font-bold text-app-text">Import/Export Data</h1>
           </div>
           <Button variant="ghost" onClick={goBack}>
             <div className="w-4 h-4">{ICONS.x}</div>
@@ -739,42 +739,42 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-4xl mx-auto">
             <div className="mb-8">
-              <h2 className="text-xl font-semibold text-slate-700 mb-2">Choose an Action</h2>
-              <p className="text-slate-600">Select what you would like to do with your data</p>
+              <h2 className="text-xl font-semibold text-app-text mb-2">Choose an Action</h2>
+              <p className="text-app-muted">Select what you would like to do with your data</p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <button
                 onClick={() => handleActionSelect('template')}
-                className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
+                className="p-6 border-2 border-app-border rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
               >
                 <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                   <div className="w-6 h-6 text-blue-600">{ICONS.download}</div>
                 </div>
-                <h3 className="font-semibold text-slate-800 mb-2">Download Template (Optional)</h3>
-                <p className="text-sm text-slate-600">Get an empty Excel template with all required columns</p>
+                <h3 className="font-semibold text-app-text mb-2">Download Template (Optional)</h3>
+                <p className="text-sm text-app-muted">Get an empty Excel template with all required columns</p>
               </button>
 
               <button
                 onClick={() => handleActionSelect('export')}
-                className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
+                className="p-6 border-2 border-app-border rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left"
               >
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
                   <div className="w-6 h-6 text-green-600">{ICONS.download}</div>
                 </div>
-                <h3 className="font-semibold text-slate-800 mb-2">Export Current Data</h3>
-                <p className="text-sm text-slate-600">Download your existing data for editing and re-import</p>
+                <h3 className="font-semibold text-app-text mb-2">Export Current Data</h3>
+                <p className="text-sm text-app-muted">Download your existing data for editing and re-import</p>
               </button>
 
               <button
                 onClick={() => handleActionSelect('import')}
-                className="p-6 border-2 border-slate-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left border-green-500 bg-green-50"
+                className="p-6 border-2 border-app-border rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left border-green-500 bg-green-50"
               >
                 <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
                   <div className="w-6 h-6 text-purple-600">{ICONS.upload}</div>
                 </div>
-                <h3 className="font-semibold text-slate-800 mb-2">Import Data</h3>
-                <p className="text-sm text-slate-600">Upload Excel file to import new data directly</p>
+                <h3 className="font-semibold text-app-text mb-2">Import Data</h3>
+                <p className="text-sm text-app-muted">Upload Excel file to import new data directly</p>
               </button>
             </div>
 
@@ -795,13 +795,13 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
   // Step 2a: Template Download
   if (currentStep === 'template') {
     return (
-      <div className="flex flex-col h-full bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="flex flex-col h-full bg-app-card">
+        <div className="flex items-center justify-between p-4 border-b border-app-border">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">
+            <div className="text-sm text-app-muted mb-1">
               Settings › {getBreadcrumb()}
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Download Template</h1>
+            <h1 className="text-2xl font-bold text-app-text">Download Template</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
             <div className="w-4 h-4">{ICONS.chevronLeft}</div>
@@ -897,13 +897,13 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
   // Step 2b: Export Data
   if (currentStep === 'export') {
     return (
-      <div className="flex flex-col h-full bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="flex flex-col h-full bg-app-card">
+        <div className="flex items-center justify-between p-4 border-b border-app-border">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">
+            <div className="text-sm text-app-muted mb-1">
               Settings › {getBreadcrumb()}
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Export Current Data</h1>
+            <h1 className="text-2xl font-bold text-app-text">Export Current Data</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
             <div className="w-4 h-4">{ICONS.chevronLeft}</div>
@@ -939,14 +939,14 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
     const selectedSheetData = selectedSheet ? IMPORT_ORDER.find(s => s.name === selectedSheet) : null;
 
     return (
-      <div className="flex flex-col h-full bg-white">
+      <div className="flex flex-col h-full bg-app-card">
         {!embedded && (
-          <div className="flex items-center justify-between p-4 border-b border-slate-200">
+          <div className="flex items-center justify-between p-4 border-b border-app-border">
             <div className="flex-1">
-              <div className="text-sm text-slate-500 mb-1">
+              <div className="text-sm text-app-muted mb-1">
                 Settings › {getBreadcrumb()}
               </div>
-              <h1 className="text-2xl font-bold text-slate-800">Import Data</h1>
+              <h1 className="text-2xl font-bold text-app-text">Import Data</h1>
             </div>
             <Button variant="ghost" onClick={goToPreviousStep}>
               <div className="w-4 h-4">{ICONS.chevronLeft}</div>
@@ -959,7 +959,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
           <div className="max-w-2xl mx-auto">
             {/* Tabs: one section visible at a time */}
             <div className="mb-6">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Select data type to import</h3>
+              <h3 className="text-sm font-semibold text-app-text mb-3">Select data type to import</h3>
               <Tabs
                 variant="browser"
                 tabs={IMPORT_CATEGORIES.map(c => c.title)}
@@ -967,9 +967,9 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                 onTabClick={setActiveImportTab}
                 className="mb-0"
               />
-              <div className="border border-t-0 border-slate-200 rounded-b-lg overflow-hidden bg-white">
+              <div className="border border-t-0 border-app-border rounded-b-lg overflow-hidden bg-app-card">
                 {IMPORT_CATEGORIES.filter(c => c.title === activeImportTab).map((category, catIdx) => (
-                  <div key={catIdx} className="divide-y divide-slate-100">
+                  <div key={catIdx} className="divide-y divide-app-border">
                     {category.items.map((item, itemIdx) => {
                       if (item.existing && item.sheetName) {
                         const sheet = IMPORT_ORDER.find(s => s.name === item.sheetName);
@@ -986,27 +986,27 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                               ? 'bg-green-50 cursor-default'
                               : isSelected
                                 ? 'bg-blue-50 ring-inset ring-2 ring-blue-400 cursor-pointer'
-                                : 'hover:bg-slate-50 cursor-pointer'
+                                : 'hover:bg-app-bg cursor-pointer'
                               }`}
                           >
                             <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm ${isSelected
                               ? 'bg-blue-600 text-white'
                               : isImported
                                 ? 'bg-green-600 text-white'
-                                : 'bg-slate-400 text-white'
+                                : 'bg-app-muted text-white'
                               }`}>
                               {isImported ? '✓' : itemIdx + 1}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="font-semibold text-slate-800">{item.label}</div>
+                              <div className="font-semibold text-app-text">{item.label}</div>
                               {sheet && (
                                 <>
-                                  <div className="text-xs text-slate-600">{sheet.description}</div>
+                                  <div className="text-xs text-app-muted">{sheet.description}</div>
                                   {sheet.dependencies.length > 0 && (
-                                    <div className={`text-xs mt-1 ${hasUnmetDependencies ? 'text-amber-600' : 'text-green-600'}`}>
+                                    <div className={`text-xs mt-1 ${hasUnmetDependencies ? 'text-ds-warning' : 'text-green-600'}`}>
                                       Depends on: {sheet.dependencies.join(', ')}
                                       {hasUnmetDependencies && (
-                                        <span className="text-amber-700 font-semibold ml-1">
+                                        <span className="text-ds-warning font-semibold ml-1">
                                           ⚠️ {unmetDeps.join(', ')} not imported yet
                                         </span>
                                       )}
@@ -1028,18 +1028,18 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                       return (
                         <div
                           key={itemIdx}
-                          className="flex items-center p-3 bg-slate-50/80 cursor-not-allowed opacity-80"
+                          className="flex items-center p-3 bg-app-bg/80 cursor-not-allowed opacity-80"
                         >
-                          <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm bg-slate-300 text-slate-500">
+                          <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-3 font-semibold text-sm bg-app-surface-2 text-app-muted">
                             —
                           </div>
                           <div className="flex-1">
-                            <div className="font-medium text-slate-600">{item.label}</div>
-                            <div className="text-xs text-slate-500">
+                            <div className="font-medium text-app-muted">{item.label}</div>
+                            <div className="text-xs text-app-muted">
                               {item.label === 'Budget' ? 'Template and import for budget — Phase 2' : 'Import/export coming in Phase 2'}
                             </div>
                           </div>
-                          <span className="text-xs font-medium text-slate-500 bg-slate-200 px-2 py-0.5 rounded shrink-0">Phase 2</span>
+                          <span className="text-xs font-medium text-app-muted bg-app-surface-2 px-2 py-0.5 rounded shrink-0">Phase 2</span>
                         </div>
                       );
                     })}
@@ -1061,7 +1061,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                     {selectedSheetData.description}
                   </p>
                   {selectedSheetData.dependencies.length > 0 && (
-                    <div className="text-xs text-amber-700 bg-amber-100 p-2 rounded mb-2">
+                    <div className="text-xs text-ds-warning bg-amber-100 p-2 rounded mb-2">
                       ⚠️ Make sure you have already imported: {selectedSheetData.dependencies.join(', ')}
                     </div>
                   )}
@@ -1075,9 +1075,9 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                   </Button>
                 </div>
 
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6">
-                  <h3 className="font-semibold text-slate-900 mb-2">Upload Instructions</h3>
-                  <p className="text-sm text-slate-700">
+                <div className="bg-app-bg border border-app-border rounded-lg p-4 mb-6">
+                  <h3 className="font-semibold text-app-text mb-2">Upload Instructions</h3>
+                  <p className="text-sm text-app-text">
                     Upload an Excel file (.xlsx) with the <strong>{selectedSheetData.name}</strong> sheet.
                     The file should match the template format. All data will be validated before import.
                     If any errors are found, no data will be imported.
@@ -1109,11 +1109,11 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
               onClick={() => fileInputRef.current?.click()}
               onDrop={handleFileDrop}
               onDragOver={handleDragOver}
-              className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-300 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer text-center p-4 mb-4"
+              className="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-app-border rounded-lg hover:bg-app-bg transition-colors cursor-pointer text-center p-4 mb-4"
             >
-              <div className="w-16 h-16 text-slate-400 mb-4">{ICONS.upload}</div>
-              <p className="font-semibold text-slate-700 mb-2">Click to select or drag & drop your file</p>
-              <p className="text-sm text-slate-500">Excel file (.xlsx, .xls) format</p>
+              <div className="w-16 h-16 text-app-muted mb-4">{ICONS.upload}</div>
+              <p className="font-semibold text-app-text mb-2">Click to select or drag & drop your file</p>
+              <p className="text-sm text-app-muted">Excel file (.xlsx, .xls) format</p>
               {fileName && (
                 <p className="mt-4 text-sm font-medium text-green-600">{fileName}</p>
               )}
@@ -1150,13 +1150,13 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
     const hasDuplicates = importResult.duplicates.length > 0;
 
     return (
-      <div className="flex flex-col h-full bg-white">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="flex flex-col h-full bg-app-card">
+        <div className="flex items-center justify-between p-4 border-b border-app-border">
           <div className="flex-1">
-            <div className="text-sm text-slate-500 mb-1">
+            <div className="text-sm text-app-muted mb-1">
               Settings › {getBreadcrumb()}
             </div>
-            <h1 className="text-2xl font-bold text-slate-800">Import Results</h1>
+            <h1 className="text-2xl font-bold text-app-text">Import Results</h1>
           </div>
           <Button variant="ghost" onClick={goToPreviousStep}>
             <div className="w-4 h-4">{ICONS.chevronLeft}</div>
@@ -1169,7 +1169,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
             {/* Sheet-wise Results */}
             {importResult.sheetResults && importResult.sheetResults.length > 0 && (
               <div className="mb-6">
-                <h3 className="font-semibold text-slate-800 mb-3">Sheet-wise Import Results</h3>
+                <h3 className="font-semibold text-app-text mb-3">Sheet-wise Import Results</h3>
                 <div className="space-y-3">
                   {importResult.sheetResults.map((sheetResult, idx) => (
                     <div
@@ -1180,7 +1180,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                         }`}
                     >
                       <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-slate-800">{sheetResult.sheet}</h4>
+                        <h4 className="font-semibold text-app-text">{sheetResult.sheet}</h4>
                         <span
                           className={`px-3 py-1 rounded-full text-xs font-semibold ${sheetResult.success
                             ? 'bg-green-200 text-green-800'
@@ -1192,15 +1192,15 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                       </div>
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div>
-                          <span className="text-slate-600">Imported:</span>{' '}
+                          <span className="text-app-muted">Imported:</span>{' '}
                           <span className="font-semibold text-green-700">{sheetResult.imported}</span>
                         </div>
                         <div>
-                          <span className="text-slate-600">Skipped:</span>{' '}
-                          <span className="font-semibold text-amber-700">{sheetResult.skipped}</span>
+                          <span className="text-app-muted">Skipped:</span>{' '}
+                          <span className="font-semibold text-ds-warning">{sheetResult.skipped}</span>
                         </div>
                         <div>
-                          <span className="text-slate-600">Errors:</span>{' '}
+                          <span className="text-app-muted">Errors:</span>{' '}
                           <span className="font-semibold text-red-700">{sheetResult.errors}</span>
                         </div>
                       </div>
@@ -1232,21 +1232,21 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
                 </div>
 
                 <div className="mb-6">
-                  <h3 className="font-semibold text-slate-800 mb-3">Validation Errors ({importResult.validationErrors.length})</h3>
-                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <h3 className="font-semibold text-app-text mb-3">Validation Errors ({importResult.validationErrors.length})</h3>
+                  <div className="border border-app-border rounded-lg overflow-hidden">
                     <div className="max-h-96 overflow-y-auto">
                       <table className="w-full text-sm">
-                        <thead className="bg-slate-50 sticky top-0">
+                        <thead className="bg-app-bg sticky top-0">
                           <tr>
-                            <th className="px-4 py-2 text-left font-semibold text-slate-700">Sheet</th>
-                            <th className="px-4 py-2 text-center font-semibold text-slate-700">Row</th>
-                            <th className="px-4 py-2 text-left font-semibold text-slate-700">Field</th>
-                            <th className="px-4 py-2 text-left font-semibold text-slate-700">Error</th>
+                            <th className="px-4 py-2 text-left font-semibold text-app-text">Sheet</th>
+                            <th className="px-4 py-2 text-center font-semibold text-app-text">Row</th>
+                            <th className="px-4 py-2 text-left font-semibold text-app-text">Field</th>
+                            <th className="px-4 py-2 text-left font-semibold text-app-text">Error</th>
                           </tr>
                         </thead>
                         <tbody>
                           {importResult.validationErrors.map((error, idx) => (
-                            <tr key={idx} className="border-t border-slate-100">
+                            <tr key={idx} className="border-t border-app-border">
                               <td className="px-4 py-2">{error.sheet}</td>
                               <td className="px-4 py-2 text-center">{error.row}</td>
                               <td className="px-4 py-2">{error.field}</td>
@@ -1270,104 +1270,104 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
 
                 {importResult.imported && (
                   <div className="mb-6">
-                    <h3 className="font-semibold text-slate-800 mb-3">Import Summary</h3>
+                    <h3 className="font-semibold text-app-text mb-3">Import Summary</h3>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.contacts.count}
                         </div>
-                        <div className="text-sm text-slate-600">Contacts</div>
+                        <div className="text-sm text-app-muted">Contacts</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.projects.count}
                         </div>
-                        <div className="text-sm text-slate-600">Projects</div>
+                        <div className="text-sm text-app-muted">Projects</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.buildings.count}
                         </div>
-                        <div className="text-sm text-slate-600">Buildings</div>
+                        <div className="text-sm text-app-muted">Buildings</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.properties.count}
                         </div>
-                        <div className="text-sm text-slate-600">Properties</div>
+                        <div className="text-sm text-app-muted">Properties</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.units.count}
                         </div>
-                        <div className="text-sm text-slate-600">Units</div>
+                        <div className="text-sm text-app-muted">Units</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.categories.count}
                         </div>
-                        <div className="text-sm text-slate-600">Categories</div>
+                        <div className="text-sm text-app-muted">Categories</div>
                       </div>
-                      <div className="bg-slate-50 rounded-lg p-4">
-                        <div className="text-2xl font-bold text-slate-800">
+                      <div className="bg-app-bg rounded-lg p-4">
+                        <div className="text-2xl font-bold text-app-text">
                           {importResult.imported.accounts.count}
                         </div>
-                        <div className="text-sm text-slate-600">Accounts</div>
+                        <div className="text-sm text-app-muted">Accounts</div>
                       </div>
                       {importResult.imported.vendors && importResult.imported.vendors.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.vendors.count}
                           </div>
-                          <div className="text-sm text-slate-600">Vendors</div>
+                          <div className="text-sm text-app-muted">Vendors</div>
                         </div>
                       )}
                       {importResult.imported.invoices && importResult.imported.invoices.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.invoices.count}
                           </div>
-                          <div className="text-sm text-slate-600">Invoices</div>
+                          <div className="text-sm text-app-muted">Invoices</div>
                         </div>
                       )}
                       {importResult.imported.rentalInvoicePayments && importResult.imported.rentalInvoicePayments.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.rentalInvoicePayments.count}
                           </div>
-                          <div className="text-sm text-slate-600">Rental Invoice Payments</div>
+                          <div className="text-sm text-app-muted">Rental Invoice Payments</div>
                         </div>
                       )}
                       {importResult.imported.contracts && importResult.imported.contracts.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.contracts.count}
                           </div>
-                          <div className="text-sm text-slate-600">Contracts</div>
+                          <div className="text-sm text-app-muted">Contracts</div>
                         </div>
                       )}
                       {importResult.imported.projectBills && importResult.imported.projectBills.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.projectBills.count}
                           </div>
-                          <div className="text-sm text-slate-600">Project Bills</div>
+                          <div className="text-sm text-app-muted">Project Bills</div>
                         </div>
                       )}
                       {importResult.imported.projectBillPayments && importResult.imported.projectBillPayments.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.projectBillPayments.count}
                           </div>
-                          <div className="text-sm text-slate-600">Project Bill Payments</div>
+                          <div className="text-sm text-app-muted">Project Bill Payments</div>
                         </div>
                       )}
                       {importResult.imported.budgets && importResult.imported.budgets.count > 0 && (
-                        <div className="bg-slate-50 rounded-lg p-4">
-                          <div className="text-2xl font-bold text-slate-800">
+                        <div className="bg-app-bg rounded-lg p-4">
+                          <div className="text-2xl font-bold text-app-text">
                             {importResult.imported.budgets.count}
                           </div>
-                          <div className="text-sm text-slate-600">Budgets</div>
+                          <div className="text-sm text-app-muted">Budgets</div>
                         </div>
                       )}
                     </div>

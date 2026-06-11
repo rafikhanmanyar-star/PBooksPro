@@ -155,36 +155,36 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={`Ledger: ${entityName}`} size="xl">
             <div className="space-y-4">
-                <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex justify-between items-center">
-                    <span className="text-sm font-medium text-slate-600">Net Volume / Balance</span>
-                    <span className={`text-xl font-bold ${totalBalance >= 0 ? 'text-slate-800' : 'text-rose-600'}`}>
+                <div className="p-4 bg-app-bg rounded-lg border border-app-border flex justify-between items-center">
+                    <span className="text-sm font-medium text-app-muted">Net Volume / Balance</span>
+                    <span className={`text-xl font-bold ${totalBalance >= 0 ? 'text-app-text' : 'text-ds-danger'}`}>
                         {CURRENCY} {totalBalance.toLocaleString()}
                     </span>
                 </div>
 
                 {contractorLedgerSectionVisible ? (
                     <div className="p-4 rounded-lg border border-amber-200 bg-amber-50/90 space-y-3">
-                        <div className="text-sm font-semibold text-slate-800">Contractor advances & adjustments</div>
+                        <div className="text-sm font-semibold text-app-text">Contractor advances & adjustments</div>
                         {contractorLedger.loadError ? (
-                            <p className="text-sm text-rose-600">{contractorLedger.loadError}</p>
+                            <p className="text-sm text-ds-danger">{contractorLedger.loadError}</p>
                         ) : (
                             <>
-                                <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+                                <div className="flex flex-wrap gap-4 text-sm text-app-text">
                                     <span>
-                                        <span className="text-slate-500">Outstanding advances:</span>{' '}
+                                        <span className="text-app-muted">Outstanding advances:</span>{' '}
                                         <strong>
                                             {CURRENCY}{' '}
                                             {(contractorLedger.summary?.totalRemainingAmount ?? 0).toLocaleString()}
                                         </strong>
                                     </span>
                                     <span>
-                                        <span className="text-slate-500">Advances originally issued:</span>{' '}
+                                        <span className="text-app-muted">Advances originally issued:</span>{' '}
                                         {CURRENCY} {(contractorLedger.summary?.totalOriginalAmount ?? 0).toLocaleString()}
                                     </span>
                                 </div>
                                 {(contractorLedger.advances?.length ?? 0) > 0 && (
-                                    <div className="text-xs text-slate-600">
-                                        <div className="font-medium text-slate-700 mb-1">Advances</div>
+                                    <div className="text-xs text-app-muted">
+                                        <div className="font-medium text-app-text mb-1">Advances</div>
                                         <ul className="list-disc pl-4 space-y-0.5">
                                             {contractorLedger.advances.map((a) => (
                                                 <li key={a.id}>
@@ -198,8 +198,8 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
                                     </div>
                                 )}
                                 {(contractorLedger.adjustments?.length ?? 0) > 0 && (
-                                    <div className="text-xs text-slate-600">
-                                        <div className="font-medium text-slate-700 mb-1">Bill adjustments vs advances</div>
+                                    <div className="text-xs text-app-muted">
+                                        <div className="font-medium text-app-text mb-1">Bill adjustments vs advances</div>
                                         <ul className="list-disc pl-4 space-y-0.5">
                                             {contractorLedger.adjustments.map((r) => (
                                                 <li key={r.id}>
@@ -216,15 +216,15 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
                     </div>
                 ) : null}
 
-                <div className="max-h-[60vh] overflow-y-auto border rounded-lg border-slate-100">
+                <div className="max-h-[60vh] overflow-y-auto border rounded-lg border-app-border">
                     {transactions.length > 0 ? (
-                        <div className="divide-y divide-slate-100">
+                        <div className="divide-y divide-app-border">
                             {transactions.map(tx => (
                                 <TransactionItem key={tx.id} transaction={tx} onEdit={handleEditTransaction} />
                             ))}
                         </div>
                     ) : (
-                        <div className="p-8 text-center text-slate-500">
+                        <div className="p-8 text-center text-app-muted">
                             No transactions found for this item.
                         </div>
                     )}
