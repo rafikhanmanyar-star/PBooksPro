@@ -3,10 +3,11 @@
  */
 
 import type pg from 'pg';
-import { getBillingPlanById, isUnlimited } from './billingPlanService.js';
+import { getBillingPlanByCode, getBillingPlanById, isUnlimited } from './billingPlanService.js';
 import {
   getActiveSubscription,
   planModules,
+  syncManualLicenseToSubscription,
   type SubscriptionRow,
 } from './subscriptionService.js';
 import {
@@ -131,6 +132,160 @@ export async function assertModuleEnabled(
 function usagePercent(current: number, max: number): number {
   if (isUnlimited(max) || max <= 0) return 0;
   return Math.min(100, Math.round((current / max) * 100));
+}
+
+type TenantTableLicense = {
+  licenseType: 'monthly' | 'yearly' | 'perpetual';
+  licenseStatus: 'active' | 'expired' | 'suspended' | 'cancelled';
+  expiryDate: string | null;
+  daysRemaining: number;
+  isExpired: boolean;
+};
+
+async function readTenantTableLicense(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<TenantTableLicense | null> {
+  const { rows } = await client.query<{
+    license_type: string;
+    license_status: string;
+    license_expiry_date: string | null;
+  }>(
+    `SELECT license_type, license_status, license_expiry_date
+     FROM tenants WHERE id = $1`,
+    [tenantId]
+  );
+  if (rows.length === 0) return null;
+
+  const tenant = rows[0];
+  if (!['monthly', 'yearly', 'perpetual'].includes(tenant.license_type)) return null;
+  if (tenant.license_status === 'suspended' || tenant.license_status === 'cancelled') {
+    return null;
+  }
+
+  if (tenant.license_type === 'perpetual') {
+    const active = tenant.license_status === 'active';
+    return {
+      licenseType: 'perpetual',
+      licenseStatus: active ? 'active' : 'expired',
+      expiryDate: null,
+      daysRemaining: active ? 9999 : 0,
+      isExpired: !active,
+    };
+  }
+
+  if (!tenant.license_expiry_date) return null;
+
+  const expiryIso = new Date(tenant.license_expiry_date).toISOString();
+  const expired = new Date(tenant.license_expiry_date).getTime() < Date.now();
+  if (tenant.license_status !== 'active' || expired) return null;
+
+  return {
+    licenseType: tenant.license_type as 'monthly' | 'yearly',
+    licenseStatus: 'active',
+    expiryDate: expiryIso,
+    daysRemaining: daysUntil(expiryIso),
+    isExpired: false,
+  };
+}
+
+function shouldPreferTenantTableLicense(
+  tenantLicense: TenantTableLicense | null,
+  sub: SubscriptionRow | null,
+  subExpired: boolean
+): boolean {
+  if (!tenantLicense || tenantLicense.isExpired) return false;
+  if (!sub) return true;
+  if (subExpired) return true;
+  if (sub.status === 'trialing') return true;
+  return false;
+}
+
+async function buildPayloadFromTenantTableLicense(
+  client: pg.PoolClient,
+  tenantId: string,
+  tenantLicense: TenantTableLicense,
+  tenantActive: boolean
+): Promise<LicenseEnforcementPayload> {
+  const plan = await getBillingPlanByCode(client, 'professional');
+  const modules = plan ? planModules(plan) : ['real_estate', 'rental'];
+
+  let usageStatus: UsageStatus | null = null;
+  if (plan) {
+    const usage = await computeCurrentUsage(client, tenantId);
+    usageStatus = evaluateUsageAgainstPlan(usage, plan);
+  }
+
+  const isValid = tenantActive && !tenantLicense.isExpired;
+  const withinLimits = usageStatus?.withinLimits !== false;
+  const allowed = isValid && withinLimits;
+
+  const blockReasons: string[] = [];
+  if (!tenantActive) blockReasons.push('Organization account is inactive.');
+  if (usageStatus && !usageStatus.withinLimits) {
+    blockReasons.push(...usageStatus.violations);
+  }
+
+  const warnings: LicenseWarning[] = [];
+  if (!tenantActive) {
+    warnings.push({
+      code: 'tenant_inactive',
+      severity: 'critical',
+      message: 'Your organization account is suspended. Contact support.',
+    });
+  }
+  if (tenantLicense.daysRemaining <= 14 && tenantLicense.daysRemaining > 0) {
+    warnings.push({
+      code: 'renewal_soon',
+      severity: 'info',
+      message: `License renews in ${tenantLicense.daysRemaining} day${tenantLicense.daysRemaining === 1 ? '' : 's'}.`,
+    });
+  }
+  if (usageStatus && !usageStatus.withinLimits) {
+    for (const v of usageStatus.violations) {
+      warnings.push({ code: 'quota_exceeded', severity: 'critical', message: v });
+    }
+  }
+
+  return {
+    allowed,
+    isValid,
+    daysRemaining: tenantLicense.daysRemaining,
+    licenseType: tenantLicense.licenseType,
+    licenseStatus: tenantLicense.licenseStatus,
+    isExpired: tenantLicense.isExpired,
+    expiryDate: tenantLicense.expiryDate,
+    tenantActive,
+    paymentValid: true,
+    modules,
+    warnings,
+    blockReasons,
+    subscription: plan
+      ? {
+          id: '',
+          planCode: plan.plan_code,
+          planName: plan.name,
+          billingCycle: tenantLicense.licenseType === 'yearly' ? 'annual' : 'monthly',
+          status: 'active',
+          renewalDate: tenantLicense.expiryDate,
+          trialEndDate: null,
+          cancelAtPeriodEnd: false,
+        }
+      : undefined,
+    usage: usageStatus
+      ? {
+          current: usageStatus.current,
+          limits: usageStatus.limits,
+          withinLimits: usageStatus.withinLimits,
+          violations: usageStatus.violations,
+          usersPercent: usagePercent(usageStatus.current.usersCount, usageStatus.limits.maxUsers),
+          projectsPercent: usagePercent(
+            usageStatus.current.projectsCount,
+            usageStatus.limits.maxProjects
+          ),
+        }
+      : undefined,
+  };
 }
 
 async function isTenantActive(client: pg.PoolClient, tenantId: string): Promise<boolean> {
@@ -259,7 +414,36 @@ export async function validateTenantLicense(
   }
 
   const tenantActive = await isTenantActive(client, tenantId);
+  const tenantTableLicense = await readTenantTableLicense(client, tenantId);
   const sub = await getActiveSubscription(client, tenantId);
+  const expired = sub ? isSubscriptionExpired(sub) : true;
+
+  if (shouldPreferTenantTableLicense(tenantTableLicense, sub, expired)) {
+    if (
+      tenantTableLicense!.licenseType !== 'perpetual' &&
+      tenantTableLicense!.expiryDate
+    ) {
+      try {
+        await syncManualLicenseToSubscription(
+          client,
+          tenantId,
+          tenantTableLicense!.licenseType,
+          new Date(tenantTableLicense!.expiryDate)
+        );
+      } catch (syncErr) {
+        console.warn(
+          '[license] Could not sync tenants manual license to subscriptions:',
+          syncErr instanceof Error ? syncErr.message : syncErr
+        );
+      }
+    }
+    return buildPayloadFromTenantTableLicense(
+      client,
+      tenantId,
+      tenantTableLicense!,
+      tenantActive
+    );
+  }
 
   if (!sub) {
     const warnings = buildWarnings(null, 0, null, tenantActive, false, true);
@@ -281,7 +465,6 @@ export async function validateTenantLicense(
 
   const plan = await getBillingPlanById(client, sub.plan_id);
   const modules = plan ? planModules(plan) : [];
-  const expired = isSubscriptionExpired(sub);
   const paymentValid = isPaymentValid(sub);
   const expiryIso = sub.status === 'trialing' ? sub.trial_end_date : sub.renewal_date;
   const daysRemaining = daysUntil(expiryIso);
