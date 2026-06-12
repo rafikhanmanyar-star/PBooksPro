@@ -7,7 +7,12 @@ import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
 import { ensureLegacyOfflineApiSessionMarked } from './config/apiUrl';
 import { bootstrapTrialAuthFromUrl } from './utils/trialAuthBootstrap';
-import { bootstrapDemoAuthFromUrl, isAutoDemoUrl, markWebsiteDemoEntry } from './utils/demoAuthBootstrap';
+import {
+  bootstrapDemoAuthFromUrl,
+  isAutoDemoUrl,
+  markWebsiteDemoEntry,
+} from './utils/demoAuthBootstrap';
+import { resetDemoTourSession } from './services/tours/demoTourSession';
 
 // Get root element
 const rootElement = document.getElementById('root');
@@ -102,6 +107,7 @@ const initApp = async () => {
     await bootstrapTrialAuthFromUrl();
     if (isAutoDemoUrl()) {
       markWebsiteDemoEntry();
+      resetDemoTourSession();
     }
     await bootstrapDemoAuthFromUrl();
 

@@ -19,6 +19,7 @@ import {
 } from './balanceSheetEngine';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchBalanceSheetReport } from '../../services/api/financialReportsApi';
+import { useReportTenantId } from '../../hooks/useReportTenantId';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -59,17 +60,19 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [ledger, setLedger] = useState<{ id: string; name: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
   const localOnly = isLocalOnlyMode();
+  const tenantId = useReportTenantId();
   const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
   useEffect(() => {
-    if (localOnly) {
+    if (localOnly || !tenantId) {
       setServerReport(null);
       return;
     }
     let cancelled = false;
+    setServerReport(null);
     setLoading(true);
     void fetchBalanceSheetReport({ asOfDate, projectId: selectedProjectId, debug: debugOpen })
       .then((r) => {
@@ -84,12 +87,13 @@ const ProjectBalanceSheetReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, asOfDate, selectedProjectId, debugOpen]);
+  }, [localOnly, tenantId, asOfDate, selectedProjectId, debugOpen]);
 
-  const report = useMemo(() => {
-    if (!localOnly && serverReport) return serverReport;
-    return computeBalanceSheetReport(reportState, { asOfDate, selectedProjectId });
-  }, [localOnly, serverReport, reportState, asOfDate, selectedProjectId]);
+  const clientReport = useMemo(
+    () => computeBalanceSheetReport(reportState, { asOfDate, selectedProjectId }),
+    [reportState, asOfDate, selectedProjectId]
+  );
+  const report = !localOnly ? serverReport : clientReport;
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -120,6 +124,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
   }, []);
 
   const handleExport = () => {
+    if (!report) return;
     const rows: { Category: string; Amount: number | string }[] = [
       { Category: 'ASSETS', Amount: '' },
       { Category: '  Current', Amount: '' },
@@ -289,6 +294,11 @@ const ProjectBalanceSheetReport: React.FC = () => {
             )}
           </div>
 
+          {!localOnly && !report ? (
+            <p className="text-center text-sm text-app-muted py-8">
+              {loading ? 'Loading balance sheet for this organization…' : 'Could not load balance sheet from the server.'}
+            </p>
+          ) : (
           <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
             <div>
               <h4 className="text-sm font-bold text-ds-success mb-1">Assets</h4>
@@ -367,6 +377,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
               )}
             </div>
           </div>
+          )}
 
           <ReportFooter />
         </Card>
@@ -383,11 +394,12 @@ const ProjectBalanceSheetReport: React.FC = () => {
       )}
 
       <Modal
-        isOpen={debugOpen}
+        isOpen={debugOpen && !!report}
         onClose={() => setDebugOpen(false)}
         title="Balance sheet validation & debug"
         size="xl"
       >
+        {report && (
         <div className="space-y-4 max-h-[70vh] overflow-y-auto text-sm">
           <div>
             <p className="font-semibold text-app-text mb-2">Validation</p>
@@ -431,6 +443,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
             P&amp;L through this date).
           </div>
         </div>
+        )}
       </Modal>
     </div>
   );

@@ -82,7 +82,7 @@ npm run demo:reset --prefix backend
 - **Website:** `website/demo-login.html` → redirects to `app.pbookspro.com/?auto_demo=1`
 - **App bootstrap:** `utils/demoAuthBootstrap.ts` → `POST /demo/enter` on app origin → `pbooks_demo_auth` in sessionStorage
 - **In-app login:** `Try Live Demo` on `ApiLoginScreen` → `enterDemoSession()`
-- **Guided tour:** `components/onboarding/DemoProductTour.tsx` (16-step end-to-end workflow)
+- **Guided tour:** `components/onboarding/DemoProductTour.tsx` — 17-step workflow (setup → P&L); website chapters pass `demo_chapter` to jump to the matching step
 - **Analytics:** `services/analytics/trackEvent.ts` + `website/js/analytics.js`
 
 ## Deployment checklist

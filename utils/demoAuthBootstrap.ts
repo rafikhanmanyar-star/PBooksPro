@@ -1,4 +1,5 @@
 import { getDefaultApiBaseUrl } from '../config/apiUrl';
+import { resetDemoTourSession } from '../services/tours/demoTourSession';
 
 export const DEMO_AUTH_STORAGE_KEY = 'pbooks_demo_auth';
 export const WEBSITE_DEMO_ENTRY_KEY = 'pbooks_website_demo_entry';
@@ -77,6 +78,24 @@ export function clearAutoDemoQueryParam(): void {
   window.history.replaceState({}, '', nextUrl);
 }
 
+/** Remove one-shot tour handoff params after the demo tour has started. */
+export function clearDemoTourQueryParams(): void {
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  let changed = false;
+  for (const key of ['demo_chapter', 'demo_tour_step', 'demo_tour']) {
+    if (params.has(key)) {
+      params.delete(key);
+      changed = true;
+    }
+  }
+  if (!changed) return;
+  const remaining = params.toString();
+  const nextUrl =
+    window.location.pathname + (remaining ? `?${remaining}` : '') + window.location.hash;
+  window.history.replaceState({}, '', nextUrl);
+}
+
 export async function fetchDemoSessionFromApi(): Promise<DemoAuthPayload | null> {
   try {
     const res = await fetch(`${getDefaultApiBaseUrl()}/demo/enter`, {
@@ -135,6 +154,7 @@ export async function bootstrapDemoAuthFromUrl(): Promise<boolean> {
   if (!isAutoDemoUrl()) return false;
 
   markWebsiteDemoEntry();
+  resetDemoTourSession();
   const payload = await fetchDemoSessionFromApi();
   if (!payload) return false;
 

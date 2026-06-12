@@ -41,6 +41,15 @@ const DemoExploreBanner: React.FC = () => {
     >
       <Compass className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
       <p className="text-center max-w-3xl">{message}</p>
+      <button
+        type="button"
+        onClick={() => {
+          window.dispatchEvent(new CustomEvent('pbooks:restart-demo-tour'));
+        }}
+        className="shrink-0 rounded-md bg-white/15 hover:bg-white/25 px-3 py-1.5 font-semibold transition-colors"
+      >
+        Guided tour
+      </button>
       <a
         href="https://pbookspro.com/#pricing"
         target="_blank"

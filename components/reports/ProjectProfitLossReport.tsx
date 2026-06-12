@@ -15,6 +15,7 @@ import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchProfitLossReport } from '../../services/api/financialReportsApi';
+import { useReportTenantId } from '../../hooks/useReportTenantId';
 
 function MetricBanner({
   label,
@@ -68,15 +69,17 @@ const ProjectProfitLossReport: React.FC = () => {
   const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
   const localOnly = isLocalOnlyMode();
+  const tenantId = useReportTenantId();
   const [serverReport, setServerReport] = useState<ProfitLossReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (localOnly) {
+    if (localOnly || !tenantId) {
       setServerReport(null);
       return;
     }
     let cancelled = false;
+    setServerReport(null);
     setLoading(true);
     void fetchProfitLossReport({ from: startDate, to: endDate, projectId: selectedProjectId })
       .then((r) => {
@@ -91,7 +94,7 @@ const ProjectProfitLossReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, startDate, endDate, selectedProjectId]);
+  }, [localOnly, tenantId, startDate, endDate, selectedProjectId]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -118,16 +121,18 @@ const ProjectProfitLossReport: React.FC = () => {
     if (dateRange !== 'custom') setDateRange('custom');
   };
 
-  const report = useMemo(() => {
-    if (!localOnly && serverReport) return serverReport;
-    return computeProfitLossReport(reportState, { startDate, endDate, selectedProjectId });
-  }, [localOnly, serverReport, reportState, startDate, endDate, selectedProjectId]);
+  const clientReport = useMemo(
+    () => computeProfitLossReport(reportState, { startDate, endDate, selectedProjectId }),
+    [reportState, startDate, endDate, selectedProjectId]
+  );
+  const report = !localOnly ? serverReport : clientReport;
 
   const validationErrors = useMemo(
-    () => report.validation.issues.filter((iss) => iss.severity === 'error'),
-    [report.validation.issues]
+    () => report?.validation.issues.filter((iss) => iss.severity === 'error') ?? [],
+    [report?.validation.issues]
   );
-  const showValidationBanner = validationErrors.length > 0 || !report.validation.ledgerMatch;
+  const showValidationBanner =
+    !!report && (validationErrors.length > 0 || !report.validation.ledgerMatch);
 
   const toggleOpexRoot = useCallback((id: string) => {
     setCollapsedOpexRoots((prev) => {
@@ -143,6 +148,7 @@ const ProjectProfitLossReport: React.FC = () => {
   };
 
   const opexVisible = useMemo(() => {
+    if (!report) return [];
     const rows = report.operating_expenses;
     const out: ProfitLossLine[] = [];
     let skipChildrenOfCollapsedRoot = false;
@@ -158,7 +164,7 @@ const ProjectProfitLossReport: React.FC = () => {
       }
     }
     return out;
-  }, [report.operating_expenses, collapsedOpexRoots]);
+  }, [report, collapsedOpexRoots]);
 
   const renderLineRows = (rows: ProfitLossLine[], txType: TransactionType, isOpex?: boolean) => (
     <>
@@ -195,6 +201,7 @@ const ProjectProfitLossReport: React.FC = () => {
   );
 
   const handleExport = () => {
+    if (!report) return;
     const r = report;
     const line = (label: string, amt: number, pct?: string) => ({ Category: label, Amount: amt, '%': pct ?? '' });
     const data: Record<string, unknown>[] = [
@@ -218,10 +225,44 @@ const ProjectProfitLossReport: React.FC = () => {
   };
 
   const projectLabel = selectedProjectId === 'all' ? 'All Projects' : projects.find((p) => p.id === selectedProjectId)?.name;
-  const cogsSubtotal = report.cost_of_sales.reduce((s, x) => s + x.amount, 0);
-  const opexSubtotal = report.operating_expenses.reduce((s, x) => s + x.amount, 0);
-  const otherIncSub = report.other_income.reduce((s, x) => s + x.amount, 0);
-  const finSub = report.finance_cost.reduce((s, x) => s + x.amount, 0);
+
+  if (!localOnly && !report) {
+    return (
+      <div className="flex flex-col h-full space-y-4">
+        <ReportToolbar
+          startDate={startDate}
+          endDate={endDate}
+          onDateChange={handleDateChange}
+          onExport={handleExport}
+          onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+          hideGroup
+          showDateFilterPills
+          activeDateRange={dateRange}
+          onRangeChange={handleRangeChange}
+          hideSearch
+          compact
+        >
+          <div className="w-40 sm:w-48 flex-shrink-0">
+            <ComboBox
+              items={projectItems}
+              selectedId={selectedProjectId}
+              onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
+              allowAddNew={false}
+              placeholder="Select Project"
+            />
+          </div>
+        </ReportToolbar>
+        <p className="text-center text-sm text-app-muted py-8">
+          {loading ? 'Loading profit & loss for this organization…' : 'Could not load profit & loss from the server.'}
+        </p>
+      </div>
+    );
+  }
+
+  const cogsSubtotal = report!.cost_of_sales.reduce((s, x) => s + x.amount, 0);
+  const opexSubtotal = report!.operating_expenses.reduce((s, x) => s + x.amount, 0);
+  const otherIncSub = report!.other_income.reduce((s, x) => s + x.amount, 0);
+  const finSub = report!.finance_cost.reduce((s, x) => s + x.amount, 0);
 
   return (
     <div className="flex flex-col h-full space-y-4">

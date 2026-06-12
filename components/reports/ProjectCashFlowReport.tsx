@@ -39,6 +39,7 @@ import type { ReportStateSlice } from './reportUtils';
 import { resolveProjectIdForTransaction } from './reportUtils';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchCashFlowReport } from '../../services/api/financialReportsApi';
+import { useReportTenantId } from '../../hooks/useReportTenantId';
 
 /**
  * Drill-down rows for cash flow lines. When a single project is selected, batch-linked transfers
@@ -227,16 +228,18 @@ const ProjectCashFlowReport: React.FC = () => {
     const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
 
     const localOnly = isLocalOnlyMode();
+    const tenantId = useReportTenantId();
     const [serverReport, setServerReport] = useState<CashFlowReportResult | null>(null);
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
+        if (localOnly || !tenantId) {
             setServerReport(null);
             return;
         }
         let cancelled = false;
+        setServerReport(null);
         setLoading(true);
         setFetchError(null);
         void fetchCashFlowReport({ from: startDate, to: endDate, projectId: selectedProjectId })
@@ -252,7 +255,7 @@ const ProjectCashFlowReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, startDate, endDate, selectedProjectId]);
+    }, [localOnly, tenantId, startDate, endDate, selectedProjectId]);
 
     const transactionsById = useMemo(
         () => new Map(transactions.map((t) => [t.id, t])),
@@ -284,41 +287,38 @@ const ProjectCashFlowReport: React.FC = () => {
         }
     };
 
-    const report = useMemo(() => {
-        if (!localOnly && serverReport) return serverReport;
-        return computeCashFlowReport(reportState, {
-            fromDate: startDate,
-            toDate: endDate,
-            selectedProjectId,
-            interestPaidAsOperating,
-            cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(cashFlowCategoryMappings),
-        });
-    }, [
-        localOnly,
-        serverReport,
-        reportState,
-        cashFlowCategoryMappings,
-        startDate,
-        endDate,
-        selectedProjectId,
-        interestPaidAsOperating,
-    ]);
+    const clientReport = useMemo(
+        () =>
+            computeCashFlowReport(reportState, {
+                fromDate: startDate,
+                toDate: endDate,
+                selectedProjectId,
+                interestPaidAsOperating,
+                cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(cashFlowCategoryMappings),
+            }),
+        [reportState, cashFlowCategoryMappings, startDate, endDate, selectedProjectId, interestPaidAsOperating]
+    );
+    const report = !localOnly ? serverReport : clientReport;
 
     const sections: { title: string; data: CashFlowSectionResult }[] = useMemo(
-        () => [
-            { title: 'Operating Activities', data: report.operating },
-            { title: 'Investing Activities', data: report.investing },
-            { title: 'Financing Activities', data: report.financing },
-        ],
+        () =>
+            report
+                ? [
+                      { title: 'Operating Activities', data: report.operating },
+                      { title: 'Investing Activities', data: report.investing },
+                      { title: 'Financing Activities', data: report.financing },
+                  ]
+                : [],
         [report]
     );
 
     const financingDisplay = useMemo(
-        () => partitionFinancingEquityTransferPayout(report.financing.items),
-        [report.financing.items]
+        () => (report ? partitionFinancingEquityTransferPayout(report.financing.items) : null),
+        [report]
     );
 
     const handleExport = () => {
+        if (!report) return;
         const exportData: { Category: string; Amount: number | string }[] = [];
 
         for (const { title, data } of sections) {
@@ -444,6 +444,7 @@ const ProjectCashFlowReport: React.FC = () => {
     };
 
     const renderFinancingSection = () => {
+        if (!report || !financingDisplay) return null;
         const title = 'Financing Activities';
         const section = report.financing;
         const { mainLines, equityTransferPayoutSummary } = financingDisplay;
@@ -618,8 +619,15 @@ const ProjectCashFlowReport: React.FC = () => {
                             )}
                         </div>
 
+                        {!localOnly && !report ? (
+                            <p className="text-center text-sm text-slate-500 py-8">
+                                {loading
+                                    ? 'Loading cash flow statement for this organization…'
+                                    : fetchError ?? 'Could not load cash flow statement from the server.'}
+                            </p>
+                        ) : (
                         <div className="max-w-4xl mx-auto bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm">
-                            {report.flags.negative_opening_cash && (
+                            {report!.flags.negative_opening_cash && (
                                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                     Opening cash is negative — verify bank and cash ledger balances.
                                 </div>
@@ -699,6 +707,7 @@ const ProjectCashFlowReport: React.FC = () => {
                                 </div>
                             </div>
                         </div>
+                        )}
 
                         <ReportFooter />
                     </Card>
@@ -721,9 +730,9 @@ const ProjectCashFlowReport: React.FC = () => {
             />
 
             <CashFlowAuditModal
-                open={auditOpen}
+                open={auditOpen && !!report}
                 onClose={() => setAuditOpen(false)}
-                rows={report.audit ?? []}
+                rows={report?.audit ?? []}
             />
         </>
     );

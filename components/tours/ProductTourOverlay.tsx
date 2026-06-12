@@ -120,6 +120,21 @@ const ProductTourOverlay: React.FC<Props> = ({
           {step.title}
         </h3>
         <p className="text-sm text-slate-600 mb-4 leading-relaxed">{step.body}</p>
+        {tour.id === 'demo_overview' && tour.steps.length > 4 && (
+          <ol
+            className="text-[11px] text-slate-500 mb-3 max-h-28 overflow-y-auto space-y-0.5 list-decimal list-inside border border-slate-100 rounded-lg px-3 py-2 bg-slate-50"
+            aria-label="Full demo tour outline"
+          >
+            {tour.steps.map((s, i) => (
+              <li
+                key={s.id}
+                className={i === stepIndex ? 'font-semibold text-indigo-700' : i < stepIndex ? 'text-slate-400' : ''}
+              >
+                {s.title}
+              </li>
+            ))}
+          </ol>
+        )}
         {!spotlight && (
           <p className="text-xs text-amber-700 bg-amber-50 rounded-lg px-3 py-2 mb-3">
             Target not visible — navigate to the highlighted module or resize the window, then tap Next.
