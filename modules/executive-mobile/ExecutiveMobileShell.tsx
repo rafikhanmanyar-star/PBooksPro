@@ -61,11 +61,17 @@ export default function ExecutiveMobileShell({ onExitToFullErp }: Props) {
     }
   };
 
+  const isCaptureView = view === 'quickTransaction';
+
   return (
-    <div className="executive-mobile-shell flex flex-col h-screen bg-app-bg text-app-text">
+    <div className="executive-mobile-shell flex flex-col h-[100dvh] min-h-0 bg-app-bg text-app-text">
       <MobileOfflineWarning />
 
-      <main className="flex-1 overflow-y-auto overscroll-contain">
+      <main
+        className={`flex-1 min-h-0 overscroll-contain ${
+          isCaptureView ? 'overflow-hidden flex flex-col' : 'overflow-y-auto'
+        }`}
+      >
         <Suspense fallback={<PageSkeleton />}>{renderView()}</Suspense>
       </main>
 

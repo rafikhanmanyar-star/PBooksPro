@@ -40,7 +40,7 @@ export default function ExecutiveBottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 inset-x-0 z-50 bg-app-card border-t border-app-border shadow-ds-header executive-bottom-nav"
+      className="shrink-0 z-50 bg-app-card border-t border-app-border shadow-ds-header executive-bottom-nav"
       style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)' }}
       aria-label="Executive navigation"
     >

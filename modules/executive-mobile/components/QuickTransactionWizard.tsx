@@ -163,7 +163,7 @@ export default function QuickTransactionWizard() {
   }
 
   return (
-    <div className="flex flex-col min-h-[calc(100dvh-9rem)]">
+    <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="px-4 pt-4 pb-3 border-b border-app-border bg-app-header shrink-0">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="min-w-0">
@@ -193,7 +193,7 @@ export default function QuickTransactionWizard() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4">
         <div className="mb-4">
           <h2 className="text-base font-semibold text-app-text">{currentStepMeta.title}</h2>
           <p className="text-sm text-app-muted">{currentStepMeta.subtitle}</p>
@@ -386,9 +386,11 @@ export default function QuickTransactionWizard() {
         )}
 
         {error && <p className="mt-4 text-sm text-ds-danger">{error}</p>}
+        {/* Spacer so last grid row isn't flush against the action bar when scrolled */}
+        <div className="h-2 shrink-0" aria-hidden />
       </div>
 
-      <div className="sticky bottom-0 mt-auto shrink-0 px-4 py-3 border-t border-app-border bg-app-bg/95 backdrop-blur-sm pb-safe">
+      <div className="shrink-0 px-4 py-3 border-t border-app-border bg-app-card/95 backdrop-blur-sm pb-safe">
         {step < totalSteps ? (
           <button
             type="button"
