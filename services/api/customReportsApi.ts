@@ -70,9 +70,10 @@ export async function generateCustomReport(body: Record<string, unknown>): Promi
   return apiClient.post<GeneratedReportResponse>('/reports/custom/generate', body);
 }
 
-/** Backend preview mode caps pageSize at 500. */
+/** Backend preview mode caps pageSize at 500; forPrint allows 5000 per request. */
 const CUSTOM_REPORT_PREVIEW_PAGE_SIZE = 500;
-const CUSTOM_REPORT_MAX_PRINT_ROWS = 10_000;
+const CUSTOM_REPORT_PRINT_PAGE_SIZE = 5000;
+export const CUSTOM_REPORT_MAX_PRINT_ROWS = 5000;
 
 /**
  * Fetch all filtered rows for print (paginates through preview API).
@@ -88,18 +89,20 @@ export async function fetchAllCustomReportRows(
   let page = 1;
 
   while (allRows.length < target) {
+    const remaining = target - allRows.length;
     const data = await generateCustomReport({
       ...basePayload,
+      forPrint: true,
       page,
-      pageSize: CUSTOM_REPORT_PREVIEW_PAGE_SIZE,
+      pageSize: Math.min(CUSTOM_REPORT_PRINT_PAGE_SIZE, remaining),
     });
     columns = data.columns;
     allRows.push(...data.rows);
-    if (data.rows.length < CUSTOM_REPORT_PREVIEW_PAGE_SIZE || allRows.length >= data.totalCount) {
+    if (data.rows.length < CUSTOM_REPORT_PRINT_PAGE_SIZE || allRows.length >= data.totalCount) {
       break;
     }
     page += 1;
-    if (page > Math.ceil(CUSTOM_REPORT_MAX_PRINT_ROWS / CUSTOM_REPORT_PREVIEW_PAGE_SIZE)) {
+    if (page > Math.ceil(CUSTOM_REPORT_MAX_PRINT_ROWS / CUSTOM_REPORT_PRINT_PAGE_SIZE)) {
       break;
     }
   }

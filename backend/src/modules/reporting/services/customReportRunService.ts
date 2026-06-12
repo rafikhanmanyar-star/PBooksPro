@@ -182,7 +182,11 @@ export async function runCustomReport(
   const countRes = await client.query<{ c: string }>(compiled.countSql, compiled.countParams);
   const totalCount = Number(countRes.rows[0]?.c ?? 0);
   const page = payload.page ?? 1;
-  const pageSize = Math.min(payload.pageSize ?? 50, mode === 'export' ? 5000 : 500);
+  const forPrint = Boolean(payload.forPrint);
+  const pageSize = Math.min(
+    payload.pageSize ?? 50,
+    mode === 'export' ? 5000 : forPrint ? 5000 : 500
+  );
 
   const rowsIn = listRes.rows.map((r) =>
     augmentCaseInsensitiveAliases(normalizePgRow(r as Record<string, unknown>))

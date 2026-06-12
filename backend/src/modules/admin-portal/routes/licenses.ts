@@ -1,7 +1,7 @@
 // @ts-nocheck
 import { Router } from 'express';
 import { AdminRequest } from '../../../adminPortal/middleware/adminAuthMiddleware.js';
-import { getPool } from '../../../db/pool.js';
+import { withTransaction } from '../../../db/pool.js';
 import { LicenseService } from '../../../adminPortal/licenseService.js';
 import { syncManualLicenseToSubscription } from '../../../services/billing/subscriptionService.js';
 import { AdminLicenseRepository } from '../repositories/AdminPortalRepository.js';
@@ -66,21 +66,10 @@ router.post('/apply-manual', async (req: AdminRequest, res) => {
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
     }
 
-    const pool = getPool();
-    const pgClient = await pool.connect();
-    try {
-      await pgClient.query('BEGIN');
-
+    await withTransaction(async (pgClient) => {
       await licenseRepo.applyManualLicenseUpdate(pgClient, tenantId, licenseType, expiryDate, now);
       await syncManualLicenseToSubscription(pgClient, tenantId, licenseType, expiryDate);
-
-      await pgClient.query('COMMIT');
-    } catch (syncError) {
-      await pgClient.query('ROLLBACK');
-      throw syncError;
-    } finally {
-      pgClient.release();
-    }
+    });
 
     const currentStatus = await licenseService.checkLicenseStatus(tenantId);
 

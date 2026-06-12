@@ -23,6 +23,16 @@
   width: 100%;
 }
 
+/* Screen-only chart blocks hidden; summary tables visible in preview/print clone */
+.report-print-only {
+  display: none !important;
+}
+
+.print-preview-content .report-print-only,
+.report-print-content .report-print-only {
+  display: block !important;
+}
+
 .report-print-content:not(.owner-rental-income-report-print) table {
   width: max-content;
   min-width: 100%;
@@ -37,9 +47,16 @@
 
 /* Custom report builder — allow horizontal scroll containers to expand for print */
 .custom-report-print [data-print-scroll-container],
-.custom-report-print .overflow-auto {
+.custom-report-print .overflow-auto,
+.report-print-content [data-print-scroll-container],
+.report-print-content .overflow-x-auto,
+.report-print-content .overflow-auto {
   overflow: visible !important;
   max-height: none !important;
+}
+
+.report-print-content thead {
+  display: table-header-group;
 }
 
 /* Screen: hide portal content from view (only visible when printing) */
@@ -88,6 +105,20 @@
     background: #fff !important;
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
+  }
+
+  /* Compact type on small paper / mobile print targets */
+  .report-print-content {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .report-print-content table {
+    font-size: 10px;
+  }
+
+  .report-print-content .report-branding-header h1 {
+    font-size: 18px !important;
   }
 }
 

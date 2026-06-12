@@ -564,9 +564,6 @@ const ClientLedgerReport: React.FC = () => {
                                 <div className="owner-ledger-report-footer flex-shrink-0 mt-auto pt-4">
                                     <ReportFooter />
                                 </div>
-                                <div className="hidden print:block owner-ledger-print-footer">
-                                    Printed on: {new Date().toLocaleString()}
-                                </div>
                             </Card>
                         </div>
                     </div>

@@ -27,6 +27,11 @@ import { resolveProjectIdForTransaction } from './reportUtils';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { computeProfitLossReport } from './profitLossEngine';
+import {
+  OPENING_BALANCE_EQUITY_ID,
+  openingAmountToGross,
+} from '../../services/financialEngine/trialBalanceCore';
+import { roundMoney } from '../../services/financialEngine/validation';
 
 /** Start date for cumulative P&L → retained earnings (company inception). */
 export const BS_PL_CUMULATIVE_START = '2000-01-01';
@@ -726,6 +731,30 @@ export function computeBalanceSheetReport(
         'Unsold units list-price total is shown as supplemental information only — not recognized as inventory under IFRS until sale.',
       severity: 'warning',
     });
+  }
+
+  /** Journal: offset bank/cash opening_balance with synthetic equity (matches trial balance). */
+  if (useJournal) {
+    let openingNetDebit = 0;
+    for (const acc of state.accounts || []) {
+      const ob = roundMoney(Number(acc.openingBalance ?? 0));
+      if (Math.abs(ob) < 0.01) continue;
+      const { grossDebit, grossCredit } = openingAmountToGross(ob, acc.type);
+      openingNetDebit = roundMoney(openingNetDebit + grossDebit - grossCredit);
+    }
+    if (Math.abs(openingNetDebit) > 0.01) {
+      const obEquityLine: BalanceSheetLine = {
+        id: OPENING_BALANCE_EQUITY_ID,
+        name: 'Opening Balance Equity',
+        amount: openingNetDebit,
+        groupKey: 'owner_capital',
+        position: 'equity',
+        term: 'non_current',
+        source: 'computed',
+      };
+      equityLines.push(obEquityLine);
+      debugLines.push(obEquityLine);
+    }
   }
 
   let sumAssets = assetLines.reduce((s, l) => s + l.amount, 0);

@@ -267,12 +267,135 @@ export class AdminLicenseRepository {
 }
 
 export class AdminUserRepository {
+  private pool = () => getPool();
+
   async getById(adminId: string): Promise<{ id: string; email: string; name: string } | null> {
-    const pool = getPool();
-    const { rows } = await pool.query<{ id: string; email: string; name: string }>(
+    const { rows } = await this.pool().query<{ id: string; email: string; name: string }>(
       `SELECT id, email, name FROM admin_users WHERE id = $1`,
       [adminId]
     );
     return rows[0] ?? null;
+  }
+
+  async findActiveByUsername(username: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool().query(
+      `SELECT * FROM admin_users WHERE username = $1 AND is_active = TRUE`,
+      [username]
+    );
+    return (rows[0] as Record<string, unknown> | undefined) ?? null;
+  }
+
+  async updateLastLogin(adminId: string): Promise<void> {
+    await this.pool().query(`UPDATE admin_users SET last_login = NOW() WHERE id = $1`, [adminId]);
+  }
+
+  async getPublicProfile(adminId: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool().query(
+      `SELECT id, username, name, email, role, last_login FROM admin_users WHERE id = $1`,
+      [adminId]
+    );
+    return (rows[0] as Record<string, unknown> | undefined) ?? null;
+  }
+
+  async listAdmins(filters: {
+    search?: string;
+    role?: string;
+    isActive?: boolean;
+  }): Promise<unknown[]> {
+    let query =
+      'SELECT id, username, name, email, role, is_active, last_login, created_at FROM admin_users WHERE 1=1';
+    const params: unknown[] = [];
+    let paramIndex = 1;
+
+    if (filters.search) {
+      query += ` AND (username ILIKE $${paramIndex} OR name ILIKE $${paramIndex} OR email ILIKE $${paramIndex})`;
+      params.push(`%${filters.search}%`);
+      paramIndex++;
+    }
+    if (filters.role) {
+      query += ` AND role = $${paramIndex++}`;
+      params.push(filters.role);
+    }
+    if (filters.isActive !== undefined) {
+      query += ` AND is_active = $${paramIndex++}`;
+      params.push(filters.isActive);
+    }
+
+    query += ' ORDER BY created_at DESC';
+    const { rows } = await this.pool().query(query, params);
+    return rows;
+  }
+
+  async getPublicById(id: string): Promise<Record<string, unknown> | null> {
+    const { rows } = await this.pool().query(
+      `SELECT id, username, name, email, role, is_active, last_login, created_at FROM admin_users WHERE id = $1`,
+      [id]
+    );
+    return (rows[0] as Record<string, unknown> | undefined) ?? null;
+  }
+
+  async exists(id: string): Promise<boolean> {
+    const { rows } = await this.pool().query(`SELECT id FROM admin_users WHERE id = $1`, [id]);
+    return rows.length > 0;
+  }
+
+  async usernameTaken(username: string, excludeId?: string): Promise<boolean> {
+    const { rows } = excludeId
+      ? await this.pool().query(
+          `SELECT id FROM admin_users WHERE username = $1 AND id != $2`,
+          [username, excludeId]
+        )
+      : await this.pool().query(`SELECT id FROM admin_users WHERE username = $1`, [username]);
+    return rows.length > 0;
+  }
+
+  async emailTaken(email: string, excludeId?: string): Promise<boolean> {
+    const { rows } = excludeId
+      ? await this.pool().query(`SELECT id FROM admin_users WHERE email = $1 AND id != $2`, [
+          email,
+          excludeId,
+        ])
+      : await this.pool().query(`SELECT id FROM admin_users WHERE email = $1`, [email]);
+    return rows.length > 0;
+  }
+
+  async createAdmin(input: {
+    id: string;
+    username: string;
+    name: string;
+    email: string;
+    passwordHash: string;
+    role: string;
+  }): Promise<void> {
+    await this.pool().query(
+      `INSERT INTO admin_users (id, username, name, email, password, role)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [input.id, input.username, input.name, input.email, input.passwordHash, input.role]
+    );
+  }
+
+  async updateAdminDynamic(id: string, setClause: string, params: unknown[]): Promise<void> {
+    await this.pool().query(`UPDATE admin_users SET ${setClause} WHERE id = $${params.length}`, params);
+  }
+
+  async deleteAdmin(id: string): Promise<void> {
+    await this.pool().query(`DELETE FROM admin_users WHERE id = $1`, [id]);
+  }
+
+  async upsertBootstrapAdmin(input: {
+    id: string;
+    username: string;
+    name: string;
+    email: string;
+    passwordHash: string;
+    role: string;
+  }): Promise<void> {
+    await this.pool().query(
+      `INSERT INTO admin_users (id, username, name, email, password, role, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, TRUE, NOW(), NOW())
+       ON CONFLICT (username) DO UPDATE
+       SET password = EXCLUDED.password, is_active = TRUE, updated_at = NOW()`,
+      [input.id, input.username, input.name, input.email, input.passwordHash, input.role]
+    );
   }
 }

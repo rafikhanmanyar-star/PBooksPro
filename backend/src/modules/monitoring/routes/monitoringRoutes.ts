@@ -4,8 +4,13 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { publicIntrospectionLimiter } from '../../../middleware/introspectionGuard.js';
 import { sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
 import { runReadinessCheck } from '../../../services/monitoring/monitoringHealthService.js';
+import { sendLivenessResponse } from '../../../routes/healthLiveness.js';
 
 export const monitoringPublicRouter = Router();
+
+monitoringPublicRouter.get('/health', publicIntrospectionLimiter, (_req, res) => {
+  sendLivenessResponse(res);
+});
 
 monitoringPublicRouter.get('/health/ready', publicIntrospectionLimiter, async (_req, res) => {
   try {

@@ -1170,6 +1170,15 @@ const SettingsPage: React.FC = () => {
                                         <button
                                             key={item.id}
                                             onClick={() => { setActiveCategory(item.id); setSearchQuery(''); }}
+                                            data-tour={
+                                                item.id === 'contacts'
+                                                    ? 'settings-contacts'
+                                                    : item.id === 'assets'
+                                                      ? 'settings-assets'
+                                                      : item.id === 'accounts'
+                                                        ? 'settings-chart-of-accounts'
+                                                        : undefined
+                                            }
                                             className={`whitespace-nowrap flex items-center gap-2 md:gap-3 px-3 py-2 md:py-2.5 rounded-lg text-xs md:text-sm font-medium transition-all duration-200 group ${activeCategory === item.id ? 'bg-ds-primary text-white shadow-ds-card' : 'text-app-muted hover:bg-app-highlight hover:text-app-text'}`}
                                         >
                                             <div className={`transition-transform duration-200 ${activeCategory === item.id ? 'scale-110' : 'group-hover:scale-110'}`}>{item.icon}</div>

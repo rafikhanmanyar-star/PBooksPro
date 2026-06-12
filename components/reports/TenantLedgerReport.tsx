@@ -645,7 +645,7 @@ const TenantLedgerReport: React.FC = () => {
 
                         <div id="printable-area" className="printable-area">
                             {/* Print-only header */}
-                            <div className="hidden print:block">
+                            <div className="report-print-only">
                                 <ReportHeader />
                                 <div className="text-center mb-4">
                                     <h3 className="text-2xl font-bold text-app-text">Tenant Ledger</h3>
@@ -732,7 +732,7 @@ const TenantLedgerReport: React.FC = () => {
                                 </div>
                             )}
 
-                            <div className="hidden print:block">
+                            <div className="report-print-only">
                                 <ReportFooter />
                             </div>
                         </div>

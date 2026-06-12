@@ -106,4 +106,81 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   assert.ok(r.validation.some((v) => v.code === 'RE_DIFFERS_FROM_PL'), 'expected RE vs P&L warning');
 }
 
+/** Journal mode: bank opening_balance is offset by Opening Balance Equity (matches trial balance). */
+{
+  const journalEntries = [
+    {
+      id: 'je1',
+      entryDate: '2024-06-01',
+      sourceModule: 'transaction',
+      sourceId: 'tx1',
+      isReversed: false,
+    },
+  ];
+  const journalLines = [
+    {
+      journalEntryId: 'je1',
+      accountId: 'sys-acc-cash',
+      debitAmount: 500000,
+      creditAmount: 0,
+      lineNumber: 1,
+    },
+    {
+      journalEntryId: 'je1',
+      accountId: 'sys-acc-income-summary',
+      debitAmount: 0,
+      creditAmount: 500000,
+      lineNumber: 2,
+    },
+  ];
+  const state = minimalState({
+    accounts: [
+      { id: 'sys-acc-cash', name: 'Cash', type: AccountType.CASH, balance: 0, openingBalance: 0 },
+      {
+        id: 'demo-acc-operating',
+        name: 'Main Operating Account',
+        type: AccountType.BANK,
+        balance: 0,
+        openingBalance: 3300000,
+      },
+      {
+        id: 'sys-acc-income-summary',
+        name: 'Income Summary',
+        type: AccountType.EQUITY,
+        balance: 0,
+      },
+      {
+        id: 'sys-acc-expense-summary',
+        name: 'Expense Summary',
+        type: AccountType.EQUITY,
+        balance: 0,
+      },
+      { id: 'sys-acc-ar', name: 'Accounts Receivable', type: AccountType.ASSET, balance: 0 },
+      { id: 'sys-acc-ap', name: 'Accounts Payable', type: AccountType.LIABILITY, balance: 0 },
+    ],
+    journalLedger: {
+      journalEntries,
+      journalLines,
+      accounts: [
+        { id: 'sys-acc-cash', name: 'Cash', type: 'Cash', openingBalance: 0 },
+        { id: 'demo-acc-operating', name: 'Main Operating Account', type: 'Bank', openingBalance: 3300000 },
+        { id: 'sys-acc-income-summary', name: 'Income Summary', type: 'Equity' },
+        { id: 'sys-acc-expense-summary', name: 'Expense Summary', type: 'Equity' },
+        { id: 'sys-acc-ar', name: 'Accounts Receivable', type: 'Asset' },
+        { id: 'sys-acc-ap', name: 'Accounts Payable', type: 'Liability' },
+      ],
+    },
+  });
+  const r = computeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'all',
+    useJournalLedger: true,
+  });
+  assert.ok(r.isBalanced, `journal BS with opening balance should balance, diff=${r.totals.difference}`);
+  assert.ok(
+    r.equity.items.some((l) => l.id === '__opening_balance_equity__' && l.amount === 3300000),
+    'expected Opening Balance Equity line'
+  );
+}
+
 console.log('balanceSheetEngine.test.ts: OK');

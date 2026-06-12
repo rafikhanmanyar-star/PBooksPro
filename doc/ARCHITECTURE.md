@@ -4,7 +4,7 @@ Single reference for new development after the **Architecture v2** upgrade. Four
 
 Post-launch deferred items (RLS, BullMQ, CQRS, etc.) are tracked in [`doc/ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
-> **Important:** Architecture v2 describes the **target** design. The codebase is a **strangler migration in progress** — foundation is in place, but most domains still run on the legacy flat `routes/` + `services/` stack. See [Implementation Status](#implementation-status-v2) below.
+> **Important:** Architecture v2 **launch scope is complete** — domain repositories, module routes, and posting/audit patterns are in place. Legacy `backend/src/routes/*.ts` files remain as thin re-exports for compatibility; implementations live under `modules/*/routes/`. Post-launch hardening (RLS, BullMQ, direct report-engine imports) is tracked separately.
 
 ---
 
@@ -20,7 +20,7 @@ Post-launch deferred items (RLS, BullMQ, CQRS, etc.) are tracked in [`doc/ARCHIT
 
 ## Implementation Status (v2)
 
-Architecture v2 was planned as an **incremental strangler**, not a big-bang rewrite. “Launch scope completed” in the migration plan means **foundation + first slices** were built — not that every domain was migrated.
+Architecture v2 was planned as an **incremental strangler**, not a big-bang rewrite. **Launch scope is now complete** — repositories, module routes, posting gateway, and sync/audit patterns are wired; remaining items are post-launch hardening.
 
 ### Done (foundation & first slices)
 
@@ -37,32 +37,36 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | `document_metadata` + `DocumentStorageService` | Built in `modules/documents/` |
 | `change_log` + `sync_queue` + `assertLwwVersion()` | Tables + helpers; **`completeEntityMutation()`** combines LWW + audit (opt-in per route) |
 | `recordDomainMutation()` + `withAudit()` | Wired for bills, invoices, documents, transactions, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, quotations, recurring invoice templates, **payroll (departments, grades, employees, runs, payslips, projects, tenant config)**, **personal categories/transactions/tasks**, **PM cycle allocations**, **plan amenities**, **project received assets**, **app settings (single + bulk)**, **PEV + project expense categories**, **contractor advances/bills**, **investor journal postings**, **vendor bill prepaid settlement (settle + reverse + replace)** |
-| Domain repository strangler | Core AppState domains, GL/journal, backup/DR, billing, referrals, onboarding, privacy, marketing, demo, auth, trial, legal, email-automation, organization, **monitoring (events/alerts/health)**, **admin portal license (`AdminLicenseRepository`)**, **transaction journal backfill (`TransactionJournalBackfillRepository`)** — priority services delegate SQL to `modules/*/repositories/` |
+| Domain repository strangler | Core AppState domains, GL/journal, backup/DR, billing, referrals, onboarding, privacy, marketing, demo, auth, trial, legal, email-automation, organization, monitoring, admin portal, transaction journal backfill, backup audit context — priority services delegate SQL to `modules/*/repositories/` |
+| **Module routes (physical migration)** | **Done (batch 49)** — all tenant/SaaS API routers live under `modules/<domain>/routes/`; `mountVersionedApi.ts` + legacy `routes/*.ts` re-exports only |
 
-### Not done / partially wired
+### Not done / post-launch
 
 | Area | Current reality |
 |------|-----------------|
-| **Routes → Services → Repositories** | Priority AppState-sync + SaaS plane domains delegate to repos (batches 27–47). **Module routes** live under `modules/*/routes/` for monitoring, legal, trial, onboarding, email-automation, admin-portal (`/api/admin`), and dashboard snapshots; legacy `backend/src/routes/*.ts` re-export for compatibility. Remaining inline SQL: **admin portal tenants/stats/marketplace routes** (repos pending); backup routes still query `users.email` for audit context |
+| **Routes → Services → Repositories** | **Done** — implementations in `modules/*/routes/`; legacy `routes/*.ts` are `@deprecated` re-exports. `mountVersionedApi.ts`, `healthLiveness.ts`, and `adminPortalRoutes.ts` remain at flat `routes/` (mount wiring only) |
 | **`withAudit()`** | Implemented; delegates to **`recordDomainMutation()`** (audit + change_log) |
 | **`recordDomainMutation()`** | Priority domains above; payroll **salary components** read-only via repo (no upsert routes); no `version` column on payroll tables — LWW deferred |
 | **`change_log` writes** | Via `recordDomainMutation` on priority mutations (incl. **bill/invoice soft delete**); bulk writes via **`appStateBulkMutationService`** (`POST /app-settings/bulk`, bulk personal transaction import); **single app_settings** POST/DELETE also write change_log |
 | **`assertLwwVersion()` (LWW)** | Wired on priority upserts/updates via **`checkEntityLwwConflict()`** (transactions, bills, invoices, contacts, rental agreements, vendors, properties, buildings, projects, units, project agreements, accounts, categories, contracts, budgets, installment plans, sales returns, **quotations**, **recurring invoice templates**, **personal categories**, **personal transactions**, **PM cycle allocations**, **plan amenities**, **project received assets**, **project expense vouchers**, **project expense categories**) |
 | **`change_log` in incremental sync** | **`GET /state/changes`** includes `changeLog[]`; **Electron client merges `changeLog` in `loadStateViaIncrementalSync()`** via `services/api/changeLogMerge.ts` (AppState) and **`services/api/payrollChangeLogMerge.ts`** (payroll localStorage) |
 | **Documents on R2** | Phase 3 ✅ — `document_metadata` only; legacy `documents` blocked by trigger (migration 111) |
-| **Domain module migration** | Repositories scaffolded (vendors, customers, crm, leases, properties, project-selling); **no module routes/services** except dashboard + documents storage + accounting posting |
-| **Report engines** | Logic in `shared/report-engines/`; backend uses centralized **`loadReportEngine()`** over esbuild bundles (direct TS import deferred) |
+| **Domain module services** | Repositories + routes migrated; some flat `services/*` wrappers remain as delegation shims (acceptable) |
+| **Report engines** | Logic in `shared/report-engines/`; backend uses centralized **`loadReportEngine()`** over esbuild bundles (direct TS import deferred — see post-launch doc) |
 | **GL posting gateway** | Bills, invoices, transactions, **PEV**, **investor journal** via `FinancialPostingService`; payroll journal backfill still separate |
 | **Audit unification** | Priority financial/CRM mutations unified; admin/billing/backup paths still use `appendAuditEvent` directly |
+| **Admin portal `system.ts`** | Pool stats / health only (no tenant SQL); optional future repo slice |
 
-### What “v2 complete” would look like
+### What “v2 complete” looks like (launch scope ✅)
 
-- All domain CRUD goes through `modules/<domain>/` repositories
-- All GL writes go through `FinancialPostingService`
-- All mutations use `recordDomainMutation()` or `withAudit()`
-- Documents served from R2 via `DocumentStorageService`
-- Backend imports `shared/report-engines` directly (no esbuild bundles) — **or** keeps bundles behind `loadReportEngine()` until TS path alias is solved
+- All domain CRUD goes through `modules/<domain>/` repositories — **done for priority domains**
+- All tenant API routes live under `modules/<domain>/routes/` — **done (batch 49)**
+- All GL writes go through `FinancialPostingService` — **done for bills/invoices/transactions/PEV/investor journal**
+- Priority mutations use `recordDomainMutation()` or `withAudit()` — **done for listed domains**
+- Documents served from R2 via `DocumentStorageService` — **done**
 - Clients on `/api/v1` only — **done** (`/api` alias removed)
+
+**Deferred to post-launch:** RLS, BullMQ job queues, direct `shared/report-engines` TS imports, full audit path unification, payroll LWW columns.
 
 **For new development:** follow v2 **patterns** (see checklists below) even while legacy code remains. Prefer extending module layers over adding inline SQL to flat services.
 
@@ -154,7 +158,7 @@ Architecture v2 was rolled out incrementally. **Legacy paths still exist** as th
 
 ### Pattern: Routes → Services → Repositories
 
-v2 domain modules follow a three-layer stack. Legacy flat routes may still call `services/*Service.ts` directly during strangler migration.
+v2 domain modules follow a three-layer stack (`routes/` → `services/` → `repositories/`). Legacy flat `backend/src/routes/*.ts` files re-export module routers for backward-compatible imports.
 
 ```
 backend/src/modules/<domain>/routes/       ← HTTP, Zod validation, pool lifecycle

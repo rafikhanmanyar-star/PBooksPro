@@ -42,9 +42,12 @@ const TOUR_DATA_ATTR: Partial<Record<string, string>> = {
     dashboard: 'nav-dashboard',
     rentalManagement: 'nav-rental',
     projectManagement: 'nav-projects',
+    projectSelling: 'nav-project-selling',
     transactions: 'nav-ledger',
     budgets: 'nav-budgets',
     accounting: 'nav-accounting',
+    vendorDirectory: 'nav-vendors',
+    settings: 'nav-settings',
 };
 
 const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {

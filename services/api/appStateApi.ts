@@ -410,7 +410,7 @@ import {
   PersonalTransactionsApiRepository,
   normalizePersonalTransactionFromApi,
 } from './repositories/personalTransactionsApi';
-import { getApiBaseUrl } from '../../config/apiUrl';
+import { getApiRootUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
 import { applyChangeLogToMergedState } from './changeLogMerge';
 import { logger } from '../logger';
@@ -442,8 +442,7 @@ export interface StateChangesResponse {
 /** Server clock for `pbooks_api_last_sync_at` after full loads (matches DB time; avoids missing incremental rows). */
 export async function getServerTimeIso(): Promise<string> {
   try {
-    const base = getApiBaseUrl().replace(/\/api\/?$/, '');
-    const res = await fetch(`${base}/health`);
+    const res = await fetch(`${getApiRootUrl()}/health`);
     const j = (await res.json()) as { success?: boolean; data?: { serverTime?: string } };
     const t = j?.data?.serverTime;
     if (typeof t === 'string' && !Number.isNaN(Date.parse(t))) return t;

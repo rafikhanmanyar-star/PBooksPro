@@ -178,7 +178,11 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {isAdmin && isAuthenticated && <DashboardFilterBar projectOptions={projectOptions} />}
+      {isAdmin && isAuthenticated && (
+        <div className="no-print">
+          <DashboardFilterBar projectOptions={projectOptions} />
+        </div>
+      )}
 
       {!isAdmin && (
         <div className="rounded-2xl border border-app-border bg-app-card p-6 text-center text-app-muted text-sm">
@@ -195,11 +199,13 @@ const DashboardPage: React.FC = () => {
             </p>
           )}
           {customizeMode && (
-            <WidgetDragGrid
-              items={kpiDragItems}
-              onReorder={(ids) => setKpiGroupOrder(ids as DashboardKpiGroupId[])}
-              title="KPI sections — drag to reorder"
-            />
+            <div className="no-print">
+              <WidgetDragGrid
+                items={kpiDragItems}
+                onReorder={(ids) => setKpiGroupOrder(ids as DashboardKpiGroupId[])}
+                title="KPI sections — drag to reorder"
+              />
+            </div>
           )}
 
           {kpiGroups.map((group) => (
@@ -216,7 +222,7 @@ const DashboardPage: React.FC = () => {
           ))}
 
           {customizeMode && (
-            <Button variant="secondary" onClick={resetKpiGroups} className="text-xs">
+            <Button variant="secondary" onClick={resetKpiGroups} className="text-xs no-print">
               Reset KPI section order
             </Button>
           )}
@@ -237,6 +243,9 @@ const DashboardPage: React.FC = () => {
           >
             <DashboardChartsSection enabled={isAdmin && isAuthenticated} customizeMode={customizeMode} />
           </Suspense>
+          <p className="report-print-only text-center text-[10px] text-slate-500 -mt-2">
+            Charts omitted from print — KPI cards above reflect the same snapshot.
+          </p>
           <ReportFooter />
         </div>
       )}

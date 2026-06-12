@@ -75,21 +75,73 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
         | 'openKpiReports'
         | 'openAccountingTrialBalance'
         | 'openAccountingOverviewReport'
+        | 'openAccountingProfitLoss'
+        | 'openSettingsContacts'
+        | 'openSettingsAssets'
+        | 'openSettingsChartOfAccounts'
+        | 'openProjectSellingMarketing'
+        | 'openProjectSellingAgreements'
+        | 'openProjectSellingInvoices'
+        | 'openProjectSellingCollections'
+        | 'openProjectConstructionContracts'
+        | 'openProjectConstructionBills'
+        | 'openRentalAgreements'
+        | 'openRentalInvoices'
+        | 'openRentalCollections'
     ) => {
       if (!prepare) return;
-      if (prepare === 'openKpiPanel' || prepare === 'openKpiReports') {
+
+      const openSettingsTab = (categoryId: string) => {
+        window.dispatchEvent(new CustomEvent('open-settings-tab', { detail: { categoryId } }));
+      };
+
+      if (prepare === 'openSettingsContacts') {
+        openSettingsTab('contacts');
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare === 'openSettingsAssets') {
+        openSettingsTab('assets');
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare === 'openSettingsChartOfAccounts') {
+        openSettingsTab('accounts');
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare.startsWith('openProjectSelling')) {
+        const view =
+          prepare === 'openProjectSellingMarketing'
+            ? 'Marketing'
+            : prepare === 'openProjectSellingAgreements'
+              ? 'Agreements'
+              : prepare === 'openProjectSellingInvoices'
+                ? 'Invoices'
+                : 'Collections Analytics';
+        dispatch({ type: 'SET_INITIAL_TABS', payload: [view] });
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare.startsWith('openProjectConstruction')) {
+        const view = prepare === 'openProjectConstructionContracts' ? 'Contracts' : 'Bills';
+        dispatch({ type: 'SET_INITIAL_TABS', payload: [view] });
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare.startsWith('openRental')) {
+        const view =
+          prepare === 'openRentalAgreements'
+            ? 'Agreements'
+            : prepare === 'openRentalInvoices'
+              ? 'Invoices'
+              : 'Collections Analytics';
+        dispatch({ type: 'SET_INITIAL_TABS', payload: [view] });
+        await new Promise((r) => setTimeout(r, 350));
+      } else if (prepare === 'openKpiPanel' || prepare === 'openKpiReports') {
         if (!isPanelOpen) togglePanel();
         if (prepare === 'openKpiReports') {
           await new Promise((r) => setTimeout(r, 200));
           setActivePanelTab('reports');
         }
-      }
-      if (prepare === 'openAccountingTrialBalance') {
+      } else if (prepare === 'openAccountingTrialBalance') {
         dispatch({ type: 'SET_INITIAL_TABS', payload: ['Reports', 'Trial Balance'] });
         await new Promise((r) => setTimeout(r, 500));
-      }
-      if (prepare === 'openAccountingOverviewReport') {
+      } else if (prepare === 'openAccountingOverviewReport') {
         dispatch({ type: 'SET_INITIAL_TABS', payload: ['Reports', 'Overview Reports'] });
+        await new Promise((r) => setTimeout(r, 500));
+      } else if (prepare === 'openAccountingProfitLoss') {
+        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Profit & Loss'] });
         await new Promise((r) => setTimeout(r, 500));
       }
     },

@@ -38,6 +38,7 @@ import { adminPortalRouter } from './routes/adminPortalRoutes.js';
 import { mountVersionedApi } from './routes/mountVersionedApi.js';
 import { startDashboardSnapshotScheduler } from './modules/dashboard/services/dashboardSnapshotScheduler.js';
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
+import { sendLivenessResponse } from './routes/healthLiveness.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -105,13 +106,7 @@ app.get('/api/v1/discover', publicIntrospectionLimiter, requireDiscoveryToken, (
 });
 
 app.get('/health', publicIntrospectionLimiter, (_req, res) => {
-  sendSuccess(res, {
-    ok: true,
-    service: 'pbooks-backend',
-    serverTime: new Date().toISOString(),
-    readiness: '/api/v1/health/ready',
-    apiVersion: 'v1',
-  });
+  sendLivenessResponse(res);
 });
 
 app.get('/api/app-info/version', publicIntrospectionLimiter, (_req, res) => {

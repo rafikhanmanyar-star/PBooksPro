@@ -425,7 +425,7 @@ const VendorDirectoryPage: React.FC = () => {
     }
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+        <div className="flex flex-col h-full bg-slate-50 overflow-hidden" data-tour="vendor-directory">
             <AddVendorSection
                 optionsView={optionsView}
                 setOptionsView={(view) => setOptionsView(view ?? 'Quotation')}

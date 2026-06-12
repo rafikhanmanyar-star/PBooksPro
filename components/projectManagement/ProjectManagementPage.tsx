@@ -144,7 +144,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
-            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Bills', 'Expense Vouchers', 'Sales Returns'].includes(mainTab)) {
+            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Collections Analytics', 'Bills', 'Expense Vouchers', 'Sales Returns'].includes(mainTab)) {
                 setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
@@ -318,12 +318,12 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     compact
                 />
             </div>
-            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project selling navigation">
+            <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project selling navigation" data-tour="project-selling-subnav">
                 <div className="space-y-0.5">
-                    <ModuleNavItem view="Marketing" label="Marketing" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Agreements" label="Agreements" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Invoices" label="Invoices" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Collections Analytics" label="Collections" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Marketing" label="Marketing" collapsed={subCollapsed} dataTour="selling-plan" />
+                    <ModuleNavItem view="Agreements" label="Agreements" collapsed={subCollapsed} dataTour="selling-agreements" />
+                    <ModuleNavItem view="Invoices" label="Invoices" collapsed={subCollapsed} dataTour="selling-invoices" />
+                    <ModuleNavItem view="Collections Analytics" label="Collections" collapsed={subCollapsed} dataTour="selling-collections" />
                     <ModuleNavItem view="Assets" label="Assets" collapsed={subCollapsed} />
                     <ModuleNavItem view="Sales Returns" label="Returns" collapsed={subCollapsed} />
                 </div>
@@ -389,7 +389,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project construction navigation" data-tour="project-subnav">
                 <div className="space-y-0.5">
                     <ModuleNavItem view="Expense Analytics" label="Expense Analytics" collapsed={subCollapsed} />
-                    <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} />
+                    <ModuleNavItem view="Contracts" label="Contracts" collapsed={subCollapsed} dataTour="project-contracts" />
                     <ModuleNavItem view="Bills" label="Bills" collapsed={subCollapsed} dataTour="project-bills" />
                     <ModuleNavItem view="Expense Vouchers" label="Petty Cash" collapsed={subCollapsed} />
                 </div>
