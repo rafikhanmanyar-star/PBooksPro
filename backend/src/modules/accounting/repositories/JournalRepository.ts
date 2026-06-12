@@ -582,11 +582,18 @@ export class JournalRepository extends TenantRepository {
       isReversed: boolean;
     }>;
   }> {
-    const params: unknown[] = [this.tenantId, GLOBAL_SYSTEM_TENANT_ID];
-    let dateCond = '';
+    const entriesParams: unknown[] = [this.tenantId];
+    let entriesDateCond = '';
     if (options?.asOfDate) {
-      dateCond = ` AND je.entry_date <= $${params.length + 1}::date`;
-      params.push(options.asOfDate);
+      entriesDateCond = ' AND je.entry_date <= $2::date';
+      entriesParams.push(options.asOfDate);
+    }
+
+    const linesParams: unknown[] = [this.tenantId, GLOBAL_SYSTEM_TENANT_ID];
+    let linesDateCond = '';
+    if (options?.asOfDate) {
+      linesDateCond = ' AND je.entry_date <= $3::date';
+      linesParams.push(options.asOfDate);
     }
 
     const linesR = await client.query(
@@ -600,11 +607,11 @@ export class JournalRepository extends TenantRepository {
       FROM journal_lines jl
       INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
       INNER JOIN accounts a ON a.id = jl.account_id
-        AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2)
+        AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2::text)
         AND a.deleted_at IS NULL
-      WHERE je.tenant_id = $1${dateCond}
+      WHERE je.tenant_id = $1${linesDateCond}
       ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`,
-      params
+      linesParams
     );
 
     const entriesR = await client.query(
@@ -621,8 +628,8 @@ export class JournalRepository extends TenantRepository {
           WHERE jr.original_journal_entry_id = je.id AND jr.tenant_id = je.tenant_id
         ) AS is_reversed
       FROM journal_entries je
-      WHERE je.tenant_id = $1${dateCond}`,
-      params
+      WHERE je.tenant_id = $1${entriesDateCond}`,
+      entriesParams
     );
 
     return {
