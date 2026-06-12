@@ -104,6 +104,7 @@ interface AuthContextType extends AuthState {
   selectCompany: (companyId: string, selectionToken?: string, isSwitch?: boolean) => Promise<LoginResult>;
   startCompanySwitch: () => Promise<void>;
   cancelCompanySelection: () => void;
+  clearAuthError: () => void;
   verifyMfaLogin: (input: {
     mfaToken: string;
     totpCode?: string;
@@ -1201,6 +1202,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   }, []);
 
+  const clearAuthError = useCallback(() => {
+    setState(prev => (prev.error ? { ...prev, error: null } : prev));
+  }, []);
+
   const verifyMfaLogin = useCallback(async (input: {
     mfaToken: string;
     totpCode?: string;
@@ -1368,6 +1373,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     selectCompany,
     startCompanySwitch,
     cancelCompanySelection,
+    clearAuthError,
     verifyMfaLogin,
     completeMfaSetupLogin,
     lookupTenants,
@@ -1384,6 +1390,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     selectCompany,
     startCompanySwitch,
     cancelCompanySelection,
+    clearAuthError,
     verifyMfaLogin,
     completeMfaSetupLogin,
     lookupTenants,
@@ -1425,6 +1432,7 @@ export const useAuth = (): AuthContextType => {
       selectCompany: async () => { throw new Error('AuthProvider not mounted'); },
       startCompanySwitch: async () => { },
       cancelCompanySelection: () => { },
+      clearAuthError: () => { },
       verifyMfaLogin: async () => { throw new Error('AuthProvider not mounted'); },
       completeMfaSetupLogin: async () => { throw new Error('AuthProvider not mounted'); },
       lookupTenants: async () => [],

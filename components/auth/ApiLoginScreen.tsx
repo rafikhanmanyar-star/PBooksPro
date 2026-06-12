@@ -37,6 +37,7 @@ import {
   markWebsiteDemoEntry,
 } from '../../utils/demoAuthBootstrap';
 import Button from '../ui/Button';
+import { ClientVersionFootnote, ClientVersionLabel } from '../ui/ClientVersionLabel';
 
 const DEMO_TENANT_LABEL = 'Al Noor Properties';
 
@@ -247,9 +248,14 @@ function LoginBrandPanel() {
         ))}
       </ul>
 
-      <p className="relative z-10 mt-10 text-xs text-slate-500">
-        Secure API authentication · PostgreSQL-backed tenants · LAN &amp; local deployment
-      </p>
+      <div className="relative z-10 mt-10 space-y-2 text-xs text-slate-500">
+        <p>
+          Secure API authentication · PostgreSQL-backed tenants · LAN &amp; local deployment
+        </p>
+        <p className="text-slate-400">
+          <ClientVersionLabel className="text-slate-400" />
+        </p>
+      </div>
     </aside>
   );
 }
@@ -312,7 +318,7 @@ function AuthCardHeader({
 }
 
 const ApiLoginScreen: React.FC = () => {
-  const { login, registerTenant, enterDemoSession, error: authError, isLoading } = useAuth();
+  const { login, registerTenant, enterDemoSession, error: authError, isLoading, clearAuthError } = useAuth();
   const [demoEntering, setDemoEntering] = useState(false);
   const { hideProgress } = useNotification();
   const [serverUrl, setServerUrl] = useState('');
@@ -385,6 +391,7 @@ const ApiLoginScreen: React.FC = () => {
   }, [view, websiteDemoEntry, enterDemoSession, serverUrl]);
 
   useEffect(() => {
+    clearAuthError();
     const root = getApiRootUrl();
     setServerUrl(root);
     try {
@@ -394,7 +401,7 @@ const ApiLoginScreen: React.FC = () => {
       setServerUrl(fallback);
       apiClient.setBaseUrl(fallback);
     }
-  }, []);
+  }, [clearAuthError]);
 
   useEffect(() => {
     const trimmed = serverUrl.trim();
@@ -1234,6 +1241,8 @@ const ApiLoginScreen: React.FC = () => {
               </form>
             </AuthCard>
           )}
+
+          <ClientVersionFootnote className="mt-6 lg:mt-8" />
         </div>
       </main>
     </div>

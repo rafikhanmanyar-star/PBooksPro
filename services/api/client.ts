@@ -295,6 +295,7 @@ export class ApiClient {
                              endpoint.includes('/auth/register') ||
                              endpoint.includes('/auth/register-tenant') ||
                              endpoint.includes('/auth/select-company') ||
+                             endpoint.includes('/auth/tenants') ||
                              endpoint.includes('/auth/public-config') ||
                              endpoint.includes('/auth/mfa/verify') ||
                              endpoint.includes('/auth/mfa/setup') ||

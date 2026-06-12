@@ -537,6 +537,15 @@ authRouter.post('/auth/select-company', loginLimiter, optionalAuthMiddleware, as
   }
 });
 
+/**
+ * Legacy pre-login org picker (removed from cloud UI). Old cached clients call this
+ * without a JWT; return an empty list instead of falling through to authMiddleware.
+ */
+authRouter.get('/auth/tenants', publicIntrospectionLimiter, (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  sendSuccess(res, []);
+});
+
 authRouter.get('/auth/public-config', publicIntrospectionLimiter, (_req, res) => {
   sendSuccess(res, {
     selfSignupEnabled: isEnvFlagEnabled('ALLOW_SELF_SIGNUP'),
