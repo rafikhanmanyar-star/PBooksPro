@@ -165,21 +165,58 @@ export default function QuickTransactionWizard() {
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full">
       <div className="px-4 pt-4 pb-3 border-b border-app-border bg-app-header shrink-0">
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="min-w-0">
-            <h1 className="text-lg font-bold truncate">Quick Capture</h1>
-            <p className="text-xs text-app-muted">Step {step} of {totalSteps}</p>
+        <div className="flex items-start justify-between gap-3 mb-3">
+          <div className="flex items-start gap-1 min-w-0 flex-1">
+            {step > 1 && (
+              <button
+                type="button"
+                onClick={goBack}
+                className="flex items-center justify-center w-11 h-11 -ml-2 text-ds-primary touch-manipulation shrink-0 rounded-xl active:bg-app-highlight"
+                aria-label="Back"
+              >
+                <span className="w-5 h-5">{ICONS.chevronLeft}</span>
+              </button>
+            )}
+            <div className="min-w-0 pt-0.5">
+              <h1 className="text-lg font-bold truncate">Quick Capture</h1>
+              <p className="text-xs text-app-muted">Step {step} of {totalSteps}</p>
+            </div>
           </div>
-          {step > 1 && (
-            <button
-              type="button"
-              onClick={goBack}
-              className="flex items-center gap-1 text-sm text-ds-primary px-2 py-1 touch-manipulation shrink-0"
-            >
-              <span className="w-5 h-5">{ICONS.chevronLeft}</span>
-              Back
-            </button>
-          )}
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            {step < totalSteps ? (
+              <button
+                type="button"
+                onClick={goNext}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation active:opacity-90"
+              >
+                Next
+                <span className="w-4 h-4">{ICONS.chevronRight}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={createMutation.isPending}
+                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation disabled:opacity-60 active:opacity-90"
+              >
+                {createMutation.isPending ? 'Sending…' : (
+                  <>
+                    Submit
+                    <span className="w-4 h-4">{ICONS.send}</span>
+                  </>
+                )}
+              </button>
+            )}
+            {step === 4 && (
+              <button
+                type="button"
+                onClick={goNext}
+                className="text-xs text-app-muted touch-manipulation min-h-[32px] px-1"
+              >
+                Skip receipt
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex gap-1.5">
           {WIZARD_STEPS.map((s) => (
@@ -386,44 +423,6 @@ export default function QuickTransactionWizard() {
         )}
 
         {error && <p className="mt-4 text-sm text-ds-danger">{error}</p>}
-        {/* Spacer so last grid row isn't flush against the action bar when scrolled */}
-        <div className="h-2 shrink-0" aria-hidden />
-      </div>
-
-      <div className="shrink-0 px-4 py-3 border-t border-app-border bg-app-card/95 backdrop-blur-sm pb-safe">
-        {step < totalSteps ? (
-          <button
-            type="button"
-            onClick={goNext}
-            className="w-full py-4 rounded-xl bg-ds-primary text-white font-bold text-lg touch-manipulation flex items-center justify-center gap-2"
-          >
-            Continue
-            <span className="w-5 h-5">{ICONS.chevronRight}</span>
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={createMutation.isPending}
-            className="w-full py-4 rounded-xl bg-ds-primary text-white font-bold text-lg touch-manipulation disabled:opacity-60 flex items-center justify-center gap-2"
-          >
-            {createMutation.isPending ? 'Submitting…' : (
-              <>
-                Submit for review
-                <span className="w-5 h-5">{ICONS.send}</span>
-              </>
-            )}
-          </button>
-        )}
-        {step === 4 && (
-          <button
-            type="button"
-            onClick={goNext}
-            className="w-full mt-2 py-2 text-sm text-app-muted touch-manipulation"
-          >
-            Skip receipt →
-          </button>
-        )}
       </div>
     </div>
   );
