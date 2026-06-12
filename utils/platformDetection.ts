@@ -24,6 +24,16 @@ export function isMobileDevice(): boolean {
   return isSmallScreen || isMobileUserAgent;
 }
 
+/** Tablet in portrait orientation (executive mobile criteria). */
+export function isTabletPortrait(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isElectron()) return false;
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  const isTabletWidth = w >= 768 && w < 1024;
+  return isTabletWidth && h > w;
+}
+
 /**
  * Check if the application is running on a desktop device
  */

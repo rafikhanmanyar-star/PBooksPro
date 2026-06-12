@@ -62,7 +62,12 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
   const [activeTourId, setActiveTourId] = useState<ProductTourId | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [progress, setProgress] = useState<TourProgressStore>(() => loadTourProgress());
-  const preparingRef = useRef(false);
+  const prepareGenerationRef = useRef(0);
+  const currentPageRef = useRef(currentPage);
+
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
 
   const refreshProgress = useCallback(() => {
     setProgress(loadTourProgress());
@@ -92,6 +97,11 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
       if (!prepare) return;
 
       const openSettingsTab = (categoryId: string) => {
+        try {
+          sessionStorage.setItem('openSettingsCategory', categoryId);
+        } catch {
+          /* ignore */
+        }
         window.dispatchEvent(new CustomEvent('open-settings-tab', { detail: { categoryId } }));
       };
 
@@ -150,27 +160,27 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
 
   const navigateIfNeeded = useCallback(
     async (page?: Page) => {
-      if (!page || currentPage === page) return;
+      if (!page || currentPageRef.current === page) return;
       dispatch({ type: 'SET_PAGE', payload: page });
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 500));
     },
-    [currentPage, dispatch]
+    [dispatch]
   );
 
   const prepareStep = useCallback(
     async (tourId: ProductTourId, index: number) => {
-      if (preparingRef.current) return;
-      preparingRef.current = true;
+      const generation = ++prepareGenerationRef.current;
       const tour = getTourDefinition(tourId);
       const step = tour.steps[index];
-      if (!step) {
-        preparingRef.current = false;
-        return;
-      }
+      if (!step) return;
+
       await navigateIfNeeded(step.page);
+      if (generation !== prepareGenerationRef.current) return;
+
       await runPrepare(step.prepare);
-      await waitForSelector(step.selector);
-      preparingRef.current = false;
+      if (generation !== prepareGenerationRef.current) return;
+
+      await waitForSelector(step.selector, step.page === 'settings' ? 8000 : 5000);
     },
     [navigateIfNeeded, runPrepare]
   );

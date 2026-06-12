@@ -23,6 +23,12 @@ import {
   backupSecurityApi,
   type RestorePolicy,
 } from '../../services/api/backupSecurityApi';
+import {
+  backupAlertInfo,
+  backupAlertSuccess,
+  backupAlertWarning,
+  backupMessageAlertClass,
+} from './backupThemeClasses';
 
 const PostgresBackupRestore: React.FC = () => {
   const [caps, setCaps] = useState<DatabaseBackupCapabilities | null>(null);
@@ -167,12 +173,12 @@ const PostgresBackupRestore: React.FC = () => {
 
   if (loadError) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-ds-warning">
+      <div className={`${backupAlertWarning} p-3 text-sm flex items-start gap-2`}>
         <div className="flex items-start gap-2">
-          <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+          <AlertTriangle className="w-5 h-5 flex-shrink-0 text-ds-warning" />
           <div>
-            <p className="font-medium">Could not load backup settings</p>
-            <p className="mt-1 text-amber-800">{loadError}</p>
+            <p className="font-medium text-app-text">Could not load backup settings</p>
+            <p className="mt-1 text-app-muted">{loadError}</p>
           </div>
         </div>
       </div>
@@ -187,7 +193,7 @@ const PostgresBackupRestore: React.FC = () => {
     return (
       <div className="space-y-2">
         <h3 className="text-base font-semibold text-app-text flex items-center gap-2">
-          <Database className="w-5 h-5 text-green-600" />
+          <Database className="w-5 h-5 text-ds-success" />
           PostgreSQL backup
         </h3>
         <div className="rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-text">
@@ -201,7 +207,7 @@ const PostgresBackupRestore: React.FC = () => {
     <div className="space-y-4">
       <div>
         <h3 className="text-base font-semibold text-app-text flex items-center gap-2">
-          <Database className="w-5 h-5 text-green-600" />
+          <Database className="w-5 h-5 text-ds-success" />
           PostgreSQL backup
         </h3>
         <p className="text-sm text-app-muted mt-0.5">
@@ -214,13 +220,11 @@ const PostgresBackupRestore: React.FC = () => {
       {restorePolicy && (
         <div
           className={`rounded-lg border p-3 text-sm flex items-start gap-2 ${
-            restorePolicy.canRestore
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
-              : 'border-amber-200 bg-amber-50 text-ds-warning'
+            restorePolicy.canRestore ? backupAlertSuccess : backupAlertWarning
           }`}
         >
-          <Lock className="w-5 h-5 flex-shrink-0 mt-0.5" />
-          <div>
+          <Lock className="w-5 h-5 flex-shrink-0 mt-0.5 text-app-muted" />
+          <div className="text-app-text">
             {restorePolicy.canRestore
               ? 'You are authorized to restore (Super Admin / Company Admin).'
               : 'Restore is disabled for your role. Contact an administrator.'}
@@ -229,37 +233,19 @@ const PostgresBackupRestore: React.FC = () => {
       )}
 
       {message && (
-        <div
-          className={`p-3 rounded-lg flex items-start gap-2 ${
-            message.type === 'success'
-              ? 'bg-green-50 border border-green-200'
-              : message.type === 'warning'
-                ? 'bg-amber-50 border border-amber-200'
-                : 'bg-red-50 border border-red-200'
-          }`}
-        >
+        <div className={backupMessageAlertClass(message.type)}>
           {message.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-ds-success flex-shrink-0" />
           ) : message.type === 'warning' ? (
-            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-ds-warning flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-ds-danger flex-shrink-0" />
           )}
-          <p
-            className={`text-sm ${
-              message.type === 'success'
-                ? 'text-green-700'
-                : message.type === 'warning'
-                  ? 'text-ds-warning'
-                  : 'text-red-700'
-            }`}
-          >
-            {message.text}
-          </p>
+          <p className="text-sm text-app-text">{message.text}</p>
         </div>
       )}
 
-      <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3 text-xs text-blue-900 space-y-1">
+      <div className={`${backupAlertInfo} p-3 space-y-1`}>
         <p>
           The API server must have <strong>pg_dump</strong> and <strong>pg_restore</strong> on{' '}
           <strong>PATH</strong>.
@@ -282,7 +268,7 @@ const PostgresBackupRestore: React.FC = () => {
         {useBackupPassword && (
           <input
             type="password"
-            className="w-full max-w-sm border border-app-border rounded-lg px-3 py-2 text-sm"
+            className="w-full max-w-sm ds-input-field rounded-lg px-3 py-2 text-sm"
             placeholder="Backup password (min 8 characters)"
             value={backupPassword}
             onChange={(e) => setBackupPassword(e.target.value)}
@@ -295,7 +281,7 @@ const PostgresBackupRestore: React.FC = () => {
           type="button"
           onClick={handleBackup}
           disabled={busy}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-ds-success text-white rounded-lg font-medium hover:bg-ds-success/90 transition-colors disabled:opacity-50"
         >
           {backingUp ? (
             <>
@@ -315,7 +301,7 @@ const PostgresBackupRestore: React.FC = () => {
             type="button"
             onClick={handleTenantBackup}
             disabled={busy}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-ds-on-primary rounded-lg font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             {backingUpTenant ? (
               <>
@@ -335,7 +321,7 @@ const PostgresBackupRestore: React.FC = () => {
           <div className="flex flex-wrap items-center gap-2">
             <input
               type="password"
-              className="border border-app-border rounded-lg px-3 py-2 text-sm"
+              className="ds-input-field rounded-lg px-3 py-2 text-sm"
               placeholder="Backup file password (if any)"
               value={restorePassword}
               onChange={(e) => setRestorePassword(e.target.value)}

@@ -25,6 +25,7 @@ import {
     type ServiceChargeDeductionSortKey,
 } from './serviceChargesDeductionReportEngine';
 import { isLocalOnlyMode } from '../../config/apiUrl';
+import { formatApiErrorMessage } from '../../services/api/client';
 import { fetchServiceChargesDeductionReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -102,8 +103,11 @@ const ServiceChargesDeductionReport: React.FC = () => {
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
+    const hasValidDateRange =
+        /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate);
+
     useEffect(() => {
-        if (localOnly) {
+        if (localOnly || !hasValidDateRange) {
             setServerRows(null);
             setFetchError(null);
             return;
@@ -124,7 +128,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
                 if (!cancelled) setServerRows(r.rows);
             })
             .catch((e) => {
-                if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
+                if (!cancelled) setFetchError(formatApiErrorMessage(e));
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -134,6 +138,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         };
     }, [
         localOnly,
+        hasValidDateRange,
         startDate,
         endDate,
         selectedBuildingId,
@@ -176,11 +181,11 @@ const ServiceChargesDeductionReport: React.FC = () => {
     const getLinkedItemName = (tx: Transaction | null): string => {
         if (!tx) return '';
         if (tx.invoiceId) {
-            const invoice = invoices.find(i => i.id === tx.invoiceId);
+            const invoice = rentalState.invoices.find(i => i.id === tx.invoiceId);
             return invoice ? `Invoice #${invoice.invoiceNumber}` : 'an Invoice';
         }
         if (tx.billId) {
-            const bill = bills.find(b => b.id === tx.billId);
+            const bill = rentalState.bills.find(b => b.id === tx.billId);
             return bill ? `Bill #${bill.billNumber}` : 'a Bill';
         }
         return 'a linked item';
@@ -216,7 +221,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         }
     };
 
-    const SortIcon = ({ column }: { column: keyof ReportRow }) => {
+    const SortIcon = ({ column }: { column: SortKey }) => {
         if (sortConfig?.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
@@ -351,7 +356,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
                             </thead>
                             <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(item => {
-                                    const transaction = transactions.find(t => t.id === item.entityId);
+                                    const transaction = rentalState.transactions.find(t => t.id === item.entityId);
                                     return (
                                         <tr 
                                             key={item.id} 

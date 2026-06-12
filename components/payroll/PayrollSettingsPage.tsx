@@ -15,6 +15,9 @@ import { formatCurrency } from './utils/formatters';
 
 const DEPT_ICONS = [PenLine, PenTool, Megaphone, Building2, PenLine];
 
+const sectionCardClass =
+  'bg-app-card rounded-2xl sm:rounded-3xl border border-app-border shadow-ds-card overflow-hidden';
+
 function countStaffInDepartment(employees: PayrollEmployee[], dept: Department): number {
   return employees.filter((emp) => {
     if (emp.status && emp.status !== EmploymentStatus.ACTIVE) return false;
@@ -140,13 +143,13 @@ const PayrollSettingsPage: React.FC = () => {
     <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6">
       <div className="max-w-6xl mx-auto">
         <header className="mb-8 sm:mb-10">
-          <p className="text-[11px] sm:text-xs font-semibold tracking-[0.2em] text-amber-800/90 uppercase mb-2">
+          <p className="text-[11px] sm:text-xs font-semibold tracking-[0.2em] text-ds-warning uppercase mb-2">
             Organization architecture
           </p>
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight font-serif">
+          <h1 className="text-2xl sm:text-3xl font-bold text-app-text tracking-tight font-serif">
             System Configuration
           </h1>
-          <p className="text-slate-500 text-sm sm:text-base mt-2 max-w-2xl leading-relaxed">
+          <p className="text-app-muted text-sm sm:text-base mt-2 max-w-2xl leading-relaxed">
             Manage the foundational structures of your editorial organization. Define departments and specify
             professional grade levels for payroll calculation.
           </p>
@@ -154,27 +157,24 @@ const PayrollSettingsPage: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-start">
           {/* Departments */}
-          <section
-            className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-[0_1px_3px_rgba(15,23,42,0.06),0_4px_14px_rgba(15,23,42,0.04)] overflow-hidden"
-            aria-label="Departments"
-          >
-            <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+          <section className={sectionCardClass} aria-label="Departments">
+            <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b border-app-border">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-serif">Departments</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Operational units within the organization.</p>
+                <h2 className="text-lg sm:text-xl font-bold text-app-text font-serif">Departments</h2>
+                <p className="text-sm text-app-muted mt-0.5">Operational units within the organization.</p>
               </div>
               <button
                 type="button"
                 onClick={handleOpenAddDepartment}
-                className="self-start sm:self-auto text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1.5"
+                className="self-start sm:self-auto text-sm font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4 shrink-0" strokeWidth={2.5} />
                 Add Department
               </button>
             </div>
-            <div className="px-3 sm:px-4 pb-4 sm:pb-5">
+            <div className="px-3 sm:px-4 pb-4 sm:pb-5 pt-2">
               {departments.length === 0 ? (
-                <div className="px-2 py-8 text-center text-slate-400 text-sm">
+                <div className="px-2 py-8 text-center text-app-muted text-sm bg-app-toolbar/40 rounded-2xl border border-app-border">
                   No departments yet. Add one to organize employees (e.g. Engineering, Sales, Operations).
                 </div>
               ) : (
@@ -187,27 +187,27 @@ const PayrollSettingsPage: React.FC = () => {
                         <div
                           className={`flex items-center gap-3 sm:gap-4 rounded-xl px-3 py-3 sm:px-3.5 ${
                             dept.is_active === false ? 'opacity-50' : ''
-                          } hover:bg-slate-50/80 transition-colors group`}
+                          } hover:bg-app-table-hover transition-colors group`}
                         >
                           <div
-                            className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-600"
+                            className="flex h-10 w-10 sm:h-11 sm:w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary"
                             aria-hidden
                           >
                             <Icon className="h-5 w-5" strokeWidth={1.75} />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="font-bold text-slate-900 truncate">{dept.name}</div>
-                            <div className="text-sm text-slate-500">
+                            <div className="font-bold text-app-text truncate">{dept.name}</div>
+                            <div className="text-sm text-app-muted">
                               {n} Staff Member{n === 1 ? '' : 's'}
                             </div>
                             {dept.description && (
-                              <div className="text-xs text-slate-400 mt-0.5 truncate max-w-sm">{dept.description}</div>
+                              <div className="text-xs text-app-muted/80 mt-0.5 truncate max-w-sm">{dept.description}</div>
                             )}
                           </div>
                           <button
                             type="button"
                             onClick={() => handleOpenEditDepartment(dept)}
-                            className="shrink-0 p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                            className="shrink-0 p-2 text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
                             aria-label={`Edit ${dept.name}`}
                           >
                             <Pencil className="h-4 w-4" />
@@ -222,64 +222,63 @@ const PayrollSettingsPage: React.FC = () => {
           </section>
 
           {/* Grade levels */}
-          <section
-            className="bg-slate-100/80 rounded-2xl sm:rounded-3xl border border-slate-200/60 p-4 sm:p-5"
-            aria-label="Grade levels"
-          >
-            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-4 sm:mb-5">
+          <section className={sectionCardClass} aria-label="Grade levels">
+            <div className="px-5 sm:px-6 pt-5 sm:pt-6 pb-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 border-b border-app-border">
               <div>
-                <h2 className="text-lg sm:text-xl font-bold text-slate-900 font-serif">Grade Levels</h2>
-                <p className="text-sm text-slate-500 mt-0.5">Hierarchical compensation tiers.</p>
+                <h2 className="text-lg sm:text-xl font-bold text-app-text font-serif">Grade Levels</h2>
+                <p className="text-sm text-app-muted mt-0.5">Hierarchical compensation tiers.</p>
               </div>
               <button
                 type="button"
                 onClick={handleOpenAddGrade}
-                className="self-start sm:self-auto text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1.5"
+                className="self-start sm:self-auto text-sm font-semibold text-primary hover:text-primary/80 transition-colors flex items-center gap-1.5"
               >
                 <Plus className="w-4 h-4 shrink-0" strokeWidth={2.5} />
                 Add Grade
               </button>
             </div>
 
-            {grades.length === 0 ? (
-              <div className="py-8 text-center text-slate-400 text-sm bg-white/60 rounded-2xl border border-slate-200/50">
-                No grade levels yet. Add salary bands (e.g. G1, G2, Senior) for employee grades.
-              </div>
-            ) : (
-              <ul className="space-y-3">
-                {grades.map((grade, index) => (
-                  <li key={grade.id}>
-                    <div className="flex items-stretch gap-3 bg-white rounded-xl sm:rounded-2xl border border-slate-200/80 shadow-sm px-3 py-3 sm:px-4 sm:py-3.5">
-                      <div
-                        className="flex h-12 w-12 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-amber-200/90 text-amber-900 font-bold text-sm tabular-nums"
-                        title="Grade code"
-                      >
-                        {gradeCodeLabel(grade, index)}
-                      </div>
-                      <div className="min-w-0 flex-1 flex flex-col justify-center gap-2">
-                        <p className="font-bold text-slate-900 leading-snug">{gradeTitle(grade)}</p>
-                        <div className="flex flex-wrap gap-2">
-                          <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium text-slate-600">
-                            BASE: {formatCurrency(grade.min_salary, true)}
-                          </span>
-                          <span className="inline-flex items-center rounded-full bg-sky-100/90 px-2.5 py-0.5 text-xs font-medium text-sky-700">
-                            MULTIPLIER: {gradeMultiplier(grade)}
-                          </span>
+            <div className="px-3 sm:px-4 pb-4 sm:pb-5 pt-2">
+              {grades.length === 0 ? (
+                <div className="py-8 text-center text-app-muted text-sm bg-app-toolbar/40 rounded-2xl border border-app-border">
+                  No grade levels yet. Add salary bands (e.g. G1, G2, Senior) for employee grades.
+                </div>
+              ) : (
+                <ul className="space-y-3">
+                  {grades.map((grade, index) => (
+                    <li key={grade.id}>
+                      <div className="flex items-stretch gap-3 bg-app-toolbar/30 rounded-xl sm:rounded-2xl border border-app-border shadow-sm px-3 py-3 sm:px-4 sm:py-3.5 hover:bg-app-table-hover transition-colors group">
+                        <div
+                          className="flex h-12 w-12 sm:h-12 sm:w-12 shrink-0 items-center justify-center rounded-lg bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] font-bold text-sm tabular-nums"
+                          title="Grade code"
+                        >
+                          {gradeCodeLabel(grade, index)}
                         </div>
+                        <div className="min-w-0 flex-1 flex flex-col justify-center gap-2">
+                          <p className="font-bold text-app-text leading-snug">{gradeTitle(grade)}</p>
+                          <div className="flex flex-wrap gap-2">
+                            <span className="inline-flex items-center rounded-full bg-app-toolbar px-2.5 py-0.5 text-xs font-medium text-app-muted border border-app-border">
+                              BASE: {formatCurrency(grade.min_salary, true)}
+                            </span>
+                            <span className="inline-flex items-center rounded-full bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary border border-primary/20">
+                              MULTIPLIER: {gradeMultiplier(grade)}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditGrade(grade)}
+                          className="self-center shrink-0 p-2 text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-lg opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all"
+                          aria-label={`Edit ${grade.name}`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEditGrade(grade)}
-                        className="self-center shrink-0 p-2 text-slate-400 hover:text-slate-600 rounded-lg"
-                        aria-label={`Edit ${grade.name}`}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </section>
         </div>
       </div>

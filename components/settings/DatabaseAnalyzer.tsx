@@ -126,12 +126,12 @@ const DatabaseAnalyzer: React.FC = () => {
             <button 
                 onClick={analyzeDatabase}
                 disabled={isLoading}
-                className="p-3 bg-app-card border border-app-border rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-ds-card transition-all text-left group"
+                className="p-3 bg-app-card border border-app-border rounded-lg hover:bg-app-table-hover hover:border-primary/30 hover:shadow-ds-card transition-all text-left group"
             >
-                <div className="font-semibold text-app-text group-hover:text-blue-700 mb-1 flex items-center gap-2">
+                <div className="font-semibold text-app-text group-hover:text-primary mb-1 flex items-center gap-2">
                     {isLoading ? (
                         <>
-                            <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
                             Analyzing...
                         </>
                     ) : (
@@ -163,7 +163,7 @@ const DatabaseAnalyzer: React.FC = () => {
                         <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
                                 <span className="text-app-muted">Status:</span>
-                                <span className={`ml-2 font-medium ${dbInfo.isReady ? 'text-green-600' : 'text-red-600'}`}>
+                                <span className={`ml-2 font-medium ${dbInfo.isReady ? 'text-ds-success' : 'text-ds-danger'}`}>
                                     {dbInfo.isReady ? 'Ready' : 'Not Ready'}
                                 </span>
                             </div>
@@ -181,7 +181,7 @@ const DatabaseAnalyzer: React.FC = () => {
                             </div>
                         </div>
                         {dbInfo.error && (
-                            <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                            <div className="mt-3 p-2 bg-[color:var(--badge-unpaid-bg)] border border-ds-danger/30 rounded text-sm text-ds-danger">
                                 Error: {dbInfo.error}
                             </div>
                         )}
@@ -209,7 +209,7 @@ const DatabaseAnalyzer: React.FC = () => {
                                             )}
                                         </>
                                     ) : (
-                                        <span className="text-red-600">Error reading table</span>
+                                        <span className="text-ds-danger">Error reading table</span>
                                     )}
                                 </div>
                             </button>

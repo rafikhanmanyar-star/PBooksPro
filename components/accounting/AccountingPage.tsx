@@ -1,6 +1,7 @@
 import React, { memo, Suspense, useEffect, useState } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { usePermissions } from '../../hooks/usePermissions';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -25,6 +26,9 @@ const BankAccountsReport = React.lazy(() => import('../dashboard/BankAccountsRep
 const AccountConsistencyReport = React.lazy(() => import('../dashboard/AccountConsistencyReport'));
 const AccountingAnalyticsPage = React.lazy(() => import('../../modules/accounting-analytics/AccountingAnalyticsPage'));
 const BankingAnalyticsPage = React.lazy(() => import('../../modules/banking-analytics/BankingAnalyticsPage'));
+/** Static import — Report Designer is a heavy shell; avoid nested lazy chunks in Electron file:// mode. */
+import ReportDesignerPage from '../../modules/report-designer/ReportDesignerPage';
+const UnpostedTransactionsQueuePage = React.lazy(() => import('./UnpostedTransactionsQueuePage'));
 
 const DEFAULT_VIEW: AccountingView = 'Profit & Loss';
 
@@ -94,6 +98,8 @@ const AccountingPage: React.FC = () => {
     switch (activeView) {
       case 'Analytics':
         return (perms.canReadProfitLoss || perms.canReadBalanceSheet) ? <AccountingAnalyticsPage /> : null;
+      case 'Unposted Transactions':
+        return <UnpostedTransactionsQueuePage />;
       case 'Profit & Loss':
         return perms.canReadProfitLoss ? <ProjectProfitLossReport /> : null;
       case 'Balance Sheet':
@@ -114,6 +120,8 @@ const AccountingPage: React.FC = () => {
         return <BankAccountsReport hideZeroNetBalance={hideZeroNetBalance} />;
       case 'Account Consistency':
         return <AccountConsistencyReport />;
+      case 'Report Designer':
+        return <ReportDesignerPage showModulePicker />;
       default:
         return null;
     }
@@ -144,7 +152,7 @@ const AccountingPage: React.FC = () => {
           className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${
             on
               ? 'bg-indigo-600 text-white shadow-sm'
-              : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+              : 'text-app-muted hover:bg-app-table-hover'
           }`}
         >
           {navLabelShort(label)}
@@ -159,7 +167,7 @@ const AccountingPage: React.FC = () => {
         className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${
           on
             ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/20'
-            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+            : 'text-app-muted hover:bg-app-table-hover'
         }`}
       >
         {label}
@@ -170,14 +178,12 @@ const AccountingPage: React.FC = () => {
   const navPanel = (collapsed: boolean) => (
     <>
       <div
-        className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${
+        className={`border-b border-app-border shrink-0 flex items-center gap-1 ${
           collapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'
         }`}
       >
         {!collapsed && (
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Accounting
-          </p>
+          <NavSectionLabel variant="header">Accounting</NavSectionLabel>
         )}
         <SubNavModeToggle collapsed={subNav.effectiveCollapsed} onToggle={subNav.toggle} title={subNav.toggleTitle} compact />
       </div>
@@ -189,9 +195,7 @@ const AccountingPage: React.FC = () => {
         {visibleFinancialReports.length > 0 && (
           <>
             {!collapsed && (
-              <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Financial statements
-              </p>
+              <NavSectionLabel variant="section">Financial statements</NavSectionLabel>
             )}
             {visibleFinancialReports.map((name) => (
               <NavItem
@@ -207,9 +211,7 @@ const AccountingPage: React.FC = () => {
         {visiblePortfolioReports.length > 0 && (
           <>
             {!collapsed && (
-              <p className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Portfolio reports
-              </p>
+              <NavSectionLabel variant="section" className="pt-2">Portfolio reports</NavSectionLabel>
             )}
             {visiblePortfolioReports.map((name) => (
               <NavItem
@@ -229,7 +231,7 @@ const AccountingPage: React.FC = () => {
   return (
     <div className="flex flex-col md:flex-row h-full min-h-0 w-full">
       <aside
-        className={`hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${
+        className={`hidden md:flex flex-col shrink-0 border-r border-app-border bg-app-toolbar/40 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${
           subNav.effectiveCollapsed ? 'w-14' : 'w-60'
         }`}
         aria-label="Accounting secondary navigation"
@@ -237,15 +239,15 @@ const AccountingPage: React.FC = () => {
         {navPanel(subNav.effectiveCollapsed)}
       </aside>
 
-      <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
-        <label htmlFor="accounting-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+      <div className="md:hidden shrink-0 border-b border-app-border bg-app-toolbar/40 px-3 py-2">
+        <NavSectionLabel as="label" variant="form" htmlFor="accounting-view">
           Accounting
-        </label>
+        </NavSectionLabel>
         <select
           id="accounting-view"
           value={activeView}
           onChange={(e) => setActiveView(e.target.value as AccountingView)}
-          className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
+          className="w-full rounded-lg border border-app-border bg-app-input text-app-text text-sm py-2 px-3"
           aria-label="Accounting report"
         >
           {visibleReports.map((name) => (
@@ -258,8 +260,8 @@ const AccountingPage: React.FC = () => {
 
       <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col px-2 sm:px-3 md:px-0 pt-2 md:pt-0">
         {showHideZeroToggle && (
-          <div className="shrink-0 flex justify-end px-2 sm:px-4 py-2 border-b border-slate-200 dark:border-slate-700 bg-slate-50/80 dark:bg-slate-900/30">
-            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+          <div className="shrink-0 flex justify-end px-2 sm:px-4 py-2 border-b border-app-border bg-app-toolbar/30">
+            <label className="flex items-center gap-2 text-xs text-app-muted cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={hideZeroNetBalance}
@@ -271,7 +273,7 @@ const AccountingPage: React.FC = () => {
             </label>
           </div>
         )}
-        <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading...</div>}>
+        <Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading...</div>}>
           {renderContent()}
         </Suspense>
       </div>

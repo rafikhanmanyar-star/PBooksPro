@@ -9,6 +9,17 @@ import {
   RENTAL_AGREEMENTS_MODULE_KEY,
 } from './rentalAgreementsFields.js';
 
+import {
+  getProjectConstructionFieldRegistry,
+  PROJECT_CONSTRUCTION_GROUP_DIMENSIONS,
+  PROJECT_CONSTRUCTION_MODULE_KEY,
+} from './projectConstructionFields.js';
+import {
+  getAccountingLedgerFieldRegistry,
+  ACCOUNTING_LEDGER_GROUP_DIMENSIONS,
+  ACCOUNTING_LEDGER_MODULE_KEY,
+} from './accountingLedgerFields.js';
+
 /** Group-by tokens supported for project selling reports */
 export const PROJECT_SELLING_GROUP_DIMENSIONS: Record<string, string> = {
   project_id: 'proj.id',
@@ -28,9 +39,31 @@ export type ReportModuleRegistry = {
   groupDimensions: Record<string, string>;
 };
 
-export const REPORT_MODULE_CATALOG: { key: string; label: string }[] = [
-  { key: PROJECT_SELLING_MODULE_KEY, label: 'Project selling' },
-  { key: RENTAL_AGREEMENTS_MODULE_KEY, label: 'Rental agreements' },
+export const REPORT_MODULE_CATALOG: { key: string; label: string; primaryEntity: string; relatedEntities: string[] }[] = [
+  {
+    key: PROJECT_SELLING_MODULE_KEY,
+    label: 'Project selling',
+    primaryEntity: 'Customers / Bookings',
+    relatedEntities: ['Projects', 'Units', 'Installments', 'Payments', 'Sales agents'],
+  },
+  {
+    key: PROJECT_CONSTRUCTION_MODULE_KEY,
+    label: 'Project construction',
+    primaryEntity: 'Contracts',
+    relatedEntities: ['Vendors', 'Projects', 'Bills', 'Expenses'],
+  },
+  {
+    key: RENTAL_AGREEMENTS_MODULE_KEY,
+    label: 'Rental management',
+    primaryEntity: 'Tenants',
+    relatedEntities: ['Properties', 'Buildings', 'Owners', 'Brokers', 'Invoices'],
+  },
+  {
+    key: ACCOUNTING_LEDGER_MODULE_KEY,
+    label: 'Accounting ledger',
+    primaryEntity: 'Transactions',
+    relatedEntities: ['Accounts', 'Categories', 'Contacts', 'Vendors', 'Projects'],
+  },
 ];
 
 export function getRegistryForModule(moduleKey: string): ReportModuleRegistry {
@@ -46,6 +79,18 @@ export function getRegistryForModule(moduleKey: string): ReportModuleRegistry {
         moduleKey: RENTAL_AGREEMENTS_MODULE_KEY,
         fields: getRentalAgreementsFieldRegistry(),
         groupDimensions: RENTAL_AGREEMENTS_GROUP_DIMENSIONS,
+      };
+    case PROJECT_CONSTRUCTION_MODULE_KEY:
+      return {
+        moduleKey: PROJECT_CONSTRUCTION_MODULE_KEY,
+        fields: getProjectConstructionFieldRegistry(),
+        groupDimensions: PROJECT_CONSTRUCTION_GROUP_DIMENSIONS,
+      };
+    case ACCOUNTING_LEDGER_MODULE_KEY:
+      return {
+        moduleKey: ACCOUNTING_LEDGER_MODULE_KEY,
+        fields: getAccountingLedgerFieldRegistry(),
+        groupDimensions: ACCOUNTING_LEDGER_GROUP_DIMENSIONS,
       };
     default:
       throw new Error(`UNKNOWN_REPORT_MODULE:${moduleKey}`);

@@ -72,6 +72,7 @@ import DemoExploreBanner from './components/billing/DemoExploreBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
 import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/demoAuthBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
+import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
 
 
 // Lazy Load Components
@@ -88,6 +89,7 @@ const VendorDirectoryPage = lazyWithRetry(() => import('./components/vendors/Ven
 const ContactsPage = lazyWithRetry(() => import('./components/contacts/ContactsPage'));
 const BudgetManagement = lazyWithRetry(() => import('./components/settings/BudgetManagement'));
 const MobilePaymentsPage = lazyWithRetry(() => import('./components/mobile/MobilePaymentsPage'));
+const ExecutiveMobileShell = lazyWithRetry(() => import('./modules/executive-mobile/ExecutiveMobileShell'));
 
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 const PersonalTransactionsPage = lazyWithRetry(() => import('./components/personalTransactions/PersonalTransactionsPage'));
@@ -136,6 +138,7 @@ const App: React.FC = () => {
     companySwitchRequest,
     cancelCompanySelection,
   } = useAuth();
+  const executiveMode = useExecutiveModeOptional();
   const companyCtx = useCompanyOptional();
 
   // Ref tracks currentPage without causing callback identity changes on navigation
@@ -849,6 +852,23 @@ const App: React.FC = () => {
   // Show loading shell while initial data loads (improves LCP/INP after login)
   if (isAuthenticated && isInitialDataLoading) {
     return <LoadingShell />;
+  }
+
+  if (isAuthenticated && executiveMode?.isExecutiveMobileActive) {
+    return (
+      <OfflineProvider>
+        <Suspense fallback={<LoadingShell />}>
+          <ExecutiveMobileShell
+            onExitToFullErp={async (page) => {
+              await executiveMode.setInterfaceMode('full_erp');
+              if (page) {
+                handleSetPage(page);
+              }
+            }}
+          />
+        </Suspense>
+      </OfflineProvider>
+    );
   }
 
   return (

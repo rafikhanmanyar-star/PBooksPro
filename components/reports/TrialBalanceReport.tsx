@@ -228,14 +228,14 @@ const TrialBalanceReport: React.FC = () => {
       <style>{STANDARD_PRINT_STYLES}</style>
 
       <div
-        className="flex-grow overflow-y-auto overflow-x-hidden min-h-0 printable-area p-4 print:p-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600"
+        className="flex-grow overflow-y-auto overflow-x-hidden min-h-0 p-4 print:p-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600"
         id="printable-area"
       >
       <Card className="p-4">
         <ReportHeader />
         <div className="text-center mb-6">
-          <h3 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Trial Balance</h3>
-          <p className="text-sm text-slate-500 mt-1">{subtitle}</p>
+          <h3 className="text-2xl font-bold text-app-text">Trial Balance</h3>
+          <p className="text-sm text-app-muted mt-1">{subtitle}</p>
         </div>
         <div className="flex flex-col gap-4">
           <ReportToolbar

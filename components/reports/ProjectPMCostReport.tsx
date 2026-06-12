@@ -198,7 +198,7 @@ const ProjectPMCostReport: React.FC = () => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -220,7 +220,7 @@ const ProjectPMCostReport: React.FC = () => {
                     hideSearch={true}
                 >
                     <div className="w-full sm:w-48">
-                        <label className="block text-sm font-medium text-slate-600 mb-1">Project</label>
+                        <label className="block text-sm font-medium text-app-muted mb-1">Project</label>
                         <ComboBox 
                             label={undefined}
                             items={projectItems} 
@@ -232,66 +232,66 @@ const ProjectPMCostReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+            <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Project Management Cost Report</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Project Management Cost Report</h3>
+                        <p className="text-sm text-app-muted">
                             {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name}
                         </p>
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="text-xs text-app-muted mt-1">
                             Period: {formatDate(startDate)} - {formatDate(endDate)}
                         </p>
-                        <p className="text-xs text-slate-400 mt-1">
+                        <p className="text-xs text-app-muted mt-1">
                              PM Fee Rate: {state.pmCostPercentage}%
                         </p>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50 sticky top-0 z-10">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-table-header sticky top-0 z-10">
                                 <tr>
-                                    <th onClick={() => handleSort('month')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Month <SortIcon column="month"/></th>
-                                    <th onClick={() => handleSort('projectName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Project <SortIcon column="projectName"/></th>
-                                    <th onClick={() => handleSort('totalExpense')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Total Exp <SortIcon column="totalExpense"/></th>
-                                    <th onClick={() => handleSort('excludedCosts')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Excluded <SortIcon column="excludedCosts"/></th>
-                                    <th onClick={() => handleSort('netCostBase')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Net Base <SortIcon column="netCostBase"/></th>
-                                    <th onClick={() => handleSort('accruedFee')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Accrued Fee <SortIcon column="accruedFee"/></th>
-                                    <th onClick={() => handleSort('paidFee')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid <SortIcon column="paidFee"/></th>
-                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
+                                    <th onClick={() => handleSort('month')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Month <SortIcon column="month"/></th>
+                                    <th onClick={() => handleSort('projectName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Project <SortIcon column="projectName"/></th>
+                                    <th onClick={() => handleSort('totalExpense')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Total Exp <SortIcon column="totalExpense"/></th>
+                                    <th onClick={() => handleSort('excludedCosts')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Excluded <SortIcon column="excludedCosts"/></th>
+                                    <th onClick={() => handleSort('netCostBase')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Net Base <SortIcon column="netCostBase"/></th>
+                                    <th onClick={() => handleSort('accruedFee')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Accrued Fee <SortIcon column="accruedFee"/></th>
+                                    <th onClick={() => handleSort('paidFee')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Paid <SortIcon column="paidFee"/></th>
+                                    <th onClick={() => handleSort('balance')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Balance <SortIcon column="balance"/></th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map((row, idx) => (
-                                    <tr key={`${row.projectId}-${row.month}`} className="hover:bg-slate-50">
-                                        <td className="px-3 py-2 whitespace-nowrap text-slate-700">{row.month}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words font-medium text-slate-800">{row.projectName}</td>
-                                        <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {(row.totalExpense || 0).toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {(row.excludedCosts || 0).toLocaleString()})</td>
-                                        <td className="px-3 py-2 text-right font-medium text-slate-700">{CURRENCY} {(row.netCostBase || 0).toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {(row.accruedFee || 0).toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {(row.paidFee || 0).toLocaleString()}</td>
-                                        <td className={`px-3 py-2 text-right font-bold ${(row.balance || 0) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+                                    <tr key={`${row.projectId}-${row.month}`} className="hover:bg-app-table-hover">
+                                        <td className="px-3 py-2 whitespace-nowrap text-app-text">{row.month}</td>
+                                        <td className="px-3 py-2 whitespace-normal break-words font-medium text-app-text">{row.projectName}</td>
+                                        <td className="px-3 py-2 text-right text-app-muted">{CURRENCY} {(row.totalExpense || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-app-muted">({CURRENCY} {(row.excludedCosts || 0).toLocaleString()})</td>
+                                        <td className="px-3 py-2 text-right font-medium text-app-text">{CURRENCY} {(row.netCostBase || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-primary">{CURRENCY} {(row.accruedFee || 0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-ds-success">{CURRENCY} {(row.paidFee || 0).toLocaleString()}</td>
+                                        <td className={`px-3 py-2 text-right font-bold ${(row.balance || 0) > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                                             {CURRENCY} {(row.balance || 0).toLocaleString()}
                                         </td>
                                     </tr>
                                 ))}
                                 {reportData.length === 0 && (
                                     <tr>
-                                        <td colSpan={8} className="px-3 py-8 text-center text-slate-500">No data found for the selected criteria.</td>
+                                        <td colSpan={8} className="px-3 py-8 text-center text-app-muted">No data found for the selected criteria.</td>
                                     </tr>
                                 )}
                             </tbody>
-                            <tfoot className="bg-slate-50 font-bold sticky bottom-0 border-t border-slate-300">
+                            <tfoot className="bg-app-table-header font-bold sticky bottom-0 border-t border-app-border">
                                 <tr>
-                                    <td colSpan={2} className="px-3 py-2 text-right">Totals</td>
-                                    <td className="px-3 py-2 text-right text-slate-600">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-slate-500">({CURRENCY} {(totals.excludedCosts || 0).toLocaleString()})</td>
-                                    <td className="px-3 py-2 text-right text-slate-700">{CURRENCY} {(totals.netCostBase || 0).toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-indigo-600">{CURRENCY} {(totals.accruedFee || 0).toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-emerald-600">{CURRENCY} {(totals.paidFee || 0).toLocaleString()}</td>
-                                    <td className="px-3 py-2 text-right text-rose-600">{CURRENCY} {(totals.balance || 0).toLocaleString()}</td>
+                                    <td colSpan={2} className="px-3 py-2 text-right text-app-text">Totals</td>
+                                    <td className="px-3 py-2 text-right text-app-muted">{CURRENCY} {(totals.totalExpense || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-app-muted">({CURRENCY} {(totals.excludedCosts || 0).toLocaleString()})</td>
+                                    <td className="px-3 py-2 text-right text-app-text">{CURRENCY} {(totals.netCostBase || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-primary">{CURRENCY} {(totals.accruedFee || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-ds-success">{CURRENCY} {(totals.paidFee || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right text-ds-danger">{CURRENCY} {(totals.balance || 0).toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>

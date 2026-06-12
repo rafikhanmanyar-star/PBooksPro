@@ -185,7 +185,7 @@ const SalesReturnsPage: React.FC = () => {
             [SalesReturnStatus.PENDING]: 'bg-amber-100 text-amber-800',
             [SalesReturnStatus.PROCESSED]: 'bg-blue-100 text-blue-800',
             [SalesReturnStatus.REFUNDED]: 'bg-green-100 text-green-800',
-            [SalesReturnStatus.CANCELLED]: 'bg-slate-100 text-slate-800',
+            [SalesReturnStatus.CANCELLED]: 'bg-app-toolbar text-app-text',
         };
         return (
             <span className={`px-2 py-1 rounded text-xs font-semibold ${styles[status]}`}>
@@ -196,7 +196,7 @@ const SalesReturnsPage: React.FC = () => {
 
     const getReasonBadge = (reason: SalesReturnReason) => {
         return (
-            <span className="px-2 py-1 rounded text-xs bg-slate-100 text-slate-700">
+            <span className="px-2 py-1 rounded text-xs bg-app-toolbar text-app-text">
                 {reason}
             </span>
         );
@@ -220,8 +220,8 @@ const SalesReturnsPage: React.FC = () => {
             {/* Header */}
             <div className="flex justify-between items-center">
                 <div>
-                    <h1 className="text-2xl font-bold text-slate-800">Sales Returns</h1>
-                    <p className="text-sm text-slate-500 mt-1">Manage sales returns and refunds</p>
+                    <h1 className="text-2xl font-bold text-app-text">Sales Returns</h1>
+                    <p className="text-sm text-app-muted mt-1">Manage sales returns and refunds</p>
                 </div>
                 <Button
                     onClick={() => {
@@ -238,26 +238,26 @@ const SalesReturnsPage: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <Card>
                     <div className="p-4">
-                        <p className="text-sm text-slate-500">Total Returns</p>
-                        <p className="text-2xl font-bold text-slate-800">{stats.total}</p>
+                        <p className="text-sm text-app-muted">Total Returns</p>
+                        <p className="text-2xl font-bold text-app-text">{stats.total}</p>
                     </div>
                 </Card>
                 <Card>
                     <div className="p-4">
-                        <p className="text-sm text-slate-500">Pending Refunds</p>
+                        <p className="text-sm text-app-muted">Pending Refunds</p>
                         <p className="text-2xl font-bold text-amber-600">{stats.processed}</p>
-                        <p className="text-xs text-slate-500 mt-1">{CURRENCY} {stats.pendingRefundAmount.toLocaleString()}</p>
+                        <p className="text-xs text-app-muted mt-1">{CURRENCY} {stats.pendingRefundAmount.toLocaleString()}</p>
                     </div>
                 </Card>
                 <Card>
                     <div className="p-4">
-                        <p className="text-sm text-slate-500">Total Penalties</p>
+                        <p className="text-sm text-app-muted">Total Penalties</p>
                         <p className="text-2xl font-bold text-rose-600">{CURRENCY} {stats.totalPenaltyAmount.toLocaleString()}</p>
                     </div>
                 </Card>
                 <Card>
                     <div className="p-4">
-                        <p className="text-sm text-slate-500">Total Refunded</p>
+                        <p className="text-sm text-app-muted">Total Refunded</p>
                         <p className="text-2xl font-bold text-green-600">{CURRENCY} {stats.totalRefundAmount.toLocaleString()}</p>
                     </div>
                 </Card>
@@ -293,10 +293,10 @@ const SalesReturnsPage: React.FC = () => {
             <Card>
                 <div className="overflow-x-auto">
                     <table className="min-w-full">
-                        <thead className="bg-slate-50 border-b border-slate-200">
+                        <thead className="bg-app-table-header border-b border-app-border">
                             <tr>
                                 <th
-                                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('returnNumber')}
                                 >
                                     Return #
@@ -305,7 +305,7 @@ const SalesReturnsPage: React.FC = () => {
                                     )}
                                 </th>
                                 <th
-                                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('agreementNumber')}
                                 >
                                     Agreement #
@@ -314,7 +314,7 @@ const SalesReturnsPage: React.FC = () => {
                                     )}
                                 </th>
                                 <th
-                                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('client')}
                                 >
                                     Client
@@ -323,7 +323,7 @@ const SalesReturnsPage: React.FC = () => {
                                     )}
                                 </th>
                                 <th
-                                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('date')}
                                 >
                                     Return Date
@@ -331,10 +331,10 @@ const SalesReturnsPage: React.FC = () => {
                                         <span className="ml-1">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                                     )}
                                 </th>
-                                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Reason</th>
-                                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase">Penalty</th>
+                                <th className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase">Reason</th>
+                                <th className="px-4 py-3 text-right text-xs font-semibold text-app-muted uppercase">Penalty</th>
                                 <th
-                                    className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-right text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('refundAmount')}
                                 >
                                     Refund Amount
@@ -343,7 +343,7 @@ const SalesReturnsPage: React.FC = () => {
                                     )}
                                 </th>
                                 <th
-                                    className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase cursor-pointer hover:bg-slate-100"
+                                    className="px-4 py-3 text-left text-xs font-semibold text-app-muted uppercase cursor-pointer hover:bg-app-table-hover"
                                     onClick={() => handleSort('status')}
                                 >
                                     Status
@@ -351,23 +351,23 @@ const SalesReturnsPage: React.FC = () => {
                                         <span className="ml-1">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
                                     )}
                                 </th>
-                                <th className="px-4 py-3 text-center text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                                <th className="px-4 py-3 text-center text-xs font-semibold text-app-muted uppercase">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200">
+                        <tbody className="divide-y divide-app-border">
                             {filteredReturns.length > 0 ? (
                                 filteredReturns.map(sr => (
-                                    <tr key={sr.id} className="hover:bg-slate-50">
-                                        <td className="px-4 py-3 text-sm font-semibold text-slate-800">
+                                    <tr key={sr.id} className="hover:bg-app-table-hover">
+                                        <td className="px-4 py-3 text-sm font-semibold text-app-text">
                                             {sr.returnNumber}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                        <td className="px-4 py-3 text-sm text-app-muted">
                                             {sr.agreement?.agreementNumber || 'N/A'}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                        <td className="px-4 py-3 text-sm text-app-muted">
                                             {sr.client?.name || 'Unknown'}
                                         </td>
-                                        <td className="px-4 py-3 text-sm text-slate-600">
+                                        <td className="px-4 py-3 text-sm text-app-muted">
                                             {formatDate(sr.returnDate)}
                                         </td>
                                         <td className="px-4 py-3 text-sm">
@@ -436,7 +436,7 @@ const SalesReturnsPage: React.FC = () => {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                                    <td colSpan={9} className="px-4 py-8 text-center text-app-muted">
                                         No sales returns found
                                     </td>
                                 </tr>
@@ -465,41 +465,41 @@ const SalesReturnsPage: React.FC = () => {
                     <div className="space-y-4">
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <p className="text-xs text-slate-500">Agreement Number</p>
+                                <p className="text-xs text-app-muted">Agreement Number</p>
                                 <p className="font-semibold">{returnToView.agreement?.agreementNumber || 'N/A'}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Client</p>
+                                <p className="text-xs text-app-muted">Client</p>
                                 <p className="font-semibold">{returnToView.client?.name || 'Unknown'}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Return Date</p>
+                                <p className="text-xs text-app-muted">Return Date</p>
                                 <p className="font-semibold">{formatDate(returnToView.returnDate)}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Status</p>
+                                <p className="text-xs text-app-muted">Status</p>
                                 <div className="mt-1">{getStatusBadge(returnToView.status)}</div>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Reason</p>
+                                <p className="text-xs text-app-muted">Reason</p>
                                 <p className="font-semibold">{returnToView.reason}</p>
                             </div>
                             {returnToView.reasonNotes && (
                                 <div>
-                                    <p className="text-xs text-slate-500">Reason Notes</p>
+                                    <p className="text-xs text-app-muted">Reason Notes</p>
                                     <p className="text-sm">{returnToView.reasonNotes}</p>
                                 </div>
                             )}
                             <div>
-                                <p className="text-xs text-slate-500">Penalty Percentage</p>
+                                <p className="text-xs text-app-muted">Penalty Percentage</p>
                                 <p className="font-semibold">{returnToView.penaltyPercentage}%</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Penalty Amount</p>
+                                <p className="text-xs text-app-muted">Penalty Amount</p>
                                 <p className="font-semibold text-rose-600">{CURRENCY} {returnToView.penaltyAmount.toLocaleString()}</p>
                             </div>
                             <div>
-                                <p className="text-xs text-slate-500">Refund Amount</p>
+                                <p className="text-xs text-app-muted">Refund Amount</p>
                                 <p className="font-semibold text-emerald-600">{CURRENCY} {returnToView.refundAmount.toLocaleString()}</p>
                                 {(returnToView as any).unpaidRefundAmount !== undefined && (returnToView as any).unpaidRefundAmount < returnToView.refundAmount && (returnToView as any).unpaidRefundAmount > 0 && (
                                     <p className="text-xs text-amber-600 mt-1">
@@ -509,21 +509,21 @@ const SalesReturnsPage: React.FC = () => {
                             </div>
                             {returnToView.processedDate && (
                                 <div>
-                                    <p className="text-xs text-slate-500">Processed Date</p>
+                                    <p className="text-xs text-app-muted">Processed Date</p>
                                     <p className="font-semibold">{formatDate(returnToView.processedDate)}</p>
                                 </div>
                             )}
                             {returnToView.refundedDate && (
                                 <div>
-                                    <p className="text-xs text-slate-500">Refunded Date</p>
+                                    <p className="text-xs text-app-muted">Refunded Date</p>
                                     <p className="font-semibold">{formatDate(returnToView.refundedDate)}</p>
                                 </div>
                             )}
                         </div>
                         {returnToView.notes && (
                             <div>
-                                <p className="text-xs text-slate-500">Notes</p>
-                                <p className="text-sm bg-slate-50 p-3 rounded">{returnToView.notes}</p>
+                                <p className="text-xs text-app-muted">Notes</p>
+                                <p className="text-sm bg-app-toolbar p-3 rounded border border-app-border text-app-text">{returnToView.notes}</p>
                             </div>
                         )}
                         <div className="flex justify-end gap-2 pt-4 border-t">

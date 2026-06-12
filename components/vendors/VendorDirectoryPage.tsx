@@ -83,9 +83,9 @@ const AddVendorSection: React.FC<{
 
     return (
         <>
-            <div className="bg-white border-b border-slate-200 px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-20">
+            <div className="bg-app-card border-b border-app-border px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-20">
                 {/* Global Views Navigation */}
-                <div className="flex bg-slate-100 p-1 rounded-xl">
+                <div className="flex bg-segment-bg p-1 rounded-xl">
                     {navItems.map((item) => {
                         const isActive = optionsView === item.id;
                         return (
@@ -98,12 +98,12 @@ const AddVendorSection: React.FC<{
                                 className={`
                                     flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
                                     ${isActive
-                                        ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                                        ? 'bg-segment-active text-segment-active shadow-ds-card'
+                                        : 'text-app-muted hover:text-app-text hover:bg-app-table-hover'
                                     }
                                 `}
                             >
-                                <span className={isActive ? 'text-indigo-500' : 'text-slate-400'}>{item.icon}</span>
+                                <span className={isActive ? 'text-inherit' : 'text-app-muted'}>{item.icon}</span>
                                 {item.label}
                             </button>
                         );
@@ -118,14 +118,14 @@ const AddVendorSection: React.FC<{
                             dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.VENDORS });
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
-                        className="!bg-white !border-slate-300 hover:!bg-slate-50 text-slate-600"
+                        className="!bg-app-card !border-app-border hover:!bg-app-table-hover text-app-text"
                     >
                         <div className="w-4 h-4 mr-2">{ICONS.download}</div>
                         <span>Import</span>
                     </Button>
                     <Button
                         onClick={() => setIsModalOpen(true)}
-                        className="!bg-indigo-600 hover:!bg-indigo-700 shadow-lg shadow-indigo-200"
+                        className="!bg-primary hover:!bg-primary/90 shadow-ds-card"
                     >
                         <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
                         <span>Create Vendor</span>
@@ -153,6 +153,14 @@ const AddVendorSection: React.FC<{
 
 type SortKey = 'name' | 'payable';
 type SortDirection = 'asc' | 'desc';
+
+const vendorTabBtn = (active: boolean) =>
+    active
+        ? 'bg-primary text-ds-on-primary shadow-ds-card'
+        : 'text-app-muted hover:bg-app-table-hover hover:text-app-text';
+
+const payableBadgeClass =
+    'px-4 py-2 bg-[color:var(--badge-unpaid-bg)] border border-ds-danger/30 rounded-xl flex flex-col items-end min-w-[120px]';
 
 const VendorDirectoryPage: React.FC = () => {
     const state = useFinancialReportAppState();
@@ -418,14 +426,14 @@ const VendorDirectoryPage: React.FC = () => {
             <div className="flex items-center justify-center h-full">
                 <div className="text-center">
                     <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
-                    <p className="text-sm text-gray-600">Loading vendors...</p>
+                    <p className="text-sm text-app-muted">Loading vendors...</p>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 overflow-hidden" data-tour="vendor-directory">
+        <div className="flex flex-col h-full bg-app-bg overflow-hidden" data-tour="vendor-directory">
             <AddVendorSection
                 optionsView={optionsView}
                 setOptionsView={(view) => setOptionsView(view ?? 'Quotation')}
@@ -436,33 +444,33 @@ const VendorDirectoryPage: React.FC = () => {
             <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0 overflow-hidden">
                 {/* Vendor List Sidebar */}
                 <div
-                    className="hidden md:flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 h-full flex-shrink-0 overflow-hidden z-10"
+                    className="hidden md:flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border h-full flex-shrink-0 overflow-hidden z-10"
                     style={{ width: sidebarWidth }}
                 >
-                    <div className="p-3 border-b border-slate-100 bg-white z-10 flex-shrink-0">
+                    <div className="p-3 border-b border-app-border bg-app-card z-10 flex-shrink-0">
                         <div className="flex items-center justify-between mb-3">
-                            <h2 className="text-xs font-bold text-slate-800 uppercase tracking-tight">Vendors</h2>
-                            <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
+                            <h2 className="text-xs font-bold text-app-text uppercase tracking-tight">Vendors</h2>
+                            <span className="bg-app-toolbar text-app-muted px-1.5 py-0.5 rounded-full text-[10px] font-semibold">
                                 {vendors.length}
                             </span>
                         </div>
 
                         <div className="relative mb-2 group">
-                            <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
+                            <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted group-focus-within:text-primary transition-colors">
                                 <span className="h-3.5 w-3.5">{ICONS.search}</span>
                             </div>
                             <input
                                 placeholder="Search..."
                                 value={vendorSearch}
                                 onChange={(e) => setVendorSearch(e.target.value)}
-                                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-sm focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-slate-400"
+                                className="w-full pl-8 pr-3 py-1.5 ds-input-field rounded-md text-sm transition-all"
                             />
                         </div>
 
                         <div className="flex items-center justify-between text-[11px] px-1">
                             <button
                                 onClick={() => handleSort('name')}
-                                className={`flex items-center gap-1 font-medium transition-colors ${sortConfig.key === 'name' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
+                                className={`flex items-center gap-1 font-medium transition-colors ${sortConfig.key === 'name' ? 'text-primary' : 'text-app-muted hover:text-app-text'}`}
                             >
                                 Name
                                 {sortConfig.key === 'name' && (
@@ -471,7 +479,7 @@ const VendorDirectoryPage: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => handleSort('payable')}
-                                className={`flex items-center gap-1 font-medium transition-colors ${sortConfig.key === 'payable' ? 'text-indigo-600' : 'text-slate-500 hover:text-slate-800'}`}
+                                className={`flex items-center gap-1 font-medium transition-colors ${sortConfig.key === 'payable' ? 'text-primary' : 'text-app-muted hover:text-app-text'}`}
                             >
                                 Payable
                                 {sortConfig.key === 'payable' && (
@@ -481,7 +489,7 @@ const VendorDirectoryPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-0.5 scrollbar-thin scrollbar-thumb-slate-200">
+                    <div className="flex-1 min-h-0 overflow-y-auto p-1 space-y-0.5 scrollbar-thin scrollbar-thumb-app-border">
                         {vendorsWithPayable.length > 0 ? (
                             <ul className="space-y-0.5">
                                 {vendorsWithPayable.map(vendor => {
@@ -494,23 +502,23 @@ const VendorDirectoryPage: React.FC = () => {
                                                     setActiveTab('Ledger');
                                                     setOptionsView(null as any);
                                                 }}
-                                                className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 border-b border-slate-50 last:border-0 ${isSelected
-                                                    ? 'bg-indigo-50/50 shadow-sm border-transparent'
-                                                    : 'hover:bg-slate-50 border-slate-50'
+                                                className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 border-b border-app-border/50 last:border-0 ${isSelected
+                                                    ? 'bg-primary/15 shadow-sm border-transparent'
+                                                    : 'hover:bg-app-table-hover border-transparent'
                                                     }`}
                                             >
                                                 <div className="flex items-center justify-between gap-2">
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center justify-between gap-2 overflow-hidden">
-                                                            <h3 className={`text-sm font-semibold truncate ${isSelected ? 'text-indigo-900' : 'text-slate-800'} ${vendor.isActive === false ? 'opacity-50 line-through' : ''}`}>
+                                                            <h3 className={`text-sm font-semibold truncate ${isSelected ? 'text-primary' : 'text-app-text'} ${vendor.isActive === false ? 'opacity-50 line-through' : ''}`}>
                                                                 {vendor.name}
                                                             </h3>
                                                             {vendor.isActive === false && (
-                                                                <span className="flex-shrink-0 text-[8px] px-1 py-0.5 rounded-full bg-slate-200 text-slate-500 font-bold uppercase tracking-tight">Deactivated</span>
+                                                                <span className="flex-shrink-0 text-[8px] px-1 py-0.5 rounded-full bg-app-toolbar text-app-muted font-bold uppercase tracking-tight border border-app-border">Deactivated</span>
                                                             )}
                                                         </div>
                                                         {vendor.companyName && (
-                                                            <div className="text-[10px] text-slate-500 truncate mt-0.5 opacity-90">
+                                                            <div className="text-[10px] text-app-muted truncate mt-0.5 opacity-90">
                                                                 {vendor.companyName}
                                                             </div>
                                                         )}
@@ -518,13 +526,13 @@ const VendorDirectoryPage: React.FC = () => {
 
                                                     {vendor.payableAmount > 0 ? (
                                                         <div className="flex-shrink-0 text-right">
-                                                            <div className="text-xs font-bold text-rose-600">
+                                                            <div className="text-xs font-bold text-ds-danger">
                                                                 {CURRENCY} {vendor.payableAmount.toLocaleString()}
                                                             </div>
                                                         </div>
                                                     ) : (
                                                         <div className="flex-shrink-0 text-right">
-                                                            <div className="text-xs font-medium text-slate-300">
+                                                            <div className="text-xs font-medium text-app-muted/50">
                                                                 -
                                                             </div>
                                                         </div>
@@ -537,7 +545,7 @@ const VendorDirectoryPage: React.FC = () => {
                             </ul>
                         ) : (
                             <div className="flex flex-col items-center justify-center h-32 text-center p-4">
-                                <p className="text-xs font-semibold text-slate-600">No vendors found</p>
+                                <p className="text-xs font-semibold text-app-muted">No vendors found</p>
                             </div>
                         )}
                     </div>
@@ -553,35 +561,35 @@ const VendorDirectoryPage: React.FC = () => {
                     {selectedVendor && !optionsView ? (
                         <>
                             {/* Vendor Detail Header */}
-                            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-4 flex-shrink-0 relative overflow-hidden group">
+                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border mb-4 flex-shrink-0 relative overflow-hidden group">
                                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"></div>
                                 <div className="p-6">
                                     <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-6">
                                         {/* Vendor Profile */}
                                         <div className="flex items-start gap-5">
-                                            <div className="flex-shrink-0 w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-100 to-violet-100 flex items-center justify-center text-indigo-600 text-2xl font-bold shadow-inner border border-white ring-4 ring-indigo-50">
+                                            <div className="flex-shrink-0 w-16 h-16 rounded-2xl bg-primary/15 flex items-center justify-center text-primary text-2xl font-bold shadow-inner border border-app-border ring-4 ring-primary/10">
                                                 {getInitials(selectedVendor.name)}
                                             </div>
                                             <div className="flex-1 min-w-0 pt-1">
-                                                <h1 className="text-2xl font-bold text-slate-900 leading-tight mb-1">
+                                                <h1 className="text-2xl font-bold text-app-text leading-tight mb-1">
                                                     {selectedVendor.name}
                                                 </h1>
-                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-slate-500">
+                                                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-app-muted">
                                                     {selectedVendor.companyName && (
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="p-1 bg-slate-100 rounded">{ICONS.building}</span>
+                                                            <span className="p-1 bg-app-toolbar rounded">{ICONS.building}</span>
                                                             <span className="font-medium">{selectedVendor.companyName}</span>
                                                         </div>
                                                     )}
                                                     {selectedVendor.contactNo && (
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="p-1 bg-slate-100 rounded">{ICONS.phone}</span>
+                                                            <span className="p-1 bg-app-toolbar rounded">{ICONS.phone}</span>
                                                             <span className="font-mono">{selectedVendor.contactNo}</span>
                                                         </div>
                                                     )}
                                                     {selectedVendor.address && (
                                                         <div className="flex items-center gap-1.5">
-                                                            <span className="p-1 bg-slate-100 rounded">{ICONS.mapPin}</span>
+                                                            <span className="p-1 bg-app-toolbar rounded">{ICONS.mapPin}</span>
                                                             <span className="truncate max-w-[200px]">{selectedVendor.address}</span>
                                                         </div>
                                                     )}
@@ -594,12 +602,12 @@ const VendorDirectoryPage: React.FC = () => {
                                             <div className="flex items-center gap-2">
                                                 <button
                                                     onClick={() => setIsEditModalOpen(true)}
-                                                    className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-slate-50 rounded-lg transition-colors"
+                                                    className="p-2 text-app-muted hover:text-primary hover:bg-app-table-hover rounded-lg transition-colors"
                                                     title="Edit Vendor Details"
                                                 >
                                                     {ICONS.edit}
                                                 </button>
-                                                <div className="h-6 w-px bg-slate-200"></div>
+                                                <div className="h-6 w-px bg-app-border"></div>
                                                 {selectedVendor.contactNo && (
                                                     <button
                                                         onClick={() => {
@@ -614,7 +622,7 @@ const VendorDirectoryPage: React.FC = () => {
                                                                 showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
                                                             }
                                                         }}
-                                                        className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                                                        className="p-2 text-ds-success hover:bg-[color:var(--badge-paid-bg)] rounded-lg transition-colors"
                                                         title="WhatsApp"
                                                     >
                                                         {ICONS.whatsapp}
@@ -623,9 +631,9 @@ const VendorDirectoryPage: React.FC = () => {
                                             </div>
 
                                             <div className="flex items-center gap-3">
-                                                <div className="px-4 py-2 bg-rose-50 border border-rose-100 rounded-xl flex flex-col items-end min-w-[120px]">
-                                                    <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider">Payable</span>
-                                                    <span className="text-lg font-bold text-rose-700 leading-none mt-0.5">
+                                                <div className={payableBadgeClass}>
+                                                    <span className="text-[10px] font-bold text-ds-danger/80 uppercase tracking-wider">Payable</span>
+                                                    <span className="text-lg font-bold text-ds-danger leading-none mt-0.5">
                                                         {CURRENCY} {getVendorPayable(selectedVendor.id).toLocaleString()}
                                                     </span>
                                                 </div>
@@ -634,23 +642,23 @@ const VendorDirectoryPage: React.FC = () => {
                                     </div>
 
                                     {/* Action Bar */}
-                                    <div className="flex items-center justify-between mt-6 pt-5 border-t border-slate-100">
+                                    <div className="flex items-center justify-between mt-6 pt-5 border-t border-app-border">
                                         <div className="flex gap-2">
                                             <button
                                                 onClick={() => setActiveTab('Ledger')}
-                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'Ledger' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${vendorTabBtn(activeTab === 'Ledger')}`}
                                             >
                                                 Ledger
                                             </button>
                                             <button
                                                 onClick={() => setActiveTab('Bills')}
-                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'Bills' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${vendorTabBtn(activeTab === 'Bills')}`}
                                             >
                                                 Bills
                                             </button>
                                             <button
                                                 onClick={() => setActiveTab('Quotations')}
-                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${activeTab === 'Quotations' ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'text-slate-600 hover:bg-slate-50'}`}
+                                                className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${vendorTabBtn(activeTab === 'Quotations')}`}
                                             >
                                                 Quotations
                                             </button>
@@ -685,14 +693,14 @@ const VendorDirectoryPage: React.FC = () => {
                                                         ? 'Supplier advances need the PostgreSQL API (offline mode is not supported).'
                                                         : 'Record prepaid money to this supplier'
                                                 }
-                                                className="!py-1.5 !px-3 !text-xs !border-amber-200 !bg-amber-50 hover:!bg-amber-100 !text-amber-900 disabled:opacity-50"
+                                                className="!py-1.5 !px-3 !text-xs !border-ds-warning/30 !bg-[color:var(--badge-partial-bg)] hover:!bg-app-table-hover !text-[color:var(--badge-partial-text)] disabled:opacity-50"
                                             >
                                                 <span className="w-3.5 h-3.5 mr-1.5 opacity-80">{ICONS.wallet}</span>
                                                 Advance
                                             </Button>
                                             <Button
                                                 onClick={() => setIsCreatePaymentModalOpen(true)}
-                                                className="!py-1.5 !px-3 !text-xs !bg-emerald-600 hover:!bg-emerald-700 !shadow-emerald-200"
+                                                className="!py-1.5 !px-3 !text-xs !bg-ds-success hover:!bg-ds-success/90"
                                             >
                                                 <span className="w-3.5 h-3.5 mr-1.5">{ICONS.dollarSign}</span>
                                                 Record Payment
@@ -703,7 +711,7 @@ const VendorDirectoryPage: React.FC = () => {
                             </div>
 
                             {/* Content Area */}
-                            <div className="flex-grow flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 min-h-0 overflow-hidden relative">
+                            <div className="flex-grow flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border min-h-0 overflow-hidden relative">
                                 <div className="flex-grow min-h-0 p-1 overflow-hidden">
                                     {activeTab === 'Ledger' ? (
                                         <VendorLedger vendorId={selectedVendor.id} onItemClick={handleLedgerItemSelect} />
@@ -778,7 +786,7 @@ const VendorDirectoryPage: React.FC = () => {
                             )}
                         </>
                     ) : (
-                        <div className="flex-grow flex flex-col bg-white rounded-2xl shadow-sm border border-slate-200 min-h-0 overflow-hidden m-0">
+                        <div className="flex-grow flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border min-h-0 overflow-hidden m-0">
                             {/* Options Content */}
                             <div className="flex-grow min-h-0 p-4 overflow-auto">
                                 {optionsView === 'Quotation' ? (
@@ -805,24 +813,24 @@ const VendorDirectoryPage: React.FC = () => {
                                         }}
                                     />
                                 ) : optionsView === 'Analytics' ? (
-                                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading analytics…</div>}>
+                                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading analytics…</div>}>
                                         <VendorAnalyticsPage />
                                     </React.Suspense>
                                 ) : optionsView === 'Reports' ? (
                                     <div className="h-full flex flex-col max-w-7xl mx-auto w-full">
                                         {/* Report Selection Menu */}
-                                        <div className="mb-6 flex-shrink-0 bg-slate-50 p-4 rounded-xl border border-slate-100 flex items-center justify-between">
+                                        <div className="mb-6 flex-shrink-0 bg-app-toolbar/40 p-4 rounded-xl border border-app-border flex items-center justify-between">
                                             <div>
-                                                <h3 className="font-bold text-slate-800">Vendor Reports</h3>
-                                                <p className="text-sm text-slate-500">Analyze your spending and vendor performance</p>
+                                                <h3 className="font-bold text-app-text">Vendor Reports</h3>
+                                                <p className="text-sm text-app-muted">Analyze your spending and vendor performance</p>
                                             </div>
                                             <div className="flex items-center gap-3">
-                                                <span className="text-sm font-medium text-slate-600">Report Type:</span>
+                                                <span className="text-sm font-medium text-app-muted">Report Type:</span>
                                                 <div className="relative min-w-[240px]">
                                                     <select
                                                         value={selectedReport}
                                                         onChange={(e) => setSelectedReport(e.target.value)}
-                                                        className="w-full pl-4 pr-10 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 appearance-none bg-white font-medium text-slate-700 shadow-sm transition-all"
+                                                        className="w-full pl-4 pr-10 py-2 ds-input-field rounded-lg appearance-none font-medium shadow-sm transition-all"
                                                         aria-label="Select report"
                                                     >
                                                         <option value="vendor-comparison">Vendor Comparison Report</option>
@@ -835,7 +843,7 @@ const VendorDirectoryPage: React.FC = () => {
                                                                 </option>
                                                             ))}
                                                     </select>
-                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-slate-400">
+                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-app-muted">
                                                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                                                         </svg>
@@ -845,44 +853,44 @@ const VendorDirectoryPage: React.FC = () => {
                                         </div>
 
                                         {/* Report Display */}
-                                        <div className="flex-grow min-h-0 overflow-hidden bg-white rounded-xl shadow-sm border border-slate-200">
+                                        <div className="flex-grow min-h-0 overflow-hidden bg-app-card rounded-xl shadow-ds-card border border-app-border">
                                             {selectedReport === 'vendor-comparison' ? (
                                                 <VendorComparisonReport />
                                             ) : selectedReport === 'vendor-ledger' ? (
                                                 <VendorLedgerReport />
                                             ) : (
                                                 <div className="p-12 text-center">
-                                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-slate-50 text-slate-400 mb-4">
+                                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-app-toolbar text-app-muted mb-4">
                                                         {ICONS.barChart}
                                                     </div>
-                                                    <h3 className="text-lg font-bold text-slate-900 mb-1">Select a Report</h3>
-                                                    <p className="text-slate-500">Choose a report type to view analysis</p>
+                                                    <h3 className="text-lg font-bold text-app-text mb-1">Select a Report</h3>
+                                                    <p className="text-app-muted">Choose a report type to view analysis</p>
                                                 </div>
                                             )}
                                         </div>
                                     </div>
                                 ) : (
                                     <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8">
-                                        <div className="w-24 h-24 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-3xl flex items-center justify-center mb-6 shadow-sm border border-indigo-100">
-                                            <div className="w-12 h-12 text-indigo-400 opacity-80">
+                                        <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 shadow-ds-card border border-primary/20">
+                                            <div className="w-12 h-12 text-primary opacity-80">
                                                 {ICONS.users}
                                             </div>
                                         </div>
-                                        <h2 className="text-2xl font-bold text-slate-800 mb-3">Select a Vendor</h2>
-                                        <p className="text-slate-500 mb-8 leading-relaxed">
+                                        <h2 className="text-2xl font-bold text-app-text mb-3">Select a Vendor</h2>
+                                        <p className="text-app-muted mb-8 leading-relaxed">
                                             Select a vendor from the list to view their ledger, bills, and manage payments. Or use the views above to see all data.
                                         </p>
                                         <div className="flex flex-wrap justify-center gap-3">
-                                            <div className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-600 flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-primary"></span>
                                                 Manage Bills
                                             </div>
-                                            <div className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-600 flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-ds-success"></span>
                                                 Record Payments
                                             </div>
-                                            <div className="px-4 py-2 bg-white border border-slate-200 rounded-lg shadow-sm text-sm font-medium text-slate-600 flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                                                <span className="w-2 h-2 rounded-full bg-primary"></span>
                                                 Track Expenses
                                             </div>
                                         </div>

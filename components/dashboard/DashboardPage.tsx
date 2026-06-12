@@ -10,6 +10,7 @@ import Button from '../ui/Button';
 import { formatRoundedNumber } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import SubscriptionStatusWidget from '../billing/SubscriptionStatusWidget';
+import ReportDashboardWidgets from './ReportDashboardWidgets';
 import {
   useDashboardActivity,
   useDashboardCharts,
@@ -191,7 +192,7 @@ const DashboardPage: React.FC = () => {
       )}
 
       {isAdmin && isAuthenticated && (
-        <div id="dashboard-print-area" className="printable-area print-report-surface space-y-4 md:space-y-6">
+        <div id="dashboard-print-area" className="space-y-4 md:space-y-6">
           <ReportHeader reportTitle="Executive Dashboard" />
           {metrics?.generatedAt && (
             <p className="text-center text-xs text-slate-600 -mt-2 report-title-block">
@@ -220,6 +221,8 @@ const DashboardPage: React.FC = () => {
               />
             </div>
           ))}
+
+          <ReportDashboardWidgets enabled={isAuthenticated && isAdmin && !isLocalOnlyMode()} />
 
           {customizeMode && (
             <Button variant="secondary" onClick={resetKpiGroups} className="text-xs no-print">

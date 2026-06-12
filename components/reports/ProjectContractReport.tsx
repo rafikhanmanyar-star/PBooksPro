@@ -114,51 +114,51 @@ const ProjectContractReport: React.FC = () => {
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+            <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Project Contract Report</h3>
-                        <p className="text-sm text-slate-500">
+                        <h3 className="text-2xl font-bold text-app-text">Project Contract Report</h3>
+                        <p className="text-sm text-app-muted">
                             {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name}
                         </p>
                     </div>
 
                     <div className="overflow-x-auto">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-table-header">
                                 <tr>
-                                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Ref</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Title</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Vendor</th>
-                                    <th className="px-3 py-2 text-left font-semibold text-slate-600">Project</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Total</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Paid</th>
-                                    <th className="px-3 py-2 text-right font-semibold text-slate-600">Balance</th>
-                                    <th className="px-3 py-2 text-center font-semibold text-slate-600">%</th>
-                                    <th className="px-3 py-2 text-center font-semibold text-slate-600">Status</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-app-muted">Ref</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-app-muted">Title</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-app-muted">Vendor</th>
+                                    <th className="px-3 py-2 text-left font-semibold text-app-muted">Project</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-app-muted">Total</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-app-muted">Paid</th>
+                                    <th className="px-3 py-2 text-right font-semibold text-app-muted">Balance</th>
+                                    <th className="px-3 py-2 text-center font-semibold text-app-muted">%</th>
+                                    <th className="px-3 py-2 text-center font-semibold text-app-muted">Status</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {reportData.map(row => (
-                                    <tr key={row.contractId} className="hover:bg-slate-50">
-                                        <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{row.contractNumber}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words font-medium">{row.name}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words">{row.vendorName}</td>
-                                        <td className="px-3 py-2 whitespace-normal break-words">{row.projectName}</td>
-                                        <td className="px-3 py-2 text-right font-bold whitespace-nowrap">{CURRENCY} {row.totalAmount.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-emerald-600 whitespace-nowrap">{CURRENCY} {row.paidAmount.toLocaleString()}</td>
-                                        <td className="px-3 py-2 text-right text-rose-600 whitespace-nowrap">{CURRENCY} {row.balance.toLocaleString()}</td>
+                                    <tr key={row.contractId} className="hover:bg-app-table-hover">
+                                        <td className="px-3 py-2 whitespace-nowrap font-mono text-xs text-app-text">{row.contractNumber}</td>
+                                        <td className="px-3 py-2 whitespace-normal break-words font-medium text-app-text">{row.name}</td>
+                                        <td className="px-3 py-2 whitespace-normal break-words text-app-text">{row.vendorName}</td>
+                                        <td className="px-3 py-2 whitespace-normal break-words text-app-text">{row.projectName}</td>
+                                        <td className="px-3 py-2 text-right font-bold whitespace-nowrap text-app-text">{CURRENCY} {row.totalAmount.toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-ds-success whitespace-nowrap">{CURRENCY} {row.paidAmount.toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-ds-danger whitespace-nowrap">{CURRENCY} {row.balance.toLocaleString()}</td>
                                         <td className="px-3 py-2 text-center">
                                             <div className="flex items-center gap-2 justify-center">
-                                                <div className="w-12 bg-slate-200 rounded-full h-1.5 hidden sm:block">
-                                                    <div className={`h-1.5 rounded-full ${row.progress > 100 ? 'bg-rose-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(row.progress, 100)}%` }}></div>
+                                                <div className="w-12 bg-app-border rounded-full h-1.5 hidden sm:block">
+                                                    <div className={`h-1.5 rounded-full ${row.progress > 100 ? 'bg-ds-danger' : 'bg-ds-success'}`} style={{ width: `${Math.min(row.progress, 100)}%` }}></div>
                                                 </div>
-                                                <span className="text-xs">{row.progress.toFixed(0)}%</span>
+                                                <span className="text-xs text-app-text">{row.progress.toFixed(0)}%</span>
                                             </div>
                                         </td>
                                         <td className="px-3 py-2 text-center">
-                                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold uppercase ${row.status === 'Active' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                                            <span className={`px-2 py-0.5 text-[10px] rounded-full font-bold uppercase ${row.status === 'Active' ? 'bg-[color:var(--badge-paid-bg)] text-ds-success border border-ds-success/30' : 'bg-app-toolbar text-app-muted border border-app-border'}`}>
                                                 {row.status}
                                             </span>
                                         </td>

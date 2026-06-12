@@ -11,6 +11,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import { isAdminRole } from '../../hooks/useRecordLock';
 
 const LoanManagementPage = lazy(() => import('../loans/LoanManagementPage'));
@@ -136,7 +137,7 @@ const PersonalTransactionsPage: React.FC = () => {
         className={`border-b border-app-border shrink-0 flex items-center gap-1 ${subNav.effectiveCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
       >
         {!subNav.effectiveCollapsed && (
-          <p className="text-[10px] font-bold uppercase tracking-wider text-app-muted">Personal transactions</p>
+          <NavSectionLabel variant="header">Personal transactions</NavSectionLabel>
         )}
         <SubNavModeToggle collapsed={subNav.effectiveCollapsed} onToggle={subNav.toggle} title={subNav.toggleTitle} compact />
       </div>
@@ -169,7 +170,7 @@ const PersonalTransactionsPage: React.FC = () => {
       </aside>
 
       <div className="md:hidden shrink-0 border-b border-app-border bg-app-surface-2 px-3 py-2">
-        <label htmlFor="personal-tx-section" className="block text-[10px] font-bold uppercase tracking-wider text-app-muted mb-1">Personal</label>
+        <NavSectionLabel as="label" variant="form" htmlFor="personal-tx-section">Personal</NavSectionLabel>
         <select
           id="personal-tx-section"
           value={activeTab}

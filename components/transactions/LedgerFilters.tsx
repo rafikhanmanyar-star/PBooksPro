@@ -158,14 +158,14 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                             value={tempFilters.minAmount}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, minAmount: e.target.value }))}
                             placeholder="Min"
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            className="ds-input-field w-full px-2 py-1.5 text-xs font-medium"
                         />
                         <input
                             type="number"
                             value={tempFilters.maxAmount}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, maxAmount: e.target.value }))}
                             placeholder="Max"
-                            className="w-full px-2 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
+                            className="ds-input-field w-full px-2 py-1.5 text-xs font-medium"
                         />
                     </div>
                 </div>

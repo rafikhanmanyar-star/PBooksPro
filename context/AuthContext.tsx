@@ -33,6 +33,8 @@ export interface User {
   tenantId: string;
   /** IANA zone from `users.display_timezone` (PostgreSQL), or null = device local */
   displayTimezone?: string | null;
+  /** Executive mobile vs full ERP preference (cloud only). */
+  interfaceMode?: 'auto' | 'full_erp' | 'executive_mobile';
 }
 
 function syncDisplayTimezoneFromUser(user: User | null): void {
@@ -125,6 +127,7 @@ interface AuthContextType extends AuthState {
   }>;
   enterDemoSession: () => Promise<void>;
   logout: () => void;
+  updateUserProfile: (patch: Partial<User>) => void;
   checkLicenseStatus: () => Promise<{
     isValid?: boolean;
     licenseType?: string;
@@ -1352,6 +1355,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const updateUserProfile = useCallback((patch: Partial<User>) => {
+    setState((prev) => ({
+      ...prev,
+      user: prev.user ? { ...prev.user, ...patch } : prev.user,
+    }));
+  }, []);
+
   const contextValue = useMemo(() => ({
     ...state,
     login,
@@ -1366,6 +1376,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     registerTenant,
     enterDemoSession,
     logout,
+    updateUserProfile,
     checkLicenseStatus,
   }), [
     state,
@@ -1381,6 +1392,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     registerTenant,
     enterDemoSession,
     logout,
+    updateUserProfile,
     checkLicenseStatus,
   ]);
 
@@ -1421,6 +1433,7 @@ export const useAuth = (): AuthContextType => {
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0, pendingApproval: false }),
       enterDemoSession: async () => { },
       logout: () => { },
+      updateUserProfile: () => { },
       checkLicenseStatus: async () => ({ isValid: false }),
     };
   }

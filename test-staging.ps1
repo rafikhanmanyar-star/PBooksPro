@@ -19,6 +19,41 @@ param(
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot
 $EnvFile = ".env.staging"
+$StagingApiPort = 3001
+
+function Stop-ProcessesOnPort {
+    param([int]$Port)
+
+    $pids = [System.Collections.Generic.HashSet[int]]::new()
+    try {
+        Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop |
+            ForEach-Object { [void]$pids.Add($_.OwningProcess) }
+    } catch {
+        netstat -ano | Select-String "LISTENING" | Select-String ":$Port\s" | ForEach-Object {
+            $parts = ($_.Line -split '\s+') | Where-Object { $_ }
+            if ($parts.Count -gt 0) {
+                $processId = [int]$parts[-1]
+                if ($processId -gt 0) { [void]$pids.Add($processId) }
+            }
+        }
+    }
+
+    $pidList = @()
+    foreach ($procId in $pids) {
+        if ($procId -gt 0 -and $procId -ne $PID) { $pidList += $procId }
+    }
+    if ($pidList.Count -eq 0) {
+        Write-Host "  Port $Port is free." -ForegroundColor DarkGray
+        return
+    }
+
+    foreach ($procId in $pidList) {
+        Write-Host "  Stopping process on port $Port (PID $procId)..." -ForegroundColor DarkGray
+        taskkill /PID $procId /T /F 2>$null | Out-Null
+    }
+    Start-Sleep -Seconds 1
+    Write-Host "  Freed port $Port ($($pidList.Count) process(es))." -ForegroundColor Green
+}
 
 $LocalApiBase = "http://127.0.0.1:3001/api"
 $LocalWsRoot = "http://127.0.0.1:3001"
@@ -48,6 +83,10 @@ Get-Content $EnvFile | ForEach-Object {
     }
 }
 Write-Host "  Loaded $EnvFile" -ForegroundColor DarkGray
+
+Write-Host ""
+Write-Host "  [0/8] Freeing staging API port $StagingApiPort..." -ForegroundColor Yellow
+Stop-ProcessesOnPort -Port $StagingApiPort
 
 Write-Host ""
 Write-Host "  [1/8] Rebuilding native modules..." -ForegroundColor Yellow

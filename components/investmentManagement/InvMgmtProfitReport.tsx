@@ -16,7 +16,6 @@ function fmtMoney(n: number): string {
 
 const InvMgmtProfitReport: React.FC = () => {
     const state = useProjectReportAppState();
-    const { projects, invoices, bills } = state;
     const { print: triggerPrint } = usePrintContext();
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
     const [endDate, setEndDate] = useState(toLocalDateString(new Date()));
@@ -64,12 +63,12 @@ const InvMgmtProfitReport: React.FC = () => {
     };
 
     return (
-        <div className="flex flex-col h-full space-y-4 min-h-0">
+        <div className="flex flex-col h-full space-y-4 min-h-0 bg-app-bg">
             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex flex-col gap-3 shrink-0">
                 <div>
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-slate-100">Profit</h3>
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 max-w-3xl">
+                    <h3 className="text-xl font-bold text-app-text">Profit</h3>
+                    <p className="text-sm text-app-muted mt-1 max-w-3xl">
                         Initial investment matches Inv. Mgmt / Investor Distribution (principal through the as-of date).
                         Total cost is the sum of vendor bill amounts for the project (expense recognized plus payables on
                         those bills). Total revenue is the sum of installment (unit selling) invoice amounts (cash
@@ -97,17 +96,17 @@ const InvMgmtProfitReport: React.FC = () => {
                 />
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900/40">
-                <div id="inv-mgmt-profit-print" className="printable-area min-w-0">
+            <div className="flex-1 min-h-0 overflow-auto border border-app-border rounded-lg bg-app-card">
+                <div id="inv-mgmt-profit-print" className="min-w-0 p-4">
                     <div className="report-print-only">
                         <ReportHeader />
-                        <p className="text-center text-sm text-slate-600 mt-2">As of {formatDate(endDate)}</p>
+                        <p className="text-center text-sm text-app-muted mt-2">As of {formatDate(endDate)}</p>
                     </div>
 
                     <div className="overflow-x-auto">
                         <table className="min-w-full text-sm">
-                            <thead className="bg-slate-50 dark:bg-slate-800/80 sticky top-0 z-10">
-                                <tr className="text-left text-slate-600 dark:text-slate-300">
+                            <thead className="bg-app-table-header sticky top-0 z-10">
+                                <tr className="text-left text-app-muted">
                                     <th className="px-3 py-2 font-semibold whitespace-nowrap">Project name</th>
                                     <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Initial investment</th>
                                     <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Total cost</th>
@@ -116,40 +115,40 @@ const InvMgmtProfitReport: React.FC = () => {
                                     <th className="px-3 py-2 font-semibold text-right whitespace-nowrap">Profit %</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                            <tbody className="divide-y divide-app-border">
                                 {rows.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
+                                        <td colSpan={6} className="px-3 py-10 text-center text-app-muted">
                                             No projects with bills, installment invoices, or equity principal in scope.
                                         </td>
                                     </tr>
                                 ) : (
                                     rows.map((r) => (
-                                        <tr key={r.projectId} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
-                                            <td className="px-3 py-2 font-medium text-slate-900 dark:text-slate-100 whitespace-nowrap">
+                                        <tr key={r.projectId} className="hover:bg-app-table-hover">
+                                            <td className="px-3 py-2 font-medium text-app-text whitespace-nowrap">
                                                 {r.projectName}
                                             </td>
-                                            <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.initialInvestment)}</td>
-                                            <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(r.totalCost)}</td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-emerald-700 dark:text-emerald-400">
+                                            <td className="px-3 py-2 text-right tabular-nums text-app-text">{fmtMoney(r.initialInvestment)}</td>
+                                            <td className="px-3 py-2 text-right tabular-nums text-app-text">{fmtMoney(r.totalCost)}</td>
+                                            <td className="px-3 py-2 text-right tabular-nums text-ds-success">
                                                 {fmtMoney(r.totalRevenue)}
                                             </td>
                                             <td
                                                 className={`px-3 py-2 text-right tabular-nums font-medium ${
-                                                    r.profit >= 0 ? 'text-emerald-800 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-400'
+                                                    r.profit >= 0 ? 'text-ds-success' : 'text-ds-danger'
                                                 }`}
                                             >
                                                 {fmtMoney(r.profit)}
                                             </td>
-                                            <td className="px-3 py-2 text-right tabular-nums text-indigo-700 dark:text-indigo-300">
+                                            <td className="px-3 py-2 text-right tabular-nums text-primary">
                                                 {r.profitPercentage != null ? `${r.profitPercentage.toFixed(1)}%` : '—'}
                                             </td>
                                         </tr>
                                     ))
                                 )}
                                 {rows.length > 0 && (
-                                    <tr className="bg-slate-100/90 dark:bg-slate-800/90 font-semibold border-t-2 border-slate-200 dark:border-slate-600">
-                                        <td className="px-3 py-2">Totals</td>
+                                    <tr className="bg-app-table-header font-semibold border-t-2 border-app-border">
+                                        <td className="px-3 py-2 text-app-text">Totals</td>
                                         <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(totals.initialInvestment)}</td>
                                         <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(totals.totalCost)}</td>
                                         <td className="px-3 py-2 text-right tabular-nums">{fmtMoney(totals.totalRevenue)}</td>

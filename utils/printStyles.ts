@@ -151,14 +151,12 @@ export const getPrintStyles = (options: PrintStyleOptions = {}): string => {
 export const STANDARD_PRINT_STYLES = getPrintStyles();
 
 /**
- * Screen + print overrides for report surfaces (preview modal, portal clone, printable areas).
- * Forces light-theme tokens so dark mode never affects printed output.
+ * Print preview / portal clone use light tokens on screen; live pages keep app theme.
+ * @media print forces light ink for all printable surfaces.
  */
 export const REPORT_PRINT_SURFACE_STYLES = `
   .report-print-content,
-  .print-preview-content,
-  .print-report-surface,
-  .printable-area {
+  .print-preview-content {
     --text-primary: #0f172a;
     --text-secondary: #475569;
     --text-muted: #64748b;
@@ -177,16 +175,12 @@ export const REPORT_PRINT_SURFACE_STYLES = `
   }
 
   .report-print-content .text-app-text,
-  .print-preview-content .text-app-text,
-  .print-report-surface .text-app-text,
-  .printable-area .text-app-text {
+  .print-preview-content .text-app-text {
     color: #0f172a !important;
   }
 
   .report-print-content .text-app-muted,
-  .print-preview-content .text-app-muted,
-  .print-report-surface .text-app-muted,
-  .printable-area .text-app-muted {
+  .print-preview-content .text-app-muted {
     color: #64748b !important;
   }
 
@@ -194,11 +188,7 @@ export const REPORT_PRINT_SURFACE_STYLES = `
   .report-print-content .bg-app-toolbar,
   .report-print-content .bg-app-table-header,
   .print-preview-content .bg-app-card,
-  .print-preview-content .bg-app-toolbar,
-  .print-report-surface .bg-app-card,
-  .print-report-surface .bg-app-toolbar,
-  .printable-area .bg-app-card,
-  .printable-area .bg-app-toolbar {
+  .print-preview-content .bg-app-toolbar {
     background-color: #ffffff !important;
   }
 
@@ -225,10 +215,45 @@ export const REPORT_PRINT_SURFACE_STYLES = `
     }
 
     .report-print-content,
+    .print-preview-content,
     .print-report-surface,
     .printable-area {
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #64748b;
+      --text-placeholder: #94a3b8;
+      --bg-primary: #ffffff;
+      --card-bg: #ffffff;
+      --layer-bg: #ffffff;
+      --layer-surface: #ffffff;
+      --toolbar-bg: #f8fafc;
+      --table-header-bg: #f8fafc;
+      --table-row-bg: #ffffff;
+      --border-color: #e2e8f0;
+      --input-bg: #ffffff;
       background: #ffffff !important;
       color: #0f172a !important;
+    }
+
+    .print-report-surface .text-app-text,
+    .printable-area .text-app-text,
+    .report-print-content .text-app-text {
+      color: #0f172a !important;
+    }
+
+    .print-report-surface .text-app-muted,
+    .printable-area .text-app-muted,
+    .report-print-content .text-app-muted {
+      color: #64748b !important;
+    }
+
+    .print-report-surface .bg-app-card,
+    .print-report-surface .bg-app-toolbar,
+    .printable-area .bg-app-card,
+    .printable-area .bg-app-toolbar,
+    .report-print-content .bg-app-card,
+    .report-print-content .bg-app-toolbar {
+      background-color: #ffffff !important;
     }
   }
 `;

@@ -12,6 +12,7 @@ import {
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import { backupAlertSuccess, backupAlertWarning } from './backupThemeClasses';
 
 const BackupStorageSettingsPage: React.FC = () => {
   const { has } = usePermissions();
@@ -134,7 +135,7 @@ const BackupStorageSettingsPage: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
+        <div className={`max-w-2xl mx-auto ${backupAlertWarning} p-4 text-sm`}>
           You do not have permission to view backup storage settings.
         </div>
       </div>
@@ -150,7 +151,7 @@ const BackupStorageSettingsPage: React.FC = () => {
       <div className="max-w-2xl mx-auto space-y-5">
         <div>
           <h3 className="text-lg font-semibold text-app-text flex items-center gap-2">
-            <Cloud className="w-5 h-5 text-sky-600" />
+            <Cloud className="w-5 h-5 text-primary" />
             Offsite Storage
           </h3>
           <p className="text-sm text-app-muted mt-0.5">
@@ -158,9 +159,9 @@ const BackupStorageSettingsPage: React.FC = () => {
           </p>
         </div>
 
-        <div className="rounded-lg border border-emerald-100 bg-emerald-50/60 p-3 text-xs text-emerald-900 flex gap-2">
-          <Shield className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <div>
+        <div className={`${backupAlertSuccess} p-3 text-xs flex gap-2`}>
+          <Shield className="w-4 h-4 flex-shrink-0 mt-0.5 text-ds-success" />
+          <div className="text-app-text">
             Set <code className="bg-app-card/70 px-1 rounded">BACKUP_ENCRYPTION_KEY</code> and{' '}
             <code className="bg-app-card/70 px-1 rounded">BACKUP_STORAGE_MASTER_KEY</code> on the API server.
             Credentials stored in the database are encrypted at rest.

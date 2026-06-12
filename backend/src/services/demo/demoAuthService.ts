@@ -13,9 +13,10 @@ export type DemoLoginUser = {
   tenant_id: string;
   email: string | null;
   display_timezone: string | null;
+  interface_mode: string | null;
 };
 
-const DEMO_USER_SELECT = `SELECT u.id, u.username, u.name, u.role, u.tenant_id, u.email, u.display_timezone
+const DEMO_USER_SELECT = `SELECT u.id, u.username, u.name, u.role, u.tenant_id, u.email, u.display_timezone, u.interface_mode
   FROM users u
   WHERE u.tenant_id = $1 AND u.is_active = TRUE`;
 

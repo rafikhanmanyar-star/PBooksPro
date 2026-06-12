@@ -1,0 +1,153 @@
+import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { getPool } from '../../../db/pool.js';
+import { handleRouteError, sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
+import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
+import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
+import {
+  getCollectionPerformance,
+  getCustomer360,
+  getCustomerLedgerPaginated,
+  getCustomerReportingSummary,
+  getDefaultersReport,
+  getInstallmentSchedule,
+  getReceivableReport,
+  parseFilters,
+} from '../services/customerReportingService.js';
+import type { CustomerReportTab } from '../types/customerReportingTypes.js';
+
+export const customerReportingRouter = Router();
+
+const reportLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 120,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const TTL_MS = 60_000;
+
+function requireDates(filters: ReturnType<typeof parseFilters>, res: Parameters<typeof sendFailure>[0]): boolean {
+  if (!filters.from || !filters.to) {
+    sendFailure(res, 400, 'BAD_REQUEST', 'Query from and to (YYYY-MM-DD) are required.');
+    return false;
+  }
+  return true;
+}
+
+customerReportingRouter.get('/reports/customer-reporting/summary', reportLimiter, async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const filters = parseFilters(req.query as Record<string, unknown>);
+  if (!requireDates(filters, res)) return;
+
+  const cacheKey = `cust_report_summary:${tenantId}:${JSON.stringify(filters)}`;
+  const cached = memoryCacheGet<unknown>(cacheKey);
+  if (cached) {
+    sendSuccess(res, cached);
+    return;
+  }
+
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const payload = await getCustomerReportingSummary(client, tenantId, filters);
+      memoryCacheSet(cacheKey, payload, TTL_MS);
+      sendSuccess(res, payload);
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+customerReportingRouter.get('/reports/customer-reporting/tab/:tab', reportLimiter, async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const tab = req.params.tab as CustomerReportTab;
+  const validTabs: CustomerReportTab[] = [
+    'ledger',
+    'receivable',
+    'defaulters',
+    'installments',
+    'collection-performance',
+  ];
+  if (!validTabs.includes(tab)) {
+    sendFailure(res, 400, 'BAD_REQUEST', `Unknown tab: ${tab}`);
+    return;
+  }
+
+  const filters = parseFilters(req.query as Record<string, unknown>);
+  if (!requireDates(filters, res)) return;
+
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(200, Math.max(1, Number(req.query.pageSize) || 50));
+
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      let payload: unknown;
+      switch (tab) {
+        case 'ledger':
+          payload = await getCustomerLedgerPaginated(client, tenantId, filters, page, pageSize);
+          break;
+        case 'receivable':
+          payload = await getReceivableReport(client, tenantId, filters, page, pageSize);
+          break;
+        case 'defaulters':
+          payload = await getDefaultersReport(client, tenantId, filters, page, pageSize);
+          break;
+        case 'installments':
+          payload = await getInstallmentSchedule(client, tenantId, filters, page, pageSize);
+          break;
+        case 'collection-performance':
+          payload = { rows: await getCollectionPerformance(client, tenantId, filters) };
+          break;
+      }
+      sendSuccess(res, payload);
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+customerReportingRouter.get('/reports/customer-reporting/customer/:contactId', reportLimiter, async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const contactId = req.params.contactId?.trim();
+  if (!contactId) {
+    sendFailure(res, 400, 'BAD_REQUEST', 'contactId is required');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const detail = await getCustomer360(client, tenantId, contactId);
+      if (!detail) {
+        sendFailure(res, 404, 'NOT_FOUND', 'Customer not found');
+        return;
+      }
+      sendSuccess(res, detail);
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});

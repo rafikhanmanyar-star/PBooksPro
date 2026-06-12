@@ -5,6 +5,7 @@ export type DocumentEntityType =
   | 'vendor_bill'
   | 'payment_proof'
   | 'quotation'
+  | 'unposted_transaction'
   | 'other';
 
 export type DocumentMetadataRow = {

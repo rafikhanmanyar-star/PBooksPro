@@ -95,7 +95,7 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
@@ -111,7 +111,7 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
                         onChange={e => setSearch(e.target.value)}
                         className="pl-9 py-2 text-sm"
                     />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted">
                         <div className="w-4 h-4">{ICONS.search}</div>
                     </div>
                 </div>
@@ -126,40 +126,40 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
                 </div>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-auto border rounded-lg bg-white shadow-sm">
-                <table className="min-w-full divide-y divide-slate-200 text-sm relative">
-                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+            <div className="flex-1 min-h-0 overflow-auto border border-app-border rounded-lg bg-app-card shadow-ds-card">
+                <table className="min-w-full divide-y divide-app-border text-sm relative">
+                    <thead className="bg-app-table-header sticky top-0 z-10 shadow-sm">
                         <tr>
-                            <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Date <SortIcon column="issueDate" /></th>
-                            <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Bill # <SortIcon column="billNumber" /></th>
-                            <th onClick={() => handleSort('description')} className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Description <SortIcon column="description" /></th>
-                            <th onClick={() => handleSort('amount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Amount <SortIcon column="amount" /></th>
-                            <th onClick={() => handleSort('paidAmount')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Paid <SortIcon column="paidAmount" /></th>
-                            <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
-                            <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap">Status <SortIcon column="status" /></th>
+                            <th onClick={() => handleSort('issueDate')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Date <SortIcon column="issueDate" /></th>
+                            <th onClick={() => handleSort('billNumber')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Bill # <SortIcon column="billNumber" /></th>
+                            <th onClick={() => handleSort('description')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none">Description <SortIcon column="description" /></th>
+                            <th onClick={() => handleSort('amount')} className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Amount <SortIcon column="amount" /></th>
+                            <th onClick={() => handleSort('paidAmount')} className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Paid <SortIcon column="paidAmount" /></th>
+                            <th onClick={() => handleSort('balance')} className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Balance <SortIcon column="balance" /></th>
+                            <th onClick={() => handleSort('status')} className="px-4 py-3 text-center font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap">Status <SortIcon column="status" /></th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-200 bg-white">
+                    <tbody className="divide-y divide-app-border bg-app-card">
                         {filteredBills.length > 0 ? filteredBills.map(bill => (
-                            <tr key={bill.id} onClick={() => onEditBill?.(bill)} className="hover:bg-slate-50 cursor-pointer transition-colors group">
-                                <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDate(bill.issueDate)}</td>
-                                <td className="px-4 py-3 text-sm font-medium text-slate-800 group-hover:text-accent">{bill.billNumber}</td>
-                                <td className="px-4 py-3 text-sm max-w-xs truncate text-slate-500 italic">{bill.description || '-'}</td>
-                                <td className="px-4 py-3 text-sm text-right font-medium tabular-nums">{CURRENCY} {bill.amount.toLocaleString()}</td>
-                                <td className="px-4 py-3 text-sm text-right text-emerald-600 tabular-nums">{CURRENCY} {bill.paidAmount.toLocaleString()}</td>
-                                <td className={`px-4 py-3 text-sm text-right font-bold tabular-nums ${(bill.amount - bill.paidAmount) > 0 ? 'text-rose-600' : 'text-slate-400'}`}>{CURRENCY} {(bill.amount - bill.paidAmount).toLocaleString()}</td>
+                            <tr key={bill.id} onClick={() => onEditBill?.(bill)} className="hover:bg-app-table-hover cursor-pointer transition-colors group">
+                                <td className="px-4 py-3 whitespace-nowrap text-sm text-app-text">{formatDate(bill.issueDate)}</td>
+                                <td className="px-4 py-3 text-sm font-medium text-app-text group-hover:text-primary">{bill.billNumber}</td>
+                                <td className="px-4 py-3 text-sm max-w-xs truncate text-app-muted italic">{bill.description || '-'}</td>
+                                <td className="px-4 py-3 text-sm text-right font-medium tabular-nums text-app-text">{CURRENCY} {bill.amount.toLocaleString()}</td>
+                                <td className="px-4 py-3 text-sm text-right text-ds-success tabular-nums">{CURRENCY} {bill.paidAmount.toLocaleString()}</td>
+                                <td className={`px-4 py-3 text-sm text-right font-bold tabular-nums ${(bill.amount - bill.paidAmount) > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>{CURRENCY} {(bill.amount - bill.paidAmount).toLocaleString()}</td>
                                 <td className="px-4 py-3 text-center">
                                     <div className="flex items-center justify-center gap-2">
-                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block w-24 text-center ${bill.status === InvoiceStatus.PAID ? 'bg-emerald-100 text-emerald-800' :
-                                                bill.status === InvoiceStatus.PARTIALLY_PAID ? 'bg-amber-100 text-amber-800' :
-                                                    'bg-rose-100 text-rose-800'
+                                        <span className={`px-2 py-1 rounded-full text-xs font-semibold inline-block w-24 text-center ${bill.status === InvoiceStatus.PAID ? 'bg-[color:var(--badge-paid-bg)] text-ds-success' :
+                                                bill.status === InvoiceStatus.PARTIALLY_PAID ? 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)]' :
+                                                    'bg-[color:var(--badge-unpaid-bg)] text-ds-danger'
                                             }`}>
                                             {bill.status}
                                         </span>
                                         {bill.paidAmount > 0 && (
                                             <button
                                                 onClick={(e) => handleSendWhatsApp(e, bill)}
-                                                className="text-green-600 hover:text-green-800 p-1 rounded-full hover:bg-green-50 transition-colors"
+                                                className="text-ds-success hover:text-ds-success/80 p-1 rounded-full hover:bg-[color:var(--badge-paid-bg)] transition-colors"
                                                 title="Send Payment Notification via WhatsApp"
                                             >
                                                 <div className="w-4 h-4">{ICONS.whatsapp}</div>

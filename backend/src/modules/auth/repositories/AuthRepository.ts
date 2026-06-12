@@ -161,6 +161,7 @@ type UserTenantAccountRow = {
   password_hash: string;
   tenant_name: string;
   display_timezone: string | null;
+  interface_mode: string;
   email: string | null;
   last_tenant_id: string | null;
   organization_status: string;
@@ -174,7 +175,7 @@ export class UserTenantRepository {
   ): Promise<UserTenantAccountRow[]> {
     const r = await db.query<UserTenantAccountRow>(
       `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
+              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
               COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
@@ -209,7 +210,7 @@ export class UserTenantRepository {
   ): Promise<UserTenantAccountRow | null> {
     const r = await db.query<UserTenantAccountRow>(
       `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
+              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
               COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
@@ -233,7 +234,7 @@ export class UserTenantRepository {
   ): Promise<UserTenantAccountRow | null> {
     const r = await db.query<UserTenantAccountRow>(
       `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.email, u.last_tenant_id,
+              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
               COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id

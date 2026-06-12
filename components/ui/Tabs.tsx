@@ -49,7 +49,7 @@ const Tabs: React.FC<TabsProps> = ({ tabs, activeTab, onTabClick, variant = 'def
                 className={`whitespace-nowrap py-2 px-4 text-sm font-medium transition-all duration-ds flex-shrink-0 select-none focus:outline-none
                   rounded-t-lg border-t border-x
                   ${isActive
-                    ? 'bg-app-card text-app-text border-app-border shadow-[0_-1px_0_0_var(--layer-surface)] -mb-px z-10'
+                    ? 'bg-app-card text-app-text border-app-border border-b-app-card -mb-px z-10'
                     : 'bg-transparent text-app-muted hover:text-app-text border-transparent hover:bg-app-surface-2/80'
                   }`}
               >

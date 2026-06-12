@@ -362,16 +362,16 @@ const ClientLedgerReport: React.FC = () => {
                         hideDate={dateRangeType !== 'custom'}
                     >
                         <div className="flex flex-col gap-1 min-w-[240px] no-print">
-                            <label className="block text-sm font-medium text-slate-600">Date Filter</label>
-                            <div className="flex bg-slate-100 p-1 rounded-md border border-slate-200 gap-1">
+                            <label className="block text-sm font-medium text-app-muted">Date Filter</label>
+                            <div className="flex bg-segment-bg p-1 rounded-md border border-app-border gap-1">
                                 {(['total', 'thisMonth', 'lastMonth', 'custom'] as const).map(type => (
                                     <button
                                         key={type}
                                         onClick={() => handleRangeChange(type)}
                                         className={`flex-1 px-2 py-1.5 text-xs font-medium rounded transition-colors ${
                                             dateRangeType === type 
-                                            ? 'bg-white shadow-sm text-accent border border-slate-200' 
-                                            : 'text-slate-600 hover:bg-slate-200'
+                                            ? 'bg-segment-active shadow-sm text-primary border border-app-border' 
+                                            : 'text-app-muted hover:bg-app-table-hover'
                                         }`}
                                     >
                                         {type === 'total' ? 'Total' : type === 'thisMonth' ? 'This' : type === 'lastMonth' ? 'Last' : 'Custom'}

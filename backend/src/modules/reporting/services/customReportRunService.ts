@@ -8,6 +8,11 @@ import { PROJECT_SELLING_MODULE_KEY } from '../metadata/projectSellingFields.js'
 import { RENTAL_AGREEMENTS_MODULE_KEY } from '../metadata/rentalAgreementsFields.js';
 import { compileProjectSellingReport } from '../query-builder/projectSellingSqlCompiler.js';
 import { compileRentalAgreementsReport } from '../query-builder/rentalAgreementsSqlCompiler.js';
+import { PROJECT_CONSTRUCTION_MODULE_KEY } from '../metadata/projectConstructionFields.js';
+import { compileProjectConstructionReport } from '../query-builder/projectConstructionSqlCompiler.js';
+import { ACCOUNTING_LEDGER_MODULE_KEY } from '../metadata/accountingLedgerFields.js';
+import { compileAccountingLedgerReport } from '../query-builder/accountingLedgerSqlCompiler.js';
+import { runAgingReport } from './agingReportService.js';
 import type { CompiledReportQuery } from '../query-builder/reportSqlHelpers.js';
 import type { CustomReportGeneratePayload } from '../validators/reportConfigurationSchema.js';
 
@@ -149,6 +154,10 @@ export async function runCustomReport(
   payload: CustomReportGeneratePayload,
   mode: 'preview' | 'export'
 ): Promise<GeneratedReportResult> {
+  if (payload.reportType === 'aging') {
+    return runAgingReport(client, tenantId, payload, mode);
+  }
+
   const registryPack = getRegistryForModule(payload.module);
   const rmap = fieldMap(registryPack.fields);
   let compiled: CompiledReportQuery;
@@ -156,6 +165,10 @@ export async function runCustomReport(
     compiled = compileProjectSellingReport(registryPack, tenantId, payload, mode);
   } else if (payload.module === RENTAL_AGREEMENTS_MODULE_KEY) {
     compiled = compileRentalAgreementsReport(registryPack, tenantId, payload, mode);
+  } else if (payload.module === PROJECT_CONSTRUCTION_MODULE_KEY) {
+    compiled = compileProjectConstructionReport(registryPack, tenantId, payload, mode);
+  } else if (payload.module === ACCOUNTING_LEDGER_MODULE_KEY) {
+    compiled = compileAccountingLedgerReport(registryPack, tenantId, payload, mode);
   } else {
     throw new Error(`UNSUPPORTED_MODULE:${payload.module}`);
   }

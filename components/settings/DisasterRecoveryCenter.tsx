@@ -25,6 +25,11 @@ import {
   type DrVerificationRun,
 } from '../../services/api/disasterRecoveryApi';
 import Button from '../ui/Button';
+import {
+  backupAlertError,
+  backupAlertSuccess,
+  backupAlertWarning,
+} from './backupThemeClasses';
 
 function formatBytes(n: number | string | null | undefined): string {
   if (n == null) return '—';
@@ -48,15 +53,15 @@ function formatDateTime(iso: string | null | undefined): string {
 }
 
 function healthColor(label: string): string {
-  if (label === 'healthy') return 'text-ds-success bg-emerald-50 border-emerald-200';
-  if (label === 'degraded') return 'text-ds-warning bg-amber-50 border-amber-200';
-  return 'text-red-600 bg-red-50 border-red-200';
+  if (label === 'healthy') return `${backupAlertSuccess} border`;
+  if (label === 'degraded') return `${backupAlertWarning} border`;
+  return `${backupAlertError} border text-ds-danger`;
 }
 
 function severityBadge(severity: string): string {
-  if (severity === 'critical') return 'bg-red-100 text-red-700';
-  if (severity === 'warning') return 'bg-amber-100 text-ds-warning';
-  return 'bg-blue-100 text-blue-700';
+  if (severity === 'critical') return 'bg-[color:var(--badge-unpaid-bg)] text-ds-danger border border-ds-danger/30';
+  if (severity === 'warning') return 'bg-[color:var(--badge-partial-bg)] text-ds-warning border border-ds-warning/30';
+  return 'bg-primary/15 text-primary border border-primary/20';
 }
 
 type WidgetProps = {

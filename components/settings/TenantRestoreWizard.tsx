@@ -21,6 +21,11 @@ import { backupSecurityApi } from '../../services/api/backupSecurityApi';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
+import {
+  backupAlertInfo,
+  backupAlertSuccess,
+  backupAlertWarning,
+} from './backupThemeClasses';
 
 type WizardStep = 'upload' | 'options' | 'preview' | 'done';
 
@@ -162,7 +167,7 @@ const TenantRestoreWizard: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
+        <div className={`max-w-2xl mx-auto ${backupAlertWarning} p-4 text-sm`}>
           You need backup permissions to use tenant restore.
         </div>
       </div>
@@ -255,11 +260,11 @@ const TenantRestoreWizard: React.FC = () => {
         {step === 'preview' && preview && (
           <div className="space-y-4">
             <div
-              className={`rounded-lg p-4 border ${preview.canProceed ? 'border-green-200 bg-green-50' : 'border-amber-200 bg-amber-50'}`}
+              className={`rounded-lg p-4 border ${preview.canProceed ? backupAlertSuccess : backupAlertWarning}`}
             >
               <p className="font-medium text-app-text flex items-center gap-2">
                 {preview.canProceed ? (
-                  <CheckCircle className="w-5 h-5 text-green-600" />
+                  <CheckCircle className="w-5 h-5 text-ds-success" />
                 ) : (
                   <AlertTriangle className="w-5 h-5 text-ds-warning" />
                 )}
@@ -283,11 +288,11 @@ const TenantRestoreWizard: React.FC = () => {
                   {preview.issues.map((issue, idx) => (
                     <li key={`${issue.code}-${idx}`} className="px-3 py-2 flex gap-2">
                       {issue.severity === 'error' ? (
-                        <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <XCircle className="w-4 h-4 text-ds-danger flex-shrink-0" />
                       ) : issue.severity === 'warning' ? (
-                        <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                        <AlertTriangle className="w-4 h-4 text-ds-warning flex-shrink-0" />
                       ) : (
-                        <CheckCircle className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                        <CheckCircle className="w-4 h-4 text-primary flex-shrink-0" />
                       )}
                       <span className="text-app-text">{issue.message}</span>
                     </li>
@@ -316,17 +321,17 @@ const TenantRestoreWizard: React.FC = () => {
                     <tr key={row.table}>
                       <td className="px-3 py-2">{TABLE_LABELS[row.table] ?? row.table}</td>
                       <td className="px-3 py-2">{row.total}</td>
-                      <td className="px-3 py-2 text-green-700">{row.toInsert}</td>
-                      <td className="px-3 py-2 text-blue-700">{row.toUpdate}</td>
+                      <td className="px-3 py-2 text-ds-success">{row.toInsert}</td>
+                      <td className="px-3 py-2 text-primary">{row.toUpdate}</td>
                       <td className="px-3 py-2 text-app-muted">{row.toSkip}</td>
-                      <td className="px-3 py-2 text-red-700">{row.crossTenantConflicts || '—'}</td>
+                      <td className="px-3 py-2 text-ds-danger">{row.crossTenantConflicts || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3 text-xs text-blue-900">
+            <div className={`${backupAlertInfo} p-3`}>
               Restore runs inside a database transaction. If any step fails, all changes are rolled back automatically.
             </div>
 
@@ -347,9 +352,9 @@ const TenantRestoreWizard: React.FC = () => {
         )}
 
         {step === 'done' && (
-          <div className="rounded-xl border border-green-200 bg-green-50 p-6 text-center space-y-3">
-            <CheckCircle className="w-12 h-12 text-green-600 mx-auto" />
-            <p className="text-green-800 font-medium">{restoreResult}</p>
+          <div className={`${backupAlertSuccess} p-6 text-center space-y-3`}>
+            <CheckCircle className="w-12 h-12 text-ds-success mx-auto" />
+            <p className="text-app-text font-medium">{restoreResult}</p>
             <Button variant="secondary" onClick={reset}>
               <RotateCcw className="w-4 h-4 mr-1.5" />
               Restore another backup

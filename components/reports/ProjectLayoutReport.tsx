@@ -342,7 +342,7 @@ const ProjectLayoutReport: React.FC = () => {
                 </div>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area pb-10" id="printable-area">
+            <div className="flex-grow overflow-y-auto pb-10 min-h-0 bg-app-bg" id="printable-area">
                 <ReportHeader />
                 <div className="text-center mb-6">
                     <h2 className="text-2xl font-bold text-app-text">Project Visual Layout</h2>

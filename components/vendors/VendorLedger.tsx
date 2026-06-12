@@ -323,7 +323,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     };
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -345,57 +345,57 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     return (
         <div className="flex flex-col h-full min-h-0">
             {!isLocalOnlyMode() && supplierAdvances.length > 0 && (
-                <p className="text-[11px] text-amber-800 bg-amber-50/90 border border-amber-100 rounded-md px-2 py-1.5 mb-2 shrink-0">
+                <p className="text-[11px] text-app-text bg-[color:var(--badge-partial-bg)] border border-ds-warning/30 rounded-md px-2 py-1.5 mb-2 shrink-0">
                     Prepaid advances and hybrid bill settlements show both cash payments and Supplier prepaid applied
                     lines where part of the bill was cleared from prepaid (no duplicate bank transaction).
                 </p>
             )}
             {ledgerItems.length === 0 ? (
-                <p className="text-gray-500 text-center mt-8">No transactions or bills for this vendor.</p>
+                <p className="text-app-muted text-center mt-8">No transactions or bills for this vendor.</p>
             ) : (
                 <div className="flow-root flex-1 min-h-0 overflow-auto -mt-1">
                     <div className="-mx-2 overflow-x-auto">
                         <div className="inline-block min-w-full align-middle">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-slate-50 sticky top-0 z-10">
+                            <table className="min-w-full divide-y divide-app-border">
+                                <thead className="bg-app-table-header sticky top-0 z-10">
                                     <tr>
                                         <th
                                             onClick={() => handleSort('date')}
                                             scope="col"
-                                            className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                            className="py-2 pl-2 pr-2 text-left text-xs font-semibold text-app-text cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                         >
                                             Date <SortIcon column="date" />
                                         </th>
                                         <th
                                             onClick={() => handleSort('particulars')}
                                             scope="col"
-                                            className="px-2 py-2 text-left text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none"
+                                            className="px-2 py-2 text-left text-xs font-semibold text-app-text cursor-pointer hover:bg-app-table-hover select-none"
                                         >
                                             Particulars <SortIcon column="particulars" />
                                         </th>
                                         <th
                                             scope="col"
-                                            className="px-2 py-2 text-left text-xs font-semibold text-slate-600 select-none max-w-[8rem]"
+                                            className="px-2 py-2 text-left text-xs font-semibold text-app-muted select-none max-w-[8rem]"
                                         >
                                             Project
                                         </th>
                                         <th
                                             onClick={() => handleSort('credit')}
                                             scope="col"
-                                            className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                            className="px-2 py-2 text-right text-xs font-semibold text-app-text cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                         >
                                             Bills (Cr) <SortIcon column="credit" />
                                         </th>
                                         <th
                                             onClick={() => handleSort('debit')}
                                             scope="col"
-                                            className="px-2 py-2 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                            className="px-2 py-2 text-right text-xs font-semibold text-app-text cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                         >
                                             Pay / Adv (Dr) <SortIcon column="debit" />
                                         </th>
                                         <th
                                             scope="col"
-                                            className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-slate-700 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                            className="py-2 pl-2 pr-1 text-right text-xs font-semibold text-app-text cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                             onClick={() => handleSort('balance')}
                                         >
                                             Balance <SortIcon column="balance" />
@@ -413,7 +413,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                                 <button
                                                     onClick={handleExport}
                                                     disabled={ledgerItems.length === 0}
-                                                    className="flex items-center justify-center w-6 h-6 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors disabled:opacity-50"
+                                                    className="flex items-center justify-center w-6 h-6 rounded bg-app-toolbar text-app-muted hover:bg-app-table-hover hover:text-app-text transition-colors disabled:opacity-50"
                                                     title="Export to Excel"
                                                 >
                                                     <span className="w-3.5 h-3.5">{ICONS.export}</span>
@@ -422,7 +422,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                         </th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100 bg-white">
+                                <tbody className="divide-y divide-app-border bg-app-card">
                                     {ledgerItems.map((item) => {
                                         const hasChildren = item.children && item.children.length > 0;
                                         const isExpanded = expandedIds.has(item.id);
@@ -439,21 +439,21 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                         return (
                                             <React.Fragment key={item.id}>
                                                 <tr
-                                                    className={`hover:bg-slate-50 transition-colors ${cursorClass} ${
+                                                    className={`hover:bg-app-table-hover transition-colors ${cursorClass} ${
                                                         item.type === 'supplier_advance'
-                                                            ? 'bg-amber-50/50'
+                                                            ? 'bg-[color:var(--badge-partial-bg)]/50'
                                                             : item.type === 'prepaid_apply'
-                                                              ? 'bg-teal-50/60'
+                                                              ? 'bg-primary/10'
                                                               : ''
-                                                    } ${isExpanded ? 'bg-slate-50' : ''}`}
+                                                    } ${isExpanded ? 'bg-app-toolbar/40' : ''}`}
                                                     onClick={(e) => handleRowClick(e, item)}
                                                 >
-                                                    <td className="whitespace-nowrap py-2 pl-2 pr-2 text-xs text-slate-700 flex items-center gap-1.5">
+                                                    <td className="whitespace-nowrap py-2 pl-2 pr-2 text-xs text-app-text flex items-center gap-1.5">
                                                         {hasChildren && (
                                                             <button
                                                                 type="button"
                                                                 onClick={(e) => toggleExpand(e, item.id)}
-                                                                className="text-slate-400 hover:text-slate-600 focus:outline-none"
+                                                                className="text-app-muted hover:text-app-text focus:outline-none"
                                                             >
                                                                 <div
                                                                     className={`w-3.5 h-3.5 transform transition-transform ${
@@ -469,26 +469,26 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                                         </span>
                                                     </td>
                                                     <td
-                                                        className="whitespace-nowrap px-2 py-2 text-xs text-slate-600 max-w-xs truncate"
+                                                        className="whitespace-nowrap px-2 py-2 text-xs text-app-text max-w-xs truncate"
                                                         title={item.particulars}
                                                     >
                                                         {item.particulars}
                                                     </td>
                                                     <td
-                                                        className="whitespace-nowrap px-2 py-2 text-xs text-slate-500 max-w-[8rem] truncate"
+                                                        className="whitespace-nowrap px-2 py-2 text-xs text-app-muted max-w-[8rem] truncate"
                                                         title={item.projectLabel}
                                                     >
                                                         {item.projectLabel || '—'}
                                                     </td>
-                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">
+                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-app-text">
                                                         {item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}
                                                     </td>
-                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-slate-600">
+                                                    <td className="whitespace-nowrap px-2 py-2 text-xs text-right text-app-text">
                                                         {item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}
                                                     </td>
                                                     <td
                                                         className={`whitespace-nowrap py-2 pl-2 pr-1 text-right text-xs font-semibold ${
-                                                            (item.balance ?? 0) > 0 ? 'text-red-600' : 'text-emerald-600'
+                                                            (item.balance ?? 0) > 0 ? 'text-ds-danger' : 'text-ds-success'
                                                         }`}
                                                     >
                                                         {(item.balance ?? 0).toLocaleString()}
@@ -500,31 +500,31 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                                     item.children.map((child: LedgerChild) => (
                                                         <tr
                                                             key={child.id}
-                                                            className="bg-slate-50/70 text-xs hover:bg-slate-100 cursor-pointer"
+                                                            className="bg-app-toolbar/40 text-xs hover:bg-app-table-hover cursor-pointer"
                                                             onClick={() => onItemClick(child.originalId, child.type)}
                                                         >
-                                                            <td className="whitespace-nowrap py-1.5 pl-9 pr-2 text-slate-500">
+                                                            <td className="whitespace-nowrap py-1.5 pl-9 pr-2 text-app-muted">
                                                                 {formatDate(child.date)}
                                                             </td>
                                                             <td
-                                                                className="whitespace-nowrap px-2 py-1.5 text-slate-500 italic max-w-xs truncate"
+                                                                className="whitespace-nowrap px-2 py-1.5 text-app-muted italic max-w-xs truncate"
                                                                 title={child.particulars}
                                                             >
                                                                 {child.particulars}
                                                             </td>
                                                             <td
-                                                                className="whitespace-nowrap px-2 py-1.5 text-slate-500 max-w-[8rem] truncate"
+                                                                className="whitespace-nowrap px-2 py-1.5 text-app-muted max-w-[8rem] truncate"
                                                                 title={child.projectLabel}
                                                             >
                                                                 {child.projectLabel || '—'}
                                                             </td>
-                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-400">
+                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-app-muted">
                                                                 -
                                                             </td>
-                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-slate-500">
+                                                            <td className="whitespace-nowrap px-2 py-1.5 text-right text-app-text">
                                                                 {(child.debit || 0).toLocaleString()}
                                                             </td>
-                                                            <td className="whitespace-nowrap py-1.5 pl-2 pr-1 text-right text-slate-400"></td>
+                                                            <td className="whitespace-nowrap py-1.5 pl-2 pr-1 text-right text-app-muted"></td>
                                                             <td className="py-1.5 pl-1 pr-2 w-8"></td>
                                                         </tr>
                                                     ))}

@@ -199,7 +199,7 @@ const ProjectContractsPage: React.FC = () => {
     }, []);
 
     const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
@@ -272,12 +272,12 @@ const ProjectContractsPage: React.FC = () => {
     }, [state.contacts, state.projects, state.transactions, state.whatsAppMode, showAlert, openChat]);
 
     return (
-        <div className="flex flex-col h-full bg-slate-50/50 p-4 sm:p-6 gap-4 sm:gap-6">
+        <div className="flex flex-col h-full bg-app-bg p-4 sm:p-6 gap-4 sm:gap-6">
             {/* Header Section */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 flex-shrink-0">
                 <div>
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">Project Contracts</h1>
-                    <p className="text-xs sm:text-sm text-slate-500 mt-1">Manage vendor legal agreements, project values, and payment tracking.</p>
+                    <h1 className="text-xl sm:text-2xl font-bold text-app-text tracking-tight">Project Contracts</h1>
+                    <p className="text-xs sm:text-sm text-app-muted mt-1">Manage vendor legal agreements, project values, and payment tracking.</p>
                 </div>
                 <div className="flex items-center gap-2 w-full sm:w-auto">
                     <Button
@@ -286,13 +286,13 @@ const ProjectContractsPage: React.FC = () => {
                             dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.CONTRACTS });
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
-                        className="!px-4 !py-2 !rounded-xl !text-sm !border-slate-200 hover:!border-indigo-300 hover:!text-indigo-600 !bg-white transition-all shadow-sm"
+                        className="!px-4 !py-2 !rounded-xl !text-sm"
                     >
                         <div className="w-4 h-4 mr-2 opacity-70">{ICONS.download}</div> Bulk Import
                     </Button>
                     <Button
                         onClick={() => { setEditingContract(null); setIsFormOpen(true); }}
-                        className="!px-4 !py-2 !rounded-xl !text-sm !bg-indigo-600 hover:!bg-indigo-700 !text-white transition-all shadow-md shadow-indigo-500/20"
+                        className="!px-4 !py-2 !rounded-xl !text-sm"
                     >
                         <div className="w-4 h-4 mr-2">{ICONS.plus}</div> New Contract
                     </Button>
@@ -300,9 +300,9 @@ const ProjectContractsPage: React.FC = () => {
             </div>
 
             {/* Toolbar Area */}
-            <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row gap-3 items-center flex-shrink-0">
+            <div className="bg-app-card p-2 rounded-xl border border-app-border shadow-ds-card flex flex-col sm:flex-row gap-3 items-center flex-shrink-0">
                 <div className="relative flex-grow w-full">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                         <div className="w-4 h-4">{ICONS.search}</div>
                     </div>
                     <input
@@ -310,12 +310,12 @@ const ProjectContractsPage: React.FC = () => {
                         placeholder="Search by contract ID, title, vendor, or project..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="block w-full pl-9 pr-8 py-2 text-sm border-0 bg-transparent focus:ring-0 placeholder:text-slate-400 text-slate-700"
+                        className="ds-input-field block w-full pl-9 pr-8 py-2 text-sm border-0 shadow-none"
                     />
                     {searchQuery && (
                         <button
                             onClick={() => setSearchQuery('')}
-                            className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400 hover:text-rose-500 transition-colors"
+                            className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-ds-danger transition-colors"
                         >
                             <div className="w-4 h-4">{ICONS.x}</div>
                         </button>
@@ -328,15 +328,15 @@ const ProjectContractsPage: React.FC = () => {
 
                 {/* Left Tree View */}
                 <div
-                    className="flex flex-col h-64 md:h-full flex-shrink-0 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden"
+                    className="flex flex-col h-64 md:h-full flex-shrink-0 bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden"
                     style={{ width: window.innerWidth < 768 ? '100%' : sidebarWidth }}
                 >
-                    <div className="px-4 py-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Hierarchy</span>
+                    <div className="px-4 py-3 border-b border-app-border flex justify-between items-center bg-app-toolbar">
+                        <span className="text-[10px] font-bold text-app-muted uppercase tracking-wider">Hierarchy</span>
                         {selectedNode && (
                             <button
                                 onClick={() => setSelectedNode(null)}
-                                className="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full hover:bg-indigo-100 font-bold transition-colors"
+                                className="text-[10px] bg-app-highlight text-primary px-2 py-0.5 rounded-full hover:bg-app-table-hover font-bold transition-colors"
                             >
                                 Clear
                             </button>
@@ -354,43 +354,43 @@ const ProjectContractsPage: React.FC = () => {
 
                 {/* Resizer Handle */}
                 <div className="hidden md:flex items-center justify-center w-2 hover:w-3 -ml-3 -mr-3 z-10 cursor-col-resize group transition-all" onMouseDown={startResizing}>
-                    <div className="w-1 h-8 rounded-full bg-slate-200 group-hover:bg-indigo-400 transition-colors"></div>
+                    <div className="w-1 h-8 rounded-full bg-app-border group-hover:bg-primary transition-colors"></div>
                 </div>
 
                 {/* Right Data Grid */}
-                <div className="flex-grow overflow-hidden flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex-grow overflow-hidden flex flex-col bg-app-card rounded-xl border border-app-border shadow-ds-card">
                     <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-slate-100 text-xs border-separate border-spacing-0">
-                            <thead className="bg-slate-50 sticky top-0 z-20">
+                        <table className="min-w-full divide-y divide-app-border text-xs border-separate border-spacing-0">
+                            <thead className="bg-app-table-header sticky top-0 z-20">
                                 <tr>
-                                    <th onClick={() => handleSort('contractNumber')} className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('contractNumber')} className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         ID <SortIcon column="contractNumber" />
                                     </th>
-                                    <th onClick={() => handleSort('name')} className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('name')} className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Contract Details <SortIcon column="name" />
                                     </th>
-                                    <th className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">Vendor</th>
-                                    <th onClick={() => handleSort('totalAmount')} className="px-4 py-2.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider border-b border-app-border">Vendor</th>
+                                    <th onClick={() => handleSort('totalAmount')} className="px-4 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Value <SortIcon column="totalAmount" />
                                     </th>
-                                    <th onClick={() => handleSort('paid')} className="px-4 py-2.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('paid')} className="px-4 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Paid <SortIcon column="paid" />
                                     </th>
-                                    <th onClick={() => handleSort('balance')} className="px-4 py-2.5 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('balance')} className="px-4 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Balance <SortIcon column="balance" />
                                     </th>
-                                    <th onClick={() => handleSort('startDate')} className="px-4 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('startDate')} className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Started <SortIcon column="startDate" />
                                     </th>
-                                    <th onClick={() => handleSort('status')} className="px-4 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-100 select-none border-b border-slate-200 transition-colors">
+                                    <th onClick={() => handleSort('status')} className="px-4 py-2.5 text-center text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Status <SortIcon column="status" />
                                     </th>
-                                    <th className="px-4 py-2.5 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+                                    <th className="px-4 py-2.5 text-center text-[10px] font-bold text-app-muted uppercase tracking-wider border-b border-app-border">
                                         Actions
                                     </th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-50 bg-white">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {filteredContracts.length > 0 ? filteredContracts.map((contract) => {
                                     const totalAmount = contract.totalAmount ?? 0;
                                     const paid = getPaidAmount(contract.id) ?? 0;
@@ -402,45 +402,45 @@ const ProjectContractsPage: React.FC = () => {
                                         <tr
                                             key={contract.id}
                                             onClick={() => handleView(contract)}
-                                            className="hover:bg-slate-50 cursor-pointer transition-all duration-150 group"
+                                            className="hover:bg-app-table-hover cursor-pointer transition-all duration-150 group"
                                         >
                                             <td className="px-4 py-2.5">
-                                                <span className="font-mono text-[10px] font-medium text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md border border-slate-200">
+                                                <span className="font-mono text-[10px] font-medium text-app-muted bg-app-toolbar px-1.5 py-0.5 rounded-md border border-app-border">
                                                     {contract.contractNumber}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-2.5">
-                                                <div className="font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors leading-tight">{contract.name}</div>
-                                                <div className="text-[10px] text-slate-400 font-medium truncate max-w-[150px] uppercase tracking-tight mt-0.5">
+                                                <div className="font-semibold text-app-text group-hover:text-primary transition-colors leading-tight">{contract.name}</div>
+                                                <div className="text-[10px] text-app-muted font-medium truncate max-w-[150px] uppercase tracking-tight mt-0.5">
                                                     {project?.name || 'No Project'}
                                                 </div>
                                             </td>
                                             <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
-                                                    <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 border border-slate-200">
+                                                    <div className="w-6 h-6 rounded-full bg-app-toolbar flex items-center justify-center text-[10px] font-bold text-app-muted border border-app-border">
                                                         {(vendor?.name || 'U')[0]}
                                                     </div>
-                                                    <span className="text-slate-600 font-medium">{vendor?.name || 'Unknown'}</span>
+                                                    <span className="text-app-text font-medium">{vendor?.name || 'Unknown'}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-2.5 text-right font-semibold text-slate-700 tabular-nums">
+                                            <td className="px-4 py-2.5 text-right font-semibold text-app-text tabular-nums">
                                                 {CURRENCY} {totalAmount.toLocaleString()}
                                             </td>
-                                            <td className="px-4 py-2.5 text-right text-emerald-600 font-medium tabular-nums">
+                                            <td className="px-4 py-2.5 text-right text-ds-success font-medium tabular-nums">
                                                 {CURRENCY} {paid.toLocaleString()}
                                             </td>
                                             <td className="px-4 py-2.5 text-right tabular-nums">
-                                                <span className={`font-bold ${balance > 0.01 ? 'text-rose-600' : 'text-slate-400 font-normal'}`}>
+                                                <span className={`font-bold ${balance > 0.01 ? 'text-ds-danger' : 'text-app-muted font-normal'}`}>
                                                     {CURRENCY} {balance.toLocaleString()}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-2.5 text-slate-500 whitespace-nowrap">
+                                            <td className="px-4 py-2.5 text-app-muted whitespace-nowrap">
                                                 {formatDate(contract.startDate)}
                                             </td>
                                             <td className="px-4 py-2.5 text-center">
-                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${contract.status === 'Active' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' :
-                                                    contract.status === 'Terminated' ? 'bg-rose-50 text-rose-700 border border-rose-100' :
-                                                        'bg-slate-100 text-slate-600 border border-slate-200'
+                                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${contract.status === 'Active' ? 'bg-[color:var(--badge-paid-bg)] text-ds-success border border-ds-success/30' :
+                                                    contract.status === 'Terminated' ? 'bg-[color:var(--badge-unpaid-bg)] text-ds-danger border border-ds-danger/30' :
+                                                        'bg-app-toolbar text-app-muted border border-app-border'
                                                     }`}>
                                                     {contract.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
                                                     {contract.status}
@@ -449,7 +449,7 @@ const ProjectContractsPage: React.FC = () => {
                                             <td className="px-4 py-2.5 text-center">
                                                 <button
                                                     onClick={(e) => handleWhatsApp(contract, e)}
-                                                    className="p-1.5 rounded-md text-green-600 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                                    className="p-1.5 rounded-md text-ds-success hover:bg-app-highlight transition-colors"
                                                     title="Send contract details via WhatsApp"
                                                 >
                                                     <div className="w-4 h-4">{ICONS.whatsapp}</div>
@@ -460,8 +460,8 @@ const ProjectContractsPage: React.FC = () => {
                                 }) : (
                                     <tr>
                                         <td colSpan={9} className="px-4 py-16 text-center">
-                                            <div className="flex flex-col items-center justify-center text-slate-400 opacity-60">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-full flex items-center justify-center mb-3">
+                                            <div className="flex flex-col items-center justify-center text-app-muted opacity-60">
+                                                <div className="w-12 h-12 bg-app-toolbar rounded-full flex items-center justify-center mb-3 border border-app-border">
                                                     <div className="w-6 h-6">{ICONS.fileText}</div>
                                                 </div>
                                                 <p className="text-sm font-medium">No contracts found</p>
@@ -474,14 +474,14 @@ const ProjectContractsPage: React.FC = () => {
                         </table>
                     </div>
                     {/* Compact Footer */}
-                    <div className="px-4 py-3 border-t border-slate-100 bg-slate-50/50 backdrop-blur-sm flex justify-between items-center text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                    <div className="px-4 py-3 border-t border-app-border bg-app-toolbar flex justify-between items-center text-[10px] font-bold text-app-muted uppercase tracking-widest">
                         <div className="flex items-center gap-4">
-                            <span>Count: <span className="text-slate-900">{filteredContracts.length}</span></span>
-                            <span>Active: <span className="text-emerald-600">{filteredContracts.filter(c => c.status === 'Active').length}</span></span>
+                            <span>Count: <span className="text-app-text">{filteredContracts.length}</span></span>
+                            <span>Active: <span className="text-ds-success">{filteredContracts.filter(c => c.status === 'Active').length}</span></span>
                         </div>
                         <div className="flex items-center gap-2">
                             <span>Total Exposure:</span>
-                            <span className="text-slate-900 text-xs font-bold tabular-nums">
+                            <span className="text-app-text text-xs font-bold tabular-nums">
                                 {CURRENCY} {filteredContracts.reduce((sum, c) => {
                                     const totalAmount = c.totalAmount ?? 0;
                                     const paid = getPaidAmount(c.id) ?? 0;

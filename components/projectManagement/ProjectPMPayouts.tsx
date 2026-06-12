@@ -143,7 +143,7 @@ const ProjectPMPayouts: React.FC = () => {
 
     return (
         <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-100 p-4 rounded-lg text-sm text-blue-800">
+            <div className="bg-primary/10 border border-primary/20 p-4 rounded-lg text-sm text-app-text">
                 <p className="font-semibold mb-1">About Project Management Costs</p>
                 <p>
                     Fees are calculated as <strong>{state.pmCostPercentage}%</strong> of the project's total expenses (excluding commissions, rebates, discounts, and payouts).
@@ -155,32 +155,32 @@ const ProjectPMPayouts: React.FC = () => {
                 {balances.length > 0 ? balances.map(item => (
                     <Card key={item.projectId} className="flex flex-col justify-between">
                         <div>
-                            <h3 className="font-bold text-lg text-slate-800">{item.projectName}</h3>
+                            <h3 className="font-bold text-lg text-app-text">{item.projectName}</h3>
                             <div className="mt-3 space-y-2 text-sm">
-                                <div className="flex justify-between text-slate-600">
+                                <div className="flex justify-between text-app-muted">
                                     <span>Accrued ({state.pmCostPercentage}%):</span>
-                                    <span className="font-medium">{CURRENCY} {(item.accruedFee || 0).toLocaleString()}</span>
+                                    <span className="font-medium text-app-text">{CURRENCY} {(item.accruedFee || 0).toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between text-slate-600">
+                                <div className="flex justify-between text-app-muted">
                                     <span>Paid:</span>
-                                    <span className="font-medium text-emerald-600">{CURRENCY} {(item.paidFee || 0).toLocaleString()}</span>
+                                    <span className="font-medium text-ds-success">{CURRENCY} {(item.paidFee || 0).toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between pt-3 border-t border-slate-100 mt-2">
-                                    <span className="font-bold text-slate-700">Balance Due:</span>
-                                    <span className={`font-bold ${(item.balance || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
+                                <div className="flex justify-between pt-3 border-t border-app-border mt-2">
+                                    <span className="font-bold text-app-text">Balance Due:</span>
+                                    <span className={`font-bold ${(item.balance || 0) > 0 ? 'text-ds-danger' : 'text-ds-success'}`}>
                                         {CURRENCY} {(item.balance || 0).toLocaleString()}
                                     </span>
                                 </div>
                             </div>
                         </div>
-                        <div className="mt-6 pt-4 border-t border-slate-100">
+                        <div className="mt-6 pt-4 border-t border-app-border">
                             <Button onClick={() => handleOpenModal(item.projectId)} disabled={item.balance <= 0} className="w-full justify-center">
                                 Record Payout
                             </Button>
                         </div>
                     </Card>
                 )) : (
-                    <div className="col-span-full text-center py-12 text-slate-500 bg-white rounded-lg border border-slate-200">
+                    <div className="col-span-full text-center py-12 text-app-muted bg-app-card rounded-lg border border-app-border">
                         <p>No project management fees accrued yet.</p>
                     </div>
                 )}
@@ -188,16 +188,16 @@ const ProjectPMPayouts: React.FC = () => {
 
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Record PM Cost Payout">
                 <div className="space-y-4">
-                    <div className="p-3 bg-slate-50 rounded border border-slate-200">
-                        <p className="text-sm text-slate-500">Project</p>
-                        <p className="font-bold text-slate-800">{selectedBalance?.projectName}</p>
-                        <p className="text-sm text-slate-500 mt-2">Outstanding Balance</p>
-                        <p className="font-bold text-rose-600">{CURRENCY} {(selectedBalance?.balance || 0).toLocaleString()}</p>
+                    <div className="p-3 bg-app-toolbar rounded border border-app-border">
+                        <p className="text-sm text-app-muted">Project</p>
+                        <p className="font-bold text-app-text">{selectedBalance?.projectName}</p>
+                        <p className="text-sm text-app-muted mt-2">Outstanding Balance</p>
+                        <p className="font-bold text-ds-danger">{CURRENCY} {(selectedBalance?.balance || 0).toLocaleString()}</p>
                     </div>
                     <Input label="Payment Amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
                     <ComboBox label="Pay From Account" items={accounts} selectedId={paymentAccount} onSelect={item => setPaymentAccount(item?.id || '')} placeholder="Select account" />
                     <DatePicker label="Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} />
-                    <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+                    <div className="flex justify-end gap-2 pt-4 border-t border-app-border">
                         <Button variant="secondary" onClick={() => setIsModalOpen(false)}>Cancel</Button>
                         <Button onClick={handlePayment}>Confirm Payment</Button>
                     </div>

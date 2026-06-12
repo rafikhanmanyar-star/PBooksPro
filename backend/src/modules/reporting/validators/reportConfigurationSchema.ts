@@ -65,6 +65,13 @@ const customReportGenerateCoreObjectSchema = z.object({
   pageSize: z.coerce.number().int().positive().max(5000).optional().default(50),
   /** When true, allows pageSize up to 5000 (print-all flow). Preview remains capped at 500. */
   forPrint: z.boolean().optional(),
+  /** When set to `aging`, uses dedicated aging SQL (fields optional). */
+  reportType: z.string().max(40).optional(),
+  /** As-of date for aging reports (YYYY-MM-DD). */
+  agingAsOf: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .optional(),
 });
 
 function refinePageSize(
@@ -101,6 +108,7 @@ function refineHasFieldsOrColumns(
 }
 
 export const customReportGenerateBodySchema = customReportGenerateCoreSchema.superRefine((data, ctx) => {
+  if (data.reportType === 'aging') return;
   refineHasFieldsOrColumns(data, ctx, []);
 });
 
@@ -113,6 +121,7 @@ export const customReportExportBodySchema = customReportGenerateCoreObjectSchema
   })
   .superRefine(refinePageSize)
   .superRefine((data, ctx) => {
+    if (data.reportType === 'aging') return;
     refineHasFieldsOrColumns(data, ctx, []);
   });
 
