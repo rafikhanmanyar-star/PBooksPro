@@ -298,86 +298,88 @@ const ProjectBalanceSheetReport: React.FC = () => {
             <p className="text-center text-sm text-app-muted py-8">
               {loading ? 'Loading balance sheet for this organization…' : 'Could not load balance sheet from the server.'}
             </p>
-          ) : (
-          <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
-            <div>
-              <h4 className="text-sm font-bold text-ds-success mb-1">Assets</h4>
-              {renderSection('Current assets', report.assets.current, 'asset', 'assets-current')}
-              {renderSection('Non-current assets', report.assets.non_current, 'asset', 'assets-nc')}
-              <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-ds-success/35 rounded-lg font-bold text-sm text-app-text">
-                <span className="text-ds-success">Total assets</span>
-                <span className="tabular-nums font-mono">
-                  {formatMoney(report.totals.assets, false)}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <h4 className="text-sm font-bold text-ds-danger mb-1">Liabilities</h4>
-              {renderSection('Current liabilities', report.liabilities.current, 'liability', 'liab-c')}
-              {renderSection('Non-current liabilities', report.liabilities.non_current, 'liability', 'liab-nc')}
-              <div className="flex justify-between py-1.5 px-2 mb-2 bg-app-toolbar border border-ds-danger/25 rounded-lg font-bold text-sm">
-                <span className="text-ds-danger">Total liabilities</span>
-                <span className="tabular-nums font-mono">{formatMoney(report.totals.liabilities, false)}</span>
-              </div>
-
-              <h4 className="text-sm font-bold text-primary mb-1">Equity</h4>
-              {renderSection("Shareholders' equity", report.equity.items, 'equity', 'eq')}
-              <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-primary/25 rounded-lg font-bold text-sm">
-                <span className="text-primary">Total equity</span>
-                <span className="tabular-nums font-mono">{formatMoney(report.totals.equity, false)}</span>
-              </div>
-            </div>
-          </div>
-
-          {report.supplemental.marketInventoryMemo > 0.01 && (
-            <div className="max-w-7xl mx-auto mt-2 p-2 rounded-lg border border-app-border bg-app-toolbar/50 text-xs text-app-muted leading-snug">
-              <strong className="text-app-text">Supplemental (non-GAAP):</strong> aggregate list price of unsold units —{' '}
-              {formatMoney(report.supplemental.marketInventoryMemo, false)}. Not recognized as inventory until sale.
-            </div>
-          )}
-
-          <div className="max-w-7xl mx-auto mt-2 border-t border-app-border pt-2">
-            <div className="flex flex-col md:flex-row justify-between items-center gap-2 bg-app-toolbar p-2 rounded-lg border border-app-border shadow-ds-card">
-              <div className="text-center md:text-left mb-0">
-                <p className="text-[10px] text-app-muted font-bold uppercase tracking-wide mb-0.5">Accounting equation</p>
-                <p className="text-xs font-medium text-app-text leading-tight">Assets = Liabilities + Equity</p>
-              </div>
-
-              <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base font-bold font-mono tabular-nums flex-wrap justify-center">
-                <div className="text-ds-success">
-                  <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
-                    Assets
-                  </span>
-                  {formatMoney(report.totals.assets, false)}
-                </div>
-                <div className="text-app-muted text-sm">=</div>
-                <div className="text-app-text">
-                  <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
-                    Liab + Equity
-                  </span>
-                  {formatMoney(report.totals.liabilities + report.totals.equity, false)}
-                </div>
-              </div>
-
-              {report.isBalanced ? (
-                <div className="flex items-center gap-1.5 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-2 py-0.5 rounded-full text-[11px] font-bold">
-                  <span>✓</span> Balanced
-                </div>
-              ) : (
-                <div className="flex flex-col items-end gap-0.5">
-                  <div className="flex items-center gap-1.5 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-2 py-0.5 rounded-full text-[11px] font-bold">
-                    <span>⚠</span> Discrepancy: {formatMoney(report.discrepancy, false)}
+          ) : report ? (
+            <>
+              <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
+                <div>
+                  <h4 className="text-sm font-bold text-ds-success mb-1">Assets</h4>
+                  {renderSection('Current assets', report.assets.current, 'asset', 'assets-current')}
+                  {renderSection('Non-current assets', report.assets.non_current, 'asset', 'assets-nc')}
+                  <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-ds-success/35 rounded-lg font-bold text-sm text-app-text">
+                    <span className="text-ds-success">Total assets</span>
+                    <span className="tabular-nums font-mono">
+                      {formatMoney(report.totals.assets, false)}
+                    </span>
                   </div>
-                  <span className="text-[9px] text-app-muted max-w-xs text-right leading-tight">
-                    Review validation messages and debug detail. Common causes: unreconciled Internal Clearing, or data
-                    entry timing.
-                  </span>
+                </div>
+
+                <div>
+                  <h4 className="text-sm font-bold text-ds-danger mb-1">Liabilities</h4>
+                  {renderSection('Current liabilities', report.liabilities.current, 'liability', 'liab-c')}
+                  {renderSection('Non-current liabilities', report.liabilities.non_current, 'liability', 'liab-nc')}
+                  <div className="flex justify-between py-1.5 px-2 mb-2 bg-app-toolbar border border-ds-danger/25 rounded-lg font-bold text-sm">
+                    <span className="text-ds-danger">Total liabilities</span>
+                    <span className="tabular-nums font-mono">{formatMoney(report.totals.liabilities, false)}</span>
+                  </div>
+
+                  <h4 className="text-sm font-bold text-primary mb-1">Equity</h4>
+                  {renderSection("Shareholders' equity", report.equity.items, 'equity', 'eq')}
+                  <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-primary/25 rounded-lg font-bold text-sm">
+                    <span className="text-primary">Total equity</span>
+                    <span className="tabular-nums font-mono">{formatMoney(report.totals.equity, false)}</span>
+                  </div>
+                </div>
+              </div>
+
+              {report.supplemental.marketInventoryMemo > 0.01 && (
+                <div className="max-w-7xl mx-auto mt-2 p-2 rounded-lg border border-app-border bg-app-toolbar/50 text-xs text-app-muted leading-snug">
+                  <strong className="text-app-text">Supplemental (non-GAAP):</strong> aggregate list price of unsold units —{' '}
+                  {formatMoney(report.supplemental.marketInventoryMemo, false)}. Not recognized as inventory until sale.
                 </div>
               )}
-            </div>
-          </div>
-          )}
+
+              <div className="max-w-7xl mx-auto mt-2 border-t border-app-border pt-2">
+                <div className="flex flex-col md:flex-row justify-between items-center gap-2 bg-app-toolbar p-2 rounded-lg border border-app-border shadow-ds-card">
+                  <div className="text-center md:text-left mb-0">
+                    <p className="text-[10px] text-app-muted font-bold uppercase tracking-wide mb-0.5">Accounting equation</p>
+                    <p className="text-xs font-medium text-app-text leading-tight">Assets = Liabilities + Equity</p>
+                  </div>
+
+                  <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base font-bold font-mono tabular-nums flex-wrap justify-center">
+                    <div className="text-ds-success">
+                      <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
+                        Assets
+                      </span>
+                      {formatMoney(report.totals.assets, false)}
+                    </div>
+                    <div className="text-app-muted text-sm">=</div>
+                    <div className="text-app-text">
+                      <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
+                        Liab + Equity
+                      </span>
+                      {formatMoney(report.totals.liabilities + report.totals.equity, false)}
+                    </div>
+                  </div>
+
+                  {report.isBalanced ? (
+                    <div className="flex items-center gap-1.5 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-2 py-0.5 rounded-full text-[11px] font-bold">
+                      <span>✓</span> Balanced
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1.5 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-2 py-0.5 rounded-full text-[11px] font-bold">
+                        <span>⚠</span> Discrepancy: {formatMoney(report.discrepancy, false)}
+                      </div>
+                      <span className="text-[9px] text-app-muted max-w-xs text-right leading-tight">
+                        Review validation messages and debug detail. Common causes: unreconciled Internal Clearing, or data
+                        entry timing.
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : null}
 
           <ReportFooter />
         </Card>
