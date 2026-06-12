@@ -8,6 +8,13 @@ import React, {
   useMemo,
 } from 'react';
 import useLocalStorage from '../hooks/useLocalStorage';
+import {
+  applyViewportProfileToDocument,
+  getViewportProfile,
+  subscribeViewportChanges,
+  type ViewportBreakpoint,
+  type ViewportProfile,
+} from '../utils/viewportDetection';
 
 export type ViewportSize = {
   screenWidth: number;
@@ -28,19 +35,17 @@ const DEFAULT_VIEWPORT: ViewportSize = {
 const COMPACT_MAX_WIDTH = 1400;
 const COMPACT_MAX_HEIGHT = 800;
 
-function getViewportSize(): ViewportSize {
+function getViewportSize(profile: ViewportProfile): ViewportSize {
   if (typeof window === 'undefined') return DEFAULT_VIEWPORT;
-  const screenWidth = window.screen?.width ?? window.innerWidth;
-  const screenHeight = window.screen?.height ?? window.innerHeight;
-  const innerWidth = window.innerWidth;
-  const innerHeight = window.innerHeight;
+  const screenWidth = window.screen?.width ?? profile.width;
+  const screenHeight = window.screen?.height ?? profile.height;
   const isCompactDesktop =
     screenWidth <= COMPACT_MAX_WIDTH || screenHeight <= COMPACT_MAX_HEIGHT;
   return {
     screenWidth,
     screenHeight,
-    innerWidth,
-    innerHeight,
+    innerWidth: profile.width,
+    innerHeight: profile.height,
     isCompactDesktop,
   };
 }
@@ -75,17 +80,19 @@ function applySidebarWidth(size: ViewportSize, mainNavCollapsed: boolean) {
   root.dataset.mainNavCollapsed = mainNavCollapsed ? 'true' : 'false';
 }
 
-export type ViewportLayoutState = ViewportSize & {
-  mainNavCollapsed: boolean;
-  setMainNavCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
-  toggleMainNav: () => void;
-  /** Alias for mainNavCollapsed */
-  mainNavEffectiveCollapsed: boolean;
-};
+export type ViewportLayoutState = ViewportSize &
+  ViewportProfile & {
+    mainNavCollapsed: boolean;
+    setMainNavCollapsed: React.Dispatch<React.SetStateAction<boolean>>;
+    toggleMainNav: () => void;
+    mainNavEffectiveCollapsed: boolean;
+    /** Alias for isMobileViewport */
+    isMobile: boolean;
+    breakpoint: ViewportBreakpoint;
+  };
 
 const ViewportContext = createContext<ViewportLayoutState | null>(null);
 
-/** One-time: old three-state key → boolean collapsed */
 function migrateLegacyMainNavMode(
   setMainNavCollapsed: React.Dispatch<React.SetStateAction<boolean>>
 ): void {
@@ -101,8 +108,11 @@ function migrateLegacyMainNavMode(
 }
 
 export function ViewportProvider({ children }: { children: React.ReactNode }) {
-  const [size, setSize] = useState<ViewportSize>(() => getViewportSize());
-  const [mainNavCollapsed, setMainNavCollapsed] = useLocalStorage<boolean>('app_main_nav_collapsed', false);
+  const [profile, setProfile] = useState<ViewportProfile>(() => getViewportProfile());
+  const [mainNavCollapsed, setMainNavCollapsed] = useLocalStorage<boolean>(
+    'app_main_nav_collapsed',
+    false
+  );
 
   useLayoutEffect(() => {
     migrateLegacyMainNavMode(setMainNavCollapsed);
@@ -112,44 +122,42 @@ export function ViewportProvider({ children }: { children: React.ReactNode }) {
     setMainNavCollapsed((v) => !v);
   }, [setMainNavCollapsed]);
 
-  const update = useCallback(() => {
-    const next = getViewportSize();
-    setSize((prev) =>
-      prev.screenWidth === next.screenWidth &&
-        prev.screenHeight === next.screenHeight &&
-        prev.innerWidth === next.innerWidth &&
-        prev.innerHeight === next.innerHeight &&
-        prev.isCompactDesktop === next.isCompactDesktop
-        ? prev
-        : next
-    );
-  }, []);
+  const size = useMemo(() => getViewportSize(profile), [profile]);
 
   useLayoutEffect(() => {
+    applyViewportProfileToDocument(profile);
     applyViewportCSS(size);
     applySidebarWidth(size, mainNavCollapsed);
-  }, [size, mainNavCollapsed]);
+  }, [profile, size, mainNavCollapsed]);
 
   useEffect(() => {
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
-  }, [update]);
+    return subscribeViewportChanges((next) => {
+      setProfile((prev) =>
+        prev.width === next.width &&
+          prev.height === next.height &&
+          prev.breakpoint === next.breakpoint &&
+          prev.isMobileViewport === next.isMobileViewport &&
+          prev.isExecutiveViewport === next.isExecutiveViewport
+          ? prev
+          : next
+      );
+    });
+  }, []);
 
   const value = useMemo<ViewportLayoutState>(
     () => ({
       ...size,
+      ...profile,
+      isMobile: profile.isMobileViewport,
       mainNavCollapsed,
       setMainNavCollapsed,
       toggleMainNav,
       mainNavEffectiveCollapsed: mainNavCollapsed,
     }),
-    [size, mainNavCollapsed, setMainNavCollapsed, toggleMainNav]
+    [size, profile, mainNavCollapsed, setMainNavCollapsed, toggleMainNav]
   );
 
-  return (
-    <ViewportContext.Provider value={value}>{children}</ViewportContext.Provider>
-  );
+  return <ViewportContext.Provider value={value}>{children}</ViewportContext.Provider>;
 }
 
 export function useViewport(): ViewportLayoutState {
@@ -158,4 +166,9 @@ export function useViewport(): ViewportLayoutState {
     throw new Error('useViewport must be used within ViewportProvider');
   }
   return ctx;
+}
+
+/** Safe optional hook for components outside provider (tests). */
+export function useViewportOptional(): ViewportLayoutState | null {
+  return useContext(ViewportContext);
 }

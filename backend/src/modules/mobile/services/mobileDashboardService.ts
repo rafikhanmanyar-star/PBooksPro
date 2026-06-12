@@ -27,26 +27,38 @@ function metric(id: string, label: string, value: number, format: MobileMetric['
   return { id, label, value, format, trend: trend ?? null };
 }
 
+function findMetric(
+  all: { id: string; value: number; trendPercent?: number }[],
+  id: string
+): { value: number; trend?: number | null } {
+  const m = all.find((x) => x.id === id);
+  return { value: m?.value ?? 0, trend: m?.trendPercent ?? null };
+}
+
 export async function getMobileDashboardSummary(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<MobileDashboardResponse> {
-  const { from, to } = todayRange();
+  const { from, to } = monthRange();
   const filters = parseDashboardFilters({ from, to, comparisonPeriod: 'previous_period' });
   const metricsData = await getDashboardMetricsJson(client, tenantId, filters);
   const all = [...metricsData.financial, ...metricsData.realEstate, ...metricsData.activity];
-  const find = (id: string) => all.find((m) => m.id === id)?.value ?? 0;
+
+  const cash = findMetric(all, 'totalCashBalance');
+  const ar = findMetric(all, 'accountsReceivable');
+  const ap = findMetric(all, 'accountsPayable');
+  const rev = findMetric(all, 'revenue');
 
   return {
     generatedAt: new Date().toISOString(),
     metrics: [
-      metric('totalCashBalance', 'Cash Position', find('totalCashBalance')),
-      metric('bankBalance', 'Bank Balances', find('bankBalance')),
-      metric('accountsReceivable', 'Receivables', find('accountsReceivable')),
-      metric('accountsPayable', 'Payables', find('accountsPayable')),
-      metric('revenue', 'Monthly Collections', find('revenue')),
-      metric('expenses', 'Monthly Payments', find('expenses')),
-      metric('netIncome', 'Profit Snapshot', find('netIncome')),
+      metric('totalCashBalance', 'Cash Balance', cash.value, 'currency', cash.trend),
+      metric('accountsReceivable', 'Receivables', ar.value, 'currency', ar.trend),
+      metric('accountsPayable', 'Payables', ap.value, 'currency', ap.trend),
+      metric('revenue', 'Monthly Revenue', rev.value, 'currency', rev.trend),
+      metric('bankBalance', 'Bank Balances', findMetric(all, 'bankBalance').value, 'currency', findMetric(all, 'bankBalance').trend),
+      metric('expenses', 'Monthly Payments', findMetric(all, 'expenses').value, 'currency', findMetric(all, 'expenses').trend),
+      metric('netIncome', 'Profit Snapshot', findMetric(all, 'netIncome').value, 'currency', findMetric(all, 'netIncome').trend),
     ],
   };
 }

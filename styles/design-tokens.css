@@ -66,9 +66,9 @@
   --leading-normal: 1.5;
 
   /* ─── Brand / semantic colors (light) ─── */
-  --color-primary: #2563eb;
-  --color-primary-hover: #1d4ed8;
-  --color-primary-active: #1e40af;
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+  --color-primary-active: #047857;
   --color-on-primary: #ffffff;
   --color-success: #16a34a;
   --color-success-hover: #15803d;
@@ -78,9 +78,9 @@
   --color-on-danger: #ffffff;
 
   /* Layering (light): 0 canvas → 1 cards/panels → 2 inputs/elevated */
-  --layer-bg: #ffffff;
+  --layer-bg: #f8fafc;
   --layer-surface: #ffffff;
-  --layer-surface-elevated: #f8fafc;
+  --layer-surface-elevated: #f1f5f9;
 
   /* Surfaces — light */
   --surface-primary: #ffffff;
@@ -154,10 +154,10 @@
   --shadow-modal: 0 25px 50px -12px rgb(0 0 0 / 0.55);
   --shadow-header: none;
 
-  /* Brand — dark uses indigo accent (ERP) */
-  --color-primary: #6366f1;
-  --color-primary-hover: #4f46e5;
-  --color-primary-active: #4338ca;
+  /* Brand — executive emerald accent */
+  --color-primary: #10b981;
+  --color-primary-hover: #059669;
+  --color-primary-active: #047857;
   --color-on-primary: #f9fafb;
   --color-success: #22c55e;
   --color-success-hover: #16a34a;
@@ -167,14 +167,14 @@
 
   /* Layering: Level 0 → 1 → 2 (adjacent sections must differ) */
   --layer-bg: #0f172a;
-  --layer-surface: #111827;
-  --layer-surface-elevated: #1f2937;
+  --layer-surface: #1e293b;
+  --layer-surface-elevated: #334155;
 
-  --surface-primary: #111827;
-  --surface-secondary: #1f2937;
-  --text-primary: #f9fafb;
-  --text-secondary: #9ca3af;
-  --text-muted: #9ca3af;
+  --surface-primary: #1e293b;
+  --surface-secondary: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #94a3b8;
   --text-placeholder: #6b7280;
   --border-color: #374151;
   --border-subtle: #374151;

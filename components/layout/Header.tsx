@@ -14,7 +14,7 @@ import { fetchUpcomingTasks } from '../../components/personalTransactions/person
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
 import { useExecutiveModeOptional } from '../../context/ExecutiveModeContext';
-import { isMobileDevice } from '../../utils/platformDetection';
+import { useViewport } from '../../context/ViewportContext';
 import { useTheme } from '../../context/ThemeContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { isAdminRole } from '../../hooks/useRecordLock';
@@ -42,11 +42,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const currentPage = useStateSelector(s => s.currentPage);
   const initialTabs = useStateSelector(s => s.initialTabs);
   const { isAuthenticated, user, tenant, startCompanySwitch } = useAuth();
+  const { isMobileViewport } = useViewport();
   const executiveMode = useExecutiveModeOptional();
   const showExecutiveViewLink =
     isAuthenticated &&
     !isLocalOnlyMode() &&
-    isMobileDevice() &&
+    isMobileViewport &&
     executiveMode?.isCloudEligible &&
     !executiveMode.isExecutiveMobileActive;
   const { canReadUsers } = usePermissions();

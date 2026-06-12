@@ -85,6 +85,55 @@ export class DemoEnvironmentRepository {
     );
   }
 
+  async insertPresentationDemoTrial(
+    client: pg.PoolClient,
+    input: {
+      id: string;
+      tenantId: string;
+      planId: string;
+      startDate: string;
+      trialEnd: string;
+    }
+  ): Promise<void> {
+    await client.query(
+      `INSERT INTO subscriptions (
+         id, tenant_id, plan_id, status, billing_cycle, start_date, trial_end_date, renewal_date
+       ) VALUES ($1, $2, $3, 'trialing', 'trial', $4, $5, $5)`,
+      [input.id, input.tenantId, input.planId, input.startDate, input.trialEnd]
+    );
+  }
+
+  async ensurePresentationDemoSubscription(
+    client: pg.PoolClient,
+    tenantId: string,
+    trialEndIso: string
+  ): Promise<void> {
+    const existing = await this.getLatestSubscriptionWithPlan(client, tenantId);
+    if (existing) {
+      await client.query(
+        `UPDATE subscriptions
+         SET status = 'trialing',
+             trial_end_date = $2,
+             renewal_date = $2,
+             updated_at = NOW()
+         WHERE id = $1`,
+        [existing.id, trialEndIso]
+      );
+      return;
+    }
+    const trialPlan = await client.query<{ id: string }>(
+      `SELECT id FROM billing_plans WHERE plan_code = 'trial' LIMIT 1`
+    );
+    if (!trialPlan.rows[0]?.id) return;
+    await this.insertPresentationDemoTrial(client, {
+      id: randomUUID(),
+      tenantId,
+      planId: trialPlan.rows[0].id,
+      startDate: new Date().toISOString(),
+      trialEnd: trialEndIso,
+    });
+  }
+
   async upsertDemoUser(
     client: pg.PoolClient,
     input: {
@@ -93,18 +142,20 @@ export class DemoEnvironmentRepository {
       username: string;
       name: string;
       passwordHash: string;
+      email?: string;
     }
   ): Promise<void> {
     await client.query(
-      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, is_active)
-       VALUES ($1, $2, $3, $4, 'Admin', $5, TRUE)
+      `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
+       VALUES ($1, $2, $3, $4, 'Admin', $5, $6, TRUE)
        ON CONFLICT (tenant_id, username) DO UPDATE SET
          password_hash = EXCLUDED.password_hash,
          name = EXCLUDED.name,
          role = EXCLUDED.role,
+         email = COALESCE(EXCLUDED.email, users.email),
          is_active = TRUE,
          updated_at = NOW()`,
-      [input.userId, input.tenantId, input.username, input.name, input.passwordHash]
+      [input.userId, input.tenantId, input.username, input.name, input.passwordHash, input.email ?? null]
     );
   }
 

@@ -24,6 +24,8 @@ const createSchema = z.object({
   customerId: z.string().optional(),
   projectId: z.string().optional(),
   propertyId: z.string().optional(),
+  costCenterCode: z.string().max(64).optional(),
+  source: z.enum(['EXECUTIVE_APP', 'DESKTOP', 'API']).optional(),
   status: z.enum(['draft', 'submitted']).optional(),
 });
 

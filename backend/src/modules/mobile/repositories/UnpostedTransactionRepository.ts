@@ -65,10 +65,10 @@ export class UnpostedTransactionRepository extends TenantRepository {
       `INSERT INTO unposted_transactions (
          id, tenant_id, transaction_date, amount, currency, transaction_type,
          description, party_name, supplier_id, employee_id, customer_id,
-         project_id, property_id, created_by, status
+         project_id, property_id, cost_center_code, source, created_by, status
        ) VALUES (
          $2, $1, COALESCE($3::date, CURRENT_DATE), $4, COALESCE($5, 'PKR'), $6,
-         $7, $8, $9, $10, $11, $12, $13, $14, $15
+         $7, $8, $9, $10, $11, $12, $13, $14, COALESCE($15, 'EXECUTIVE_APP'), $16, $17
        ) RETURNING *`,
       [
         this.tenantId,
@@ -84,6 +84,8 @@ export class UnpostedTransactionRepository extends TenantRepository {
         input.customerId ?? null,
         input.projectId ?? null,
         input.propertyId ?? null,
+        input.costCenterCode ?? null,
+        input.source ?? 'EXECUTIVE_APP',
         createdBy,
         status,
       ]

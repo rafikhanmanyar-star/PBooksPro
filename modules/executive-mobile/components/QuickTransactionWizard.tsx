@@ -15,6 +15,7 @@ import {
   transactionTypeLabel,
   WIZARD_STEPS,
 } from '../constants/quickTransactionWizard';
+import { UNPOSTED_SOURCE_EXECUTIVE_APP } from '../../../types/executiveMobile.types';
 
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -44,6 +45,8 @@ export default function QuickTransactionWizard() {
   const [amount, setAmount] = useState('');
   const [partyName, setPartyName] = useState('');
   const [description, setDescription] = useState('');
+  const [projectId, setProjectId] = useState('');
+  const [costCenterCode, setCostCenterCode] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -56,7 +59,7 @@ export default function QuickTransactionWizard() {
     []
   );
   const inflowTypes = useMemo(
-    () => UNPOSTED_TRANSACTION_TYPES.filter((t) => t.id === 'customer_collection'),
+    () => UNPOSTED_TRANSACTION_TYPES.filter((t) => isInflowType(t.id)),
     []
   );
 
@@ -66,6 +69,8 @@ export default function QuickTransactionWizard() {
     setAmount('');
     setPartyName('');
     setDescription('');
+    setProjectId('');
+    setCostCenterCode('');
     setAttachment(null);
     setSubmitted(false);
     setError(null);
@@ -112,6 +117,9 @@ export default function QuickTransactionWizard() {
         transactionType,
         partyName: partyName.trim() || undefined,
         description: description.trim() || undefined,
+        projectId: projectId.trim() || undefined,
+        costCenterCode: costCenterCode.trim() || undefined,
+        source: UNPOSTED_SOURCE_EXECUTIVE_APP,
         status: 'submitted',
       });
       if (attachment) {
@@ -131,21 +139,21 @@ export default function QuickTransactionWizard() {
   if (submitted) {
     return (
       <div className="p-6 pb-24 text-center space-y-4">
-        <div className="w-16 h-16 mx-auto text-green-600">{ICONS.checkCircle}</div>
+        <div className="w-16 h-16 mx-auto text-ds-primary">{ICONS.checkCircle}</div>
         <h2 className="text-lg font-bold">Submitted for review</h2>
         <p className="text-sm text-app-muted">
           Finance will process this transaction. You will get bell alerts as it moves through review.
         </p>
         <button
           type="button"
-          className="w-full py-3 rounded-xl bg-green-600 text-white font-semibold touch-manipulation"
+          className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
           onClick={resetWizard}
         >
           Record another
         </button>
         <button
           type="button"
-          className="w-full py-3 text-green-600 touch-manipulation"
+          className="w-full py-3 text-ds-primary touch-manipulation"
           onClick={() => setView('myTransactions')}
         >
           View my submissions
@@ -159,14 +167,14 @@ export default function QuickTransactionWizard() {
       <div className="px-4 pt-4 pb-3 border-b border-app-border bg-app-header shrink-0">
         <div className="flex items-center justify-between gap-2 mb-3">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold truncate">Quick Transaction</h1>
+            <h1 className="text-lg font-bold truncate">Quick Capture</h1>
             <p className="text-xs text-app-muted">Step {step} of {totalSteps}</p>
           </div>
           {step > 1 && (
             <button
               type="button"
               onClick={goBack}
-              className="flex items-center gap-1 text-sm text-green-600 px-2 py-1 touch-manipulation shrink-0"
+              className="flex items-center gap-1 text-sm text-ds-primary px-2 py-1 touch-manipulation shrink-0"
             >
               <span className="w-5 h-5">{ICONS.chevronLeft}</span>
               Back
@@ -178,7 +186,7 @@ export default function QuickTransactionWizard() {
             <div
               key={s.key}
               className={`h-1.5 flex-1 rounded-full transition-colors ${
-                s.id < step ? 'bg-green-600' : s.id === step ? 'bg-green-400' : 'bg-app-border'
+                s.id < step ? 'bg-ds-primary' : s.id === step ? 'bg-green-400' : 'bg-app-border'
               }`}
             />
           ))}
@@ -205,12 +213,12 @@ export default function QuickTransactionWizard() {
                       onClick={() => setTransactionType(t.id)}
                       className={`p-3 rounded-xl border text-left touch-manipulation transition-colors ${
                         selected
-                          ? 'border-green-600 bg-green-50 dark:bg-green-950/30 ring-2 ring-green-600/30'
+                          ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
                           : 'border-app-border bg-app-card hover:border-green-400/50'
                       }`}
                     >
                       <span className={`inline-flex w-8 h-8 items-center justify-center rounded-lg mb-2 ${
-                        selected ? 'bg-green-600 text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
+                        selected ? 'bg-ds-primary text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
                       }`}>
                         <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
                       </span>
@@ -232,12 +240,12 @@ export default function QuickTransactionWizard() {
                       onClick={() => setTransactionType(t.id)}
                       className={`p-3 rounded-xl border text-left touch-manipulation flex items-center gap-3 ${
                         selected
-                          ? 'border-green-600 bg-green-50 dark:bg-green-950/30 ring-2 ring-green-600/30'
+                          ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
                           : 'border-app-border bg-app-card'
                       }`}
                     >
                       <span className={`inline-flex w-10 h-10 items-center justify-center rounded-lg shrink-0 ${
-                        selected ? 'bg-green-600 text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
+                        selected ? 'bg-ds-primary text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
                       }`}>
                         <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
                       </span>
@@ -284,7 +292,7 @@ export default function QuickTransactionWizard() {
                     onClick={() => setAmount(String(preset))}
                     className={`px-3 py-2 rounded-lg text-sm border touch-manipulation ${
                       amount === String(preset)
-                        ? 'border-green-600 bg-green-50 text-green-800 dark:bg-green-950/30'
+                        ? 'border-ds-primary bg-ds-primary/10 text-green-800 dark:bg-green-950/30'
                         : 'border-app-border bg-app-card'
                     }`}
                   >
@@ -306,10 +314,22 @@ export default function QuickTransactionWizard() {
               autoFocus
             />
             <Input
-              label="Note (optional)"
+              label="Description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Cement delivery, site visit fuel…"
+            />
+            <Input
+              label="Project (optional)"
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
+              placeholder="Project name or ID"
+            />
+            <Input
+              label="Cost Center (optional)"
+              value={costCenterCode}
+              onChange={(e) => setCostCenterCode(e.target.value)}
+              placeholder="e.g. SITE-01"
             />
           </div>
         )}
@@ -353,7 +373,9 @@ export default function QuickTransactionWizard() {
               <ReviewRow label="Type" value={transactionTypeLabel(transactionType)} />
               <ReviewRow label="Amount" value={formatAmount(amount)} highlight />
               <ReviewRow label="Party" value={partyName.trim() || '—'} />
-              <ReviewRow label="Note" value={description.trim() || '—'} />
+              <ReviewRow label="Description" value={description.trim() || '—'} />
+              <ReviewRow label="Project" value={projectId.trim() || '—'} />
+              <ReviewRow label="Cost Center" value={costCenterCode.trim() || '—'} />
               <ReviewRow label="Receipt" value={attachment ? attachment.name : 'None'} />
               <ReviewRow label="Date" value={todayLocalYyyyMmDd()} />
             </div>
@@ -371,7 +393,7 @@ export default function QuickTransactionWizard() {
           <button
             type="button"
             onClick={goNext}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-lg touch-manipulation flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl bg-ds-primary text-white font-bold text-lg touch-manipulation flex items-center justify-center gap-2"
           >
             Continue
             <span className="w-5 h-5">{ICONS.chevronRight}</span>
@@ -381,7 +403,7 @@ export default function QuickTransactionWizard() {
             type="button"
             onClick={() => void handleSubmit()}
             disabled={createMutation.isPending}
-            className="w-full py-4 rounded-xl bg-green-600 text-white font-bold text-lg touch-manipulation disabled:opacity-60 flex items-center justify-center gap-2"
+            className="w-full py-4 rounded-xl bg-ds-primary text-white font-bold text-lg touch-manipulation disabled:opacity-60 flex items-center justify-center gap-2"
           >
             {createMutation.isPending ? 'Submitting…' : (
               <>

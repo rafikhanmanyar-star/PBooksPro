@@ -49,6 +49,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useCompanyOptional } from '../../context/CompanyContext';
 import { useSpellCheckerOptional, SPELLCHECK_LANGUAGE_OPTIONS } from '../../context/SpellCheckerContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useViewport } from '../../context/ViewportContext';
 import { getDisplayTimeZone, setDisplayTimeZone } from '../../utils/dateUtils';
 import { persistUserDisplayTimezone } from '../../services/userDisplayTimezonePersist';
 
@@ -119,17 +120,10 @@ const SettingsPage: React.FC = () => {
     const { isOffline } = useOffline();
     const companyCtx = useCompanyOptional();
     const spellCtx = useSpellCheckerOptional();
-    const { theme, setTheme } = useTheme();
+    const { theme, preference, setPreference } = useTheme();
     const { features, isLoading: featuresLoading } = useFeatures();
 
-    // Detect Mobile
-    const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-
-    useEffect(() => {
-        const handleResize = () => setIsMobile(window.innerWidth < 768);
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+    const { isMobileViewport: isMobile } = useViewport();
 
     const [activeCategory, setActiveCategory] = useState('preferences');
     const [helpDeepLink, setHelpDeepLink] = useState<HelpDeepLink | null>(null);
@@ -834,23 +828,19 @@ const SettingsPage: React.FC = () => {
         <div className="space-y-4">
             <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
                 <h4 className="font-semibold text-app-text mb-1">Appearance</h4>
-                <p className="text-sm text-app-muted mb-4">Choose light or dark theme. The same setting is available from the header (moon / sun). Your choice is saved on this device.</p>
+                <p className="text-sm text-app-muted mb-4">Choose light, dark, or match your device (system). Saved on this device and synced via storage events across tabs.</p>
                 <div className="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setTheme('light')}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'light' ? 'border-ds-primary bg-app-highlight text-app-text' : 'border-app-border bg-app-card text-app-text hover:border-app-border'}`}
-                    >
-                        Light
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setTheme('dark')}
-                        className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${theme === 'dark' ? 'border-ds-primary bg-app-highlight text-app-text' : 'border-app-border bg-app-card text-app-text hover:border-app-border'}`}
-                    >
-                        Dark
-                    </button>
-                    <span className="text-xs text-app-muted">Header: {theme === 'dark' ? '☀️' : '🌙'} toggles the same setting.</span>
+                    {(['light', 'dark', 'system'] as const).map((mode) => (
+                        <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setPreference(mode)}
+                            className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors capitalize ${preference === mode ? 'border-ds-primary bg-app-highlight text-app-text' : 'border-app-border bg-app-card text-app-text hover:border-app-border'}`}
+                        >
+                            {mode === 'light' ? '☀ Light' : mode === 'dark' ? '🌙 Dark' : '⚙ System'}
+                        </button>
+                    ))}
+                    <span className="text-xs text-app-muted">Active: {theme} {preference === 'system' ? '(system)' : ''}</span>
                 </div>
             </div>
             {spellCtx?.isElectronSpell && (

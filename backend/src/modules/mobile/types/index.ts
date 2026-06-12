@@ -8,16 +8,22 @@ export type UnpostedTransactionStatus =
   | 'rejected';
 
 export const UNPOSTED_TRANSACTION_TYPES = [
+  'fuel_expense',
+  'office_expense',
+  'site_expense',
+  'advance_payment',
+  'customer_collection',
   'supplier_payment',
+  'cash_deposit',
+  'cash_withdrawal',
   'employee_payment',
   'material_purchase',
-  'customer_collection',
-  'fuel_expense',
-  'site_expense',
   'travel_expense',
-  'office_expense',
   'other',
 ] as const;
+
+export const UNPOSTED_SOURCES = ['EXECUTIVE_APP', 'DESKTOP', 'API'] as const;
+export type UnpostedSource = (typeof UNPOSTED_SOURCES)[number];
 
 export type UnpostedTransactionType = (typeof UNPOSTED_TRANSACTION_TYPES)[number];
 
@@ -35,6 +41,8 @@ export type UnpostedTransactionRow = {
   customer_id: string | null;
   project_id: string | null;
   property_id: string | null;
+  cost_center_code: string | null;
+  source: string;
   created_by: string;
   status: UnpostedTransactionStatus;
   reviewed_by: string | null;
@@ -72,6 +80,8 @@ export type CreateUnpostedTransactionInput = {
   customerId?: string;
   projectId?: string;
   propertyId?: string;
+  costCenterCode?: string;
+  source?: UnpostedSource;
   status?: 'draft' | 'submitted';
 };
 
@@ -92,6 +102,8 @@ export function rowToUnpostedTransactionApi(row: UnpostedTransactionRow, created
     customerId: row.customer_id ?? undefined,
     projectId: row.project_id ?? undefined,
     propertyId: row.property_id ?? undefined,
+    costCenterCode: row.cost_center_code ?? undefined,
+    source: row.source,
     createdBy: row.created_by,
     createdByName,
     status: row.status,

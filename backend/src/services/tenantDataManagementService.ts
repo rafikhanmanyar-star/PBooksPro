@@ -11,6 +11,7 @@ import {
   DEMO_INTERNAL_TENANT_IDS,
   DEMO_PUBLIC_TENANT_ID,
   isDemoMasterTenant,
+  isDemoPresentationTenant,
 } from '../constants/demoEnvironment.js';
 import {
   TenantJournalMaintenanceRepository,
@@ -60,6 +61,7 @@ const FACTORY_RESET_EXTRA_TABLES = [
   'analytics_snapshots',
   'record_locks',
   'payslips',
+  'payroll_transactions',
   'payroll_runs',
   'payroll_employees',
   'payroll_salary_components',
@@ -83,6 +85,7 @@ function assertTenantMayBeWiped(tenantId: string): void {
   if (
     isDemoMasterTenant(tenantId) ||
     tenantId === DEMO_PUBLIC_TENANT_ID ||
+    isDemoPresentationTenant(tenantId) ||
     DEMO_INTERNAL_TENANT_IDS.has(tenantId)
   ) {
     throw new Error('This organization cannot be reset.');

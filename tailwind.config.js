@@ -12,6 +12,7 @@ export default {
     "./utils/**/*.{ts,tsx}",
     // Use a more specific pattern that won't match node_modules
     "./admin/**/*.{ts,tsx}",
+    "./modules/**/*.{ts,tsx}",
   ],
   theme: {
     extend: {

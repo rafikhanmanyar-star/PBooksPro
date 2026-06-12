@@ -1,37 +1,49 @@
 /**
  * Platform Detection Utility
- * 
+ *
  * Detects whether the application is running on mobile or desktop
- * to determine database strategy:
- * - Desktop: Local PostgreSQL + Cloud PostgreSQL (with offline support)
- * - Mobile: Cloud PostgreSQL only (requires internet)
+ * to determine database strategy and layout mode.
  */
 
+import {
+  getViewportDimensions,
+  getViewportProfile,
+  hasMobileUserAgent,
+  isElectronRuntime,
+  isTouchDevice,
+  MOBILE_MAX_WIDTH,
+  TABLET_MAX_WIDTH,
+} from './viewportDetection';
+
+export { MOBILE_MAX_WIDTH, TABLET_MAX_WIDTH };
+
 /**
- * Check if the application is running on a mobile device
+ * Check if the application is running on a mobile device / mobile viewport.
+ * Uses live viewport width (visualViewport when available) plus mobile UA fallback
+ * for cases where the address bar affects innerWidth inconsistently.
  */
 export function isMobileDevice(): boolean {
   if (typeof window === 'undefined') return false;
-  // Electron is always desktop - has local SQLite, never treat as mobile
   if (isElectron()) return false;
 
-  // Check screen width (existing pattern in codebase)
-  const isSmallScreen = window.innerWidth < 768;
-  // Check user agent for mobile devices
-  const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
-  const isMobileUserAgent = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
-  // Consider it mobile if small screen OR mobile user agent
-  return isSmallScreen || isMobileUserAgent;
+  const profile = getViewportProfile();
+  if (profile.isMobileViewport) return true;
+  // UA fallback: phone in odd zoom / standalone PWA with delayed resize
+  return profile.hasMobileUserAgent && profile.width <= TABLET_MAX_WIDTH;
 }
 
 /** Tablet in portrait orientation (executive mobile criteria). */
 export function isTabletPortrait(): boolean {
   if (typeof window === 'undefined') return false;
   if (isElectron()) return false;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  const isTabletWidth = w >= 768 && w < 1024;
-  return isTabletWidth && h > w;
+  return getViewportProfile().isTabletPortrait;
+}
+
+/** True when executive mobile shell should activate in `auto` interface mode. */
+export function isExecutiveViewport(): boolean {
+  if (typeof window === 'undefined') return false;
+  if (isElectron()) return false;
+  return getViewportProfile().isExecutiveViewport;
 }
 
 /**
@@ -60,7 +72,7 @@ export function getPlatform(): 'mobile' | 'desktop' {
  * Check if running in Electron (desktop app)
  */
 export function isElectron(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).electronAPI;
+  return isElectronRuntime();
 }
 
 /**
@@ -68,7 +80,14 @@ export function isElectron(): boolean {
  */
 export function getDatabaseMode(): 'local' | 'cloud' | 'hybrid' {
   if (isMobileDevice()) {
-    return 'cloud'; // Mobile: cloud only
+    return 'cloud';
   }
-  return 'hybrid'; // Desktop: local + cloud
+  return 'hybrid';
 }
+
+/** @deprecated Use getViewportDimensions from viewportDetection */
+export function getInnerWidth(): number {
+  return getViewportDimensions().width;
+}
+
+export { hasMobileUserAgent, isTouchDevice, getViewportProfile };

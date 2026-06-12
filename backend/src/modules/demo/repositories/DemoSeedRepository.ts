@@ -3,9 +3,13 @@ import { bootstrapTenantChart } from '../../../services/tenantBootstrap.js';
 import { startTrialSubscription } from '../../../services/billing/subscriptionService.js';
 import { wipeTenantBusinessData } from '../../../services/tenantDataManagementService.js';
 import {
+  DEMO_DEFAULT_USER_ID,
   DEMO_MASTER_TENANT_ID,
+  DEMO_PRESENTATION_TENANT_ID,
   DEMO_PUBLIC_TENANT_ID,
+  isDemoPresentationTenant,
 } from '../../../constants/demoEnvironment.js';
+import { syncPayrollLedgerForAllEmployees } from '../../../services/payrollLedgerService.js';
 import { backfillBillJournalMirrorsForTenant } from '../../../services/billJournalBackfillService.js';
 import { backfillInvoiceJournalMirrorsForTenant } from '../../../services/invoiceJournalBackfillService.js';
 import { backfillTransactionJournalMirrorsForTenant } from '../../../services/transactionJournalBackfillService.js';
@@ -16,6 +20,23 @@ const SYS_UNIT_SELL = 'sys-cat-unit-sell';
 const SYS_PM_COST = 'sys-cat-pm-cost';
 const SYS_BLD_MAINT = 'sys-cat-bld-maint';
 const SYS_BROK_FEE = 'sys-cat-brok-fee';
+const SYS_SAL_EXP = 'sys-cat-sal-exp';
+const SYS_REV_ASSET = 'sys-cat-rev-asset-in-kind';
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+] as const;
 
 export type DemoSeedIds = {
   ownerAli: string;
@@ -23,6 +44,8 @@ export type DemoSeedIds = {
   tenantAhmed: string;
   tenantFatima: string;
   tenantHassan: string;
+  tenantZain: string;
+  brokerKamran: string;
   bldSkyline: string;
   bldHarbor: string;
   prop101: string;
@@ -41,9 +64,12 @@ export type DemoSeedIds = {
   vendorSteel: string;
   vendorCement: string;
   vendorElectric: string;
+  vendorPlumb: string;
   agr101: string;
   agr102: string;
   agr103: string;
+  agr104: string;
+  inv005: string;
   inv001: string;
   inv002: string;
   inv003: string;
@@ -57,6 +83,7 @@ export type DemoSeedIds = {
   con001: string;
   con002: string;
   con003: string;
+  con004: string;
   bill001: string;
   bill002: string;
   bill003: string;
@@ -71,6 +98,8 @@ export type DemoSeedIds = {
   bill012: string;
   accOperating: string;
   accEscrow: string;
+  accPetty: string;
+  accOwnerCapital: string;
   catMaterials: string;
   catCement: string;
   catElectrical: string;
@@ -79,16 +108,52 @@ export type DemoSeedIds = {
   budCement: string;
   budElectrical: string;
   budLabor: string;
+  persCatSalary: string;
+  persCatGroceries: string;
+  persCatFuel: string;
+  persCatTransfer: string;
+  persTx1: string;
+  persTx2: string;
+  persTx3: string;
+  persTx4: string;
+  assetPlot: string;
+  assetVehicle: string;
+  assetGold: string;
+  assetShop: string;
+  payDeptSite: string;
+  payDeptAdmin: string;
+  payDeptFinance: string;
+  payDeptSales: string;
+  payGrade1: string;
+  payGrade2: string;
+  payGrade3: string;
+  payGrade4: string;
+  payEmpAhmad: string;
+  payEmpBilal: string;
+  payEmpCara: string;
+  payEmpDanish: string;
+  payRunMar: string;
+  payRunApr: string;
+  payRunMay: string;
+  payRunJun: string;
 };
 
+function demoIdPrefix(tenantId: string): string {
+  if (tenantId === DEMO_MASTER_TENANT_ID) return 'dm';
+  if (isDemoPresentationTenant(tenantId)) return 'dc';
+  return 'demo';
+}
+
 function idsForTenant(tenantId: string): DemoSeedIds {
-  const p = tenantId === DEMO_MASTER_TENANT_ID ? 'dm' : 'demo';
+  const p = demoIdPrefix(tenantId);
   return {
     ownerAli: `${p}-owner-ali`,
     ownerSara: `${p}-owner-sara`,
     tenantAhmed: `${p}-tenant-ahmed`,
     tenantFatima: `${p}-tenant-fatima`,
     tenantHassan: `${p}-tenant-hassan`,
+    tenantZain: `${p}-tenant-zain`,
+    brokerKamran: `${p}-broker-kamran`,
     bldSkyline: `${p}-bld-skyline`,
     bldHarbor: `${p}-bld-harbor`,
     prop101: `${p}-prop-101`,
@@ -107,9 +172,12 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     vendorSteel: `${p}-vendor-steel`,
     vendorCement: `${p}-vendor-cement`,
     vendorElectric: `${p}-vendor-electric`,
+    vendorPlumb: `${p}-vendor-plumb`,
     agr101: `${p}-agr-101`,
     agr102: `${p}-agr-201`,
     agr103: `${p}-agr-102`,
+    agr104: `${p}-agr-104`,
+    inv005: `${p}-inv-005`,
     inv001: `${p}-inv-001`,
     inv002: `${p}-inv-002`,
     inv003: `${p}-inv-003`,
@@ -123,6 +191,7 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     con001: `${p}-con-001`,
     con002: `${p}-con-002`,
     con003: `${p}-con-003`,
+    con004: `${p}-con-004`,
     bill001: `${p}-bill-stl-001`,
     bill002: `${p}-bill-cmt-001`,
     bill003: `${p}-bill-elc-001`,
@@ -137,6 +206,8 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     bill012: `${p}-bill-elc-004`,
     accOperating: `${p}-acc-operating`,
     accEscrow: `${p}-acc-escrow`,
+    accPetty: `${p}-acc-petty`,
+    accOwnerCapital: `${p}-acc-owner-capital`,
     catMaterials: `${p}-cat-materials`,
     catCement: `${p}-cat-cement`,
     catElectrical: `${p}-cat-electrical`,
@@ -145,6 +216,34 @@ function idsForTenant(tenantId: string): DemoSeedIds {
     budCement: `${p}-bud-cement`,
     budElectrical: `${p}-bud-electrical`,
     budLabor: `${p}-bud-labor`,
+    persCatSalary: `${p}-pers-cat-salary`,
+    persCatGroceries: `${p}-pers-cat-groceries`,
+    persCatFuel: `${p}-pers-cat-fuel`,
+    persCatTransfer: `${p}-pers-cat-transfer`,
+    persTx1: `${p}-pers-tx-1`,
+    persTx2: `${p}-pers-tx-2`,
+    persTx3: `${p}-pers-tx-3`,
+    persTx4: `${p}-pers-tx-4`,
+    assetPlot: `${p}-asset-plot`,
+    assetVehicle: `${p}-asset-vehicle`,
+    assetGold: `${p}-asset-gold`,
+    assetShop: `${p}-asset-shop`,
+    payDeptSite: `${p}-pay-dept-site`,
+    payDeptAdmin: `${p}-pay-dept-admin`,
+    payDeptFinance: `${p}-pay-dept-finance`,
+    payDeptSales: `${p}-pay-dept-sales`,
+    payGrade1: `${p}-pay-grade-1`,
+    payGrade2: `${p}-pay-grade-2`,
+    payGrade3: `${p}-pay-grade-3`,
+    payGrade4: `${p}-pay-grade-4`,
+    payEmpAhmad: `${p}-pay-emp-ahmad`,
+    payEmpBilal: `${p}-pay-emp-bilal`,
+    payEmpCara: `${p}-pay-emp-cara`,
+    payEmpDanish: `${p}-pay-emp-danish`,
+    payRunMar: `${p}-pay-run-mar`,
+    payRunApr: `${p}-pay-run-apr`,
+    payRunMay: `${p}-pay-run-may`,
+    payRunJun: `${p}-pay-run-jun`,
   };
 }
 
@@ -166,6 +265,21 @@ function rentalMonth(offsetMonths: number, base = new Date()): string {
   return `${d.getFullYear()}-${padMonth(d)}`;
 }
 
+function monthName(d: Date): string {
+  return MONTH_NAMES[d.getMonth()];
+}
+
+function payrollPeriod(offsetMonths: number, base = new Date()): { month: string; year: number; start: string; end: string } {
+  const d = new Date(base.getFullYear(), base.getMonth() - offsetMonths, 1);
+  const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+  return {
+    month: monthName(d),
+    year: d.getFullYear(),
+    start: isoDate(d),
+    end: isoDate(last),
+  };
+}
+
 async function postSeedJournalMirrors(client: pg.PoolClient, tenantId: string): Promise<void> {
   await backfillTransactionJournalMirrorsForTenant(client, tenantId, { batchSize: 200 });
   await backfillInvoiceJournalMirrorsForTenant(client, tenantId);
@@ -178,7 +292,7 @@ export async function seedDemoBusinessData(
 ): Promise<void> {
   await bootstrapTenantChart(client, tenantId, { legacyIds: false });
 
-  if (tenantId !== DEMO_PUBLIC_TENANT_ID) {
+  if (tenantId !== DEMO_PUBLIC_TENANT_ID && !isDemoPresentationTenant(tenantId)) {
     try {
       await startTrialSubscription(client, tenantId);
     } catch {
@@ -190,10 +304,12 @@ export async function seedDemoBusinessData(
   const today = new Date();
   const y = today.getFullYear();
   const m = padMonth(today);
-  const prefix = tenantId === DEMO_MASTER_TENANT_ID ? 'dm' : 'demo';
+  const prefix = demoIdPrefix(tenantId);
 
   await client.query(
-    `UPDATE tenants SET company_name = $2, name = $2, updated_at = NOW() WHERE id = $1`,
+    isDemoPresentationTenant(tenantId)
+      ? `UPDATE tenants SET company_name = $2, updated_at = NOW() WHERE id = $1`
+      : `UPDATE tenants SET company_name = $2, name = $2, updated_at = NOW() WHERE id = $1`,
     [tenantId, 'Al Noor Properties']
   );
 
@@ -203,7 +319,9 @@ export async function seedDemoBusinessData(
     [ids.tenantAhmed, 'Ahmed Raza', 'Tenant'],
     [ids.tenantFatima, 'Fatima Noor', 'Tenant'],
     [ids.tenantHassan, 'Hassan Qureshi', 'Tenant'],
+    [ids.tenantZain, 'Zain Abbas', 'Tenant'],
     [ids.buyerImran, 'Imran Shah', 'Client'],
+    [ids.brokerKamran, 'Kamran Siddiqui', 'Broker'],
   ];
 
   for (const [id, name, type] of contacts) {
@@ -218,6 +336,8 @@ export async function seedDemoBusinessData(
   const demoAccounts: Array<[string, string, string, number]> = [
     [ids.accOperating, 'Main Operating Account', 'BANK', 0],
     [ids.accEscrow, 'Project Escrow Account', 'BANK', 0],
+    [ids.accPetty, 'Petty Cash', 'CASH', 25000],
+    [ids.accOwnerCapital, 'Owner Capital — Al Noor', 'EQUITY', 0],
   ];
   for (const [id, name, type, opening] of demoAccounts) {
     await client.query(
@@ -283,6 +403,7 @@ export async function seedDemoBusinessData(
     [ids.vendorSteel, 'Prime Steel Suppliers', '0300-1112233'],
     [ids.vendorCement, 'National Cement Co.', '0300-4445566'],
     [ids.vendorElectric, 'City Electric Works', '0300-7778899'],
+    [ids.vendorPlumb, 'Gulf Plumbing & HVAC', '0300-2223344'],
   ];
   for (const [id, name, phone] of vendors) {
     await client.query(
@@ -372,6 +493,13 @@ export async function seedDemoBusinessData(
     ]
   );
 
+  await client.query(
+    `INSERT INTO rental_agreements (id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent, rent_due_date, status, owner_id, security_deposit, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 5, 'active', $9, 55000, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET monthly_rent = EXCLUDED.monthly_rent, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL`,
+    [ids.agr104, tenantId, 'RA-2024-103', ids.tenantZain, ids.prop103, startDate, endDate, 68000, ids.ownerAli]
+  );
+
   const issueDate = `${y}-${m}-01`;
   const dueDate = `${y}-${m}-10`;
   const overdueDue = monthStart(1);
@@ -422,6 +550,24 @@ export async function seedDemoBusinessData(
       ids.prop101,
       ids.agr101,
       rentalMonth(1),
+      ids.bldSkyline,
+    ]
+  );
+
+  await client.query(
+    `INSERT INTO invoices (id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date, invoice_type, property_id, agreement_id, rental_month, building_id, version, created_at, updated_at)
+     VALUES ($1, $2, $3, $4, 68000, 34000, 'Partially Paid', $5, $6, 'Rental', $7, $8, $9, $10, 1, NOW(), NOW())
+     ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, paid_amount = EXCLUDED.paid_amount, status = EXCLUDED.status, invoice_type = EXCLUDED.invoice_type, updated_at = NOW()`,
+    [
+      ids.inv005,
+      tenantId,
+      'INV-RENT-005',
+      ids.tenantZain,
+      issueDate,
+      dueDate,
+      ids.prop103,
+      ids.agr104,
+      `${y}-${m}`,
       ids.bldSkyline,
     ]
   );
@@ -530,6 +676,7 @@ export async function seedDemoBusinessData(
     [ids.con001, 'CON-2024-001', 'Structural Steel Package', ids.vendorSteel, 1850000, 'Active'],
     [ids.con002, 'CON-2024-002', 'Cement Supply Agreement', ids.vendorCement, 920000, 'Active'],
     [ids.con003, 'CON-2024-003', 'Electrical Works', ids.vendorElectric, 640000, 'Active'],
+    [ids.con004, 'CON-2024-004', 'Plumbing & HVAC Package', ids.vendorPlumb, 480000, 'Active'],
   ];
   for (const [id, number, name, vendorId, total, status] of contracts) {
     await client.query(
@@ -554,6 +701,10 @@ export async function seedDemoBusinessData(
     [ids.bill008, 'BILL-ELC-002', ids.vendorElectric, 'Wiring package — Riverside', 52000, 52000, 'Paid', ids.con003, ids.projRiverside, ids.catElectrical],
     [ids.bill011, 'BILL-ELC-003', ids.vendorElectric, 'Panel boards — Horizon', 38000, 0, 'Unpaid', ids.con003, ids.projHorizon, ids.catElectrical],
     [ids.bill012, 'BILL-ELC-004', ids.vendorElectric, 'Generator hookup — Riverside', 29000, 15000, 'Partially Paid', ids.con003, ids.projRiverside, ids.catElectrical],
+    [`${prefix}-bill-plumb-001`, 'BILL-PLB-001', ids.vendorPlumb, 'Plumbing rough-in — Horizon', 62000, 62000, 'Paid', ids.con004, ids.projHorizon, ids.catLabor],
+    [`${prefix}-bill-plumb-002`, 'BILL-PLB-002', ids.vendorPlumb, 'HVAC ducting — Horizon', 48000, 24000, 'Partially Paid', ids.con004, ids.projHorizon, ids.catLabor],
+    [`${prefix}-bill-plumb-003`, 'BILL-PLB-003', ids.vendorPlumb, 'Sanitary works — Riverside', 36000, 36000, 'Paid', ids.con004, ids.projRiverside, ids.catLabor],
+    [`${prefix}-bill-plumb-004`, 'BILL-PLB-004', ids.vendorPlumb, 'Firefighting lines — Horizon', 28000, 0, 'Unpaid', ids.con004, ids.projHorizon, ids.catLabor],
   ];
   for (const [id, number, vendorId, desc, amount, paid, status, contractId, projectId, categoryId] of bills) {
     await client.query(
@@ -839,6 +990,53 @@ export async function seedDemoBusinessData(
     });
   }
 
+  const vendorPlumbTx: Array<[string, number, string, string | null, string]> = [
+    [`${prefix}-bill-plumb-001`, 62000, 'Plumbing rough-in — Horizon', ids.projHorizon, monthStart(1)],
+    [`${prefix}-bill-plumb-002`, 24000, 'Partial HVAC ducting — Horizon', ids.projHorizon, monthStart(2)],
+    [`${prefix}-bill-plumb-003`, 36000, 'Sanitary works — Riverside', ids.projRiverside, monthStart(3)],
+    ['', 14000, 'Plumbing inspection — Horizon', ids.projHorizon, monthStart(4)],
+  ];
+  for (let i = 0; i < vendorPlumbTx.length; i += 1) {
+    const [billId, amount, desc, projectId, date] = vendorPlumbTx[i];
+    pushTx({
+      id: `${prefix}-tx-vnd-plumb-${i + 1}`,
+      type: 'Expense',
+      amount,
+      date,
+      desc,
+      categoryId: ids.catLabor,
+      projectId,
+      vendorId: ids.vendorPlumb,
+      billId: billId || null,
+    });
+  }
+
+  pushTx({
+    id: `${ids.inv005}-pay`,
+    type: 'Income',
+    amount: 34000,
+    date: issueDate,
+    desc: 'Partial rent — Unit 103 (current month)',
+    categoryId: SYS_RENT,
+    propertyId: ids.prop103,
+    contactId: ids.tenantZain,
+    invoiceId: ids.inv005,
+    buildingId: ids.bldSkyline,
+  });
+  for (let i = 1; i <= 3; i += 1) {
+    pushTx({
+      id: `${prefix}-tx-rent-zain-${i}`,
+      type: 'Income',
+      amount: i === 2 ? 68000 : 34000,
+      date: monthStart(i),
+      desc: `Rent received — Unit 103 (${rentalMonth(i)})`,
+      categoryId: SYS_RENT,
+      propertyId: ids.prop103,
+      contactId: ids.tenantZain,
+      buildingId: ids.bldSkyline,
+    });
+  }
+
   // Buildings — 4 operating expenses each
   const skylineBuildingTx = [
     ['maint', 25000, 'Elevator maintenance — Skyline Tower'],
@@ -875,6 +1073,34 @@ export async function seedDemoBusinessData(
       desc,
       categoryId: SYS_BLD_MAINT,
       buildingId: ids.bldHarbor,
+    });
+  }
+
+  pushTx({
+    id: `${prefix}-tx-asset-vehicle-sale`,
+    type: 'Income',
+    amount: 3350000,
+    date: `${y}-04-05`,
+    desc: 'Sale of received vehicle — Unit A-101 buyer',
+    categoryId: SYS_REV_ASSET,
+    contactId: ids.buyerImran,
+    projectId: ids.projHorizon,
+  });
+  const assetRecognition = [
+    { key: 'plot', id: ids.assetPlot, amount: 2200000, projectId: ids.projHorizon, offset: 2 },
+    { key: 'gold', id: ids.assetGold, amount: 850000, projectId: ids.projRiverside, offset: 3 },
+    { key: 'shop', id: ids.assetShop, amount: 1800000, projectId: ids.projRiverside, offset: 4 },
+  ] as const;
+  for (const asset of assetRecognition) {
+    pushTx({
+      id: `${prefix}-tx-asset-${asset.key}-recognition`,
+      type: 'Income',
+      amount: asset.amount,
+      date: monthStart(asset.offset),
+      desc: `In-kind asset recorded — ${asset.key}`,
+      categoryId: SYS_REV_ASSET,
+      contactId: ids.buyerImran,
+      projectId: asset.projectId,
     });
   }
 
@@ -932,6 +1158,310 @@ export async function seedDemoBusinessData(
       [id, tenantId, amount, date, desc, fromId, fromId, toId]
     );
   }
+
+  const personalCategories: Array<[string, string, 'Income' | 'Expense', number]> = [
+    [ids.persCatSalary, 'Director Draw', 'Income', 0],
+    [ids.persCatTransfer, 'Family Transfer In', 'Income', 1],
+    [ids.persCatGroceries, 'Groceries', 'Expense', 2],
+    [ids.persCatFuel, 'Personal Fuel', 'Expense', 3],
+  ];
+  for (const [id, name, type, sortOrder] of personalCategories) {
+    await client.query(
+      `INSERT INTO personal_categories (id, tenant_id, name, type, sort_order, version, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, sort_order = EXCLUDED.sort_order, updated_at = NOW(), deleted_at = NULL`,
+      [id, tenantId, name, type, sortOrder]
+    );
+  }
+
+  const personalTxRows: Array<[string, string, 'Income' | 'Expense', number, string, string]> = [
+    [ids.persTx1, ids.persCatSalary, 'Income', 150000, monthStart(1), 'Monthly director draw'],
+    [ids.persTx2, ids.persCatTransfer, 'Income', 45000, monthStart(2), 'Family transfer — savings'],
+    [ids.persTx3, ids.persCatGroceries, 'Expense', 18500, monthStart(2), 'Household groceries'],
+    [ids.persTx4, ids.persCatFuel, 'Expense', 9200, monthStart(3), 'Personal vehicle fuel'],
+  ];
+  for (const [id, catId, type, amount, date, desc] of personalTxRows) {
+    await client.query(
+      `INSERT INTO personal_transactions (id, tenant_id, account_id, personal_category_id, type, amount, transaction_date, description, version, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description, transaction_date = EXCLUDED.transaction_date, updated_at = NOW(), deleted_at = NULL`,
+      [id, tenantId, ids.accOperating, catId, type, amount, date, desc]
+    );
+  }
+
+  const receivedAssets: Array<[string, string, string, string, string, number, string, string | null, number | null]> = [
+    [ids.assetPlot, ids.projHorizon, ids.buyerImran, '5 Marla plot — DHA Phase 5', 'Plot', 2200000, `${y - 1}-11-10`, null, null],
+    [ids.assetVehicle, ids.projHorizon, ids.buyerImran, 'Toyota Corolla 2022 — booking adjustment', 'Vehicle', 3200000, `${y}-01-20`, `${y}-04-05`, 3350000],
+    [ids.assetGold, ids.projRiverside, ids.buyerImran, 'Gold bars — partial settlement', 'Gold', 850000, `${y}-03-08`, null, null],
+    [ids.assetShop, ids.projRiverside, ids.buyerImran, 'Shop unit token — in-kind payment', 'Commercial Unit', 1800000, `${y}-05-12`, null, null],
+  ];
+  for (const [id, projectId, contactId, desc, assetType, value, received, sold, saleAmt] of receivedAssets) {
+    await client.query(
+      `INSERT INTO project_received_assets (id, tenant_id, project_id, contact_id, description, asset_type, recorded_value, received_date, sold_date, sale_amount, sale_account_id, version, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         description = EXCLUDED.description, recorded_value = EXCLUDED.recorded_value,
+         sold_date = EXCLUDED.sold_date, sale_amount = EXCLUDED.sale_amount,
+         updated_at = NOW(), deleted_at = NULL`,
+      [
+        id,
+        tenantId,
+        projectId,
+        contactId,
+        desc,
+        assetType,
+        value,
+        received,
+        sold,
+        saleAmt,
+        sold ? SYS_CASH : null,
+      ]
+    );
+  }
+
+  await client.query(
+    `INSERT INTO payroll_tenant_config (tenant_id, earning_types, deduction_types, default_account_id, default_category_id, default_project_id, updated_at)
+     VALUES ($1, $2::jsonb, $3::jsonb, $4, $5, $6, NOW())
+     ON CONFLICT (tenant_id) DO UPDATE SET
+       earning_types = EXCLUDED.earning_types,
+       deduction_types = EXCLUDED.deduction_types,
+       default_account_id = EXCLUDED.default_account_id,
+       default_category_id = EXCLUDED.default_category_id,
+       default_project_id = EXCLUDED.default_project_id,
+       updated_at = NOW()`,
+    [
+      tenantId,
+      JSON.stringify([
+        { name: 'House Rent Allowance', amount: 40, is_percentage: true, type: 'Percentage' },
+        { name: 'Site Allowance', amount: 15000, is_percentage: false, type: 'Fixed' },
+      ]),
+      JSON.stringify([
+        { name: 'Provident Fund', amount: 12, is_percentage: true, type: 'Percentage' },
+        { name: 'Professional Tax', amount: 200, is_percentage: false, type: 'Fixed' },
+      ]),
+      SYS_CASH,
+      SYS_SAL_EXP,
+      ids.projHorizon,
+    ]
+  );
+
+  const payDepartments: Array<[string, string, string]> = [
+    [ids.payDeptSite, 'Site Operations', 'SITE'],
+    [ids.payDeptAdmin, 'Administration', 'ADM'],
+    [ids.payDeptFinance, 'Finance', 'FIN'],
+    [ids.payDeptSales, 'Sales & Marketing', 'SLS'],
+  ];
+  for (const [id, name, code] of payDepartments) {
+    await client.query(
+      `INSERT INTO payroll_departments (id, tenant_id, name, code, description, is_active, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, TRUE, $6, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, code = EXCLUDED.code, is_active = TRUE, updated_at = NOW(), deleted_at = NULL`,
+      [id, tenantId, name, code, `${name} — Al Noor Properties`, DEMO_DEFAULT_USER_ID]
+    );
+  }
+
+  const payGrades: Array<[string, string, number, number]> = [
+    [ids.payGrade1, 'G1 — Junior', 35000, 65000],
+    [ids.payGrade2, 'G2 — Officer', 65000, 95000],
+    [ids.payGrade3, 'G3 — Senior', 95000, 140000],
+    [ids.payGrade4, 'G4 — Manager', 140000, 220000],
+  ];
+  for (const [id, name, minSal, maxSal] of payGrades) {
+    await client.query(
+      `INSERT INTO payroll_grades (id, tenant_id, name, description, min_salary, max_salary, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, min_salary = EXCLUDED.min_salary, max_salary = EXCLUDED.max_salary, updated_at = NOW(), deleted_at = NULL`,
+      [id, tenantId, name, name, minSal, maxSal, DEMO_DEFAULT_USER_ID]
+    );
+  }
+
+  type PayEmpSeed = {
+    id: string;
+    name: string;
+    code: string;
+    designation: string;
+    department: string;
+    departmentId: string;
+    grade: string;
+    basic: number;
+    netPay: number;
+    projectId?: string;
+  };
+  const payEmployees: PayEmpSeed[] = [
+    {
+      id: ids.payEmpAhmad,
+      name: 'Ahmad Raza',
+      code: 'EMP-001',
+      designation: 'Site Supervisor',
+      department: 'Site Operations',
+      departmentId: ids.payDeptSite,
+      grade: 'G3 — Senior',
+      basic: 95000,
+      netPay: 108500,
+      projectId: ids.projHorizon,
+    },
+    {
+      id: ids.payEmpBilal,
+      name: 'Bilal Hussain',
+      code: 'EMP-002',
+      designation: 'Accounts Officer',
+      department: 'Finance',
+      departmentId: ids.payDeptFinance,
+      grade: 'G2 — Officer',
+      basic: 78000,
+      netPay: 86500,
+    },
+    {
+      id: ids.payEmpCara,
+      name: 'Cara Malik',
+      code: 'EMP-003',
+      designation: 'Sales Executive',
+      department: 'Sales & Marketing',
+      departmentId: ids.payDeptSales,
+      grade: 'G2 — Officer',
+      basic: 72000,
+      netPay: 79800,
+      projectId: ids.projRiverside,
+    },
+    {
+      id: ids.payEmpDanish,
+      name: 'Danish Ali',
+      code: 'EMP-004',
+      designation: 'Office Administrator',
+      department: 'Administration',
+      departmentId: ids.payDeptAdmin,
+      grade: 'G1 — Junior',
+      basic: 65000,
+      netPay: 71200,
+    },
+  ];
+  for (const emp of payEmployees) {
+    const salary = {
+      basic: emp.basic,
+      allowances: [{ name: 'Site Allowance', amount: 15000, is_percentage: false }],
+      deductions: [{ name: 'Provident Fund', amount: 12, is_percentage: true }],
+    };
+    const projects = emp.projectId
+      ? [{ project_id: emp.projectId, allocation_percentage: 100 }]
+      : [];
+    await client.query(
+      `INSERT INTO payroll_employees (id, tenant_id, name, employee_code, designation, department, department_id, grade, status, joining_date, salary, adjustments, projects, buildings, created_by, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ACTIVE', $9, $10::jsonb, '[]'::jsonb, $11::jsonb, '[]'::jsonb, $12, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         name = EXCLUDED.name, designation = EXCLUDED.designation, department = EXCLUDED.department,
+         department_id = EXCLUDED.department_id, grade = EXCLUDED.grade, salary = EXCLUDED.salary,
+         projects = EXCLUDED.projects, updated_at = NOW(), deleted_at = NULL`,
+      [
+        emp.id,
+        tenantId,
+        emp.name,
+        emp.code,
+        emp.designation,
+        emp.department,
+        emp.departmentId,
+        emp.grade,
+        `${y - 2}-06-01`,
+        JSON.stringify(salary),
+        JSON.stringify(projects),
+        DEMO_DEFAULT_USER_ID,
+      ]
+    );
+  }
+
+  const runMar = payrollPeriod(3);
+  const runApr = payrollPeriod(2);
+  const runMay = payrollPeriod(1);
+  const runJun = payrollPeriod(0);
+  const payRuns: Array<[string, string, number, string, string, string]> = [
+    [ids.payRunMar, runMar.month, runMar.year, runMar.start, runMar.end, 'PAID'],
+    [ids.payRunApr, runApr.month, runApr.year, runApr.start, runApr.end, 'PAID'],
+    [ids.payRunMay, runMay.month, runMay.year, runMay.start, runMay.end, 'PAID'],
+    [ids.payRunJun, runJun.month, runJun.year, runJun.start, runJun.end, 'APPROVED'],
+  ];
+  const totalNet = payEmployees.reduce((sum, e) => sum + e.netPay, 0);
+  for (const [runId, month, year, periodStart, periodEnd, status] of payRuns) {
+    const isPaid = status === 'PAID';
+    await client.query(
+      `INSERT INTO payroll_runs (id, tenant_id, month, year, period_start, period_end, status, total_amount, employee_count, created_by, paid_at, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status, total_amount = EXCLUDED.total_amount, employee_count = EXCLUDED.employee_count, updated_at = NOW(), deleted_at = NULL`,
+      [
+        runId,
+        tenantId,
+        month,
+        year,
+        periodStart,
+        periodEnd,
+        status,
+        isPaid ? totalNet : 0,
+        payEmployees.length,
+        DEMO_DEFAULT_USER_ID,
+        isPaid ? `${periodEnd}T12:00:00Z` : null,
+      ]
+    );
+  }
+
+  const paidRunIds = [ids.payRunMar, ids.payRunApr, ids.payRunMay];
+  for (const runId of paidRunIds) {
+    const runMeta = payRuns.find(([id]) => id === runId);
+    const payDate = runMeta?.[4] ?? monthStart(1);
+    for (const emp of payEmployees) {
+      const payslipId = `${runId}-${emp.id}`;
+      await client.query(
+        `INSERT INTO payslips (id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, total_deductions, total_adjustments, gross_pay, net_pay, is_paid, paid_amount, paid_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 15000, $6, 0, $7, $8, TRUE, $8, $9, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET net_pay = EXCLUDED.net_pay, is_paid = EXCLUDED.is_paid, paid_amount = EXCLUDED.paid_amount, updated_at = NOW(), deleted_at = NULL`,
+        [
+          payslipId,
+          tenantId,
+          runId,
+          emp.id,
+          emp.basic,
+          Math.round(emp.basic * 0.12),
+          emp.basic + 15000,
+          emp.netPay,
+          `${payDate}T14:00:00Z`,
+        ]
+      );
+      await client.query(
+        `INSERT INTO transactions (id, tenant_id, type, amount, date, description, account_id, category_id, project_id, payslip_id, version, created_at, updated_at)
+         VALUES ($1, $2, 'Expense', $3, $4, $5, $6, $7, $8, $9, 1, NOW(), NOW())
+         ON CONFLICT (id) DO UPDATE SET amount = EXCLUDED.amount, description = EXCLUDED.description, date = EXCLUDED.date, payslip_id = EXCLUDED.payslip_id, updated_at = NOW(), deleted_at = NULL`,
+        [
+          `${payslipId}-pay`,
+          tenantId,
+          emp.netPay,
+          payDate,
+          `Salary paid — ${emp.name}`,
+          SYS_CASH,
+          SYS_SAL_EXP,
+          emp.projectId ?? null,
+          payslipId,
+        ]
+      );
+    }
+  }
+
+  for (const emp of payEmployees) {
+    const payslipId = `${ids.payRunJun}-${emp.id}`;
+    await client.query(
+      `INSERT INTO payslips (id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, total_deductions, total_adjustments, gross_pay, net_pay, is_paid, paid_amount, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, 15000, $6, 0, $7, $8, FALSE, 0, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET net_pay = EXCLUDED.net_pay, updated_at = NOW(), deleted_at = NULL`,
+      [
+        payslipId,
+        tenantId,
+        ids.payRunJun,
+        emp.id,
+        emp.basic,
+        Math.round(emp.basic * 0.12),
+        emp.basic + 15000,
+        emp.netPay,
+      ]
+    );
+  }
+
+  await syncPayrollLedgerForAllEmployees(client, tenantId);
 
   await postSeedJournalMirrors(client, tenantId);
 }

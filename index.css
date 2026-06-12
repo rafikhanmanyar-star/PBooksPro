@@ -127,6 +127,66 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
   animation: slide-in-left 0.3s ease-out;
 }
 
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* Executive Mobile */
+.executive-mobile-shell {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.executive-bottom-nav {
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+[data-theme="dark"] .executive-kpi-card {
+  background: color-mix(in srgb, var(--card-bg) 88%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.pb-safe {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 0.75rem);
+}
+
+/* Viewport-aware layout (set by ViewportProvider + index.html bootstrap) */
+html[data-viewport="mobile"] body,
+html[data-mobile-viewport="true"] body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html[data-viewport="mobile"] .main-content-offset,
+html[data-mobile-viewport="true"] .main-content-offset {
+  padding-left: 0 !important;
+}
+
+html[data-viewport="mobile"] #main-container,
+html[data-mobile-viewport="true"] #main-container {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.executive-mobile-shell {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
 /* Non-interactive nav section labels (distinct from clickable nav links) */
 .nav-section-label {
   display: block;
