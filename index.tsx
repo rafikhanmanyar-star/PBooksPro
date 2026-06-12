@@ -104,6 +104,8 @@ const initApp = async () => {
 
   try {
     console.log('[index] Starting application load...');
+    const { ensureLatestAppBundle } = await import('./utils/appUpdateBootstrap');
+    await ensureLatestAppBundle();
     await bootstrapTrialAuthFromUrl();
     if (isAutoDemoUrl()) {
       markWebsiteDemoEntry();

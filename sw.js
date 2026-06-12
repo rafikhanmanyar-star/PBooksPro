@@ -85,6 +85,23 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (isImmutableHashedAsset(url)) {
+    const isScriptOrStyle = /\.(js|css)(?:\?|$)/i.test(url.pathname);
+    if (isScriptOrStyle) {
+      // Network-first for JS/CSS so refresh picks up new deployments immediately.
+      event.respondWith(
+        fetch(event.request, { cache: 'no-store' })
+          .then((response) => {
+            if (response && response.status === 200) {
+              const clone = response.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+            }
+            return response;
+          })
+          .catch(() => caches.match(event.request))
+      );
+      return;
+    }
+
     event.respondWith(
       caches.match(event.request).then((cached) => {
         if (cached) return cached;

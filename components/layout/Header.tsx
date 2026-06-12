@@ -13,6 +13,8 @@ import { apiClient } from '../../services/api/client';
 import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
 import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
+import { useExecutiveModeOptional } from '../../context/ExecutiveModeContext';
+import { isMobileDevice } from '../../utils/platformDetection';
 import { useTheme } from '../../context/ThemeContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import { isAdminRole } from '../../hooks/useRecordLock';
@@ -40,6 +42,13 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const currentPage = useStateSelector(s => s.currentPage);
   const initialTabs = useStateSelector(s => s.initialTabs);
   const { isAuthenticated, user, tenant, startCompanySwitch } = useAuth();
+  const executiveMode = useExecutiveModeOptional();
+  const showExecutiveViewLink =
+    isAuthenticated &&
+    !isLocalOnlyMode() &&
+    isMobileDevice() &&
+    executiveMode?.isCloudEligible &&
+    !executiveMode.isExecutiveMobileActive;
   const { canReadUsers } = usePermissions();
   const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
 
@@ -745,8 +754,19 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
             </button>
 
-            <div className="flex flex-col">
-              <h1 className="text-lg font-bold text-app-text leading-tight md:hidden">{title}</h1>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <h1 className="text-lg font-bold text-app-text leading-tight md:hidden truncate">{title}</h1>
+                {showExecutiveViewLink && (
+                  <button
+                    type="button"
+                    onClick={() => void executiveMode?.returnToExecutiveMobile()}
+                    className="md:hidden shrink-0 text-xs font-semibold text-emerald-600 dark:text-emerald-400 px-2 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 touch-manipulation"
+                  >
+                    Executive
+                  </button>
+                )}
+              </div>
               <div className="hidden sm:flex items-center gap-2 text-sm text-app-muted min-h-[1.25rem]">
                 <button
                   type="button"

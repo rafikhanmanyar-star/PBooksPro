@@ -24,6 +24,7 @@ import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 import { useCompanyOptional } from './CompanyContext';
 import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
+import { persistInterfaceMode } from '../utils/interfaceModePreference';
 
 export interface User {
   id: string;
@@ -985,6 +986,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       companySwitchRequest: null,
     }));
     syncDisplayTimezoneFromUser(user);
+    if (user.interfaceMode) {
+      persistInterfaceMode(user.interfaceMode);
+    }
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:login-success'));
     }

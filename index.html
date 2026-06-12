@@ -21,6 +21,7 @@
     })();
   </script>
   <meta charset="UTF-8" />
+  <meta name="app-build-version" content="dev" />
   <link rel="icon" type="image/x-icon" href="/icon.ico" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
@@ -127,9 +128,10 @@
     // Only register service worker for web/PWA, not for Electron desktop
     if ('serviceWorker' in navigator && !window.electronAPI?.isElectron) {
       window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { scope: './' })
-          .then(() => {
+        navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
+          .then((registration) => {
             console.log('ServiceWorker registration successful');
+            registration.update().catch(() => {});
           })
           .catch(err => {
             console.log('ServiceWorker registration failed: ', err);

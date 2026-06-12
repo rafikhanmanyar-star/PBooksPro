@@ -135,6 +135,15 @@ export default defineConfig({
       }
     },
     {
+      name: 'inject-build-version-meta',
+      transformIndexHtml(html) {
+        return html.replace(
+          '<meta name="app-build-version" content="dev" />',
+          `<meta name="app-build-version" content="${buildVersionMeta.version}" />`
+        );
+      },
+    },
+    {
       name: 'staging-html-title',
       transformIndexHtml(html) {
         const isStaging =

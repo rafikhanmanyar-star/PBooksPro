@@ -860,7 +860,7 @@ const App: React.FC = () => {
         <Suspense fallback={<LoadingShell />}>
           <ExecutiveMobileShell
             onExitToFullErp={async (page) => {
-              await executiveMode.setInterfaceMode('full_erp');
+              executiveMode.enterFullErpSession();
               if (page) {
                 handleSetPage(page);
               }

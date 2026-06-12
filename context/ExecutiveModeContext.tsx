@@ -3,6 +3,10 @@ import { isLocalOnlyMode } from '../config/apiUrl';
 import { useAuth } from './AuthContext';
 import { apiClient } from '../services/api/client';
 import { isMobileDevice, isTabletPortrait } from '../utils/platformDetection';
+import {
+  persistInterfaceMode,
+  resolveEffectiveInterfaceMode,
+} from '../utils/interfaceModePreference';
 import type { ExecutiveModuleId, ExecutiveView, InterfaceMode } from '../types/executiveMobile.types';
 
 type ExecutiveModeContextValue = {
@@ -10,6 +14,10 @@ type ExecutiveModeContextValue = {
   isExecutiveMobileActive: boolean;
   isCloudEligible: boolean;
   setInterfaceMode: (mode: InterfaceMode) => Promise<void>;
+  /** Temporary switch to full ERP for this browser tab/session only (not saved to server). */
+  enterFullErpSession: () => void;
+  /** Return to executive mobile UI without changing server preference (unless server is full_erp). */
+  returnToExecutiveMobile: () => Promise<void>;
   view: ExecutiveView;
   setView: (view: ExecutiveView) => void;
   activeModule: ExecutiveModuleId;
@@ -21,10 +29,11 @@ const ExecutiveModeContext = createContext<ExecutiveModeContextValue | null>(nul
 
 function resolveExecutiveActive(
   interfaceMode: InterfaceMode,
-  cloudEligible: boolean
+  cloudEligible: boolean,
+  sessionFullErp: boolean
 ): boolean {
   if (!cloudEligible) return false;
-  if (interfaceMode === 'full_erp') return false;
+  if (sessionFullErp || interfaceMode === 'full_erp') return false;
   if (interfaceMode === 'executive_mobile') return true;
   return isMobileDevice() || isTabletPortrait();
 }
@@ -32,28 +41,57 @@ function resolveExecutiveActive(
 export function ExecutiveModeProvider({ children }: { children: React.ReactNode }) {
   const { user, updateUserProfile } = useAuth();
   const cloudEligible = !isLocalOnlyMode();
-  const interfaceMode: InterfaceMode =
-    (user?.interfaceMode as InterfaceMode | undefined) ?? 'auto';
+  const [sessionFullErp, setSessionFullErpState] = useState(false);
+  const [viewportTick, setViewportTick] = useState(0);
+
+  const interfaceMode: InterfaceMode = resolveEffectiveInterfaceMode(
+    user?.interfaceMode as InterfaceMode | undefined,
+    sessionFullErp
+  );
 
   const [view, setView] = useState<ExecutiveView>('home');
   const [activeModule, setActiveModule] = useState<ExecutiveModuleId>('dashboard');
-  const [viewportTick, setViewportTick] = useState(0);
+
+  useEffect(() => {
+    const userMode = user?.interfaceMode as InterfaceMode | undefined;
+    if (userMode) persistInterfaceMode(userMode);
+  }, [user?.interfaceMode]);
 
   const isExecutiveMobileActive = useMemo(
-    () => resolveExecutiveActive(interfaceMode, cloudEligible),
-    [interfaceMode, cloudEligible, viewportTick]
+    () => resolveExecutiveActive(interfaceMode, cloudEligible, sessionFullErp),
+    [interfaceMode, cloudEligible, sessionFullErp, viewportTick]
   );
 
   const setInterfaceMode = useCallback(
     async (mode: InterfaceMode) => {
-      if (!apiClient.getToken()) return;
+      if (mode !== 'full_erp') {
+        setSessionFullErpState(false);
+      }
+      persistInterfaceMode(mode);
+      if (!apiClient.getToken()) {
+        updateUserProfile?.({ interfaceMode: mode });
+        return;
+      }
       const res = await apiClient.patch<{ interfaceMode: InterfaceMode }>('/users/me', {
         interfaceMode: mode,
       });
       updateUserProfile?.({ interfaceMode: res.interfaceMode });
+      persistInterfaceMode(res.interfaceMode as InterfaceMode);
     },
     [updateUserProfile]
   );
+
+  const enterFullErpSession = useCallback(() => {
+    setSessionFullErpState(true);
+  }, []);
+
+  const returnToExecutiveMobile = useCallback(async () => {
+    setSessionFullErpState(false);
+    const serverMode = user?.interfaceMode as InterfaceMode | undefined;
+    if (serverMode === 'full_erp') {
+      await setInterfaceMode(isMobileDevice() ? 'executive_mobile' : 'auto');
+    }
+  }, [setInterfaceMode, user?.interfaceMode]);
 
   const openModule = useCallback((module: ExecutiveModuleId) => {
     setActiveModule(module);
@@ -76,6 +114,8 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
       isExecutiveMobileActive,
       isCloudEligible: cloudEligible,
       setInterfaceMode,
+      enterFullErpSession,
+      returnToExecutiveMobile,
       view,
       setView,
       activeModule,
@@ -87,6 +127,8 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
       isExecutiveMobileActive,
       cloudEligible,
       setInterfaceMode,
+      enterFullErpSession,
+      returnToExecutiveMobile,
       view,
       activeModule,
       openModule,
