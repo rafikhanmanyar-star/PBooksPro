@@ -17,10 +17,13 @@ import { markUserLoggedIn, upsertUserSession } from './userSessionService.js';
 
 export type LoginUserPayload = {
   id: string;
+  email: string;
   username: string;
   name: string;
+  fullName: string;
   role: string;
   tenantId: string;
+  organizationId: string;
   displayTimezone: string | null;
   interfaceMode: string;
 };
@@ -32,12 +35,16 @@ export type LoginCompanyPayload = {
 };
 
 function formatUserPayload(account: MatchedUserAccount): LoginUserPayload {
+  const email = account.email?.trim() || '';
   return {
     id: account.userId,
+    email,
     username: account.username,
     name: account.name,
+    fullName: account.name,
     role: account.role,
     tenantId: account.tenantId,
+    organizationId: account.tenantId,
     displayTimezone: account.displayTimezone,
     interfaceMode: account.interfaceMode,
   };

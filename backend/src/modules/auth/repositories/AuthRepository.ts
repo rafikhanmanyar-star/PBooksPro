@@ -182,10 +182,7 @@ export class UserTenantRepository {
        JOIN tenants t ON t.id = ut.tenant_id
        WHERE u.is_active = TRUE
          AND ut.tenant_id !~ '^__'
-         AND (
-           LOWER(COALESCE(u.email, '')) = $1
-           OR LOWER(u.username) = $1
-         )
+         AND LOWER(TRIM(COALESCE(u.email, ''))) = $1
        ORDER BY LOWER(t.name) ASC, ut.tenant_id ASC`,
       [normalizedIdentifier]
     );
@@ -216,10 +213,7 @@ export class UserTenantRepository {
        JOIN users u ON u.id = ut.user_id
        JOIN tenants t ON t.id = ut.tenant_id
        WHERE ut.tenant_id = $1 AND u.is_active = TRUE
-         AND (
-           LOWER(COALESCE(u.email, '')) = $2
-           OR LOWER(u.username) = $2
-         )
+         AND LOWER(TRIM(COALESCE(u.email, ''))) = $2
        LIMIT 1`,
       [tenantId, normalizedIdentifier]
     );
@@ -242,10 +236,7 @@ export class UserTenantRepository {
        WHERE ut.tenant_id = $1 AND u.is_active = TRUE
          AND (
            u.id = $2
-           OR ($3::text IS NOT NULL AND (
-             LOWER(COALESCE(u.email, '')) = LOWER($3)
-             OR LOWER(u.username) = LOWER($3)
-           ))
+           OR ($3::text IS NOT NULL AND LOWER(TRIM(COALESCE(u.email, ''))) = LOWER(TRIM($3)))
          )
        LIMIT 1`,
       [tenantId, userId, loginIdentifier]

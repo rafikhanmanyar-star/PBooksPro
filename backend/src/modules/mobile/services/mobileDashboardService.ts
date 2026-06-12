@@ -69,7 +69,7 @@ export async function getMobileSalesSummary(
   const find = (id: string) => kpis.find((k) => k.id === id)?.value ?? 0;
 
   const leadsR = await client.query<{ count: string }>(
-    `SELECT COUNT(*)::text AS count FROM marketing_leads
+    `SELECT COUNT(*)::text AS count FROM installment_plans
      WHERE tenant_id = $1 AND deleted_at IS NULL AND created_at >= $2::date`,
     [tenantId, from]
   );
@@ -99,21 +99,27 @@ export async function getMobileCrmSummary(
   tenantId: string
 ): Promise<MobileDashboardResponse> {
   const { from } = monthRange();
-  const [contactsR, leadsR, vendorsR] = await Promise.all([
+  const [contactsR, leadsR, vendorsR, newLeadsR] = await Promise.all([
     client.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM contacts
        WHERE tenant_id = $1 AND deleted_at IS NULL AND type = 'Customer'`,
       [tenantId]
     ),
     client.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM marketing_leads
-       WHERE tenant_id = $1 AND deleted_at IS NULL`,
+      `SELECT COUNT(*)::text AS count FROM installment_plans
+       WHERE tenant_id = $1 AND deleted_at IS NULL
+         AND status NOT IN ('Sale Recognized', 'Rejected')`,
       [tenantId]
     ),
     client.query<{ count: string }>(
       `SELECT COUNT(*)::text AS count FROM vendors
        WHERE tenant_id = $1 AND deleted_at IS NULL`,
       [tenantId]
+    ),
+    client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM installment_plans
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND created_at >= $2::date`,
+      [tenantId, from]
     ),
   ]);
 
@@ -123,7 +129,7 @@ export async function getMobileCrmSummary(
       metric('customers', 'Customers', Number(contactsR.rows[0]?.count ?? 0), 'number'),
       metric('leads', 'Active Leads', Number(leadsR.rows[0]?.count ?? 0), 'number'),
       metric('vendors', 'Vendors', Number(vendorsR.rows[0]?.count ?? 0), 'number'),
-      metric('newLeads', 'New Leads (Month)', 0, 'number'),
+      metric('newLeads', 'New Leads (Month)', Number(newLeadsR.rows[0]?.count ?? 0), 'number'),
     ],
   };
 }

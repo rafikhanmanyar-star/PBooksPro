@@ -16,6 +16,7 @@ import {
 } from './organizationApprovalEmailService.js';
 import { captureMonitoringEvent } from '../monitoring/monitoringCapture.js';
 import { OrganizationRepository } from '../../modules/organization/repositories/OrganizationRepository.js';
+import { withSavepoint } from '../../db/pool.js';
 
 export type OrganizationRequestRow = {
   id: string;
@@ -250,27 +251,47 @@ export async function approveOrganization(
 
   await orgRepo.approve(client, tenantId, adminUserId);
 
-  await startTrialSubscription(client, tenantId).catch((err) => {
-    console.warn('[organizationApproval] Trial subscription not started on approve:', err);
-  });
-  await getOrCreateOnboarding(client, tenantId);
-
-  await logOrganizationStatusChange(client, {
-    tenantId,
-    adminUserId,
-    adminEmail,
-    action: 'organization_approved',
-    summary: 'Organization Approved',
-    previousStatus,
-    newStatus: 'ACTIVE',
-  });
-
-  const detail = (await getOrganizationRequestDetail(client, tenantId))!;
-  const recipient = detail.ownerEmail ?? detail.email;
-  if (recipient) {
-    void sendOrganizationApprovedEmail(recipient, detail.name);
+  try {
+    await logOrganizationStatusChange(client, {
+      tenantId,
+      adminUserId,
+      adminEmail,
+      action: 'organization_approved',
+      summary: 'Organization Approved',
+      previousStatus,
+      newStatus: 'ACTIVE',
+    });
+  } catch (err) {
+    console.warn('[organizationApproval] Audit log failed on approve:', err);
   }
-  return detail;
+
+  return (await getOrganizationRequestDetail(client, tenantId))!;
+}
+
+/** Trial/onboarding provisioning after approval — safe to run outside the status transaction. */
+export async function provisionApprovedOrganization(tenantId: string): Promise<void> {
+  const { withTransaction } = await import('../../db/pool.js');
+  await withTransaction(async (client) => {
+    await withSavepoint(client, 'org_approve_trial', async (spClient) => {
+      await startTrialSubscription(spClient, tenantId);
+    }).catch((err) => {
+      console.warn('[organizationApproval] Trial subscription not started on approve:', err);
+    });
+
+    await withSavepoint(client, 'org_approve_onboarding', async (spClient) => {
+      await getOrCreateOnboarding(spClient, tenantId);
+    }).catch((err) => {
+      console.warn('[organizationApproval] Onboarding init failed on approve:', err);
+    });
+  }).catch((err) => {
+    console.warn('[organizationApproval] Post-approval provisioning failed:', err);
+  });
+}
+
+export async function notifyOrganizationApproved(detail: OrganizationRequestDetail): Promise<void> {
+  const recipient = detail.ownerEmail ?? detail.email;
+  if (!recipient) return;
+  await sendOrganizationApprovedEmail(recipient, detail.name);
 }
 
 export async function rejectOrganization(

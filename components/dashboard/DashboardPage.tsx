@@ -121,7 +121,7 @@ const DashboardPage: React.FC = () => {
   );
 
   return (
-    <div className="space-y-4 md:space-y-6 max-w-[1600px] mx-auto px-2 sm:px-4 pb-8">
+    <div className="space-y-4 md:space-y-6 max-w-[1600px] mx-auto px-2 sm:px-4 pb-28 md:pb-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-app-text">

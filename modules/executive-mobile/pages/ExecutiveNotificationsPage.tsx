@@ -1,5 +1,6 @@
 import React from 'react';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
+import { useDismissUserNotification } from '../../../hooks/useUserNotifications';
 import { useMobileNotifications } from '../hooks/useMobileNotifications';
 
 const SEVERITY_STYLES = {
@@ -11,6 +12,20 @@ const SEVERITY_STYLES = {
 export default function ExecutiveNotificationsPage() {
   const { setView } = useExecutiveMode();
   const { data, isLoading, refetch } = useMobileNotifications();
+  const dismissNotification = useDismissUserNotification();
+
+  const handleOpen = (n: { id: string; actionType?: string }) => {
+    if (n.id.startsWith('notif_')) {
+      void dismissNotification(n.id);
+    }
+    if (n.actionType === 'approval') {
+      setView('approvals');
+      return;
+    }
+    if (n.actionType === 'unposted') {
+      setView('myTransactions');
+    }
+  };
 
   return (
     <div className="p-4 pb-24 space-y-4">
@@ -33,21 +48,21 @@ export default function ExecutiveNotificationsPage() {
 
       <ul className="space-y-2">
         {(data ?? []).map((n) => (
-          <li
-            key={n.id}
-            className={`p-4 rounded-xl border ${SEVERITY_STYLES[n.severity]}`}
-          >
-            <p className="font-medium text-app-text">{n.title}</p>
-            <p className="text-sm text-app-muted mt-1">{n.body}</p>
-            {n.actionType === 'approval' && (
-              <button
-                type="button"
-                className="mt-2 text-sm text-green-600 touch-manipulation"
-                onClick={() => setView('approvals')}
-              >
-                Review approvals →
-              </button>
-            )}
+          <li key={n.id}>
+            <button
+              type="button"
+              className={`w-full text-left p-4 rounded-xl border touch-manipulation ${SEVERITY_STYLES[n.severity]}`}
+              onClick={() => handleOpen(n)}
+            >
+              <p className="font-medium text-app-text">{n.title}</p>
+              <p className="text-sm text-app-muted mt-1">{n.body}</p>
+              {n.actionType === 'approval' && (
+                <span className="mt-2 inline-block text-sm text-green-600">Review approvals →</span>
+              )}
+              {n.actionType === 'unposted' && (
+                <span className="mt-2 inline-block text-sm text-green-600">View my transactions →</span>
+              )}
+            </button>
           </li>
         ))}
       </ul>

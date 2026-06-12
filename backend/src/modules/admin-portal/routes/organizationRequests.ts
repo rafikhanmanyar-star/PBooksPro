@@ -9,6 +9,8 @@ import {
   activateOrganization,
   getOrganizationRequestDetail,
   listOrganizationRequests,
+  notifyOrganizationApproved,
+  provisionApprovedOrganization,
   rejectOrganization,
   suspendOrganization,
 } from '../../../services/organization/organizationApprovalService.js';
@@ -105,6 +107,10 @@ router.post('/:id/approve', async (req: AdminRequest, res) => {
       approveOrganization(client, req.params.id, actor.id, actor.email)
     );
     res.json(detail);
+    void provisionApprovedOrganization(req.params.id);
+    void notifyOrganizationApproved(detail).catch((err) => {
+      console.warn('[organizationApproval] Approval email failed:', err);
+    });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     if (msg === 'Organization not found') {

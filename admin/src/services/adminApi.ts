@@ -6,6 +6,20 @@ console.log('🔧 Admin API URL:', ADMIN_API_URL);
 console.log('🔧 Hostname:', typeof window !== 'undefined' ? window.location.hostname : 'server');
 
 class AdminApi {
+  private async adminFetch(url: string, init?: RequestInit): Promise<Response> {
+    try {
+      return await fetch(url, init);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg === 'Failed to fetch' || msg.includes('NetworkError')) {
+        throw new Error(
+          `Could not reach the admin API (${ADMIN_API_URL}). Check that the API server is running and VITE_ADMIN_API_URL is correct.`
+        );
+      }
+      throw err;
+    }
+  }
+
   private getAuthHeaders(): HeadersInit {
     const token = localStorage.getItem('admin_token');
     return {
@@ -381,7 +395,7 @@ class AdminApi {
     if (filters?.limit != null) params.set('limit', String(filters.limit));
     if (filters?.offset != null) params.set('offset', String(filters.offset));
     const qs = params.toString();
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests${qs ? `?${qs}` : ''}`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests${qs ? `?${qs}` : ''}`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -392,7 +406,7 @@ class AdminApi {
   }
 
   async getOrganizationRequestStats() {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/stats`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/stats`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -403,7 +417,7 @@ class AdminApi {
   }
 
   async getOrganizationRequest(id: string) {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}`, {
       headers: this.getAuthHeaders(),
     });
     if (!response.ok) {
@@ -414,7 +428,7 @@ class AdminApi {
   }
 
   async approveOrganizationRequest(id: string) {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/approve`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/approve`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({}),
@@ -427,7 +441,7 @@ class AdminApi {
   }
 
   async rejectOrganizationRequest(id: string, reason: string) {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/reject`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/reject`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({ reason }),
@@ -440,7 +454,7 @@ class AdminApi {
   }
 
   async suspendOrganizationRequest(id: string) {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/suspend`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/suspend`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({}),
@@ -453,7 +467,7 @@ class AdminApi {
   }
 
   async activateOrganizationRequest(id: string) {
-    const response = await fetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/activate`, {
+    const response = await this.adminFetch(`${ADMIN_API_URL}/organization-requests/${encodeURIComponent(id)}/activate`, {
       method: 'POST',
       headers: this.getAuthHeaders(),
       body: JSON.stringify({}),

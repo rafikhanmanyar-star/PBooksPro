@@ -37,10 +37,11 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
 
   const [view, setView] = useState<ExecutiveView>('home');
   const [activeModule, setActiveModule] = useState<ExecutiveModuleId>('dashboard');
+  const [viewportTick, setViewportTick] = useState(0);
 
   const isExecutiveMobileActive = useMemo(
     () => resolveExecutiveActive(interfaceMode, cloudEligible),
-    [interfaceMode, cloudEligible]
+    [interfaceMode, cloudEligible, viewportTick]
   );
 
   const setInterfaceMode = useCallback(
@@ -60,11 +61,13 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
   }, []);
 
   useEffect(() => {
-    const onResize = () => {
-      /* re-render on breakpoint change for auto mode */
+    const onViewportChange = () => setViewportTick((n) => n + 1);
+    window.addEventListener('resize', onViewportChange);
+    window.addEventListener('orientationchange', onViewportChange);
+    return () => {
+      window.removeEventListener('resize', onViewportChange);
+      window.removeEventListener('orientationchange', onViewportChange);
     };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
   }, []);
 
   const value = useMemo(

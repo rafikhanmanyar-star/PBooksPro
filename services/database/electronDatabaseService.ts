@@ -175,6 +175,7 @@ export class ElectronDatabaseService {
           } catch (_) { }
         }
         if (currentVersion < 23) this.dropPropertyOwnershipTables();
+        if (currentVersion < 24) await this.runV24EmailAuthMigration();
         this.rawExecute(
           'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',
           ['schema_version', SCHEMA_VERSION.toString()]
@@ -196,6 +197,27 @@ export class ElectronDatabaseService {
       this.isInitialized = false;
       logger.errorCategory('database', '❌ Native SQLite init failed:', this.initializationError);
       throw this.initializationError;
+    }
+  }
+
+  private async runV24EmailAuthMigration(): Promise<void> {
+    try {
+      const { runEmailAuthMigrationSqlite } = await import('./emailAuthMigration.js');
+      const report = runEmailAuthMigrationSqlite(
+        {
+          query: <T,>(sql: string, params?: unknown[]) => this.rawQuery<T>(sql, params),
+          execute: (sql: string, params?: unknown[]) => this.rawExecute(sql, params),
+        },
+        'desktop'
+      );
+      if (report.usersBackfilled > 0) {
+        logger.logCategory(
+          'database',
+          `✅ Email auth migration: backfilled ${report.usersBackfilled} user email(s)`
+        );
+      }
+    } catch (e) {
+      logger.warnCategory('database', 'Email auth migration (v24):', e);
     }
   }
 

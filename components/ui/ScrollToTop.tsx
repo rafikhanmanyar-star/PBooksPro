@@ -45,7 +45,7 @@ const ScrollToTop: React.FC<ScrollToTopProps> = ({ containerId }) => {
     <button
       type="button"
       onClick={scrollToTop}
-      className="fixed bottom-24 left-6 z-40 p-3 rounded-full bg-slate-800/90 text-white shadow-xl backdrop-blur-sm border border-slate-700/50 transition-all duration-300 animate-fade-in-up hover:bg-slate-700 hover:scale-110 active:scale-95"
+      className="hidden md:flex fixed bottom-24 right-6 z-40 p-3 rounded-full bg-slate-800/90 text-white shadow-xl backdrop-blur-sm border border-slate-700/50 transition-all duration-300 animate-fade-in-up hover:bg-slate-700 hover:scale-110 active:scale-95"
       aria-label="Scroll to top"
       title="Scroll to Top"
     >

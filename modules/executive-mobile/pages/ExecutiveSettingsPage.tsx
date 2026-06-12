@@ -1,5 +1,8 @@
 import React from 'react';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
+import { useFeatures } from '../../../hooks/useFeatures';
+import { getEditionDisplayLabel } from '../../../shared/systemFeatures';
+import { ClientVersionInfo } from '../../../components/ui/ClientVersionLabel';
 import type { InterfaceMode } from '../../../types/executiveMobile.types';
 
 const MODES: { id: InterfaceMode; label: string; description: string }[] = [
@@ -22,12 +25,27 @@ const MODES: { id: InterfaceMode; label: string; description: string }[] = [
 
 export default function ExecutiveSettingsPage() {
   const { interfaceMode, setInterfaceMode, isCloudEligible } = useExecutiveMode();
+  const { edition } = useFeatures();
   const [saving, setSaving] = React.useState(false);
+
+  const versionCard = (
+    <div className="rounded-xl border border-app-border bg-app-card p-4">
+      <h2 className="text-sm font-semibold text-app-text">App version</h2>
+      <p className="text-xs text-app-muted mt-1 mb-3">Client build information</p>
+      {edition && (
+        <p className="text-xs text-app-muted mb-3">
+          Edition: <span className="font-medium text-app-text">{getEditionDisplayLabel(edition)}</span>
+        </p>
+      )}
+      <ClientVersionInfo />
+    </div>
+  );
 
   if (!isCloudEligible) {
     return (
-      <div className="p-4 pb-24">
+      <div className="p-4 pb-24 space-y-4">
         <p className="text-sm text-app-muted">Interface mode is available in Cloud Edition only.</p>
+        {versionCard}
       </div>
     );
   }
@@ -64,6 +82,8 @@ export default function ExecutiveSettingsPage() {
           </button>
         ))}
       </div>
+
+      {versionCard}
     </div>
   );
 }

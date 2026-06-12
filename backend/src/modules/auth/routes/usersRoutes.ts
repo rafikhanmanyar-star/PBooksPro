@@ -20,26 +20,28 @@ import {
 
 export const usersRouter = Router();
 
-const optionalEmail = z.preprocess(
-  (v) => (v === '' || v === undefined || v === null ? undefined : v),
-  z.string().email().optional()
-);
-
 const createUserSchema = z.object({
-  username: z.string().min(1),
+  username: z.string().min(1).max(64).optional(),
   name: z.string().min(1),
-  email: optionalEmail,
+  email: z.string().email(),
   password: z.string().min(1),
   role: z.string().min(1),
 });
 
 const updateUserSchema = z.object({
-  username: z.string().min(1),
+  username: z.string().min(1).max(64).optional(),
   name: z.string().min(1),
-  email: optionalEmail,
+  email: z.string().email(),
   role: z.string().min(1),
   password: z.string().optional(),
 });
+
+function resolveUsername(input: { username?: string; email: string }): string {
+  const explicit = input.username?.trim();
+  if (explicit) return explicit;
+  const local = input.email.split('@')[0]?.trim();
+  return local && local.length > 0 ? local : 'user';
+}
 
 /** Current user only: profile preferences (display timezone, interface mode). */
 const patchMeSchema = z.object({
@@ -52,10 +54,11 @@ const patchMeSchema = z.object({
 function rowToApi(row: { id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }) {
   return {
     id: row.id,
+    email: row.email ?? '',
     username: row.username,
     name: row.name,
+    fullName: row.name,
     role: row.role,
-    email: row.email ?? undefined,
     is_active: row.is_active,
   };
 }
@@ -144,7 +147,8 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
     sendFailure(res, 400, 'VALIDATION_ERROR', 'Invalid body');
     return;
   }
-  const { username, name, email, password, role } = parsed.data;
+  const { name, email, password, role } = parsed.data;
+  const username = resolveUsername(parsed.data);
   const passwordError = validatePassword(password);
   if (passwordError) {
     sendFailure(res, 400, 'VALIDATION_ERROR', passwordError);
@@ -153,18 +157,22 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
   const id = `user_${randomUUID().replace(/-/g, '')}`;
   const passwordHash = await bcrypt.hash(password, 10);
   const emailVal = normalizeUserEmail(email);
+  if (!emailVal) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Email is required');
+    return;
+  }
 
   try {
     const created = await withTransaction(async (client) => {
       await assertUserIdentityAvailable(client, {
         email: emailVal,
-        username: username.trim(),
+        username,
       });
       const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
-        `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)
+        `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active, email_verified)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, FALSE)
          RETURNING id, username, name, role, email, is_active`,
-        [id, tenantId, username.trim(), name.trim(), role, passwordHash, emailVal]
+        [id, tenantId, username, name.trim(), role, passwordHash, emailVal]
       );
       await ensureUserTenantMembership(client, id, tenantId, role);
       const row = rowToApi(r.rows[0]);
@@ -209,8 +217,13 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
     sendFailure(res, 400, 'VALIDATION_ERROR', 'Invalid body');
     return;
   }
-  const { username, name, email, role, password } = parsed.data;
+  const { name, email, role, password } = parsed.data;
+  const username = resolveUsername(parsed.data);
   const emailVal = normalizeUserEmail(email);
+  if (!emailVal) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Email is required');
+    return;
+  }
 
   try {
     const updated = await withTransaction(async (client) => {
@@ -225,7 +238,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
 
       await assertUserIdentityAvailable(client, {
         email: emailVal,
-        username: username.trim(),
+        username,
         excludeUserId: id,
       });
 
@@ -238,7 +251,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
           `UPDATE users SET username = $1, name = $2, email = $3, role = $4, password_hash = $5, updated_at = NOW()
            WHERE id = $6 AND tenant_id = $7
            RETURNING id, username, name, role, email, is_active`,
-          [username.trim(), name.trim(), emailVal, role, passwordHash, id, tenantId]
+          [username, name.trim(), emailVal, role, passwordHash, id, tenantId]
         );
         row = r.rows[0];
       } else {
@@ -246,7 +259,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
           `UPDATE users SET username = $1, name = $2, email = $3, role = $4, updated_at = NOW()
            WHERE id = $5 AND tenant_id = $6
            RETURNING id, username, name, role, email, is_active`,
-          [username.trim(), name.trim(), emailVal, role, id, tenantId]
+          [username, name.trim(), emailVal, role, id, tenantId]
         );
         row = r.rows[0];
       }

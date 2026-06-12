@@ -14,6 +14,7 @@ export type DemoAuthPayload = {
     role: string;
     tenantId: string;
     displayTimezone?: string | null;
+    interfaceMode?: 'auto' | 'full_erp' | 'executive_mobile';
   };
   tenant: {
     id: string;

@@ -21,7 +21,7 @@ $ProjectRoot = $PSScriptRoot
 $EnvFile = ".env.staging"
 $StagingApiPort = 3001
 
-function Stop-ProcessesOnPort {
+function Get-ListeningPidsOnPort {
     param([int]$Port)
 
     $pids = [System.Collections.Generic.HashSet[int]]::new()
@@ -42,6 +42,13 @@ function Stop-ProcessesOnPort {
     foreach ($procId in $pids) {
         if ($procId -gt 0 -and $procId -ne $PID) { $pidList += $procId }
     }
+    return $pidList
+}
+
+function Stop-ProcessesOnPort {
+    param([int]$Port)
+
+    $pidList = Get-ListeningPidsOnPort -Port $Port
     if ($pidList.Count -eq 0) {
         Write-Host "  Port $Port is free." -ForegroundColor DarkGray
         return
@@ -53,6 +60,35 @@ function Stop-ProcessesOnPort {
     }
     Start-Sleep -Seconds 1
     Write-Host "  Freed port $Port ($($pidList.Count) process(es))." -ForegroundColor Green
+}
+
+function Assert-PortIsFree {
+    param([int]$Port)
+
+    $remaining = Get-ListeningPidsOnPort -Port $Port
+    if ($remaining.Count -eq 0) { return }
+
+    Write-Host "  Port $Port is still in use (PID(s): $($remaining -join ', '))." -ForegroundColor Red
+    Write-Host "  Stop any manual staging API (npm run dev:backend:staging / start:backend:staging) and retry." -ForegroundColor Yellow
+    exit 1
+}
+
+function Get-ProcessTreePids {
+    param([int]$RootPid)
+
+    $all = [System.Collections.Generic.HashSet[int]]::new()
+    [void]$all.Add($RootPid)
+    $queue = [System.Collections.Queue]::new()
+    $queue.Enqueue($RootPid)
+    while ($queue.Count -gt 0) {
+        $currentPid = [int]$queue.Dequeue()
+        Get-CimInstance Win32_Process -Filter "ParentProcessId=$currentPid" -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $childPid = [int]$_.ProcessId
+                if ($all.Add($childPid)) { $queue.Enqueue($childPid) }
+            }
+    }
+    return @($all)
 }
 
 $LocalApiBase = "http://127.0.0.1:3001/api"
@@ -126,8 +162,17 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "  [5/8] Starting staging backend API (PORT=3001)..." -ForegroundColor Yellow
+Stop-ProcessesOnPort -Port $StagingApiPort
+Assert-PortIsFree -Port $StagingApiPort
+
 $env:NODE_ENV = "production"
-if (-not $env:PORT) { $env:PORT = "3001" }
+$env:PORT = "3001"
+
+$backendLog = Join-Path $ProjectRoot "logs\test-staging-backend.log"
+$backendLogDir = Split-Path $backendLog -Parent
+if (-not (Test-Path $backendLogDir)) {
+    New-Item -ItemType Directory -Path $backendLogDir -Force | Out-Null
+}
 
 $useWatch = $BackendWatch -or ($env:PBooks_BACKEND_WATCH -eq "1")
 if ($useWatch) {
@@ -135,15 +180,24 @@ if ($useWatch) {
     $backendJob = Start-Process -FilePath "cmd.exe" -ArgumentList @("/k", $watchCmd) -PassThru -WindowStyle Normal
     Write-Host ('  Backend dev [tsx watch] started. PID: ' + $backendJob.Id) -ForegroundColor Green
 } else {
-    $runCmd = 'set NODE_ENV=production&& npm run start:backend:staging'
-    $backendJob = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $runCmd) -WorkingDirectory $ProjectRoot -PassThru -NoNewWindow
-    Write-Host ('  Staging backend started. PID: ' + $backendJob.Id) -ForegroundColor Green
+    # Run node directly (same as test-local-only.ps1) so npm output does not interleave with vite build.
+    # Log via cmd redirection — PowerShell forbids the same path for RedirectStandardOutput and RedirectStandardError.
+    $runCmd = 'set NODE_ENV=production&& node backend/dist/index.js >> "' + $backendLog + '" 2>&1'
+    $backendJob = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", $runCmd) -WorkingDirectory $ProjectRoot -PassThru
+    Write-Host ('  Staging backend started. PID: ' + $backendJob.Id + ' (log: logs/test-staging-backend.log)') -ForegroundColor Green
 }
 
 Write-Host ""
 Write-Host "  Waiting for API at $HealthUrl ..." -ForegroundColor DarkGray
 $ready = $false
 for ($i = 0; $i -lt 60; $i++) {
+    if (-not $useWatch -and $backendJob.HasExited) {
+        Write-Host "  Staging backend exited early (often EADDRINUSE). See logs/test-staging-backend.log" -ForegroundColor Red
+        if (Test-Path $backendLog) {
+            Get-Content $backendLog -Tail 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+        }
+        exit 1
+    }
     try {
         $r = Invoke-WebRequest -Uri $HealthUrl -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
         if ($r.StatusCode -eq 200) {
@@ -155,10 +209,26 @@ for ($i = 0; $i -lt 60; $i++) {
     }
 }
 if (-not $ready) {
-    Write-Host "  API did not become ready. Check pbooks_staging and $EnvFile." -ForegroundColor Red
-    try { Stop-Process -Id $backendJob.Id -Force -ErrorAction SilentlyContinue } catch {}
+    Write-Host "  API did not become ready. Check pBookspro_Staging and $EnvFile." -ForegroundColor Red
+    if (Test-Path $backendLog) {
+        Get-Content $backendLog -Tail 20 | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    }
+    try { taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null } catch {}
     exit 1
 }
+
+if (-not $useWatch) {
+    $treePids = Get-ProcessTreePids -RootPid $backendJob.Id
+    $portPids = Get-ListeningPidsOnPort -Port $StagingApiPort
+    $ownsPort = @($portPids | Where-Object { $treePids -contains $_ })
+    if ($ownsPort.Count -eq 0) {
+        Write-Host "  Health check passed but port $StagingApiPort is owned by another process (PID(s): $($portPids -join ', '))." -ForegroundColor Red
+        Write-Host "  Stop the other API on 3001 and retry npm run test:staging." -ForegroundColor Yellow
+        try { taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null } catch {}
+        exit 1
+    }
+}
+
 Write-Host "  Staging API is up." -ForegroundColor Green
 
 Write-Host ""
@@ -174,11 +244,7 @@ $env:VITE_WS_URL = $LocalWsRoot
 & npm run build
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Frontend build failed!" -ForegroundColor Red
-    if ($useWatch) {
-        try { taskkill /PID $backendJob.Id /T /F 2>$null } catch {}
-    } else {
-        try { Stop-Process -Id $backendJob.Id -Force -ErrorAction SilentlyContinue } catch {}
-    }
+    try { taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null } catch {}
     exit 1
 }
 
@@ -190,9 +256,5 @@ Write-Host ""
 Write-Host ""
 Write-Host "  [8/8] Stopping staging backend..." -ForegroundColor Yellow
 try {
-    if ($useWatch) {
-        taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null
-    } else {
-        Stop-Process -Id $backendJob.Id -Force -ErrorAction SilentlyContinue
-    }
+    taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null
 } catch {}

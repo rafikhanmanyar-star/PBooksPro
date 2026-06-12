@@ -20,6 +20,7 @@ import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionSc
 import { BookOpen } from 'lucide-react';
 import { getModuleHelp } from '../../shared/moduleHelp/moduleHelpContent';
 import { resolveModuleHelpContext } from '../../shared/moduleHelp/resolveModuleHelpContext';
+import { useDismissUserNotification, useUserNotifications } from '../../hooks/useUserNotifications';
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
@@ -83,8 +84,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     action:
     | { type: 'installment_plan'; planId: string }
     | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string }
-    | { type: 'personal_task'; taskId: string };
+    | { type: 'personal_task'; taskId: string }
+    | { type: 'unposted'; transactionId?: string };
   };
+
+  const { data: apiNotifications = [] } = useUserNotifications(isAuthenticated && !isLocalOnlyMode());
+  const dismissApiNotification = useDismissUserNotification();
 
   // Load dismissed notifications from localStorage on mount
   useEffect(() => {
@@ -115,6 +120,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       setWhatsappNotifications(prev => prev.filter(item => item.id !== notificationId));
     }
 
+    if (notificationId.startsWith('notif_')) {
+      void dismissApiNotification(notificationId);
+      return;
+    }
+
     setDismissedNotifications(prev => {
       // Check if already dismissed
       if (prev.has(notificationId)) {
@@ -137,7 +147,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
 
       return updated;
     });
-  }, [currentUser]);
+  }, [currentUser, dismissApiNotification]);
 
   const resolveWhatsAppTimestamp = useCallback((value?: string | Date) => {
     if (!value) return new Date().toISOString();
@@ -343,14 +353,34 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       return results;
     });
 
-    const items: NotificationItem[] = [...taskItems, ...planItems];
+    const apiItems: NotificationItem[] = apiNotifications.map((n) => ({
+      id: n.id,
+      title: n.title,
+      message: n.body,
+      time: n.createdAt,
+      badge: {
+        label: n.actionType === 'unposted' ? 'Quick Txn' : n.category,
+        tone:
+          n.severity === 'urgent'
+            ? 'red'
+            : n.severity === 'warning'
+              ? 'orange'
+              : 'blue',
+      },
+      action:
+        n.actionType === 'unposted'
+          ? { type: 'unposted' as const, transactionId: n.actionId }
+          : { type: 'unposted' as const },
+    }));
+
+    const items: NotificationItem[] = [...apiItems, ...taskItems, ...planItems];
 
     // Filter out dismissed notifications - ensure they never reappear
     // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
     const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
 
     return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [currentUser, installmentPlans, contacts, projects, units, usersForNotifications, dismissedNotifications, taskBellRows]);
+  }, [currentUser, apiNotifications, installmentPlans, contacts, projects, units, usersForNotifications, dismissedNotifications, taskBellRows]);
 
   const handleNotificationClick = useCallback((notification: NotificationItem) => {
     scheduleIdleWork(() => {
@@ -372,6 +402,14 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       );
       startNavTransition(() => {
         dispatch({ type: 'SET_PAGE', payload: 'personalTransactions' });
+      });
+      return;
+    }
+
+    if (notification.action.type === 'unposted') {
+      startNavTransition(() => {
+        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Unposted Transactions'] });
+        dispatch({ type: 'SET_PAGE', payload: 'accounting' });
       });
       return;
     }

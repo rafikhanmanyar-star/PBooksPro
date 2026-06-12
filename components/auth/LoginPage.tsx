@@ -3,25 +3,33 @@ import { useDispatchOnly, useUsers } from '../../hooks/useSelectiveState';
 import React, { useState } from 'react';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
+import { ClientVersionFootnote } from '../ui/ClientVersionLabel';
+import { isValidEmailFormat, normalizeUserEmail } from '../../shared/auth/emailIdentity';
 
 const LOCAL_SAVED_LOGIN_KEY = 'pbookspro_local_saved_login';
 
-function readSavedLocalLogin(): { username: string; password: string } | null {
+function readSavedLocalLogin(): { email: string; password: string } | null {
     if (typeof window === 'undefined') return null;
     try {
         const raw = localStorage.getItem(LOCAL_SAVED_LOGIN_KEY);
         if (!raw) return null;
-        const o = JSON.parse(raw) as { username?: unknown; password?: unknown };
-        if (typeof o.username !== 'string' || typeof o.password !== 'string') return null;
-        return { username: o.username, password: o.password };
+        const o = JSON.parse(raw) as { email?: unknown; username?: unknown; password?: unknown };
+        const email =
+            typeof o.email === 'string'
+                ? o.email
+                : typeof o.username === 'string'
+                  ? o.username
+                  : null;
+        if (!email || typeof o.password !== 'string') return null;
+        return { email, password: o.password };
     } catch {
         return null;
     }
 }
 
-function persistSavedLocalLogin(username: string, password: string) {
+function persistSavedLocalLogin(email: string, password: string) {
     try {
-        localStorage.setItem(LOCAL_SAVED_LOGIN_KEY, JSON.stringify({ username, password }));
+        localStorage.setItem(LOCAL_SAVED_LOGIN_KEY, JSON.stringify({ email, password }));
     } catch {
         /* ignore */
     }
@@ -39,7 +47,7 @@ const LoginPage: React.FC = () => {
     const users = useUsers();
     const dispatch = useDispatchOnly();
     const initialSaved = readSavedLocalLogin();
-    const [username, setUsername] = useState(initialSaved?.username ?? '');
+    const [email, setEmail] = useState(initialSaved?.email ?? '');
     const [password, setPassword] = useState(initialSaved?.password ?? '');
     const [savePassword, setSavePassword] = useState(!!initialSaved);
     const [error, setError] = useState('');
@@ -48,29 +56,40 @@ const LoginPage: React.FC = () => {
         e.preventDefault();
         setError('');
 
-        const user = users.find(u => u.username.toLowerCase() === username.trim().toLowerCase());
+        const emailVal = email.trim();
+        if (!emailVal) {
+            setError('Email address is required.');
+            return;
+        }
+        if (!isValidEmailFormat(emailVal) && !emailVal.includes('@')) {
+            setError('Enter a valid email address (e.g. admin@company.local after upgrade).');
+            return;
+        }
+
+        const normalized = normalizeUserEmail(emailVal) || emailVal.toLowerCase();
+        const user = users.find(u => {
+            const userEmail = normalizeUserEmail((u as { email?: string }).email);
+            if (userEmail && userEmail === normalized) return true;
+            return u.username.toLowerCase() === normalized && !normalized.includes('@');
+        });
 
         if (!user) {
             setError('User not found.');
             return;
         }
 
-        // Simple password check (in real app, use hashing)
         if (user.password && user.password !== password) {
             setError('Incorrect password.');
             return;
         }
 
-        // Allow empty password if user has no password set (default admin)
         if (!user.password && password) {
-             // Optional: Fail if they typed a password but none is required? 
-             // Or allow it. For security, better to be strict.
              setError('Incorrect password.');
              return;
         }
 
         if (savePassword) {
-            persistSavedLocalLogin(username.trim(), password);
+            persistSavedLocalLogin(emailVal, password);
         } else {
             clearSavedLocalLogin();
         }
@@ -82,20 +101,27 @@ const LoginPage: React.FC = () => {
         <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
             <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
                 <div className="text-center mb-8">
+                    <img
+                        src="/pbookspro-logo.png"
+                        alt="PBooksPro"
+                        className="h-12 w-auto mx-auto mb-4"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                    />
                     <h1 className="text-2xl font-bold text-slate-800">PBooksPro</h1>
-                    <p className="text-slate-500 mt-2">Sign in to continue</p>
+                    <p className="text-slate-500 mt-2">Sign in with your email</p>
                 </div>
 
                 <form onSubmit={handleLogin} className="space-y-6" autoComplete="off" data-form-type="other">
                     <Input 
-                        id="username"
-                        name="username"
-                        label="Username" 
-                        value={username} 
-                        onChange={e => setUsername(e.target.value)} 
+                        id="email"
+                        name="email"
+                        label="Email Address" 
+                        type="email"
+                        value={email} 
+                        onChange={e => setEmail(e.target.value)} 
                         autoFocus 
                         required 
-                        autoComplete="username"
+                        autoComplete="email"
                     />
                     <Input 
                         id="password"
@@ -104,9 +130,8 @@ const LoginPage: React.FC = () => {
                         type="password" 
                         value={password} 
                         onChange={e => setPassword(e.target.value)} 
-                        placeholder={username === 'admin' ? '(Default: No password)' : ''}
-                        autoComplete="off"
-                        data-form-type="other"
+                        placeholder={email.toLowerCase().startsWith('admin@') ? '(Default: No password)' : ''}
+                        autoComplete="current-password"
                     />
 
                     <label className="flex items-start gap-2 cursor-pointer text-sm text-slate-700">
@@ -117,7 +142,7 @@ const LoginPage: React.FC = () => {
                             onChange={e => setSavePassword(e.target.checked)}
                         />
                         <span>
-                            Save password on this device
+                            Remember me on this device
                             <span className="block text-xs text-slate-500 font-normal mt-0.5">
                                 Stored locally in your browser. Clear the checkbox and sign in to remove it.
                             </span>
@@ -133,11 +158,23 @@ const LoginPage: React.FC = () => {
                     <Button type="submit" className="w-full justify-center py-3 text-lg">
                         Sign In
                     </Button>
+
+                    <p className="text-center text-sm text-slate-500">
+                        <button
+                            type="button"
+                            className="text-slate-600 underline-offset-2 hover:underline"
+                            onClick={() => setError('Password reset is available in cloud mode. For offline desktop, ask your administrator to reset your password in Administration → Users.')}
+                        >
+                            Forgot password?
+                        </button>
+                    </p>
                 </form>
                 
-                <p className="text-xs text-center text-slate-400 mt-8">
-                    Default Admin: <strong>admin</strong> (No Password)
+                <p className="text-xs text-center text-slate-400 mt-6">
+                    Default admin after upgrade: <strong>admin@company.local</strong> (no password until set)
                 </p>
+
+                <ClientVersionFootnote className="mt-4 !text-slate-400" />
             </div>
         </div>
     );

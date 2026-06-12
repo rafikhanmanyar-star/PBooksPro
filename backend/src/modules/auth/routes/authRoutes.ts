@@ -21,11 +21,15 @@ import {
 import { publicIntrospectionLimiter } from '../../../middleware/introspectionGuard.js';
 import {
   findAccountsByLoginIdentifier,
-  filterAccountsByPassword,
   findAccountForTenantByLoginIdentifier,
   getUserTenantsForUser,
   userHasTenantAccess,
 } from '../../../services/auth/userTenantService.js';
+import { authenticateWithProvider } from '../../../services/auth/providers/index.js';
+import {
+  createPasswordResetToken,
+  resetPasswordWithToken,
+} from '../../../services/auth/passwordResetService.js';
 import {
   buildCompanySelectionResponse,
   completeLoginForAccount,
@@ -62,10 +66,20 @@ export const authRouter = Router();
 
 const loginSchema = z.object({
   email: z.string().optional().default(''),
+  /** @deprecated Use email. Accepted for legacy clients during transition. */
   username: z.string().optional().default(''),
   password: z.string().optional().default(''),
   /** @deprecated Demo-only; normal login must not send tenantId. */
   tenantId: z.string().optional(),
+});
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(16),
+  newPassword: z.string().min(8).max(256),
 });
 
 const selectCompanySchema = z.object({
@@ -167,6 +181,91 @@ function generateTenantId(companyName: string): string {
 /**
  * Organizations assigned to the authenticated user (never public).
  */
+authRouter.get('/auth/me', authMiddleware, async (req, res) => {
+  const authed = req as AuthedRequest;
+  if (!authed.userId || !authed.tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const r = await pool.query<{
+      id: string;
+      email: string | null;
+      username: string;
+      name: string;
+      tenant_id: string;
+      role: string;
+    }>(
+      `SELECT id, email, username, name, tenant_id, role FROM users WHERE id = $1 AND tenant_id = $2`,
+      [authed.userId, authed.tenantId]
+    );
+    const row = r.rows[0];
+    if (!row) {
+      sendFailure(res, 404, 'NOT_FOUND', 'User not found');
+      return;
+    }
+    sendSuccess(res, {
+      id: row.id,
+      email: row.email ?? '',
+      username: row.username,
+      fullName: row.name,
+      organizationId: row.tenant_id,
+      role: row.role,
+    });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+authRouter.post('/auth/forgot-password', loginLimiter, async (req, res) => {
+  const parsed = forgotPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'A valid email address is required');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const tokenResult = await createPasswordResetToken(pool, {
+      email: parsed.data.email,
+      ipAddress: clientIpFromRequest(req),
+      userAgent: typeof req.headers['user-agent'] === 'string' ? req.headers['user-agent'] : undefined,
+    });
+    const emailDeliveryEnabled = isEnvFlagEnabled('PASSWORD_RESET_EMAIL_ENABLED');
+    sendSuccess(res, {
+      ok: true,
+      message: 'If an account exists for this email, password reset instructions will be sent.',
+      ...(process.env.NODE_ENV !== 'production' && tokenResult && !emailDeliveryEnabled
+        ? {
+            devResetToken: tokenResult.rawToken,
+            devExpiresAt: tokenResult.expiresAt.toISOString(),
+          }
+        : {}),
+    });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+authRouter.post('/auth/reset-password', loginLimiter, async (req, res) => {
+  const parsed = resetPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Invalid reset request');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const result = await resetPasswordWithToken(pool, parsed.data);
+    if (!result.ok) {
+      sendFailure(res, 400, 'RESET_FAILED', result.reason);
+      return;
+    }
+    sendSuccess(res, { ok: true, message: 'Password updated. You can sign in with your new password.' });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
 authRouter.get('/auth/my-companies', authMiddleware, async (req, res) => {
   const authed = req as AuthedRequest;
   try {
@@ -322,7 +421,11 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
     }
 
     const candidates = await findAccountsByLoginIdentifier(pool, loginIdentifier);
-    const matched = await filterAccountsByPassword(candidates, password);
+    const matched = await authenticateWithProvider(pool, 'email_password', {
+      provider: 'email_password',
+      email: loginIdentifier,
+      password: password!,
+    });
     const orgBlock = organizationLoginBlockError(matched);
     if (orgBlock) {
       sendOrganizationAccessFailure(res, orgBlock);

@@ -479,7 +479,7 @@ const KPIPanel: React.FC = () => {
                     type="button"
                     data-tour="kpi-panel-toggle"
                     onClick={togglePanel}
-                    className="fixed right-0 top-1/2 transform -translate-y-1/2 bg-app-card text-app-text py-6 px-1 rounded-l-md shadow-lg hover:bg-app-toolbar hover:pr-2 transition-all z-30 group border-l border-t border-b border-app-border"
+                    className="hidden md:flex fixed right-0 top-1/2 transform -translate-y-1/2 bg-app-card text-app-text py-6 px-1 rounded-l-md shadow-lg hover:bg-app-toolbar hover:pr-2 transition-all z-30 group border-l border-t border-b border-app-border"
                     title="Show Dashboard"
                 >
                     <div className="w-4 h-4 transform -rotate-90">{ICONS.barChart}</div>

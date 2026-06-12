@@ -1,6 +1,6 @@
 import type pg from 'pg';
+import { listUserNotifications } from '../../notifications/services/userNotificationService.js';
 import { listMobileApprovals } from './mobileApprovalsService.js';
-import { UnpostedTransactionRepository } from '../repositories/UnpostedTransactionRepository.js';
 
 export type MobileNotificationSeverity = 'info' | 'warning' | 'urgent';
 
@@ -23,6 +23,21 @@ export async function listMobileNotifications(
 ): Promise<MobileNotificationItem[]> {
   const items: MobileNotificationItem[] = [];
   const now = new Date().toISOString();
+
+  const persisted = await listUserNotifications(client, tenantId, userId, 50);
+  for (const n of persisted) {
+    items.push({
+      id: n.id,
+      category: (n.category as MobileNotificationItem['category']) || 'finance',
+      title: n.title,
+      body: n.body,
+      severity: n.severity,
+      createdAt: n.createdAt,
+      ...(n.actionType
+        ? { actionType: n.actionType as MobileNotificationItem['actionType'], actionId: n.actionId }
+        : {}),
+    });
+  }
 
   const approvals = await listMobileApprovals(client, tenantId, userId, role);
   for (const a of approvals.filter((x) => x.canApprove)) {
@@ -75,21 +90,6 @@ export async function listMobileNotifications(
       body: `${expiring} rental agreement(s) within 30 days`,
       severity: 'info',
       createdAt: now,
-    });
-  }
-
-  const unpostedRepo = new UnpostedTransactionRepository(tenantId, client);
-  const unpostedCounts = await unpostedRepo.countByStatus();
-  const submitted = unpostedCounts.submitted ?? 0;
-  if (submitted > 0) {
-    items.push({
-      id: 'finance:unposted',
-      category: 'finance',
-      title: 'Field transactions pending',
-      body: `${submitted} unposted transaction(s) awaiting finance review`,
-      severity: 'info',
-      createdAt: now,
-      actionType: 'unposted',
     });
   }
 
