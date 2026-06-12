@@ -582,7 +582,7 @@ export class JournalRepository extends TenantRepository {
       isReversed: boolean;
     }>;
   }> {
-    const params: unknown[] = [this.tenantId];
+    const params: unknown[] = [this.tenantId, GLOBAL_SYSTEM_TENANT_ID];
     let dateCond = '';
     if (options?.asOfDate) {
       dateCond = ` AND je.entry_date <= $${params.length + 1}::date`;
@@ -599,6 +599,9 @@ export class JournalRepository extends TenantRepository {
         jl.project_id AS project_id
       FROM journal_lines jl
       INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+      INNER JOIN accounts a ON a.id = jl.account_id
+        AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2)
+        AND a.deleted_at IS NULL
       WHERE je.tenant_id = $1${dateCond}
       ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`,
       params

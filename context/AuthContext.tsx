@@ -19,6 +19,7 @@ import {
   resolveDemoAuthHandoff,
 } from '../utils/demoAuthBootstrap';
 import { trackEvent } from '../services/analytics/trackEvent';
+import { resetDemoTourSession } from '../services/tours/demoTourSession';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
 import { useCompanyOptional } from './CompanyContext';
@@ -546,6 +547,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             sessionStorage.removeItem('pbooks_api_sync_tenant_id');
             syncDisplayTimezoneFromUser(user);
             markDemoSessionActive();
+            resetDemoTourSession();
             clearWebsiteDemoEntry();
             trackEvent('demo_session_started', { source: 'bootstrap' });
             setState({
@@ -1273,6 +1275,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         usernameForStorage: response.user.username,
       });
       markDemoSessionActive();
+      resetDemoTourSession();
       clearWebsiteDemoEntry();
       trackEvent('demo_session_started', { source: 'in_app', tenantId: DEMO_PUBLIC_TENANT_ID });
     } catch (error: unknown) {

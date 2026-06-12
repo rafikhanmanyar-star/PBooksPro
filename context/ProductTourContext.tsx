@@ -30,7 +30,7 @@ type ProductTourContextValue = {
   activeTourId: ProductTourId | null;
   stepIndex: number;
   progress: TourProgressStore;
-  startTour: (tourId: ProductTourId, options?: { resume?: boolean }) => void;
+  startTour: (tourId: ProductTourId, options?: { resume?: boolean; startAtStep?: number; forceStart?: boolean }) => void;
   stopTour: () => void;
 };
 
@@ -176,10 +176,16 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
   );
 
   const startTour = useCallback(
-    (tourId: ProductTourId, options?: { resume?: boolean }) => {
+    (tourId: ProductTourId, options?: { resume?: boolean; startAtStep?: number; forceStart?: boolean }) => {
+      const tour = getTourDefinition(tourId);
       const saved = getTourProgress(tourId);
-      const startIndex =
-        options?.resume && saved?.status === 'in_progress' ? saved.stepIndex : 0;
+      let startIndex = 0;
+
+      if (options?.startAtStep != null) {
+        startIndex = Math.max(0, Math.min(options.startAtStep, tour.steps.length - 1));
+      } else if (options?.resume && saved?.status === 'in_progress' && !options?.forceStart) {
+        startIndex = saved.stepIndex;
+      }
 
       setActiveTourId(tourId);
       setStepIndex(startIndex);

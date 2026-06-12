@@ -92,9 +92,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prevAuthRef = React.useRef<boolean>(false);
     const isAuthenticated = auth.isAuthenticated;
 
-    // Track tenant ID to detect tenant switches (prevents cross-org data leaks)
-    // Read directly from localStorage to avoid circular dependency issues
+    // Track tenant ID to detect tenant switches (prevents cross-org data leaks).
+    // Must follow auth.tenant.id — localStorage alone does not re-render when org changes in-session (e.g. live demo).
     const currentTenantId = React.useMemo(() => {
+        if (isLocalOnlyMode()) {
+            return companyOpt?.activeCompany?.id ?? 'local';
+        }
+        const fromAuth = auth.tenant?.id?.trim();
+        if (fromAuth) return fromAuth;
         try {
             if (typeof window !== 'undefined') {
                 return localStorage.getItem('tenant_id');
@@ -104,9 +109,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             console.warn('Failed to get tenant ID:', error);
             return null;
         }
-    }, [isAuthenticated]);
+    }, [auth.tenant?.id, companyOpt?.activeCompany?.id]);
     const prevTenantIdRef = React.useRef<string | null>(currentTenantId);
     const sessionRestoreRefreshDoneRef = useRef(false);
+    const didPostAuthApiMergeRef = useRef(false);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isInitialDataLoading, setIsInitialDataLoading] = useState(false);
@@ -1764,6 +1770,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             dispatch({ type: 'SET_STATE', payload: initialState, _isRemote: true } as any);
             setStoredState(initialState);
             sessionRestoreRefreshDoneRef.current = false;
+            didPostAuthApiMergeRef.current = false;
+            void refreshFromApiRef.current?.();
         }
         prevTenantIdRef.current = currentTenantId;
     }, [currentTenantId, dispatch, setStoredState]);
@@ -1919,7 +1927,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [refreshFromApi]);
 
     /** After auth hydrates, if init ran before isAuthenticated was true, SQLite had no API-backed projects — merge once. */
-    const didPostAuthApiMergeRef = useRef(false);
     useEffect(() => {
         if (!isAuthenticated) {
             didPostAuthApiMergeRef.current = false;

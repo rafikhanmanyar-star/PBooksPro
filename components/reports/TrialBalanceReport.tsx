@@ -224,9 +224,13 @@ const TrialBalanceReport: React.FC = () => {
       : `${projectLabel} · ${formatDate(startDate)} – ${formatDate(endDate)}`;
 
   return (
-    <div className="flex flex-col gap-4 p-4 max-w-6xl mx-auto print:p-2 printable-area" id="printable-area">
+    <div className="flex flex-col h-full min-h-0 max-w-6xl mx-auto w-full">
       <style>{STANDARD_PRINT_STYLES}</style>
 
+      <div
+        className="flex-grow overflow-y-auto overflow-x-hidden min-h-0 printable-area p-4 print:p-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600"
+        id="printable-area"
+      >
       <Card className="p-4">
         <ReportHeader />
         <div className="text-center mb-6">
@@ -441,6 +445,7 @@ const TrialBalanceReport: React.FC = () => {
       </Card>
 
       <ReportFooter />
+      </div>
 
       {ledgerAccount && (
         <AccountGeneralLedgerModal
