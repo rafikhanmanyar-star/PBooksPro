@@ -156,7 +156,7 @@ const ProjectMaterialReport: React.FC = () => {
     const projectLabel = selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name;
 
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -188,56 +188,56 @@ const ProjectMaterialReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+                <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                     <Card className="min-h-full flex flex-col">
                         <ReportHeader />
                         <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold">Material Report</h3>
-                            <p className="text-sm text-slate-500 font-semibold">{projectLabel}</p>
-                            <p className="text-sm text-slate-500">
+                            <h3 className="text-2xl font-bold text-app-text">Material Report</h3>
+                            <p className="text-sm text-app-muted font-semibold">{projectLabel}</p>
+                            <p className="text-sm text-app-muted">
                                 From {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
                         </div>
                         
                         {reportData.rows.length > 0 ? (
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                                <table className="min-w-full divide-y divide-app-border text-sm">
+                                    <thead className="bg-app-table-header sticky top-0 z-10 shadow-sm">
                                         <tr>
-                                            <th onClick={() => handleSort('categoryName')} className="px-3 py-2 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Material Category <SortIcon column="categoryName"/></th>
-                                            <th onClick={() => handleSort('totalQuantity')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Quantity <SortIcon column="totalQuantity"/></th>
-                                            <th className="px-3 py-2 text-left font-semibold text-slate-600">Unit</th>
-                                            <th onClick={() => handleSort('totalAmount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Total Amount <SortIcon column="totalAmount"/></th>
-                                            <th onClick={() => handleSort('billCount')} className="px-3 py-2 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none">Bills <SortIcon column="billCount"/></th>
+                                            <th onClick={() => handleSort('categoryName')} className="px-3 py-2 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none">Material Category <SortIcon column="categoryName"/></th>
+                                            <th onClick={() => handleSort('totalQuantity')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none">Quantity <SortIcon column="totalQuantity"/></th>
+                                            <th className="px-3 py-2 text-left font-semibold text-app-muted">Unit</th>
+                                            <th onClick={() => handleSort('totalAmount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none">Total Amount <SortIcon column="totalAmount"/></th>
+                                            <th onClick={() => handleSort('billCount')} className="px-3 py-2 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none">Bills <SortIcon column="billCount"/></th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-app-card divide-y divide-app-border">
                                         {reportData.rows.map((item) => (
-                                            <tr key={`${item.categoryId}-${item.unit}`} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-3 py-2 text-slate-800 font-medium">{item.categoryName}</td>
-                                                <td className="px-3 py-2 text-right text-slate-700">{(item.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                                                <td className="px-3 py-2 text-slate-600">{item.unit}</td>
-                                                <td className="px-3 py-2 text-right font-semibold text-slate-800">{CURRENCY} {(item.totalAmount || 0).toLocaleString()}</td>
-                                                <td className="px-3 py-2 text-right text-slate-600">{item.billCount}</td>
+                                            <tr key={`${item.categoryId}-${item.unit}`} className="hover:bg-app-table-hover transition-colors">
+                                                <td className="px-3 py-2 text-app-text font-medium">{item.categoryName}</td>
+                                                <td className="px-3 py-2 text-right text-app-text">{(item.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                                <td className="px-3 py-2 text-app-muted">{item.unit}</td>
+                                                <td className="px-3 py-2 text-right font-semibold text-app-text">{CURRENCY} {(item.totalAmount || 0).toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-app-muted">{item.billCount}</td>
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="bg-slate-50 font-bold sticky bottom-0 z-10 shadow-md">
+                                    <tfoot className="bg-app-table-header font-bold sticky bottom-0 z-10 shadow-md">
                                         <tr>
-                                            <td className="px-3 py-2 text-left">Total</td>
-                                            <td className="px-3 py-2 text-right">{(reportData.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
-                                            <td className="px-3 py-2 text-left">-</td>
-                                            <td className="px-3 py-2 text-right">{CURRENCY} {(reportData.totalAmount || 0).toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-right">{reportData.rows.reduce((sum, row) => sum + (row.billCount || 0), 0)}</td>
+                                            <td className="px-3 py-2 text-left text-app-text">Total</td>
+                                            <td className="px-3 py-2 text-right text-app-text">{(reportData.totalQuantity || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</td>
+                                            <td className="px-3 py-2 text-left text-app-muted">-</td>
+                                            <td className="px-3 py-2 text-right text-app-text">{CURRENCY} {(reportData.totalAmount || 0).toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-right text-app-text">{reportData.rows.reduce((sum, row) => sum + (row.billCount || 0), 0)}</td>
                                         </tr>
                                     </tfoot>
                                 </table>
                             </div>
                         ) : (
                             <div className="text-center py-16">
-                                <div className="mx-auto h-16 w-16 text-slate-400">{ICONS.barChart}</div>
-                                <h3 className="mt-2 text-lg font-semibold text-slate-800">No Data Found</h3>
-                                <p className="mt-1 text-sm text-slate-500">No material purchases found for the selected criteria.</p>
+                                <div className="mx-auto h-16 w-16 text-app-muted">{ICONS.barChart}</div>
+                                <h3 className="mt-2 text-lg font-semibold text-app-text">No Data Found</h3>
+                                <p className="mt-1 text-sm text-app-muted">No material purchases found for the selected criteria.</p>
                             </div>
                         )}
                         <div className="mt-auto">

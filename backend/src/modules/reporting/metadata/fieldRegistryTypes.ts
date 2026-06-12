@@ -24,7 +24,10 @@ export type ReportFieldEntityGroup =
   | 'Investor / installment reference'
   | 'Rental agreements'
   | 'Rental properties'
-  | 'Rental tenants';
+  | 'Rental tenants'
+  | 'Project construction'
+  | 'Vendors'
+  | 'Expenses';
 
 /** DB-level SQL snippet; must reference only compiler-controlled aliases */
 export interface ReportFieldDefinition {

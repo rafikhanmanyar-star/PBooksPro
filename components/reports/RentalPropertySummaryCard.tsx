@@ -57,7 +57,7 @@ export interface RentalPropertySummaryCardProps {
     unit: VisualLayoutPropertyBox;
     className: string;
     style?: React.CSSProperties;
-    /** Vacant unit with no receivable and no owner/account payout due — solid white card */
+    /** Vacant unit with no receivable and no owner/account payout due — neutral card (no receivable tint) */
     plainWhiteBackground?: boolean;
     onClick?: (propertyId: string) => void;
 }
@@ -119,7 +119,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
 
     return (
         <div
-            className={`relative rounded-xl border shadow-sm p-1.5 flex flex-col min-h-[12rem] transition-all cursor-pointer hover:shadow-md hover:ring-2 hover:ring-primary/30 ${plainWhiteBackground ? 'bg-white' : ''} ${className}`}
+            className={`relative rounded-xl border shadow-sm p-1.5 flex flex-col min-h-[12rem] transition-all cursor-pointer hover:shadow-md hover:ring-2 hover:ring-primary/30 bg-app-card ${className}`}
             style={plainWhiteBackground ? undefined : style}
             onClick={() => onClick?.(unit.id)}
             role="button"
@@ -149,7 +149,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         <Users className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`truncate text-[9px] font-medium ${
-                                unit.status === 'Vacant' ? 'text-ds-danger' : 'text-slate-800'
+                                unit.status === 'Vacant' ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {unit.tenantName}
@@ -186,15 +186,15 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                     </div>
                     <div className="flex items-center justify-between gap-0.5" title="Monthly rent (agreement)">
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{rentContractFmt}</span>
+                        <span className="text-[9px] font-bold text-app-text tabular-nums truncate">{rentContractFmt}</span>
                     </div>
                     <div className="flex items-center justify-between gap-0.5" title="Security deposit (agreement)">
                         <Lock className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{secContractFmt}</span>
+                        <span className="text-[9px] font-bold text-app-text tabular-nums truncate">{secContractFmt}</span>
                     </div>
                     <div className="flex items-center justify-between gap-0.5" title="Monthly service charge (property setting)">
                         <Settings className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 tabular-nums truncate">{svcFmt}</span>
+                        <span className="text-[9px] font-bold text-app-text tabular-nums truncate">{svcFmt}</span>
                     </div>
                 </div>
 
@@ -204,7 +204,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         <Wallet className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`text-[9px] font-bold tabular-nums truncate ${
-                                (unit.receivable ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                                (unit.receivable ?? 0) > 0.01 ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {rentRecvFmt}
@@ -214,7 +214,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         <Shield className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`text-[9px] font-bold tabular-nums truncate ${
-                                (unit.securityDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                                (unit.securityDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {secRecvFmt}
@@ -227,7 +227,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                         <Settings className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`text-[9px] font-bold tabular-nums truncate ${
-                                svcDueThisMonth > 0.01 ? 'text-ds-danger' : 'text-slate-900'
+                                svcDueThisMonth > 0.01 ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {svcDueFmt}
@@ -239,7 +239,7 @@ const RentalPropertySummaryCardInner: React.FC<RentalPropertySummaryCardProps> =
                 <div className="flex flex-col gap-0.5 min-w-0 pl-1 pt-0.5 h-full">
                     <div className="flex items-center justify-between gap-0.5" title="Payout due to current owner">
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-slate-900'}`}>
+                        <span className={`text-[9px] font-bold tabular-nums truncate ${unit.payoutDue > 0 ? 'text-ds-warning' : 'text-app-text'}`}>
                             {formatCompactK(unit.payoutDue)}
                         </span>
                     </div>

@@ -16,6 +16,7 @@ function account(status: string, rejectionReason: string | null = null): Matched
     passwordHash: 'hash',
     tenantName: 'Acme',
     displayTimezone: null,
+    interfaceMode: 'auto',
     email: 'a@example.com',
     lastTenantId: null,
     organizationStatus: status,

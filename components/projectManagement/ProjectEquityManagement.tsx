@@ -485,7 +485,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             const isFromEquity = investorAccountIds.has(tx.fromAccountId!);
             const isToEquity = investorAccountIds.has(tx.toAccountId!);
             let paymentType = 'Transfer';
-            let paymentTypeColor = 'text-slate-600';
+            let paymentTypeColor = 'text-app-muted';
             const amount = tx.amount;
             let isDeposit = false;
             let isWithdrawal = false;
@@ -525,7 +525,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     }
                 } else if (isSourceInvestor && isTargetInvestor) {
                     paymentType = 'Equity Transfer';
-                    paymentTypeColor = 'text-slate-500';
+                    paymentTypeColor = 'text-app-muted';
                     if (selectedTreeType === 'staff') {
                         if (tx.fromAccountId === selectedTreeId) isWithdrawal = true;
                         else isDeposit = true;
@@ -673,7 +673,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
     const LedgerSortIcon = ({ column }: { column: EquityLedgerColKey }) => {
         if (ledgerSort.key !== column) {
-            return <span className="text-slate-400 opacity-60 ml-0.5 text-[10px] leading-none">↕</span>;
+            return <span className="text-app-muted opacity-60 ml-0.5 text-[10px] leading-none">↕</span>;
         }
         return (
             <span className="text-indigo-600 ml-0.5 text-[10px] leading-none">{ledgerSort.dir === 'asc' ? '↑' : '↓'}</span>
@@ -1268,7 +1268,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            <div className="flex-1 min-h-0 overflow-hidden bg-white dark:bg-slate-900/20 p-4 flex flex-col">
+            <div className="flex-1 min-h-0 overflow-hidden bg-app-bg p-4 flex flex-col">
             {equityTab === 'Ledger' && (
                 <>
                     <div
@@ -1278,47 +1278,47 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     >
                         <ReportHeader reportTitle="Equity Ledger" />
                         <div className="mb-4">
-                            <h2 className="text-xl font-bold text-slate-900 text-center">Equity Ledger</h2>
+                            <h2 className="text-xl font-bold text-app-text text-center">Equity Ledger</h2>
                             {selectedTreeType === 'staff' && selectedTreeId && (
-                                <p className="text-center text-sm text-slate-600 mt-2">
+                                <p className="text-center text-sm text-app-muted mt-2">
                                     Investor: {state.accounts.find(a => a.id === selectedTreeId)?.name || 'N/A'}
                                 </p>
                             )}
                             {selectedTreeType === 'project' && selectedTreeId && (
-                                <p className="text-center text-sm text-slate-600 mt-2">
+                                <p className="text-center text-sm text-app-muted mt-2">
                                     Project: {state.projects.find(p => p.id === selectedTreeId)?.name || 'N/A'}
                                 </p>
                             )}
                         </div>
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-50">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-toolbar">
                                 <tr>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Date</th>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Type</th>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Description</th>
-                                    <th className="px-4 py-3 text-left font-semibold text-slate-600">Info</th>
-                                    <th className="px-4 py-3 text-right font-semibold text-slate-600">Amount</th>
-                                    <th className="px-4 py-3 text-right font-semibold text-slate-600">Balance</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted">Date</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted">Type</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted">Description</th>
+                                    <th className="px-4 py-3 text-left font-semibold text-app-muted">Info</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-app-muted">Amount</th>
+                                    <th className="px-4 py-3 text-right font-semibold text-app-muted">Balance</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-100 bg-white">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {sortedLedgerData.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                        <td colSpan={6} className="px-4 py-8 text-center text-app-muted">
                                             No transactions found
                                         </td>
                                     </tr>
                                 ) : (
                                     sortedLedgerData.map(tx => (
                                         <tr key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id}>
-                                            <td className="px-4 py-2 text-slate-700">{formatDate(tx.date)}</td>
+                                            <td className="px-4 py-2 text-app-text">{formatDate(tx.date)}</td>
                                             <td className="px-4 py-2">
                                                 <span className={`px-3 py-1 font-medium rounded-full inline-block ${tx.paymentTypeColor}`}>
                                                     {tx.paymentType}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-2 text-slate-600 whitespace-normal">{tx.description}</td>
-                                            <td className="px-4 py-2 text-xs text-slate-500 whitespace-normal">{tx.info}</td>
+                                            <td className="px-4 py-2 text-app-muted whitespace-normal">{tx.description}</td>
+                                            <td className="px-4 py-2 text-xs text-app-muted whitespace-normal">{tx.info}</td>
                                             <td className={`px-4 py-2 text-right font-bold ${tx.isDeposit ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.isDeposit ? '+' : '-'}{CURRENCY} {Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                             <td className={`px-4 py-2 text-right font-mono ${tx.balance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{tx.balance >= 0 ? '' : '-'}{CURRENCY} {Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                         </tr>
@@ -1406,8 +1406,8 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                             </div>
                         </div>
                         <div className="flex-grow flex h-full min-h-0 gap-4 overflow-hidden">
-                            <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden" style={{ width: sidebarWidth }}>
-                            <div className="p-3 border-b bg-slate-50 font-bold text-slate-700 flex justify-between">
+                            <div className="hidden md:flex flex-col h-full flex-shrink-0 bg-app-card rounded-lg border border-app-border shadow-sm overflow-hidden" style={{ width: sidebarWidth }}>
+                            <div className="p-3 border-b bg-app-toolbar font-bold text-app-text flex justify-between">
                                 <span>Projects & Investors</span>
                                 {selectedTreeId && <button onClick={() => { setSelectedTreeId(null); setSelectedTreeType(null); setSelectedParentId(null); }} className="text-xs text-accent hover:underline">Clear</button>}
                             </div>
@@ -1418,9 +1418,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                             <div className="hidden md:block h-full">
                                 <ResizeHandle onMouseDown={startResizing} />
                             </div>
-                            <div className="flex-grow flex flex-col bg-white rounded-lg border border-slate-200 shadow-sm overflow-hidden">
-                            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                                <div><h2 className="text-lg font-bold text-slate-800">Equity Overview</h2></div>
+                            <div className="flex-grow flex flex-col bg-app-card rounded-lg border border-app-border shadow-sm overflow-hidden">
+                            <div className="p-4 border-b border-app-border flex justify-between items-center bg-app-toolbar">
+                                <div><h2 className="text-lg font-bold text-app-text">Equity Overview</h2></div>
                                 <div className="flex gap-2">
                                     <Button size="sm" variant="secondary" onClick={handleExport}>{ICONS.export} Export</Button>
                                     <Button size="sm" variant="secondary" onClick={handlePrint}>{ICONS.print} Print</Button>
@@ -1428,7 +1428,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 </div>
                             </div>
                             <div className="flex-grow overflow-auto">
-                                <table className="min-w-full table-fixed divide-y divide-slate-200 text-sm">
+                                <table className="min-w-full table-fixed divide-y divide-app-border text-sm">
                                     <colgroup>
                                         {(
                                             [
@@ -1443,7 +1443,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                             <col key={k} style={{ width: ledgerColWidths[k] }} />
                                         ))}
                                     </colgroup>
-                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                                    <thead className="bg-app-toolbar sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             {(
                                                 [
@@ -1457,13 +1457,13 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                             ).map((col) => (
                                                 <th
                                                     key={col.key}
-                                                    className={`relative px-4 py-3 font-semibold text-slate-600 ${
+                                                    className={`relative px-4 py-3 font-semibold text-app-muted ${
                                                         col.align === 'right' ? 'text-right' : 'text-left'
                                                     }`}
                                                 >
                                                     <button
                                                         type="button"
-                                                        className={`flex w-full max-w-full items-center gap-0.5 rounded px-0.5 -mx-0.5 cursor-pointer select-none hover:text-slate-900 transition-colors ${
+                                                        className={`flex w-full max-w-full items-center gap-0.5 rounded px-0.5 -mx-0.5 cursor-pointer select-none hover:text-app-text transition-colors ${
                                                             col.align === 'right' ? 'justify-end text-right' : 'justify-start text-left'
                                                         }`}
                                                         onClick={() => toggleLedgerSort(col.key)}
@@ -1482,10 +1482,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                             ))}
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-100 bg-white">
+                                    <tbody className="divide-y divide-app-border bg-app-card">
                                         {sortedLedgerData.length === 0 ? (
                                             <tr>
-                                                <td colSpan={6} className="px-4 py-8 text-center text-slate-500">
+                                                <td colSpan={6} className="px-4 py-8 text-center text-app-muted">
                                                     No transactions found
                                                 </td>
                                             </tr>
@@ -1493,10 +1493,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                             sortedLedgerData.map((tx) => (
                                                 <tr
                                                     key={(tx as { ledgerRowKey?: string }).ledgerRowKey ?? tx.id}
-                                                    className="hover:bg-slate-50 cursor-pointer transition-colors"
+                                                    className="hover:bg-app-toolbar cursor-pointer transition-colors"
                                                     onClick={() => handleRowClick(tx)}
                                                 >
-                                                    <td className="px-4 py-2 text-slate-700 align-top whitespace-nowrap">
+                                                    <td className="px-4 py-2 text-app-text align-top whitespace-nowrap">
                                                         {formatDate(tx.date)}
                                                     </td>
                                                     <td className="px-4 py-2 align-top">
@@ -1507,10 +1507,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                                             {tx.paymentType}
                                                         </span>
                                                     </td>
-                                                    <td className="px-4 py-2 text-slate-600 align-top min-w-0">
+                                                    <td className="px-4 py-2 text-app-muted align-top min-w-0">
                                                         <div className="line-clamp-3 break-words">{tx.description}</div>
                                                     </td>
-                                                    <td className="px-4 py-2 text-xs text-slate-500 align-top min-w-0">
+                                                    <td className="px-4 py-2 text-xs text-app-muted align-top min-w-0">
                                                         <div className="line-clamp-3 break-words">{tx.info}</div>
                                                     </td>
                                                     <td
@@ -1551,15 +1551,15 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
             {/* Cycle Manager Tab */}
              {equityTab === 'Profit Distribution' && (
-                <div className="bg-white rounded-lg border border-slate-200 p-6 flex-grow overflow-y-auto">
+                <div className="bg-app-card rounded-lg border border-app-border p-6 flex-grow overflow-y-auto">
                     {distStep === 1 && (
                          <div className="space-y-6 max-w-2xl mx-auto">
                             <h3 className="text-xl font-bold">Profit Distribution</h3>
                             <ComboBox label="Select Project" items={state.projects} selectedId={distProjectId} onSelect={(item) => setDistProjectId(item?.id || '')} placeholder="Choose a project..." allowAddNew={false} />
                             {distProjectId && (
-                                <div className="p-4 bg-slate-50 rounded border border-slate-200 grid grid-cols-2 gap-4">
+                                <div className="p-4 bg-app-toolbar rounded border border-app-border grid grid-cols-2 gap-4">
                                      <div>
-                                        <p className="text-xs uppercase font-bold text-slate-500">Available to Distribute</p>
+                                        <p className="text-xs uppercase font-bold text-app-muted">Available to Distribute</p>
                                         <p className="text-xl font-bold text-emerald-600">{CURRENCY} {projectFinancials.available.toLocaleString()}</p>
                                      </div>
                                 </div>
@@ -1578,44 +1578,44 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 <Button variant="secondary" onClick={() => { setDistStep(1); setDistributions([]); }}>Back</Button>
                             </div>
                             
-                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                <p className="text-sm text-slate-600 mb-4">
-                                    Review how the <strong className="text-slate-900">{CURRENCY} {parseFloat(distProfit || '0').toLocaleString()}</strong> profit will be allocated based on investor equity share.
+                            <div className="bg-app-toolbar p-4 rounded-lg border border-app-border">
+                                <p className="text-sm text-app-muted mb-4">
+                                    Review how the <strong className="text-app-text">{CURRENCY} {parseFloat(distProfit || '0').toLocaleString()}</strong> profit will be allocated based on investor equity share.
                                 </p>
                                 
-                                <div className="overflow-x-auto border rounded-lg bg-white">
-                                    <table className="min-w-full divide-y divide-slate-200">
-                                        <thead className="bg-slate-50">
+                                <div className="overflow-x-auto border border-app-border rounded-lg bg-app-card">
+                                    <table className="min-w-full divide-y divide-app-border">
+                                        <thead className="bg-app-toolbar">
                                             <tr>
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Investor</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Principal Investment</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Share %</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Profit Share</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">New Equity Balance</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold text-app-muted uppercase tracking-wider">Investor</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Principal Investment</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Share %</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Profit Share</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">New Equity Balance</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                        <tbody className="divide-y divide-app-border bg-app-card">
                                             {distributions.map((dist, idx) => (
-                                                <tr key={dist.investorId} className={`hover:bg-slate-50 transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
-                                                    <td className="px-4 py-3 text-sm font-medium text-slate-700">{dist.investorName}</td>
-                                                    <td className="px-4 py-3 text-sm text-right font-mono text-slate-600">{CURRENCY} {dist.principal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                                                    <td className="px-4 py-3 text-sm text-right font-medium text-slate-700">{(dist.sharePercentage * 100).toFixed(2)}%</td>
+                                                <tr key={dist.investorId} className={`hover:bg-app-table-hover transition-colors ${idx % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/30'}`}>
+                                                    <td className="px-4 py-3 text-sm font-medium text-app-text">{dist.investorName}</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-mono text-app-muted">{CURRENCY} {dist.principal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                    <td className="px-4 py-3 text-sm text-right font-medium text-app-text">{(dist.sharePercentage * 100).toFixed(2)}%</td>
                                                     <td className="px-4 py-3 text-sm text-right font-bold text-emerald-600 font-mono">{CURRENCY} {dist.profitShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                     <td className="px-4 py-3 text-sm text-right font-bold text-indigo-600 font-mono">{CURRENCY} {dist.newEquityBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                 </tr>
                                             ))}
                                         </tbody>
-                                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                                        <tfoot className="bg-app-table-header border-t-2 border-app-border">
                                             <tr>
-                                                <td className="px-4 py-3 text-sm font-bold text-slate-900">Total</td>
-                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-900">
+                                                <td className="px-4 py-3 text-sm font-bold text-app-text">Total</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-app-text">
                                                     {CURRENCY} {distributions.reduce((sum, d) => sum + d.principal, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-3 text-sm text-right font-bold text-slate-900">100.00%</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold text-app-text">100.00%</td>
                                                 <td className="px-4 py-3 text-sm text-right font-bold text-emerald-700 font-mono">
                                                     {CURRENCY} {distributions.reduce((sum, d) => sum + d.profitShare, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-3 text-sm text-right font-bold text-slate-600 font-mono">
+                                                <td className="px-4 py-3 text-sm text-right font-bold text-app-muted font-mono">
                                                     {CURRENCY} {distributions.reduce((sum, d) => sum + d.newEquityBalance, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
                                             </tr>
@@ -1624,7 +1624,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 </div>
                             </div>
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <div className="flex justify-end gap-3 pt-4 border-t border-app-border">
                                 <Button variant="secondary" onClick={() => { setDistStep(1); setDistributions([]); }}>Cancel</Button>
                                 <Button onClick={handleDistCommit} className="bg-emerald-600 hover:bg-emerald-700">Confirm & Distribute</Button>
                             </div>
@@ -1633,7 +1633,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 </div>
             )}
              {equityTab === 'Equity Transfer' && (
-                <div className="bg-white rounded-lg border border-slate-200 p-6 flex-grow overflow-y-auto">
+                <div className="bg-app-card rounded-lg border border-app-border p-6 flex-grow overflow-y-auto">
                     {transferStep === 1 && (
                         <div className="space-y-6 max-w-2xl">
                              <ComboBox label="Source Project" items={state.projects} selectedId={sourceProjectId} onSelect={(item) => setSourceProjectId(item?.id || '')} placeholder="Select Source Project" allowAddNew={false} />
@@ -1647,15 +1647,15 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); setTransferDescription(''); setTransferDate(toLocalDateString(new Date())); }}>Back</Button>
                             </div>
                             
-                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                            <div className="bg-app-toolbar p-4 rounded-lg border border-app-border">
                                 <div className="flex gap-4 mb-4">
                                     <label className="flex items-center cursor-pointer">
                                         <input type="radio" name="transferType" checked={transferType === 'PROJECT'} onChange={() => setTransferType('PROJECT')} className="text-indigo-600" />
-                                        <span className="ml-2 text-sm font-medium text-slate-700">Transfer to Another Project</span>
+                                        <span className="ml-2 text-sm font-medium text-app-text">Transfer to Another Project</span>
                                     </label>
                                     <label className="flex items-center cursor-pointer">
                                         <input type="radio" name="transferType" checked={transferType === 'PAYOUT'} onChange={() => setTransferType('PAYOUT')} className="text-emerald-600" />
-                                        <span className="ml-2 text-sm font-medium text-slate-700">Pay Out to Investor</span>
+                                        <span className="ml-2 text-sm font-medium text-app-text">Pay Out to Investor</span>
                                     </label>
                                 </div>
                                 {transferType === 'PROJECT' ? (
@@ -1679,7 +1679,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                                 allowAddNew={false}
                                             />
                                         </div>
-                                        <p className="text-xs text-slate-500 mt-2">
+                                        <p className="text-xs text-app-muted mt-2">
                                             Records two linked transfers: cash leaves the source project account and enters the destination project account, with equity moving between projects for each investor.
                                         </p>
                                     </>
@@ -1695,20 +1695,20 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                     />
                                 </div>
                                 <div className="mt-4">
-                                    <label className="block text-sm font-medium text-slate-700 mb-1">Description</label>
+                                    <label className="block text-sm font-medium text-app-text mb-1">Description</label>
                                     <textarea
                                         value={transferDescription}
                                         onChange={e => setTransferDescription(e.target.value)}
                                         placeholder="Optional notes for this transfer (shown on ledger entries)"
                                         rows={3}
-                                        className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                                        className="ds-input-field w-full text-sm"
                                     />
                                 </div>
                             </div>
 
-                            <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
-                                <div className="p-3 bg-slate-50 border-b flex justify-between items-center">
-                                    <h4 className="font-semibold text-slate-700">Select Investors to Transfer</h4>
+                            <div className="bg-app-card border border-app-border rounded-lg shadow-sm overflow-hidden">
+                                <div className="p-3 bg-app-toolbar border-b flex justify-between items-center">
+                                    <h4 className="font-semibold text-app-text">Select Investors to Transfer</h4>
                                     <button
                                         onClick={() => {
                                             const allSelected = transferRows.every(r => r.isSelected);
@@ -1720,31 +1720,31 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                     </button>
                                 </div>
                                 <div className="overflow-auto max-h-[32vh]">
-                                    <table className="min-w-full divide-y divide-slate-200">
-                                        <thead className="bg-slate-50">
+                                    <table className="min-w-full divide-y divide-app-border">
+                                        <thead className="bg-app-toolbar">
                                             <tr>
                                                 <th className="px-4 py-3 text-left w-12">
                                                     <input 
                                                         type="checkbox" 
                                                         checked={transferRows.length > 0 && transferRows.every(r => r.isSelected)}
                                                         onChange={(e) => setTransferRows(transferRows.map(r => ({ ...r, isSelected: e.target.checked })))}
-                                                        className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                        className="rounded border-app-border text-primary focus:ring-primary/30"
                                                     />
                                                 </th>
-                                                <th className="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase tracking-wider">Investor</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Current Equity</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Transfer Amount</th>
-                                                <th className="px-4 py-3 text-right text-xs font-bold text-slate-500 uppercase tracking-wider">Remaining Equity</th>
+                                                <th className="px-4 py-3 text-left text-xs font-bold text-app-muted uppercase tracking-wider">Investor</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Current Equity</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Transfer Amount</th>
+                                                <th className="px-4 py-3 text-right text-xs font-bold text-app-muted uppercase tracking-wider">Remaining Equity</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                        <tbody className="divide-y divide-app-border bg-app-card">
                                             {transferRows.map((row, idx) => {
                                                 const transferAmt = parseFloat(row.transferAmount) || 0;
                                                 const remaining = row.currentEquity - transferAmt;
                                                 return (
                                                     <tr 
                                                         key={row.investorId} 
-                                                        className={`hover:bg-slate-50 transition-colors ${row.isSelected ? 'bg-indigo-50/50' : idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                                                        className={`hover:bg-app-table-hover transition-colors ${row.isSelected ? 'bg-app-highlight' : idx % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/30'}`}
                                                     >
                                                         <td className="px-4 py-3">
                                                             <input 
@@ -1755,18 +1755,18 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                                                     newRows[idx].isSelected = !newRows[idx].isSelected;
                                                                     setTransferRows(newRows);
                                                                 }}
-                                                                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                                                                className="rounded border-app-border text-primary focus:ring-primary/30"
                                                             />
                                                         </td>
-                                                        <td className="px-4 py-3 text-sm font-medium text-slate-700">{row.investorName}</td>
-                                                        <td className="px-4 py-3 text-sm text-right font-mono text-slate-600">{CURRENCY} {row.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                                        <td className="px-4 py-3 text-sm font-medium text-app-text">{row.investorName}</td>
+                                                        <td className="px-4 py-3 text-sm text-right font-mono text-app-muted">{CURRENCY} {row.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                         <td className="px-4 py-3 text-sm text-right">
                                                             <input 
                                                                 type="number" 
                                                                 step="0.01"
                                                                 min="0"
                                                                 max={row.currentEquity}
-                                                                className={`w-32 text-right border rounded px-2 py-1 font-mono text-sm ${row.isSelected ? 'border-slate-300 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500' : 'border-slate-200 bg-slate-100 text-slate-400 cursor-not-allowed'}`}
+                                                                className={`w-32 text-right border rounded px-2 py-1 font-mono text-sm ${row.isSelected ? 'border-app-border focus:border-primary focus:ring-1 focus:ring-primary/30' : 'border-app-border bg-app-table-header text-app-muted cursor-not-allowed'}`}
                                                                 value={row.transferAmount} 
                                                                 onChange={(e) => {
                                                                     const val = parseFloat(e.target.value) || 0;
@@ -1778,23 +1778,23 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                                                 disabled={!row.isSelected}
                                                             />
                                                         </td>
-                                                        <td className={`px-4 py-3 text-sm text-right font-mono font-medium ${remaining >= 0 ? 'text-slate-700' : 'text-rose-600'}`}>
+                                                        <td className={`px-4 py-3 text-sm text-right font-mono font-medium ${remaining >= 0 ? 'text-app-text' : 'text-rose-600'}`}>
                                                             {CURRENCY} {remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                         </td>
                                                     </tr>
                                                 );
                                             })}
                                         </tbody>
-                                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                                        <tfoot className="bg-app-table-header border-t-2 border-app-border">
                                             <tr>
-                                                <td colSpan={2} className="px-4 py-3 text-sm font-bold text-slate-900">Total Selected</td>
-                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-600">
+                                                <td colSpan={2} className="px-4 py-3 text-sm font-bold text-app-text">Total Selected</td>
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-app-muted">
                                                     {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => sum + r.currentEquity, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
                                                 <td className="px-4 py-3 text-sm text-right font-bold font-mono text-emerald-700">
                                                     {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => sum + (parseFloat(r.transferAmount) || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
-                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-slate-700">
+                                                <td className="px-4 py-3 text-sm text-right font-bold font-mono text-app-text">
                                                     {CURRENCY} {transferRows.filter(r => r.isSelected).reduce((sum, r) => {
                                                         const transferAmt = parseFloat(r.transferAmount) || 0;
                                                         return sum + (r.currentEquity - transferAmt);
@@ -1822,7 +1822,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                 </div>
                             )}
 
-                            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+                            <div className="flex justify-end gap-3 pt-4 border-t border-app-border">
                                 <Button variant="secondary" onClick={() => { setTransferStep(1); setTransferRows([]); setTransferDescription(''); setTransferDate(toLocalDateString(new Date())); }}>Cancel</Button>
                                 <Button 
                                     onClick={handleTransferCommit} 

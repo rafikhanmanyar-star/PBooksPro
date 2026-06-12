@@ -37,6 +37,7 @@ import { initObservabilityProviders } from './services/monitoring/observabilityP
 import { adminPortalRouter } from './routes/adminPortalRoutes.js';
 import { mountVersionedApi } from './routes/mountVersionedApi.js';
 import { startDashboardSnapshotScheduler } from './modules/dashboard/services/dashboardSnapshotScheduler.js';
+import { startReportScheduleScheduler } from './services/reportScheduleScheduler.js';
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
 import { sendLivenessResponse } from './routes/healthLiveness.js';
 
@@ -209,6 +210,7 @@ async function start() {
     startEmailAutomationScheduler();
     startMonitoringScheduler();
     startDashboardSnapshotScheduler();
+    startReportScheduleScheduler();
   });
 }
 

@@ -47,6 +47,7 @@ function mapReportBuildError(e: unknown): { status: number; code: string; messag
     m.startsWith('FIELD_NOT_AGGREGATABLE:') ||
     m.startsWith('CALCULATED_FIELDS_UNSUPPORTED_WITH_GROUP_BY') ||
     m.startsWith('UNSUPPORTED_MODULE:') ||
+    m.startsWith('AGING_MODULE_NOT_SUPPORTED:') ||
     m.startsWith('FORMULA_')
   ) {
     return { status: 400, code: 'BAD_REQUEST', message: m };

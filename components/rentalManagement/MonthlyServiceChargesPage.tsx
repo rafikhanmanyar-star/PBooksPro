@@ -91,19 +91,19 @@ function findArtTreeNodeById(nodes: ARTreeNode[], id: string): ARTreeNode | null
 
 const MonthlyServiceChargesBodySkeleton: React.FC = () => (
     <div
-        className="flex-1 min-h-[280px] mx-3 mb-2 rounded-xl border border-slate-200 bg-white overflow-hidden flex gap-2 p-2 animate-pulse"
+        className="flex-1 min-h-[280px] mx-3 mb-2 rounded-xl border border-app-border bg-app-card overflow-hidden flex gap-2 p-2 animate-pulse"
         aria-busy
         aria-label="Loading service charges"
     >
         <div className="w-[280px] shrink-0 space-y-2 hidden md:block">
             {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                <div key={i} className="h-8 rounded bg-slate-100" style={{ animationDelay: `${i * 40}ms` }} />
+                <div key={i} className="h-8 rounded bg-app-toolbar" style={{ animationDelay: `${i * 40}ms` }} />
             ))}
         </div>
         <div className="flex-1 space-y-2 min-w-0">
-            <div className="h-8 bg-slate-100 rounded" />
+            <div className="h-8 bg-app-toolbar rounded" />
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-                <div key={i} className="h-9 rounded bg-slate-50" style={{ animationDelay: `${i * 25}ms` }} />
+                <div key={i} className="h-9 rounded bg-app-toolbar/60" style={{ animationDelay: `${i * 25}ms` }} />
             ))}
         </div>
     </div>
@@ -1137,61 +1137,65 @@ const MonthlyServiceChargesPage: React.FC = () => {
         };
     }, [isResizing, handleMouseMove]);
 
-    const filterInputClass =
-        'w-full pl-2.5 py-1.5 text-sm border border-slate-300 rounded-md shadow-sm focus:ring-2 focus:ring-accent/50 focus:border-accent bg-white';
+    const filterInputClass = 'w-full pl-2.5 py-1.5 text-sm ds-input-field rounded-md';
+
+    const statusBadgeClass = (status: string) =>
+        status === 'Rented'
+            ? 'bg-[color:var(--badge-paid-bg)] text-ds-success border border-ds-success/30'
+            : 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] border border-[color:var(--badge-partial-text)]/30';
 
     return (
-        <div className="flex flex-col h-full min-h-0 overflow-hidden bg-slate-50/50">
+        <div className="flex flex-col h-full min-h-0 overflow-hidden bg-app-bg">
             <div className="flex-shrink-0 space-y-4 px-3 pt-2 overflow-y-auto max-h-[45vh] lg:max-h-none">
                 <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 flex-shrink-0 min-w-0">
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Total Properties</p>
-                        <p className="text-lg font-bold text-slate-800 mt-0.5">{summaryStats.total}</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Total Properties</p>
+                        <p className="text-lg font-bold text-app-text mt-0.5">{summaryStats.total}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Rented</p>
-                        <p className="text-lg font-bold text-emerald-600 mt-0.5">{summaryStats.rented}</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Rented</p>
+                        <p className="text-lg font-bold text-ds-success mt-0.5">{summaryStats.rented}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Vacant</p>
-                        <p className="text-lg font-bold text-amber-600 mt-0.5">{summaryStats.vacant}</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Vacant</p>
+                        <p className="text-lg font-bold text-[color:var(--badge-partial-text)] mt-0.5">{summaryStats.vacant}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Monthly Charges</p>
-                        <p className="text-lg font-bold text-slate-800 mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(summaryStats.totalCharges)}`}>{CURRENCY} {formatCurrency(summaryStats.totalCharges)}</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Monthly Charges</p>
+                        <p className="text-lg font-bold text-app-text mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(summaryStats.totalCharges)}`}>{CURRENCY} {formatCurrency(summaryStats.totalCharges)}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Deducted (Period)</p>
-                        <p className="text-lg font-bold text-emerald-600 mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(summaryStats.deductedAmount)}`}>{CURRENCY} {formatCurrency(summaryStats.deductedAmount)}</p>
-                        <p className="text-[9px] text-slate-400 mt-0.5">{selectedMonth === 'all' ? 'All time' : selectedMonth}</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Deducted (Period)</p>
+                        <p className="text-lg font-bold text-ds-success mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(summaryStats.deductedAmount)}`}>{CURRENCY} {formatCurrency(summaryStats.deductedAmount)}</p>
+                        <p className="text-[9px] text-app-muted mt-0.5">{selectedMonth === 'all' ? 'All time' : selectedMonth}</p>
                     </div>
-                    <div className="bg-white rounded-lg border border-slate-200 shadow-sm p-3 min-w-0">
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Deducted / Pending</p>
+                    <div className="bg-app-card rounded-lg border border-app-border shadow-sm p-3 min-w-0">
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Deducted / Pending</p>
                         <p className="text-lg font-bold mt-0.5">
-                            <span className="text-emerald-600">{summaryStats.deductedCount}</span>
-                            <span className="text-slate-400 mx-0.5">/</span>
-                            <span className="text-amber-600">{summaryStats.pendingCount}</span>
+                            <span className="text-ds-success">{summaryStats.deductedCount}</span>
+                            <span className="text-app-muted mx-0.5">/</span>
+                            <span className="text-[color:var(--badge-partial-text)]">{summaryStats.pendingCount}</span>
                         </p>
                     </div>
                     <button
                         onClick={() => setIsNegativePanelOpen(prev => !prev)}
                         className={`rounded-lg border shadow-sm p-3 text-left transition-colors min-w-0 ${
                             summaryStats.ownersNegativeCount > 0
-                                ? 'bg-red-50 border-red-200 hover:bg-red-100'
-                                : 'bg-white border-slate-200'
+                                ? 'bg-[color:var(--badge-unpaid-bg)] border-ds-danger/30 hover:bg-[color:var(--badge-unpaid-bg)]/80'
+                                : 'bg-app-card border-app-border'
                         }`}
                     >
-                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wide truncate">Owners Owed</p>
-                        <p className={`text-lg font-bold mt-0.5 ${summaryStats.ownersNegativeCount > 0 ? 'text-red-600' : 'text-slate-400'}`}>
+                        <p className="text-[10px] text-app-muted font-medium uppercase tracking-wide truncate">Owners Owed</p>
+                        <p className={`text-lg font-bold mt-0.5 ${summaryStats.ownersNegativeCount > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                             {summaryStats.ownersNegativeCount}
                         </p>
                         {summaryStats.ownersNegativeCount > 0 && (
-                            <p className="text-[9px] text-red-500 mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(Math.abs(summaryStats.totalNegative))}`}>{CURRENCY} {formatCurrency(Math.abs(summaryStats.totalNegative))}</p>
+                            <p className="text-[9px] text-ds-danger mt-0.5 truncate" title={`${CURRENCY} ${formatCurrency(Math.abs(summaryStats.totalNegative))}`}>{CURRENCY} {formatCurrency(Math.abs(summaryStats.totalNegative))}</p>
                         )}
                     </button>
                 </div>
 
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex flex-col xl:flex-row gap-3 items-start xl:items-center justify-between flex-shrink-0">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-sm flex flex-col xl:flex-row gap-3 items-start xl:items-center justify-between flex-shrink-0">
                     <div className="flex flex-wrap gap-3 items-center w-full xl:w-auto">
                         <Select
                             value={selectedMonth}
@@ -1210,7 +1214,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                     type="button"
                                     onClick={() => setMscStatusFilter(s)}
                                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-                                        mscStatusFilter === s ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        mscStatusFilter === s ? 'bg-primary text-white' : 'bg-app-toolbar text-app-muted hover:bg-app-table-hover hover:text-app-text'
                                     }`}
                                 >
                                     {s}
@@ -1218,7 +1222,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                             ))}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="text-xs font-semibold text-slate-500 uppercase">View by:</span>
+                            <span className="text-xs font-semibold text-app-muted uppercase">View by:</span>
                             {(['tenant', 'owner', 'property', 'building'] as const).map(g => (
                                 <button
                                     key={g}
@@ -1227,7 +1231,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                         setViewBy(g);
                                     }}
                                     className={`px-2.5 py-1 text-xs font-medium rounded-md transition-colors capitalize ${
-                                        viewBy === g ? 'bg-accent text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                        viewBy === g ? 'bg-primary text-white' : 'bg-app-toolbar text-app-muted hover:bg-app-table-hover hover:text-app-text'
                                     }`}
                                 >
                                     {g}
@@ -1259,7 +1263,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                         </select>
 
                         <div className="relative w-full sm:w-52">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                                 <span className="h-4 w-4">{ICONS.search}</span>
                             </div>
                             <Input
@@ -1289,18 +1293,18 @@ const MonthlyServiceChargesPage: React.FC = () => {
             {bodyReady ? (
             <div ref={containerRef} className="flex flex-1 min-h-0 overflow-hidden px-3 pb-2">
                     <div
-                        className="flex-shrink-0 border-r border-slate-200 overflow-hidden hidden md:flex flex-col rounded-l-lg bg-white border border-slate-200 border-r-0"
+                        className="flex-shrink-0 border-r border-app-border overflow-hidden hidden md:flex flex-col rounded-l-lg bg-app-card border border-app-border border-r-0"
                         style={{ width: `${sidebarWidth}px` }}
                     >
-                        <div className="px-2 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between flex-shrink-0 rounded-tl-lg">
-                            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                                Service charges
+                        <div className="px-2 py-1.5 bg-app-toolbar border-b border-app-border flex items-center justify-between flex-shrink-0 rounded-tl-lg">
+                            <span className="text-[10px] font-semibold text-app-muted uppercase tracking-wider">
+                                Entity
                             </span>
-                            <span className="text-[10px] text-slate-400">
+                            <span className="text-[10px] text-app-muted">
                                 {treeData.length} {viewBy === 'building' ? 'buildings' : viewBy === 'property' ? 'units' : viewBy === 'tenant' ? 'tenants' : 'owners'}
                             </span>
                         </div>
-                        <div className="flex-1 min-h-0 overflow-hidden border-b border-slate-200 rounded-bl-lg">
+                        <div className="flex-1 min-h-0 overflow-hidden border-b border-app-border rounded-bl-lg">
                             <ARTreeView
                                 treeData={treeData}
                                 selectedNodeId={selectedNode?.id || null}
@@ -1318,17 +1322,17 @@ const MonthlyServiceChargesPage: React.FC = () => {
                     </div>
 
                     <div
-                        className="w-1.5 cursor-col-resize hover:bg-indigo-200 active:bg-indigo-300 transition-colors hidden md:block flex-shrink-0 self-stretch min-h-[120px]"
+                        className="w-1.5 cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors hidden md:block flex-shrink-0 self-stretch min-h-[120px]"
                         onMouseDown={e => {
                             e.preventDefault();
                             setIsResizing(true);
                         }}
                     />
 
-                    <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-white rounded-lg border border-slate-200 shadow-sm md:rounded-l-none">
-                        <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 flex-shrink-0">
+                    <div className="flex-1 min-w-0 flex flex-col overflow-hidden bg-app-card rounded-lg border border-app-border shadow-sm md:rounded-l-none">
+                        <div className="px-3 py-1.5 bg-app-toolbar border-b border-app-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 flex-shrink-0">
                             <div className="flex items-center gap-2 min-w-0">
-                                <span className="text-xs font-semibold text-slate-700 truncate">
+                                <span className="text-xs font-semibold text-app-text truncate">
                                     {selectedNode ? selectedNode.name : 'All units (filters)'}
                                 </span>
                                 {selectedNode && (
@@ -1339,18 +1343,18 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                             setSelectedNode(null);
                                             setPersistedTreeNodeId(null);
                                         }}
-                                        className="text-[10px] text-slate-400 hover:text-slate-600 px-1.5 py-0.5 rounded hover:bg-slate-200"
+                                        className="text-[10px] text-app-muted hover:text-app-text px-1.5 py-0.5 rounded hover:bg-app-table-hover"
                                     >
                                         Clear
                                     </button>
                                 )}
                             </div>
-                            <span className="text-[10px] text-slate-400 tabular-nums">
+                            <span className="text-[10px] text-app-muted tabular-nums">
                                 {ledgerRows.length} record{ledgerRows.length !== 1 ? 's' : ''}
                             </span>
                         </div>
 
-                        <div className="md:hidden px-3 py-2 bg-white border-b border-slate-200">
+                        <div className="md:hidden px-3 py-2 bg-app-card border-b border-app-border">
                             <select
                                 value={selectedNode?.id || ''}
                                 onChange={e => {
@@ -1364,7 +1368,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                     setSelectedNode(n);
                                     setPersistedTreeNodeId(n?.id ?? id);
                                 }}
-                                className="w-full px-2 py-1.5 text-sm border border-slate-300 rounded-md"
+                                className="w-full px-2 py-1.5 text-sm ds-input-field rounded-md"
                                 aria-label="Select tree node"
                             >
                                 <option value="">All units (filters)</option>
@@ -1379,24 +1383,24 @@ const MonthlyServiceChargesPage: React.FC = () => {
                         <div className="flex-1 min-h-0 flex flex-col min-w-0 overflow-hidden">
                             {deferredLedgerRows.length >= VIRTUALIZE_THRESHOLD ? (
                                 <>
-                                    <div className="flex-shrink-0 flex items-stretch border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600 z-10">
+                                    <div className="flex-shrink-0 flex items-stretch border-b border-app-border bg-app-table-header text-xs font-semibold text-app-muted z-10">
                                         <div className="w-[88px] shrink-0 px-3 py-2.5">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-0.5 hover:text-slate-900 whitespace-nowrap"
+                                                className="inline-flex items-center gap-0.5 hover:text-app-text whitespace-nowrap"
                                                 onClick={() => setLedgerSort(p => ({
                                                     key: 'month',
                                                     dir: p.key === 'month' && p.dir === 'desc' ? 'asc' : 'desc',
                                                 }))}
                                             >
                                                 Month
-                                                <span className="text-[9px] text-slate-400">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
+                                                <span className="text-[9px] text-app-muted">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
                                             </button>
                                         </div>
                                         <div className="w-[100px] shrink-0 px-3 py-2.5">
                                             <button
                                                 type="button"
-                                                className="inline-flex items-center gap-0.5 hover:text-slate-900 whitespace-nowrap"
+                                                className="inline-flex items-center gap-0.5 hover:text-app-text whitespace-nowrap"
                                                 onClick={() => setLedgerSort(p => (
                                                     p.key === 'unit'
                                                         ? { key: 'unit', dir: p.dir === 'asc' ? 'desc' : 'asc' }
@@ -1432,26 +1436,26 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                 </>
                             ) : (
                                 <div className="flex-1 min-h-0 overflow-auto">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                        <thead className="bg-slate-50 sticky top-0 z-10">
+                                    <table className="min-w-full divide-y divide-app-border text-sm">
+                                        <thead className="bg-app-table-header sticky top-0 z-10">
                                             <tr>
-                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                                                <th className="px-3 py-2.5 text-left font-semibold text-app-muted whitespace-nowrap">
                                                     <button
                                                         type="button"
-                                                        className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                        className="inline-flex items-center gap-0.5 hover:text-app-text"
                                                         onClick={() => setLedgerSort(p => ({
                                                             key: 'month',
                                                             dir: p.key === 'month' && p.dir === 'desc' ? 'asc' : 'desc',
                                                         }))}
                                                     >
                                                         Month
-                                                        <span className="text-[9px] text-slate-400">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
+                                                        <span className="text-[9px] text-app-muted">{ledgerSort.key === 'month' ? (ledgerSort.dir === 'desc' ? '▼' : '▲') : '↕'}</span>
                                                     </button>
                                                 </th>
-                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">
+                                                <th className="px-3 py-2.5 text-left font-semibold text-app-muted whitespace-nowrap">
                                                     <button
                                                         type="button"
-                                                        className="inline-flex items-center gap-0.5 hover:text-slate-900"
+                                                        className="inline-flex items-center gap-0.5 hover:text-app-text"
                                                         onClick={() => setLedgerSort(p => (
                                                             p.key === 'unit'
                                                                 ? { key: 'unit', dir: p.dir === 'asc' ? 'desc' : 'asc' }
@@ -1459,35 +1463,33 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                         ))}
                                                     >
                                                         Unit
-                                                        <span className="text-[9px] text-slate-400">{ledgerSort.key === 'unit' ? (ledgerSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
+                                                        <span className="text-[9px] text-app-muted">{ledgerSort.key === 'unit' ? (ledgerSort.dir === 'asc' ? '▲' : '▼') : '↕'}</span>
                                                     </button>
                                                 </th>
-                                                <th className="px-3 py-2.5 text-left font-semibold text-slate-600 whitespace-nowrap">Owner</th>
-                                                <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Status</th>
-                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Total deducted</th>
-                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Running balance</th>
-                                                <th className="px-3 py-2.5 text-right font-semibold text-slate-600 whitespace-nowrap">Owner income (mo.)</th>
-                                                <th className="px-3 py-2.5 text-center font-semibold text-slate-600 whitespace-nowrap">Actions</th>
+                                                <th className="px-3 py-2.5 text-left font-semibold text-app-muted whitespace-nowrap">Owner</th>
+                                                <th className="px-3 py-2.5 text-center font-semibold text-app-muted whitespace-nowrap">Status</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-app-muted whitespace-nowrap">Total deducted</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-app-muted whitespace-nowrap">Running balance</th>
+                                                <th className="px-3 py-2.5 text-right font-semibold text-app-muted whitespace-nowrap">Owner income (mo.)</th>
+                                                <th className="px-3 py-2.5 text-center font-semibold text-app-muted whitespace-nowrap">Actions</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-200">
+                                        <tbody className="divide-y divide-app-border bg-app-card">
                                             {deferredLedgerRows.length > 0 ? deferredLedgerRows.map(row => (
-                                                <tr key={row.id} className="hover:bg-slate-50 transition-colors">
-                                                    <td className="px-3 py-2.5 whitespace-nowrap text-slate-700 font-medium">{row.monthKey}</td>
-                                                    <td className="px-3 py-2.5 text-slate-800">{row.unit}</td>
-                                                    <td className="px-3 py-2.5 text-slate-700">{row.ownerName}</td>
+                                                <tr key={row.id} className="hover:bg-app-table-hover transition-colors">
+                                                    <td className="px-3 py-2.5 whitespace-nowrap text-app-text font-medium">{row.monthKey}</td>
+                                                    <td className="px-3 py-2.5 text-app-text">{row.unit}</td>
+                                                    <td className="px-3 py-2.5 text-app-muted">{row.ownerName}</td>
                                                     <td className="px-3 py-2.5 text-center">
-                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                                            row.status === 'Rented' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                                                        }`}>
+                                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(row.status)}`}>
                                                             {row.status}
                                                         </span>
                                                     </td>
-                                                    <td className="px-3 py-2.5 text-right font-mono text-slate-800">{CURRENCY} {formatCurrency(row.totalDeducted)}</td>
-                                                    <td className={`px-3 py-2.5 text-right font-mono font-semibold ${row.runningBalance < -0.01 ? 'text-red-600' : 'text-slate-700'}`}>
+                                                    <td className="px-3 py-2.5 text-right font-mono text-app-text">{CURRENCY} {formatCurrency(row.totalDeducted)}</td>
+                                                    <td className={`px-3 py-2.5 text-right font-mono font-semibold ${row.runningBalance < -0.01 ? 'text-ds-danger' : 'text-app-text'}`}>
                                                         {CURRENCY} {formatCurrency(row.runningBalance)}
                                                     </td>
-                                                    <td className="px-3 py-2.5 text-right font-mono text-slate-700">{CURRENCY} {formatCurrency(row.totalOwnerIncome)}</td>
+                                                    <td className="px-3 py-2.5 text-right font-mono text-app-muted">{CURRENCY} {formatCurrency(row.totalOwnerIncome)}</td>
                                                     <td className="px-3 py-2.5 text-center">
                                                         <div className="flex flex-wrap items-center justify-center gap-1.5">
                                                             {row.runningBalance < -0.01 && (
@@ -1498,7 +1500,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                                         ownerName: row.ownerName,
                                                                         amount: Math.abs(row.runningBalance),
                                                                     })}
-                                                                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                                                                    className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded hover:bg-app-highlight"
                                                                 >
                                                                     Receive
                                                                 </button>
@@ -1507,7 +1509,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={() => void handleWhatsAppServiceChargeOwner(row)}
-                                                                    className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
+                                                                    className="inline-flex items-center gap-1 text-xs font-semibold text-ds-success px-1.5 py-0.5 rounded bg-[color:var(--badge-paid-bg)] hover:bg-[color:var(--badge-paid-bg)]/80 transition-colors"
                                                                     title="Message owner about pending service charge / balance"
                                                                 >
                                                                     <span className="w-3.5 h-3.5 flex-shrink-0">{ICONS.whatsapp}</span>
@@ -1520,14 +1522,14 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                                     const tx = transactionsById.get(row.id);
                                                                     if (tx) setEditingTransaction(tx);
                                                                 }}
-                                                                className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                                                                className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded hover:bg-app-highlight"
                                                             >
                                                                 Edit
                                                             </button>
                                                             <button
                                                                 type="button"
                                                                 onClick={() => void handleDeleteLedgerRow(row)}
-                                                                className="text-xs font-semibold text-red-600 hover:text-red-800 px-1.5 py-0.5 rounded hover:bg-red-50"
+                                                                className="text-xs font-semibold text-ds-danger hover:text-ds-danger/80 px-1.5 py-0.5 rounded hover:bg-[color:var(--badge-unpaid-bg)]"
                                                             >
                                                                 Delete
                                                             </button>
@@ -1536,7 +1538,7 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                                 </tr>
                                             )) : (
                                                 <tr>
-                                                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                                                    <td colSpan={8} className="px-4 py-12 text-center text-app-muted">
                                                         {filteredPropertyRows.length === 0
                                                             ? 'No properties with service charges match the filters.'
                                                             : 'No deduction records for this selection. Run monthly deduction or use Manual Deduction.'}
@@ -1548,9 +1550,9 @@ const MonthlyServiceChargesPage: React.FC = () => {
                                 </div>
                             )}
                         </div>
-                        <div className="p-3 border-t border-slate-200 bg-slate-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm flex-shrink-0">
-                            <span className="text-slate-500">{selectedPropertyRowsForLedger.length} unit{selectedPropertyRowsForLedger.length !== 1 ? 's' : ''} in scope</span>
-                            <span className="font-bold text-slate-700">
+                        <div className="p-3 border-t border-app-border bg-app-toolbar flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 text-sm flex-shrink-0">
+                            <span className="text-app-muted">{selectedPropertyRowsForLedger.length} unit{selectedPropertyRowsForLedger.length !== 1 ? 's' : ''} in scope</span>
+                            <span className="font-bold text-app-text">
                                 Total deducted (table): {CURRENCY} {formatCurrency(ledgerTableFooterTotal)}
                             </span>
                         </div>
@@ -1561,45 +1563,45 @@ const MonthlyServiceChargesPage: React.FC = () => {
             )}
 
             {ownerNegativeBalances.length > 0 && (
-                <div className={`flex-shrink-0 bg-white rounded-lg border border-red-200 shadow-sm overflow-hidden transition-all mx-3 mb-2 ${isNegativePanelOpen ? '' : 'max-h-12'}`}>
+                <div className={`flex-shrink-0 bg-app-card rounded-lg border border-ds-danger/30 shadow-sm overflow-hidden transition-all mx-3 mb-2 ${isNegativePanelOpen ? '' : 'max-h-12'}`}>
                     <button
                         onClick={() => setIsNegativePanelOpen(prev => !prev)}
-                        className="w-full flex items-center justify-between px-4 py-3 bg-red-50 hover:bg-red-100 transition-colors"
+                        className="w-full flex items-center justify-between px-4 py-3 bg-[color:var(--badge-unpaid-bg)] hover:bg-[color:var(--badge-unpaid-bg)]/80 transition-colors"
                     >
                         <div className="flex items-center gap-2">
-                            <svg className="w-5 h-5 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
-                            <span className="font-semibold text-red-700 text-sm">
+                            <svg className="w-5 h-5 text-ds-danger" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" /></svg>
+                            <span className="font-semibold text-ds-danger text-sm">
                                 {ownerNegativeBalances.length} Owner{ownerNegativeBalances.length > 1 ? 's' : ''} with Negative Balance
                             </span>
-                            <span className="text-xs text-red-500 ml-2">
+                            <span className="text-xs text-ds-danger/80 ml-2">
                                 Total: {CURRENCY} {formatCurrency(Math.abs(ownerNegativeBalances.reduce((s, o) => s + o.totalOwed, 0)))}
                             </span>
                         </div>
-                        <svg className={`w-5 h-5 text-red-400 transition-transform ${isNegativePanelOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        <svg className={`w-5 h-5 text-ds-danger/70 transition-transform ${isNegativePanelOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                     </button>
 
                     {isNegativePanelOpen && (
                         <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-red-100 text-sm">
-                                <thead className="bg-red-50/50">
+                            <table className="min-w-full divide-y divide-app-border text-sm">
+                                <thead className="bg-app-toolbar">
                                     <tr>
-                                        <th className="px-4 py-2.5 text-left font-semibold text-slate-600">Owner</th>
-                                        <th className="px-4 py-2.5 text-left font-semibold text-slate-600">Vacant Properties</th>
-                                        <th className="px-4 py-2.5 text-right font-semibold text-slate-600">Total Owed</th>
-                                        <th className="px-4 py-2.5 text-center font-semibold text-slate-600">Action</th>
+                                        <th className="px-4 py-2.5 text-left font-semibold text-app-muted">Owner</th>
+                                        <th className="px-4 py-2.5 text-left font-semibold text-app-muted">Vacant Properties</th>
+                                        <th className="px-4 py-2.5 text-right font-semibold text-app-muted">Total Owed</th>
+                                        <th className="px-4 py-2.5 text-center font-semibold text-app-muted">Action</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-red-50">
+                                <tbody className="divide-y divide-app-border bg-app-card">
                                     {ownerNegativeBalances.map(owner => (
-                                        <tr key={owner.ownerId} className="hover:bg-red-50/50 transition-colors">
-                                            <td className="px-4 py-3 font-medium text-slate-800">{owner.ownerName}</td>
-                                            <td className="px-4 py-3 text-slate-600 text-xs">
+                                        <tr key={owner.ownerId} className="hover:bg-app-table-hover transition-colors">
+                                            <td className="px-4 py-3 font-medium text-app-text">{owner.ownerName}</td>
+                                            <td className="px-4 py-3 text-app-muted text-xs">
                                                 {owner.vacantProperties.length > 0
                                                     ? owner.vacantProperties.join(', ')
-                                                    : <span className="text-slate-400 italic">All properties rented</span>
+                                                    : <span className="text-app-muted italic">All properties rented</span>
                                                 }
                                             </td>
-                                            <td className="px-4 py-3 text-right font-mono font-bold text-red-600">
+                                            <td className="px-4 py-3 text-right font-mono font-bold text-ds-danger">
                                                 {CURRENCY} {formatCurrency(Math.abs(owner.totalOwed))}
                                             </td>
                                             <td className="px-4 py-3 text-center">

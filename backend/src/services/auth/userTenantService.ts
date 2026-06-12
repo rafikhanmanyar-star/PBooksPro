@@ -21,6 +21,7 @@ export type MatchedUserAccount = {
   passwordHash: string;
   tenantName: string;
   displayTimezone: string | null;
+  interfaceMode: string;
   email: string | null;
   lastTenantId: string | null;
   organizationStatus: string;
@@ -46,6 +47,7 @@ function mapAccountRow(row: UserTenantAccountRow): MatchedUserAccount {
     passwordHash: row.password_hash,
     tenantName: row.tenant_name,
     displayTimezone: row.display_timezone ?? null,
+    interfaceMode: row.interface_mode ?? 'auto',
     email: row.email,
     lastTenantId: row.last_tenant_id,
     organizationStatus: row.organization_status ?? 'ACTIVE',

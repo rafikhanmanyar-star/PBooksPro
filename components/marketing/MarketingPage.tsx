@@ -91,18 +91,18 @@ const AmenityConfigModal: React.FC<{
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-800">Configure Amenities</h2>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <div className="bg-app-card rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col border border-app-border">
+                <div className="flex items-center justify-between p-4 border-b border-app-border">
+                    <h2 className="text-lg font-bold text-app-text">Configure Amenities</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-app-table-hover rounded-lg text-app-muted">
                         <div className="w-5 h-5">{ICONS.x}</div>
                     </button>
                 </div>
 
                 <div className="flex-1 overflow-auto p-4 space-y-4">
                     {/* Add/Edit Form */}
-                    <Card className="p-4 bg-slate-50">
-                        <h3 className="text-sm font-bold text-slate-700 mb-3">
+                    <Card className="p-4 bg-app-toolbar border border-app-border">
+                        <h3 className="text-sm font-bold text-app-text mb-3">
                             {editingAmenity ? 'Edit Amenity' : 'Add New Amenity'}
                         </h3>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -114,7 +114,7 @@ const AmenityConfigModal: React.FC<{
                                 required
                             />
                             <div className="space-y-1">
-                                <label className="text-sm font-medium text-slate-600">Price Type</label>
+                                <label className="text-sm font-medium text-app-muted">Price Type</label>
                                 <div className="flex items-center gap-4 py-2">
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input 
@@ -123,7 +123,7 @@ const AmenityConfigModal: React.FC<{
                                             onChange={() => setIsPercentage(false)}
                                             className="w-4 h-4 text-indigo-600"
                                         />
-                                        <span className="text-sm text-slate-700">Fixed Amount</span>
+                                        <span className="text-sm text-app-text">Fixed Amount</span>
                                     </label>
                                     <label className="flex items-center gap-2 cursor-pointer">
                                         <input 
@@ -132,7 +132,7 @@ const AmenityConfigModal: React.FC<{
                                             onChange={() => setIsPercentage(true)}
                                             className="w-4 h-4 text-indigo-600"
                                         />
-                                        <span className="text-sm text-slate-700">% of List Price</span>
+                                        <span className="text-sm text-app-text">% of List Price</span>
                                     </label>
                                 </div>
                             </div>
@@ -161,37 +161,37 @@ const AmenityConfigModal: React.FC<{
 
                     {/* Amenities List */}
                     <div className="space-y-2">
-                        <h3 className="text-sm font-bold text-slate-700">Configured Amenities</h3>
+                        <h3 className="text-sm font-bold text-app-text">Configured Amenities</h3>
                         {amenities.length === 0 ? (
-                            <p className="text-sm text-slate-500 py-4 text-center">No amenities configured yet. Add one above.</p>
+                            <p className="text-sm text-app-muted py-4 text-center">No amenities configured yet. Add one above.</p>
                         ) : (
                             <div className="space-y-2">
                                 {amenities.map(amenity => (
                                     <div 
                                         key={amenity.id} 
-                                        className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-lg hover:border-indigo-300 transition-colors"
+                                        className="flex items-center justify-between p-3 bg-app-card border border-app-border rounded-lg hover:border-primary/40 transition-colors"
                                     >
                                         <div className="flex-1">
                                             <div className="flex items-center gap-2">
-                                                <span className="font-medium text-slate-900">{amenity.name}</span>
-                                                <span className={`text-xs px-2 py-0.5 rounded ${amenity.isPercentage ? 'bg-blue-100 text-blue-700' : 'bg-green-100 text-green-700'}`}>
+                                                <span className="font-medium text-app-text">{amenity.name}</span>
+                                                <span className={`text-xs px-2 py-0.5 rounded border ${amenity.isPercentage ? 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] border-[color:var(--badge-partial-text)]/30' : 'bg-[color:var(--badge-paid-bg)] text-ds-success border-ds-success/30'}`}>
                                                     {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
                                                 </span>
                                             </div>
                                             {amenity.description && (
-                                                <p className="text-xs text-slate-500 mt-1">{amenity.description}</p>
+                                                <p className="text-xs text-app-muted mt-1">{amenity.description}</p>
                                             )}
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <button 
                                                 onClick={() => handleEdit(amenity)}
-                                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                                                className="p-2 text-app-muted hover:text-primary hover:bg-app-highlight rounded-lg"
                                             >
                                                 <div className="w-4 h-4">{ICONS.edit}</div>
                                             </button>
                                             <button 
                                                 onClick={() => handleDelete(amenity.id)}
-                                                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
+                                                className="p-2 text-app-muted hover:text-ds-danger hover:bg-[color:var(--badge-unpaid-bg)] rounded-lg"
                                             >
                                                 <div className="w-4 h-4">{ICONS.trash}</div>
                                             </button>
@@ -203,7 +203,7 @@ const AmenityConfigModal: React.FC<{
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-200">
+                <div className="p-4 border-t border-app-border">
                     <Button variant="ghost" onClick={onClose} className="w-full">Close</Button>
                 </div>
             </div>
@@ -223,10 +223,10 @@ const ApprovalRequestModal: React.FC<{
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-            <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b border-slate-200">
-                    <h2 className="text-lg font-bold text-slate-800">Submit for Approval</h2>
-                    <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg">
+            <div className="bg-app-card rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-app-border">
+                <div className="flex items-center justify-between p-4 border-b border-app-border">
+                    <h2 className="text-lg font-bold text-app-text">Submit for Approval</h2>
+                    <button onClick={onClose} className="p-2 hover:bg-app-table-hover rounded-lg text-app-muted">
                         <div className="w-5 h-5">{ICONS.x}</div>
                     </button>
                 </div>
@@ -240,11 +240,11 @@ const ApprovalRequestModal: React.FC<{
                         allowAddNew={false}
                         entityType="report"
                     />
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-app-muted">
                         Only users with approval rights are listed.
                     </p>
                 </div>
-                <div className="p-4 border-t border-slate-200 flex gap-2 justify-end">
+                <div className="p-4 border-t border-app-border flex gap-2 justify-end">
                     <Button variant="ghost" onClick={onClose}>Cancel</Button>
                     <Button onClick={onSubmit} disabled={!selectedApproverId}>
                         Send for Approval
@@ -1569,51 +1569,51 @@ const MarketingPage: React.FC = () => {
             case 'Pending Approval':
                 return {
                     label: 'Pending Approval',
-                    badge: 'bg-blue-100 text-blue-700',
-                    border: 'border-blue-500 bg-blue-50/30'
+                    badge: 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] border border-[color:var(--badge-partial-text)]/30',
+                    border: 'border-[color:var(--badge-partial-text)]/50 bg-[color:var(--badge-partial-bg)]/25'
                 };
             case 'Approved':
                 return {
                     label: 'Approved',
-                    badge: 'bg-green-100 text-green-700',
-                    border: 'border-green-500 bg-green-50/30'
+                    badge: 'bg-[color:var(--badge-paid-bg)] text-ds-success border border-ds-success/30',
+                    border: 'border-ds-success/50 bg-[color:var(--badge-paid-bg)]/20'
                 };
             case 'Rejected':
                 return {
                     label: 'Rejected',
-                    badge: 'bg-rose-100 text-rose-700',
-                    border: 'border-rose-500 bg-rose-50/30'
+                    badge: 'bg-[color:var(--badge-unpaid-bg)] text-ds-danger border border-ds-danger/30',
+                    border: 'border-ds-danger/50 bg-[color:var(--badge-unpaid-bg)]/20'
                 };
             case 'Locked':
                 return {
                     label: 'Locked',
-                    badge: 'bg-amber-100 text-amber-700',
-                    border: 'border-amber-500 bg-amber-50/30'
+                    badge: 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] border border-[color:var(--badge-partial-text)]/30',
+                    border: 'border-[color:var(--badge-partial-text)]/50 bg-[color:var(--badge-partial-bg)]/25'
                 };
             case 'Sale Recognized':
                 return {
                     label: 'Sale Recognized',
-                    badge: 'bg-purple-100 text-purple-700',
-                    border: 'border-purple-500 bg-purple-50/30'
+                    badge: 'bg-primary/15 text-primary border border-primary/30',
+                    border: 'border-primary/50 bg-primary/10'
                 };
             case 'Draft':
             default:
                 return {
                     label: 'Draft',
-                    badge: 'bg-slate-100 text-slate-600',
-                    border: 'border-indigo-500 bg-white'
+                    badge: 'bg-app-toolbar text-app-muted border border-app-border',
+                    border: 'border-app-border bg-app-card'
                 };
         }
     };
 
     return (
-        <div className="flex flex-col h-full bg-slate-50 overflow-hidden">
+        <div className="flex flex-col h-full bg-app-bg overflow-hidden">
             <style>{STANDARD_PRINT_STYLES}</style>
-            <div className="flex items-center justify-between p-4 bg-white border-b border-slate-200 no-print">
+            <div className="flex items-center justify-between p-4 bg-app-card border-b border-app-border no-print">
                 <div className="flex items-center gap-4">
-                    <h1 className="text-xl font-bold text-slate-800">Installment Plans (Marketing)</h1>
+                    <h1 className="text-xl font-bold text-app-text">Installment Plans (Marketing)</h1>
                     <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-app-muted">
                             <div className="w-4 h-4">{ICONS.search}</div>
                         </div>
                         <input 
@@ -1621,7 +1621,7 @@ const MarketingPage: React.FC = () => {
                             placeholder="Search by Unit, Project or Client..."
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
-                            className="pl-10 pr-4 py-2 bg-slate-100 border-none rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none w-80 transition-all"
+                            className="ds-input-field pl-10 pr-4 py-2 border-none rounded-lg text-sm w-80 transition-all"
                         />
                     </div>
                 </div>
@@ -1653,11 +1653,11 @@ const MarketingPage: React.FC = () => {
 
             <div className="flex-1 overflow-hidden">
                 {showForm ? (
-                    <div className="flex h-full animate-fade-in bg-slate-100">
+                    <div className="flex h-full animate-fade-in bg-app-bg">
                         {/* Left Sidebar - Form Controls */}
-                        <div className="w-80 flex flex-col bg-white border-r border-slate-200 overflow-y-auto shrink-0 no-print">
-                            <div className="p-3 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                                <h2 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Project Info</h2>
+                        <div className="w-80 flex flex-col bg-app-card border-r border-app-border overflow-y-auto shrink-0 no-print">
+                            <div className="p-3 border-b border-app-border bg-app-toolbar flex items-center justify-between">
+                                <h2 className="text-xs font-bold text-app-text uppercase tracking-wider">Project Info</h2>
                                 <Button variant="ghost" onClick={() => setShowForm(false)} size="sm">
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </Button>
@@ -1666,17 +1666,17 @@ const MarketingPage: React.FC = () => {
                             <div className="p-3 space-y-4">
                                 {/* Template Selection */}
                                 <div className="space-y-2">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Plan Template</h3>
+                                    <h3 className="text-[10px] font-bold text-app-muted uppercase tracking-wider px-1">Plan Template</h3>
                                     <div className="grid grid-cols-2 gap-2">
                                         <button 
                                             onClick={() => setSelectedTemplate('formal')}
-                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'formal' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'formal' ? 'border-primary bg-app-highlight text-primary' : 'border-app-border bg-app-card text-app-muted hover:border-app-border'}`}
                                         >
                                             Template 1 (Formal)
                                         </button>
                                         <button 
                                             onClick={() => setSelectedTemplate('modern')}
-                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'modern' ? 'border-indigo-600 bg-indigo-50 text-indigo-700' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'}`}
+                                            className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border-2 ${selectedTemplate === 'modern' ? 'border-primary bg-app-highlight text-primary' : 'border-app-border bg-app-card text-app-muted hover:border-app-border'}`}
                                         >
                                             Template 2 (Modern)
                                         </button>
@@ -1684,7 +1684,7 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Basic Selection */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                <div className="space-y-2 pt-2 border-t border-app-border">
                                     <ComboBox 
                                         label="Project" 
                                         items={projects} 
@@ -1707,7 +1707,7 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Client Info */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                <div className="space-y-2 pt-2 border-t border-app-border">
                                     <ComboBox 
                                         label="Client" 
                                         items={leads} 
@@ -1720,7 +1720,7 @@ const MarketingPage: React.FC = () => {
                                 </div>
 
                                 {/* Pricing & Discount */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
+                                <div className="space-y-2 pt-2 border-t border-app-border">
                                     <Input 
                                         label="Base Price" 
                                         type="number" 
@@ -1731,20 +1731,20 @@ const MarketingPage: React.FC = () => {
                                     />
                                     
                                     <div className="flex justify-between items-center px-1">
-                                        <span className="text-[10px] font-bold text-slate-400 uppercase">Amenities</span>
+                                        <span className="text-[10px] font-bold text-app-muted uppercase">Amenities</span>
                                         <span className="text-[11px] font-bold text-indigo-600">Rs. {amenitiesTotal.toLocaleString()}</span>
                                     </div>
                                 </div>
 
                                 {/* Amenities Selection */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Add Amenities</h3>
+                                <div className="space-y-2 pt-2 border-t border-app-border">
+                                    <h3 className="text-[10px] font-bold text-app-muted uppercase tracking-wider px-1">Add Amenities</h3>
                                     
-                                    <div className="flex gap-1.5 p-1.5 rounded bg-slate-50 border border-slate-100">
+                                    <div className="flex gap-1.5 p-1.5 rounded bg-app-toolbar border border-app-border">
                                         <select
                                             value={selectedAmenityIdToAdd}
                                             onChange={e => setSelectedAmenityIdToAdd(e.target.value)}
-                                            className="flex-1 px-2 py-1 bg-white border border-slate-200 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                            className="flex-1 px-2 py-1 ds-input-field rounded text-[10px] outline-none"
                                             aria-label="Select amenity to add"
                                         >
                                             <option value="">Select Amenity...</option>
@@ -1775,17 +1775,17 @@ const MarketingPage: React.FC = () => {
                                             return (
                                                 <div 
                                                     key={amenity.id} 
-                                                    className="flex items-center justify-between p-1.5 rounded bg-indigo-50/50 border border-indigo-100 animate-fade-in"
+                                                    className="flex items-center justify-between p-1.5 rounded bg-primary/10 border border-primary/20 animate-fade-in"
                                                 >
                                                     <div className="flex-1 min-w-0">
-                                                        <p className="text-[10px] font-medium text-slate-700 truncate">{amenity.name}</p>
+                                                        <p className="text-[10px] font-medium text-app-text truncate">{amenity.name}</p>
                                                         <p className="text-[9px] font-bold text-indigo-600">
                                                             {amenity.isPercentage ? `${amenity.price}%` : `Rs. ${amenity.price.toLocaleString()}`}
                                                         </p>
                                                     </div>
                                                     <button 
                                                         onClick={() => setSelectedAmenityIds(prev => prev.filter(id => id !== amenityId))}
-                                                        className="text-slate-400 hover:text-rose-600 p-0.5"
+                                                        className="text-app-muted hover:text-rose-600 p-0.5"
                                                     >
                                                         <div className="w-3 h-3">{ICONS.trash}</div>
                                                     </button>
@@ -1793,16 +1793,16 @@ const MarketingPage: React.FC = () => {
                                             );
                                         })}
                                         {selectedAmenityIds.length === 0 && (
-                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No amenities added</p>
+                                            <p className="text-[10px] text-app-muted italic text-center py-2">No amenities added</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Discount Selection */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Discounts</h3>
+                                <div className="space-y-2 pt-2 border-t border-app-border">
+                                    <h3 className="text-[10px] font-bold text-app-muted uppercase tracking-wider px-1">Discounts</h3>
                                     
-                                    <div className="space-y-1.5 p-1.5 rounded bg-slate-50 border border-slate-100">
+                                    <div className="space-y-1.5 p-1.5 rounded bg-app-toolbar border border-app-border">
                                         <Input 
                                             label="Name" 
                                             value={newDiscountName}
@@ -1853,30 +1853,30 @@ const MarketingPage: React.FC = () => {
 
                                     <div className="space-y-1 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
                                         {discounts.map(d => (
-                                            <div key={d.id} className="flex items-center justify-between p-1.5 rounded bg-rose-50/50 border border-rose-100 animate-fade-in">
+                                            <div key={d.id} className="flex items-center justify-between p-1.5 rounded bg-[color:var(--badge-unpaid-bg)]/50 border border-ds-danger/20 animate-fade-in">
                                                 <div className="flex-1 min-w-0">
-                                                    <p className="text-[10px] font-bold text-slate-700 truncate">{d.name}</p>
+                                                    <p className="text-[10px] font-bold text-app-text truncate">{d.name}</p>
                                                     <p className="text-[9px] font-bold text-rose-600">Rs. {d.amount.toLocaleString()}</p>
                                                 </div>
                                                 <button 
                                                     onClick={() => removeDiscount(d.id)}
-                                                    className="text-slate-400 hover:text-rose-600 p-0.5"
+                                                    className="text-app-muted hover:text-rose-600 p-0.5"
                                                 >
                                                     <div className="w-3 h-3">{ICONS.trash}</div>
                                                 </button>
                                             </div>
                                         ))}
                                         {discounts.length === 0 && (
-                                            <p className="text-[10px] text-slate-400 italic text-center py-2">No discounts added</p>
+                                            <p className="text-[10px] text-app-muted italic text-center py-2">No discounts added</p>
                                         )}
                                     </div>
                                 </div>
 
                                 {/* Installment Plan */}
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Installment Plan</h3>
+                                <div className="space-y-2 pt-2 border-t border-app-border">
+                                    <h3 className="text-[10px] font-bold text-app-muted uppercase tracking-wider px-1">Installment Plan</h3>
                                     <div className="space-y-1 px-1">
-                                        <div className="flex justify-between text-[10px] font-medium text-slate-600">
+                                        <div className="flex justify-between text-[10px] font-medium text-app-text">
                                             <span>Down Payment</span>
                                             <span className="text-indigo-600 font-bold">{downPaymentPercentage}%</span>
                                         </div>
@@ -1885,28 +1885,28 @@ const MarketingPage: React.FC = () => {
                                             min="5" max="50" 
                                             value={downPaymentPercentage} 
                                             onChange={e => setDownPaymentPercentage(e.target.value)} 
-                                            className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-indigo-600"
+                                            className="w-full h-1 bg-app-border rounded-lg appearance-none cursor-pointer accent-primary"
                                         />
                                     </div>
 
                                     <div className="grid grid-cols-2 gap-2 pt-1">
                                         <div className="flex items-center gap-1.5">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Years</label>
+                                            <label className="text-[10px] font-bold text-app-muted uppercase shrink-0">Years</label>
                                             <select
                                                 value={durationYears}
                                                 onChange={e => setDurationYears(e.target.value)}
-                                                className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                className="flex-1 px-2 py-1 ds-input-field rounded text-[10px] outline-none"
                                                 aria-label="Duration in years"
                                             >
                                                 {[1, 2, 3, 4, 5, 10].map(y => <option key={y} value={y}>{y}y</option>)}
                                             </select>
                                         </div>
                                         <div className="flex items-center gap-1.5">
-                                            <label className="text-[10px] font-bold text-slate-500 uppercase shrink-0">Freq</label>
+                                            <label className="text-[10px] font-bold text-app-muted uppercase shrink-0">Freq</label>
                                             <select
                                                 value={frequency}
                                                 onChange={e => setFrequency(e.target.value as InstallmentFrequency)}
-                                                className="flex-1 px-2 py-1 bg-white border border-slate-300 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none"
+                                                className="flex-1 px-2 py-1 ds-input-field rounded text-[10px] outline-none"
                                                 aria-label="Payment frequency"
                                             >
                                                 <option value="Monthly">Mon</option>
@@ -1917,17 +1917,17 @@ const MarketingPage: React.FC = () => {
                                     </div>
                                 </div>
 
-                                <div className="space-y-2 pt-2 border-t border-slate-50">
-                                    <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">Proposal Text</h3>
+                                <div className="space-y-2 pt-2 border-t border-app-border">
+                                    <h3 className="text-[10px] font-bold text-app-muted uppercase tracking-wider px-1">Proposal Text</h3>
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-slate-500 uppercase px-1">Intro Message</label>
+                                        <label className="text-[10px] font-bold text-app-muted uppercase px-1">Intro Message</label>
                                         <textarea 
                                             value={introText}
                                             onChange={e => setIntroText(e.target.value)}
-                                            className="w-full h-20 px-2 py-1 bg-white border border-slate-200 rounded text-[10px] focus:ring-1 focus:ring-indigo-500 outline-none resize-none"
+                                            className="w-full h-20 px-2 py-1 ds-input-field rounded text-[10px] outline-none resize-none"
                                             placeholder="Custom intro text..."
                                         />
-                                        <p className="text-[9px] text-slate-400 italic px-1 leading-tight">This text appears after "Exclusively for You"</p>
+                                        <p className="text-[9px] text-app-muted italic px-1 leading-tight">This text appears after "Exclusively for You"</p>
                                     </div>
                                 </div>
 
@@ -1981,29 +1981,29 @@ const MarketingPage: React.FC = () => {
                                     </div>
 
                                     {isPendingApproval && (
-                                        <div className="p-2 bg-blue-50/50 border border-blue-100 rounded-lg">
-                                            <p className="text-[10px] text-blue-800 font-medium text-center">
+                                        <div className="p-2 bg-[color:var(--badge-partial-bg)] border border-[color:var(--badge-partial-text)]/30 rounded-lg">
+                                            <p className="text-[10px] text-[color:var(--badge-partial-text)] font-medium text-center">
                                                 Awaiting approval from {approvalRequestedToName || 'approver'}
                                             </p>
                                         </div>
                                     )}
                                     {isApprovedStatus && (
-                                        <div className="p-2 bg-green-50/50 border border-green-100 rounded-lg">
-                                            <p className="text-[10px] text-green-800 font-medium text-center">
+                                        <div className="p-2 bg-[color:var(--badge-paid-bg)] border border-ds-success/30 rounded-lg">
+                                            <p className="text-[10px] text-ds-success font-medium text-center">
                                                 Approved. Ready for sales agreement.
                                             </p>
                                         </div>
                                     )}
                                     {isRejectedStatus && (
-                                        <div className="p-2 bg-rose-50/50 border border-rose-100 rounded-lg">
-                                            <p className="text-[10px] text-rose-800 font-medium text-center">
+                                        <div className="p-2 bg-[color:var(--badge-unpaid-bg)] border border-ds-danger/30 rounded-lg">
+                                            <p className="text-[10px] text-ds-danger font-medium text-center">
                                                 Rejected. Please update and resubmit.
                                             </p>
                                         </div>
                                     )}
                                     {isLockedStatus && (
-                                        <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                                            <p className="text-[11px] text-amber-800 font-medium text-center">
+                                        <div className="p-3 bg-[color:var(--badge-partial-bg)] border border-[color:var(--badge-partial-text)]/30 rounded-lg">
+                                            <p className="text-[11px] text-[color:var(--badge-partial-text)] font-medium text-center">
                                                 This version is LOCKED. Save a new version to make changes.
                                             </p>
                                         </div>
@@ -2013,8 +2013,8 @@ const MarketingPage: React.FC = () => {
                         </div>
 
                         {/* Right Content - Installment Plan Preview */}
-                        <div className="flex-1 overflow-y-auto p-8 bg-slate-100 print:p-0 print:bg-white">
-                            <div className="printable-area max-w-4xl mx-auto bg-white shadow-2xl rounded-sm overflow-hidden min-h-full flex flex-col print:shadow-none print:p-0" id="printable-area">
+                        <div className="flex-1 overflow-y-auto p-8 bg-app-bg print:p-0 print:bg-white">
+                            <div className="max-w-4xl mx-auto bg-app-card border border-app-border shadow-ds-card rounded-sm overflow-hidden min-h-full flex flex-col print:shadow-none print:p-0 print:bg-white print:border-0" id="printable-area">
                                 <ReportHeader />
                                 
                                 {selectedTemplate === 'formal' ? (
@@ -2023,13 +2023,13 @@ const MarketingPage: React.FC = () => {
                                         <div className="flex flex-col items-center mb-6">
                                             <div className="flex items-center gap-3 mb-2">
                                                 <div className="w-12 h-12 relative flex items-center justify-center">
-                                                    <svg viewBox="0 0 100 100" className="w-full h-full text-slate-800">
+                                                    <svg viewBox="0 0 100 100" className="w-full h-full text-app-text">
                                                         <path d="M50 5 L95 25 L95 75 L50 95 L5 75 L5 25 Z" fill="none" stroke="currentColor" strokeWidth="4"/>
                                                         <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" fill="currentColor"/>
                                                         <path d="M35 45 L50 35 L65 45 L65 65 L50 75 L35 65 Z" fill="white"/>
                                                     </svg>
                                                 </div>
-                                                <div className="text-4xl font-black tracking-widest text-slate-800 uppercase">
+                                                <div className="text-4xl font-black tracking-widest text-app-text uppercase">
                                                     {projects.find(p => p.id === projectId)?.name || 'EMPORIUM'}
                                                 </div>
                                             </div>
@@ -2037,7 +2037,7 @@ const MarketingPage: React.FC = () => {
 
                                         {/* Title Box */}
                                         <div className="border-[3px] border-slate-800 py-3 text-center mb-6">
-                                            <h2 className="text-2xl font-black tracking-[0.3em] text-slate-800">INSTALLMENT PLAN</h2>
+                                            <h2 className="text-2xl font-black tracking-[0.3em] text-app-text">INSTALLMENT PLAN</h2>
                                         </div>
 
                                         {/* PRIMARY DATA SECTION */}
@@ -2055,33 +2055,33 @@ const MarketingPage: React.FC = () => {
                                             <div className="p-4 grid grid-cols-3 gap-y-4 gap-x-8 text-[11px] uppercase font-bold">
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">UNIT:</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text min-h-[1.5em]">
                                                         {appUnits.find(u => u.id === unitId)?.name || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">CATEGORY:</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text min-h-[1.5em]">
                                                         {appUnits.find(u => u.id === unitId)?.type || ''}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">FLOOR:</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text min-h-[1.5em]">
                                                         {appUnits.find(u => u.id === unitId)?.floor || ''}
                                                     </span>
                                                 </div>
                                                 
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">SIZE:</span>
-                                                    <div className="border-b border-slate-400 flex-1 flex justify-between px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                    <div className="border-b border-slate-400 flex-1 flex justify-between px-1 pb-0.5 italic text-app-text min-h-[1.5em]">
                                                         <span>{appUnits.find(u => u.id === unitId)?.area?.toFixed(2) || ''}</span>
                                                         <span className="text-[9px] font-normal not-italic">SFT</span>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-end gap-2">
                                                     <span className="whitespace-nowrap">RATE:</span>
-                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 min-h-[1.5em]">
+                                                    <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text min-h-[1.5em]">
                                                         {(() => {
                                                             const unit = appUnits.find(u => u.id === unitId);
                                                             if (unit?.salePrice && unit?.area) {
@@ -2095,7 +2095,7 @@ const MarketingPage: React.FC = () => {
                                                     {selectedAmenityIds[0] && (
                                                         <>
                                                             <span className="whitespace-nowrap uppercase">{activeAmenities.find(a => a.id === selectedAmenityIds[0])?.name || 'AMENITY 1'}:</span>
-                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">YES</span>
+                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text text-center min-h-[1.5em]">YES</span>
                                                         </>
                                                     )}
                                                 </div>
@@ -2110,14 +2110,14 @@ const MarketingPage: React.FC = () => {
                                                     {selectedAmenityIds[1] && (
                                                         <>
                                                             <span className="whitespace-nowrap text-[9px] leading-tight uppercase">{activeAmenities.find(a => a.id === selectedAmenityIds[1])?.name || 'AMENITY 2'}:</span>
-                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-slate-900 text-center min-h-[1.5em]">YES</span>
+                                                            <span className="border-b border-slate-400 flex-1 px-1 pb-0.5 italic text-app-text text-center min-h-[1.5em]">YES</span>
                                                         </>
                                                     )}
                                                 </div>
 
                                                 <div className="flex items-end gap-2 col-span-3 justify-end pt-2">
                                                     <span className="whitespace-nowrap">DATE:</span>
-                                                    <span className="border-b border-slate-400 w-48 px-1 pb-0.5 italic text-slate-900 text-center font-black">
+                                                    <span className="border-b border-slate-400 w-48 px-1 pb-0.5 italic text-app-text text-center font-black">
                                                         {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                                                     </span>
                                                 </div>
@@ -2180,7 +2180,7 @@ const MarketingPage: React.FC = () => {
                                                     {schedule.filter(item => item.index !== 'Initial').map((item, idx) => (
                                                         <tr key={idx}>
                                                             <td className="border border-slate-800 px-3 py-1.5 text-center">{item.index.padStart(2, '0')}</td>
-                                                            <td className="border border-slate-800 px-3 py-1.5 text-center italic text-slate-700">
+                                                            <td className="border border-slate-800 px-3 py-1.5 text-center italic text-app-text">
                                                                 {item.dueDate}
                                                             </td>
                                                             <td className="border border-slate-800 px-3 py-1.5">INSTALLEMENT # {item.index}</td>
@@ -2228,7 +2228,7 @@ const MarketingPage: React.FC = () => {
                                                 </div>
                                             </div>
                                             
-                                            <div className="mt-10 text-[9px] font-medium text-slate-500 leading-relaxed">
+                                            <div className="mt-10 text-[9px] font-medium text-app-muted leading-relaxed">
                                                 <p>* 5% Additional charges for Margalla Face</p>
                                                 <p>** 10% Additional charges for corner unit</p>
                                             </div>
@@ -2237,8 +2237,8 @@ const MarketingPage: React.FC = () => {
                                         {/* Intro Text */}
                                         {introText && (
                                             <div className="mt-10 pt-10 border-t border-dashed border-slate-300 print:break-before-page">
-                                                <h3 className="text-sm font-bold text-slate-800 mb-2 uppercase tracking-wider">Additional Notes</h3>
-                                                <div className="text-xs text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                                <h3 className="text-sm font-bold text-app-text mb-2 uppercase tracking-wider">Additional Notes</h3>
+                                                <div className="text-xs text-app-text italic leading-relaxed whitespace-pre-wrap">
                                                     {introText}
                                                 </div>
                                             </div>
@@ -2268,22 +2268,22 @@ const MarketingPage: React.FC = () => {
                                         <div className="p-10 space-y-10 flex-1">
                                             {/* Intro Text */}
                                             <div className="border-l-4 border-indigo-600 pl-6 py-2">
-                                                <h3 className="text-lg font-bold text-slate-800 mb-2">Exclusively for You</h3>
+                                                <h3 className="text-lg font-bold text-app-text mb-2">Exclusively for You</h3>
                                                 <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-[10px] font-black text-indigo-700 uppercase tracking-widest border-b border-indigo-50 pb-2">
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Unit:</span> {appUnits.find(u => u.id === unitId)?.name || 'N/A'}
+                                                        <span className="text-app-muted">Unit:</span> {appUnits.find(u => u.id === unitId)?.name || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Type:</span> {appUnits.find(u => u.id === unitId)?.type || 'N/A'}
+                                                        <span className="text-app-muted">Type:</span> {appUnits.find(u => u.id === unitId)?.type || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Floor:</span> {appUnits.find(u => u.id === unitId)?.floor || 'N/A'}
+                                                        <span className="text-app-muted">Floor:</span> {appUnits.find(u => u.id === unitId)?.floor || 'N/A'}
                                                     </span>
                                                     <span className="flex items-center gap-1.5">
-                                                        <span className="text-slate-400">Area:</span> {appUnits.find(u => u.id === unitId)?.area || '0'} SFT
+                                                        <span className="text-app-muted">Area:</span> {appUnits.find(u => u.id === unitId)?.area || '0'} SFT
                                                     </span>
                                                 </div>
-                                                <div className="text-slate-600 italic leading-relaxed whitespace-pre-wrap">
+                                                <div className="text-app-text italic leading-relaxed whitespace-pre-wrap">
                                                     {introText ? introText : (
                                                         `Dear ${leads.find(l => l.id === leadId)?.name || 'Mr. Doe'}, Unit #${appUnits.find(u => u.id === unitId)?.name || 'A-1204'} at ${projects.find(p => p.id === projectId)?.name || 'Project Name'} has been meticulously selected for you as a private sanctuary that epitomizes contemporary elegance and absolute exclusivity. This ${appUnits.find(u => u.id === unitId)?.type || 'Unit'} residence offers more than just a sophisticated lifestyle; it serves as a high-performing asset with exceptional capital appreciation potential in an increasingly sought-after corridor. Securing this premier unit is a strategic move to anchor your portfolio with a legacy property that truly reflects your standard of distinction.`
                                                     )}
@@ -2292,41 +2292,41 @@ const MarketingPage: React.FC = () => {
 
                                             {/* Summary Stats Grid */}
                                             <div className="grid grid-cols-3 gap-4">
-                                                <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Total Net Price</p>
+                                                <div className="p-4 rounded-lg bg-app-toolbar border border-app-border">
+                                                    <p className="text-[10px] font-bold text-app-muted uppercase mb-1">Total Net Price</p>
                                                     <p className="text-sm font-bold text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</p>
-                                                    <p className="text-[10px] text-slate-500">Incl. Rs. {totalDiscountAmount.toLocaleString()} Discount</p>
+                                                    <p className="text-[10px] text-app-muted">Incl. Rs. {totalDiscountAmount.toLocaleString()} Discount</p>
                                                 </div>
-                                                <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Down Payment</p>
+                                                <div className="p-4 rounded-lg bg-app-toolbar border border-app-border">
+                                                    <p className="text-[10px] font-bold text-app-muted uppercase mb-1">Down Payment</p>
                                                     <p className="text-sm font-bold text-indigo-700">Rs. {calculations.dpAmount.toLocaleString()}</p>
-                                                    <p className="text-[10px] text-slate-500">{downPaymentPercentage}% required</p>
+                                                    <p className="text-[10px] text-app-muted">{downPaymentPercentage}% required</p>
                                                 </div>
-                                                <div className="p-4 rounded-lg bg-slate-50 border border-slate-100">
-                                                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Installment</p>
+                                                <div className="p-4 rounded-lg bg-app-toolbar border border-app-border">
+                                                    <p className="text-[10px] font-bold text-app-muted uppercase mb-1">Installment</p>
                                                     <p className="text-sm font-bold text-indigo-700">Rs. {calculations.installmentAmount.toLocaleString()}</p>
-                                                    <p className="text-[10px] text-slate-500">{frequency} payments</p>
+                                                    <p className="text-[10px] text-app-muted">{frequency} payments</p>
                                                 </div>
                                             </div>
 
                                             {/* Cost Breakdown */}
                                             <div>
-                                                <div className="flex items-center gap-2 mb-6 border-b border-slate-100 pb-2">
+                                                <div className="flex items-center gap-2 mb-6 border-b border-app-border pb-2">
                                                     <div className="w-5 h-5 text-indigo-600">{ICONS.list}</div>
-                                                    <h3 className="font-bold text-slate-800">Cost Breakdown</h3>
+                                                    <h3 className="font-bold text-app-text">Cost Breakdown</h3>
                                                 </div>
                                                 <div className="space-y-4">
                                                     <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">Base Price of Unit</span>
-                                                        <span className="font-bold text-slate-900">Rs. {parseFloat(listPrice).toLocaleString()}</span>
+                                                        <span className="text-app-text">Base Price of Unit</span>
+                                                        <span className="font-bold text-app-text">Rs. {parseFloat(listPrice).toLocaleString()}</span>
                                                     </div>
                                                     <div className="flex justify-between items-center text-sm">
-                                                        <span className="text-slate-600">Premium Amenities & Facilities</span>
-                                                        <span className="font-bold text-slate-900">Rs. {amenitiesTotal.toLocaleString()}</span>
+                                                        <span className="text-app-text">Premium Amenities & Facilities</span>
+                                                        <span className="font-bold text-app-text">Rs. {amenitiesTotal.toLocaleString()}</span>
                                                     </div>
-                                                    <div className="flex justify-between items-center text-sm pt-2 border-t border-slate-100">
-                                                        <span className="font-bold text-slate-800">Total Gross Price</span>
-                                                        <span className="font-extrabold text-slate-900">Rs. {(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
+                                                    <div className="flex justify-between items-center text-sm pt-2 border-t border-app-border">
+                                                        <span className="font-bold text-app-text">Total Gross Price</span>
+                                                        <span className="font-extrabold text-app-text">Rs. {(parseFloat(listPrice) + amenitiesTotal).toLocaleString()}</span>
                                                     </div>
                                                     {discounts.map(d => (
                                                         <div key={d.id} className="flex justify-between items-center text-sm">
@@ -2334,28 +2334,28 @@ const MarketingPage: React.FC = () => {
                                                             <span className="font-bold text-rose-600">-Rs. {d.amount.toLocaleString()}</span>
                                                         </div>
                                                     ))}
-                                                    <div className="flex justify-between items-center py-4 px-4 bg-indigo-50/50 rounded-lg mt-4">
-                                                        <span className="font-extrabold text-slate-800 uppercase tracking-wider">Net Payable Price</span>
-                                                        <span className="text-2xl font-black text-indigo-700">Rs. {calculations.netValue.toLocaleString()}</span>
+                                                    <div className="flex justify-between items-center py-4 px-4 bg-primary/10 rounded-lg mt-4">
+                                                        <span className="font-extrabold text-app-text uppercase tracking-wider">Net Payable Price</span>
+                                                        <span className="text-2xl font-black text-primary">Rs. {calculations.netValue.toLocaleString()}</span>
                                                     </div>
                                                 </div>
                                             </div>
 
                                             {/* Installment Schedule */}
                                             <div className="pb-10">
-                                                <div className="flex items-center justify-between mb-6 border-b border-slate-100 pb-2">
+                                                <div className="flex items-center justify-between mb-6 border-b border-app-border pb-2">
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-5 h-5 text-indigo-600">{ICONS.calendar}</div>
-                                                        <h3 className="font-bold text-slate-800">Installment Schedule</h3>
+                                                        <h3 className="font-bold text-app-text">Installment Schedule</h3>
                                                     </div>
-                                                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                                    <div className="text-[10px] font-bold text-app-muted uppercase tracking-wider">
                                                         {durationYears} Years Plan • {calculations.totalInstallments} Installments
                                                     </div>
                                                 </div>
-                                                <div className="rounded-lg border border-slate-200 overflow-hidden shadow-sm">
+                                                <div className="rounded-lg border border-app-border overflow-hidden shadow-sm">
                                                     <table className="w-full text-left text-sm border-collapse">
                                                         <thead>
-                                                            <tr className="bg-[#1a237e] text-white">
+                                                            <tr className="bg-primary text-white">
                                                                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">#</th>
                                                                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Due Date</th>
                                                                 <th className="px-6 py-4 font-bold uppercase tracking-wider text-[10px]">Amount</th>
@@ -2366,14 +2366,14 @@ const MarketingPage: React.FC = () => {
                                                             {schedule.map((item, idx) => (
                                                                 <tr 
                                                                     key={item.index} 
-                                                                    className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors ${idx === 0 ? 'bg-indigo-50/30' : ''}`}
+                                                                    className={`border-b border-app-border last:border-0 hover:bg-app-table-hover transition-colors ${idx === 0 ? 'bg-primary/10' : ''}`}
                                                                 >
-                                                                    <td className="px-6 py-4 font-bold text-slate-800">{item.index}</td>
-                                                                    <td className="px-6 py-4 text-slate-600">{item.dueDate}</td>
-                                                                    <td className="px-6 py-4 font-extrabold text-indigo-700">
+                                                                    <td className="px-6 py-4 font-bold text-app-text">{item.index}</td>
+                                                                    <td className="px-6 py-4 text-app-muted">{item.dueDate}</td>
+                                                                    <td className="px-6 py-4 font-extrabold text-primary">
                                                                         Rs. {item.amount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                                     </td>
-                                                                    <td className="px-6 py-4 text-right font-bold text-slate-800">
+                                                                    <td className="px-6 py-4 text-right font-bold text-app-text">
                                                                         Rs. {item.balance.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                                                                     </td>
                                                                 </tr>
@@ -2390,19 +2390,19 @@ const MarketingPage: React.FC = () => {
                         </div>
                     </div>
                 ) : (
-                    <div className="max-w-[1400px] mx-auto no-print px-4 lg:px-8">
+                    <div className="max-w-[1400px] mx-auto no-print px-4 lg:px-8 py-6 overflow-y-auto h-full">
                         <div className="flex flex-col lg:flex-row gap-6">
                             <div className="flex-1 space-y-6">
                                 {currentUser?.role === 'Admin' && approvalTasks.length > 0 && (
-                                    <Card className="p-4 bg-white border border-slate-200">
+                                    <Card className="p-4 bg-app-card border border-app-border">
                                         <div className="flex items-center justify-between mb-3">
-                                            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Pending Plan Approvals</h2>
-                                            <span className="text-xs text-slate-500">{approvalTasks.length} total</span>
+                                            <h2 className="text-sm font-bold text-app-text uppercase tracking-wider">Pending Plan Approvals</h2>
+                                            <span className="text-xs text-app-muted">{approvalTasks.length} total</span>
                                         </div>
                                         <div className="overflow-x-auto">
                                             <table className="w-full text-xs">
                                                 <thead>
-                                                    <tr className="text-slate-500 border-b border-slate-200">
+                                                    <tr className="text-app-muted border-b border-app-border">
                                                         <th className="text-left py-2 font-semibold">Plan</th>
                                                         <th className="text-left py-2 font-semibold">Requested By</th>
                                                         <th className="text-left py-2 font-semibold">Assigned To</th>
@@ -2417,17 +2417,17 @@ const MarketingPage: React.FC = () => {
                                                         const unit = appUnits.find(u => u.id === plan.unitId);
                                                         const statusMeta = getStatusMeta(plan.status);
                                                         return (
-                                                            <tr key={plan.id} className="border-b border-slate-100">
+                                                            <tr key={plan.id} className="border-b border-app-border">
                                                                 <td className="py-2">
-                                                                    <div className="font-medium text-slate-800">{lead?.name || 'Unknown Lead'}</div>
-                                                                    <div className="text-[10px] text-slate-500">{project?.name} - {unit?.name}</div>
+                                                                    <div className="font-medium text-app-text">{lead?.name || 'Unknown Lead'}</div>
+                                                                    <div className="text-[10px] text-app-muted">{project?.name} - {unit?.name}</div>
                                                                 </td>
-                                                                <td className="py-2 text-slate-700">
+                                                                <td className="py-2 text-app-text">
                                                                     {usersForApproval.find(u => u.id === plan.approvalRequestedById)?.name ||
                                                                         usersForApproval.find(u => u.id === plan.approvalRequestedById)?.username ||
                                                                         'N/A'}
                                                                 </td>
-                                                                <td className="py-2 text-slate-700">
+                                                                <td className="py-2 text-app-text">
                                                                     {usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.name ||
                                                                         usersForApproval.find(u => u.id === plan.approvalRequestedToId)?.username ||
                                                                         'N/A'}
@@ -2472,20 +2472,20 @@ const MarketingPage: React.FC = () => {
                                                 <div className="flex justify-between items-start">
                                                     <div>
                                                         <div className="flex items-center gap-2 mb-1">
-                                                            <h3 className="font-bold text-slate-900">{lead?.name || 'Unknown Lead'}</h3>
+                                                            <h3 className="font-bold text-app-text">{lead?.name || 'Unknown Lead'}</h3>
                                                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold uppercase ${statusMeta.badge}`}>
                                                                 {statusMeta.label} v{plan.version}
                                                             </span>
                                                         </div>
                                                         {plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUser?.id && (
-                                                            <div className="mb-2 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700 font-bold animate-pulse">
+                                                            <div className="mb-2 px-2 py-1 bg-[color:var(--badge-partial-bg)] border border-[color:var(--badge-partial-text)]/40 rounded text-[10px] text-[color:var(--badge-partial-text)] font-bold animate-pulse">
                                                                 ACTION REQUIRED: WAITING FOR YOUR APPROVAL
                                                             </div>
                                                         )}
-                                                        <p className="text-xs text-slate-500">{project?.name} - {unit?.name}</p>
+                                                        <p className="text-xs text-app-muted">{project?.name} - {unit?.name}</p>
                                                         
                                                         <div className="mt-2 space-y-1">
-                                                            <p className="text-[10px] text-slate-500 italic">
+                                                            <p className="text-[10px] text-app-muted italic">
                                                                 Created by: {(() => {
                                                                     const uid = plan.userId || plan.approvalRequestedById;
                                                                     if (!uid) return 'System';
@@ -2495,7 +2495,7 @@ const MarketingPage: React.FC = () => {
                                                                 })()}
                                                             </p>
                                                             {plan.status === 'Pending Approval' && plan.approvalRequestedToId && (
-                                                                <p className="text-[10px] text-blue-600">
+                                                                <p className="text-[10px] text-primary">
                                                                     {(() => {
                                                                         if (plan.approvalRequestedToId === currentUser?.id) return 'Awaiting: You';
                                                                         const approver = usersForApproval.find(u => u.id === plan.approvalRequestedToId);
@@ -2508,20 +2508,20 @@ const MarketingPage: React.FC = () => {
                                                 </div>
                                                 
                                                 <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
-                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                                                        <p className="text-[10px] text-slate-500 uppercase font-bold">Net Value</p>
-                                                        <p className="font-bold text-indigo-700">Rs. {plan.netValue?.toLocaleString()}</p>
+                                                    <div className="bg-app-toolbar p-2 rounded border border-app-border">
+                                                        <p className="text-[10px] text-app-muted uppercase font-bold">Net Value</p>
+                                                        <p className="font-bold text-primary">Rs. {plan.netValue?.toLocaleString()}</p>
                                                     </div>
-                                                    <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                                                        <p className="text-[10px] text-slate-500 uppercase font-bold">Monthly</p>
-                                                        <p className="font-bold text-slate-800">Rs. {plan.installmentAmount?.toLocaleString()}</p>
+                                                    <div className="bg-app-toolbar p-2 rounded border border-app-border">
+                                                        <p className="text-[10px] text-app-muted uppercase font-bold">Monthly</p>
+                                                        <p className="font-bold text-app-text">Rs. {plan.installmentAmount?.toLocaleString()}</p>
                                                     </div>
                                                 </div>
 
                                                 <div className="mt-3 flex items-center justify-between px-1">
-                                                    <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
-                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">{plan.durationYears} Years</span>
-                                                        <span className="bg-slate-100 px-1.5 py-0.5 rounded">{plan.frequency}</span>
+                                                    <div className="flex items-center gap-2 text-[10px] text-app-muted font-medium">
+                                                        <span className="bg-app-toolbar px-1.5 py-0.5 rounded border border-app-border">{plan.durationYears} Years</span>
+                                                        <span className="bg-app-toolbar px-1.5 py-0.5 rounded border border-app-border">{plan.frequency}</span>
                                                     </div>
                                                 </div>
                                                 
@@ -2529,14 +2529,14 @@ const MarketingPage: React.FC = () => {
                                                 {plan.selectedAmenities && plan.selectedAmenities.length > 0 && (
                                                     <div className="mt-3 flex flex-wrap gap-1">
                                                         {plan.selectedAmenities.map(a => (
-                                                            <span key={a.amenityId} className="text-[9px] bg-purple-50 text-purple-600 border border-purple-100 px-1.5 py-0.5 rounded-md font-medium">
+                                                            <span key={a.amenityId} className="text-[9px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-md font-medium">
                                                                 {a.amenityName}
                                                             </span>
                                                         ))}
                                                     </div>
                                                 )}
                                                 
-                                                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap gap-2 items-center justify-end">
+                                                <div className="mt-4 pt-3 border-t border-app-border flex flex-wrap gap-2 items-center justify-end">
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
@@ -2556,7 +2556,7 @@ const MarketingPage: React.FC = () => {
                                                         <Button
                                                             variant="secondary"
                                                             size="sm"
-                                                            className="py-1.5 px-3 text-[10px] font-bold text-emerald-600 hover:bg-emerald-50"
+                                                            className="py-1.5 px-3 text-[10px] font-bold text-ds-success hover:bg-[color:var(--badge-paid-bg)]"
                                                             onClick={(e) => { 
                                                                 e.stopPropagation(); 
                                                                 handleSendWhatsApp(plan); 
@@ -2574,7 +2574,7 @@ const MarketingPage: React.FC = () => {
                                                         <Button 
                                                             variant="secondary"
                                                             size="sm"
-                                                            className="py-1.5 px-3 text-[10px] font-bold text-rose-600 hover:bg-rose-50"
+                                                            className="py-1.5 px-3 text-[10px] font-bold text-ds-danger hover:bg-[color:var(--badge-unpaid-bg)]"
                                                             onClick={(e) => { e.stopPropagation(); handleDelete(plan.id); }}
                                                             title="Delete Plan"
                                                         >
@@ -2622,12 +2622,12 @@ const MarketingPage: React.FC = () => {
                                 </div>
                                 
                                 {filteredPlans.length === 0 && (
-                                    <div className="text-center py-20 bg-white rounded-xl border-2 border-dashed border-slate-200">
-                                        <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4 text-slate-400">
+                                    <div className="text-center py-20 bg-app-card rounded-xl border-2 border-dashed border-app-border">
+                                        <div className="w-16 h-16 bg-app-toolbar rounded-full flex items-center justify-center mx-auto mb-4 text-app-muted">
                                             <div className="w-8 h-8">{ICONS.trendingUp}</div>
                                         </div>
-                                        <h3 className="text-lg font-medium text-slate-900">No Installment Plans Yet</h3>
-                                        <p className="text-slate-500 max-w-sm mx-auto mt-2">Create your first installment plan to help clients visualize their payment schedule.</p>
+                                        <h3 className="text-lg font-medium text-app-text">No Installment Plans Yet</h3>
+                                        <p className="text-app-muted max-w-sm mx-auto mt-2">Create your first installment plan to help clients visualize their payment schedule.</p>
                                         <Button 
                                             variant="primary" 
                                             onClick={() => setShowForm(true)}
@@ -2639,10 +2639,10 @@ const MarketingPage: React.FC = () => {
                                 )}
                             </div>
                             <div className="w-full lg:w-96 shrink-0 lg:sticky lg:top-6 h-fit">
-                                <Card className="p-4 bg-white border border-slate-200 shadow-sm">
-                                    <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Activity</h3>
+                                <Card className="p-4">
+                                    <h3 className="text-xs font-bold text-app-muted uppercase tracking-wider mb-3">Activity</h3>
                                     {activityFeed.length === 0 ? (
-                                        <p className="text-xs text-slate-400">No activity yet.</p>
+                                        <p className="text-xs text-app-muted">No activity yet.</p>
                                     ) : (
                                         <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
                                             {activityFeed.map((item, idx) => (
@@ -2654,11 +2654,11 @@ const MarketingPage: React.FC = () => {
                                                             handleEdit(plan);
                                                         }
                                                     }}
-                                                    className="w-full text-left border-b border-slate-100 pb-2 last:border-b-0 last:pb-0 hover:bg-slate-50 rounded-md px-2 py-1"
+                                                    className="w-full text-left border-b border-app-border pb-2 last:border-b-0 last:pb-0 hover:bg-app-table-hover rounded-md px-2 py-1 transition-colors"
                                                 >
-                                                    <p className="text-xs font-semibold text-slate-700">{item.title}</p>
-                                                    <p className="text-[10px] text-slate-500">{item.detail}</p>
-                                                    <p className="text-[10px] text-slate-400 mt-1">{formatActivityTime(item.time)}</p>
+                                                    <p className="text-xs font-semibold text-app-text">{item.title}</p>
+                                                    <p className="text-[10px] text-app-muted">{item.detail}</p>
+                                                    <p className="text-[10px] text-app-muted/80 mt-1">{formatActivityTime(item.time)}</p>
                                                 </button>
                                             ))}
                                         </div>
@@ -2711,20 +2711,20 @@ const MarketingPage: React.FC = () => {
                         className="absolute inset-0 bg-black/20 backdrop-blur-sm transition-opacity"
                         onClick={() => setShowHistoryDrawer(false)}
                     />
-                    <div className="relative w-full max-w-md bg-white shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
-                        <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50">
+                    <div className="relative w-full max-w-md bg-app-card border-l border-app-border shadow-2xl flex flex-col h-full animate-in slide-in-from-right duration-300">
+                        <div className="flex items-center justify-between p-4 border-b border-app-border bg-app-toolbar">
                             <div className="flex items-center gap-3">
-                                <div className="p-2 bg-indigo-100 text-indigo-600 rounded-lg">
+                                <div className="p-2 bg-primary/15 text-primary rounded-lg">
                                     <div className="w-5 h-5">{ICONS.history}</div>
                                 </div>
                                 <div>
-                                    <h2 className="text-lg font-bold text-slate-800">Plan History</h2>
-                                    <p className="text-xs text-slate-500">View previous versions and status changes</p>
+                                    <h2 className="text-lg font-bold text-app-text">Plan History</h2>
+                                    <p className="text-xs text-app-muted">View previous versions and status changes</p>
                                 </div>
                             </div>
                             <button 
                                 onClick={() => setShowHistoryDrawer(false)}
-                                className="flex items-center gap-1 text-[10px] font-bold text-slate-400 hover:text-slate-600 transition-colors uppercase tracking-widest"
+                                className="flex items-center gap-1 text-[10px] font-bold text-app-muted hover:text-app-text transition-colors uppercase tracking-widest"
                             >
                                 CLOSE
                                 <div className="w-4 h-4">{ICONS.x}</div>
@@ -2733,11 +2733,11 @@ const MarketingPage: React.FC = () => {
                         
                         <div className="flex-1 overflow-y-auto p-6 space-y-8 relative">
                             {/* Vertical Timeline Line */}
-                            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-slate-100 -z-10" />
+                            <div className="absolute left-8 top-0 bottom-0 w-0.5 bg-app-border -z-10" />
 
                             {planHistoryItems.length === 0 ? (
                                 <div className="text-center py-10">
-                                    <p className="text-slate-500">No history found for this plan.</p>
+                                    <p className="text-app-muted">No history found for this plan.</p>
                                 </div>
                             ) : (
                                 planHistoryItems.map((item, idx) => {
@@ -2749,9 +2749,9 @@ const MarketingPage: React.FC = () => {
                                             className="relative pl-10"
                                         >
                                             {/* Timeline Node */}
-                                            <div className={`absolute left-[-5px] top-1 w-6 h-6 rounded-full flex items-center justify-center ring-4 ring-white shadow-sm z-10 ${
-                                                item.isApproved ? 'bg-indigo-600 text-white' : 
-                                                item.type === 'version' ? 'bg-slate-800 text-white' : 'bg-white text-slate-400 border border-slate-200'
+                                            <div className={`absolute left-[-5px] top-1 w-6 h-6 rounded-full flex items-center justify-center ring-4 ring-app-card shadow-sm z-10 ${
+                                                item.isApproved ? 'bg-primary text-white' : 
+                                                item.type === 'version' ? 'bg-app-text text-app-bg' : 'bg-app-card text-app-muted border border-app-border'
                                             }`}>
                                                 <div className="w-3.5 h-3.5">
                                                     {item.isApproved ? ICONS.checkCircle : 
@@ -2767,41 +2767,41 @@ const MarketingPage: React.FC = () => {
                                                         setShowHistoryDrawer(false);
                                                     }
                                                 }}
-                                                className={`group bg-white border border-slate-100 rounded-xl p-4 transition-all ${item.plan ? 'hover:border-indigo-200 hover:shadow-lg cursor-pointer' : ''}`}
+                                                className={`group bg-app-card border border-app-border rounded-xl p-4 transition-all ${item.plan ? 'hover:border-primary/40 hover:shadow-lg cursor-pointer' : ''}`}
                                             >
                                                 <div className="flex justify-between items-start mb-1">
                                                     <div>
-                                                        <h3 className={`text-[10px] font-extrabold uppercase tracking-widest ${item.isApproved ? 'text-indigo-600' : (item.type === 'version' ? 'text-slate-800' : 'text-slate-500')}`}>
+                                                        <h3 className={`text-[10px] font-extrabold uppercase tracking-widest ${item.isApproved ? 'text-primary' : (item.type === 'version' ? 'text-app-text' : 'text-app-muted')}`}>
                                                             {item.title}
                                                         </h3>
-                                                        <div className="text-[10px] text-slate-400 mt-1">
+                                                        <div className="text-[10px] text-app-muted mt-1">
                                                             {new Date(item.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                                         </div>
                                                     </div>
-                                                    <div className="text-[10px] font-bold text-slate-400">
+                                                    <div className="text-[10px] font-bold text-app-muted">
                                                         {new Date(item.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
                                                     </div>
                                                 </div>
                                                 
-                                                <div className="mt-3 bg-slate-50/50 rounded-lg p-3 border border-slate-100">
-                                                    <p className="text-xs text-slate-600 leading-relaxed italic">
+                                                <div className="mt-3 bg-app-toolbar rounded-lg p-3 border border-app-border">
+                                                    <p className="text-xs text-app-text leading-relaxed italic">
                                                         {item.detail}
                                                     </p>
                                                     
-                                                    <div className="mt-3 flex items-center gap-2 bg-white rounded-md p-2 border border-slate-100/50 shadow-sm">
-                                                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-500 uppercase">
+                                                    <div className="mt-3 flex items-center gap-2 bg-app-card rounded-md p-2 border border-app-border shadow-sm">
+                                                        <div className="w-6 h-6 rounded-full bg-app-toolbar flex items-center justify-center text-[10px] font-bold text-app-muted uppercase">
                                                             {item.userInitials}
                                                         </div>
-                                                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-tight">
+                                                        <span className="text-[10px] font-bold text-app-text uppercase tracking-tight">
                                                             {item.userName}
                                                         </span>
                                                     </div>
                                                 </div>
 
                                                 {item.plan && (
-                                                    <div className="mt-4 flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                                    <div className="mt-4 flex items-center justify-between text-[9px] font-bold uppercase tracking-widest text-app-muted">
                                                         <span>VERSION v{item.version}</span>
-                                                        <span className="text-indigo-500 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+                                                        <span className="text-primary group-hover:translate-x-1 transition-transform flex items-center gap-1">
                                                             RESTORE VERSION <div className="w-3 h-3">{ICONS.chevronRight}</div>
                                                         </span>
                                                     </div>
@@ -2813,10 +2813,10 @@ const MarketingPage: React.FC = () => {
                             )}
                         </div>
                         
-                        <div className="p-4 border-t border-slate-100 bg-slate-50">
-                            <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-slate-200 bg-white shadow-sm">
-                                <div className="w-2 h-2 rounded-full bg-indigo-600 animate-pulse" />
-                                <span className="text-xs font-bold text-slate-700 uppercase tracking-widest">Latest Version Active</span>
+                        <div className="p-4 border-t border-app-border bg-app-toolbar">
+                            <div className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl border-2 border-app-border bg-app-card shadow-sm">
+                                <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+                                <span className="text-xs font-bold text-app-text uppercase tracking-widest">Latest Version Active</span>
                             </div>
                         </div>
                     </div>

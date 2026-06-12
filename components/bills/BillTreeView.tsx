@@ -60,8 +60,8 @@ const TreeItem: React.FC<{
                 onClick={handleSelect}
                 className={`w-full flex items-center justify-between text-left py-2 pr-2 rounded-md transition-all duration-200 
                     ${isSelected
-                        ? 'bg-indigo-600 text-white font-bold shadow-md transform scale-[1.02] origin-left z-10 relative'
-                        : 'hover:bg-slate-100 text-slate-700'
+                        ? 'bg-primary text-white font-bold shadow-md transform scale-[1.02] origin-left z-10 relative'
+                        : 'hover:bg-app-table-hover text-app-text'
                     }`}
                 style={{ paddingLeft }}
             >
@@ -69,7 +69,7 @@ const TreeItem: React.FC<{
                     {hasChildren ? (
                         <span
                             onClick={handleToggle}
-                            className={`transform transition-transform p-0.5 rounded ${isExpanded ? 'rotate-90' : ''} ${isSelected ? 'text-white/80 hover:bg-white/20' : 'text-slate-400 hover:bg-slate-200'}`}
+                            className={`transform transition-transform p-0.5 rounded ${isExpanded ? 'rotate-90' : ''} ${isSelected ? 'text-white/80 hover:bg-white/20' : 'text-app-muted hover:bg-app-table-hover'}`}
                         >
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                         </span>
@@ -78,23 +78,23 @@ const TreeItem: React.FC<{
                     )}
 
                     {node.type === 'group' ? (
-                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.briefcase}</span>
+                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-app-muted'}`}>{ICONS.briefcase}</span>
                     ) : (
-                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-slate-400'}`}>{ICONS.users}</span>
+                        <span className={`opacity-70 ${isSelected ? 'text-white' : 'text-app-muted'}`}>{ICONS.users}</span>
                     )}
 
                     <span className="truncate text-sm" title={node.name}>{node.name}</span>
                 </div>
 
                 {node.balance > 0 && (
-                    <span className={`text-[10px] font-mono font-bold rounded px-1.5 py-0.5 flex-shrink-0 ${isSelected ? 'bg-rose-500 text-white' : 'bg-rose-50 text-rose-600 border border-rose-100'}`}>
+                    <span className={`text-[10px] font-mono font-bold rounded px-1.5 py-0.5 flex-shrink-0 ${isSelected ? 'bg-ds-danger text-white' : 'bg-[color:var(--badge-unpaid-bg)] text-ds-danger border border-ds-danger/30'}`}>
                         {node.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </span>
                 )}
             </button>
 
             {isExpanded && hasChildren && (
-                <ul className="space-y-0.5 mt-0.5 border-l border-slate-200 ml-4">
+                <ul className="space-y-0.5 mt-0.5 border-l border-app-border ml-4">
                     {node.children.map(childNode => (
                         <TreeItem
                             key={childNode.id}
@@ -182,17 +182,17 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
     }, []);
 
     const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-indigo-600 ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted opacity-50 ml-1 text-[10px]">↕</span>;
+        return <span className="text-primary ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
     return (
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200/80 h-full flex flex-col overflow-hidden">
-            <div className="px-2 py-2 border-b border-slate-200 flex-shrink-0 bg-slate-50">
-                <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
+        <div className="h-full flex flex-col overflow-hidden">
+            <div className="px-2 py-2 border-b border-app-border flex-shrink-0 bg-app-toolbar">
+                <div className="flex items-center gap-2 text-xs font-semibold text-app-muted">
                     <button
                         onClick={() => handleSort('name')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer min-w-0 flex-1"
+                        className="flex items-center gap-1 hover:text-app-text cursor-pointer min-w-0 flex-1"
                         title="Sort by Name"
                     >
                         Entity <SortIcon column="name" />
@@ -208,7 +208,7 @@ const BillTreeView: React.FC<BillTreeViewProps> = ({ treeData, selectedNodeId, s
                     />
                     <button
                         onClick={() => handleSort('balance')}
-                        className="flex items-center gap-1 hover:text-slate-900 cursor-pointer shrink-0"
+                        className="flex items-center gap-1 hover:text-app-text cursor-pointer shrink-0"
                         title="Sort by Account Payable (Balance)"
                     >
                         Payable <SortIcon column="balance" />

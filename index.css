@@ -127,6 +127,29 @@ h5, h6 { font-size: var(--text-small-size); font-weight: var(--font-weight-semib
   animation: slide-in-left 0.3s ease-out;
 }
 
+/* Non-interactive nav section labels (distinct from clickable nav links) */
+.nav-section-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  line-height: 1.25;
+  color: var(--nav-section-label-text);
+  cursor: default;
+  user-select: none;
+}
+
+.nav-section-label--sidebar {
+  color: var(--nav-section-label-sidebar-text);
+}
+
+p.nav-section-label,
+span.nav-section-label,
+h3.nav-section-label {
+  pointer-events: none;
+}
+
 @keyframes slide-in-up {
   from {
     transform: translateY(20px);

@@ -527,7 +527,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                             </div>
                         </div>
 
-                        <div id="printable-area" className="printable-area flex flex-col min-h-0">
+                        <div id="printable-area" className="flex flex-col min-h-0">
                             <div className="report-print-only">
                                 <ReportHeader />
                                 <div className="text-center mb-4">

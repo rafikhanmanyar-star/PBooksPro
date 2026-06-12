@@ -22,6 +22,7 @@ export type LoginUserPayload = {
   role: string;
   tenantId: string;
   displayTimezone: string | null;
+  interfaceMode: string;
 };
 
 export type LoginCompanyPayload = {
@@ -38,6 +39,7 @@ function formatUserPayload(account: MatchedUserAccount): LoginUserPayload {
     role: account.role,
     tenantId: account.tenantId,
     displayTimezone: account.displayTimezone,
+    interfaceMode: account.interfaceMode,
   };
 }
 

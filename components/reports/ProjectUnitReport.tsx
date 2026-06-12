@@ -146,7 +146,7 @@ const ProjectUnitReport: React.FC = () => {
 
     const SortHeader: React.FC<{ label: string, sortKey: keyof ReportRow, align?: 'left' | 'right' | 'center' }> = ({ label, sortKey, align = 'left' }) => (
         <th 
-            className={`px-3 py-2 text-${align} font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none`}
+            className={`px-3 py-2 text-${align} font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none`}
             onClick={() => requestSort(sortKey)}
         >
             <div className={`flex items-center gap-1 ${align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'}`}>
@@ -180,35 +180,35 @@ const ProjectUnitReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+                <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                     <Card className="min-h-full flex flex-col">
                          <ReportHeader />
                         <div className="text-center mb-6 flex-shrink-0">
                             <h3 className="text-2xl font-bold">Project Units Report</h3>
-                            <p className="text-sm text-slate-500 font-semibold">Project: {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p=>p.id === selectedProjectId)?.name}</p>
+                            <p className="text-sm text-app-muted font-semibold">Project: {selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p=>p.id === selectedProjectId)?.name}</p>
                         </div>
 
-                        <div className="mb-6 p-4 bg-slate-50 rounded-lg border flex-shrink-0">
+                        <div className="mb-6 p-4 bg-app-toolbar rounded-lg border border-app-border flex-shrink-0">
                             <div className="grid grid-cols-3 gap-4 text-center">
                                 <div>
-                                    <h4 className="text-sm font-medium text-slate-500 uppercase">Total Sales Value</h4>
+                                    <h4 className="text-sm font-medium text-app-muted uppercase">Total Sales Value</h4>
                                     <p className="text-xl font-bold text-emerald-600 mt-1">{CURRENCY} {(totals.totalSaleValue || 0).toLocaleString()}</p>
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-medium text-slate-500 uppercase">Total Received</h4>
-                                    <p className="text-xl font-bold text-slate-700 mt-1">{CURRENCY} {(totals.totalAmountReceived || 0).toLocaleString()}</p>
+                                    <h4 className="text-sm font-medium text-app-muted uppercase">Total Received</h4>
+                                    <p className="text-xl font-bold text-app-text mt-1">{CURRENCY} {(totals.totalAmountReceived || 0).toLocaleString()}</p>
                                 </div>
                                 <div>
-                                    <h4 className="text-sm font-medium text-slate-500 uppercase">Total Balance Due</h4>
+                                    <h4 className="text-sm font-medium text-app-muted uppercase">Total Balance Due</h4>
                                     <p className="text-xl font-bold text-rose-600 mt-1">{CURRENCY} {(totals.totalBalanceDue || 0).toLocaleString()}</p>
                                 </div>
                             </div>
                         </div>
 
                         {reportData.length > 0 ? (
-                            <div className="overflow-auto flex-grow border rounded-lg shadow-inner relative min-h-[300px]">
-                                <table className="min-w-full divide-y divide-slate-200 text-sm relative">
-                                    <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                            <div className="overflow-auto flex-grow border border-app-border rounded-lg shadow-inner relative min-h-[300px]">
+                                <table className="min-w-full divide-y divide-app-border text-sm relative">
+                                    <thead className="bg-app-table-header sticky top-0 z-10 shadow-sm">
                                         <tr>
                                             <SortHeader label="Unit" sortKey="unitName" align="left" />
                                             <SortHeader label="Project" sortKey="projectName" align="left" />
@@ -219,24 +219,24 @@ const ProjectUnitReport: React.FC = () => {
                                             <SortHeader label="Balance" sortKey="balanceDue" align="right" />
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white divide-y divide-slate-200">
+                                    <tbody className="bg-app-card divide-y divide-app-border">
                                         {reportData.map(item => (
-                                            <tr key={item.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-3 py-2 font-medium text-slate-800 whitespace-nowrap">{item.unitName}</td>
+                                            <tr key={item.id} className="hover:bg-app-table-hover transition-colors">
+                                                <td className="px-3 py-2 font-medium text-app-text whitespace-nowrap">{item.unitName}</td>
                                                 <td className="px-3 py-2 whitespace-normal break-words">{item.projectName}</td>
                                                 <td className="px-3 py-2 whitespace-normal break-words">{item.ownerName}</td>
                                                 <td className="px-3 py-2 text-center">
-                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'Sold' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                                                    <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.status === 'Sold' ? 'bg-ds-success/15 text-ds-success' : 'bg-app-toolbar text-app-muted'}`}>
                                                         {item.status}
                                                     </span>
                                                 </td>
-                                                <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{CURRENCY} {(item.salePrice || 0).toLocaleString()}</td>
+                                                <td className="px-3 py-2 text-right text-app-muted whitespace-nowrap">{CURRENCY} {(item.salePrice || 0).toLocaleString()}</td>
                                                 <td className="px-3 py-2 text-right text-success whitespace-nowrap">{CURRENCY} {(item.amountReceived || 0).toLocaleString()}</td>
-                                                <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balanceDue > 0 ? 'text-danger' : 'text-slate-400'}`}>{CURRENCY} {(item.balanceDue || 0).toLocaleString()}</td>
+                                                <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${item.balanceDue > 0 ? 'text-danger' : 'text-app-muted'}`}>{CURRENCY} {(item.balanceDue || 0).toLocaleString()}</td>
                                             </tr>
                                         ))}
                                     </tbody>
-                                    <tfoot className="bg-slate-50 font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
+                                    <tfoot className="bg-app-table-header font-bold sticky bottom-0 shadow-[0_-1px_3px_rgba(0,0,0,0.1)]">
                                         <tr>
                                             <td colSpan={4} className="px-3 py-2 text-right">Totals (Displayed)</td>
                                             <td className="px-3 py-2 text-right whitespace-nowrap">{CURRENCY} {(reportData.reduce((sum, item) => sum + (item.salePrice || 0), 0)).toLocaleString()}</td>
@@ -247,7 +247,7 @@ const ProjectUnitReport: React.FC = () => {
                                 </table>
                             </div>
                         ) : (
-                            <div className="text-center py-16"><p className="text-slate-500">No units found matching criteria.</p></div>
+                            <div className="text-center py-16"><p className="text-app-muted">No units found matching criteria.</p></div>
                         )}
                         
                         <div className="flex-shrink-0 mt-auto">

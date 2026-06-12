@@ -21,6 +21,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'rental-owner-income-summary', title: 'Owner Rental Income Summary', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Owner Rental Income Summary' },
     { id: 'rental-service-charges', title: 'Service Charges Deduction', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Service Charges Deduction' },
     { id: 'rental-tenant-ledger', title: 'Tenant Ledger Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Tenant Ledger' },
+    { id: 'rental-tenant-reports', title: 'Custom Reports (Rental)', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Custom Reports' },
     { id: 'rental-vendor-ledger', title: 'Vendor Ledger (Rental)', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Vendor Ledger' },
     { id: 'rental-owner-security-deposit', title: 'Security Deposit Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Security Deposit' },
     { id: 'rental-broker-fees', title: 'Broker Fee Report', group: 'Rental', path: 'rentalManagement', subPath: 'Reports:Broker Fees' },
@@ -38,12 +39,13 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-pev-by-category', title: 'Project Expenses by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:Petty cash report' },
     { id: 'project-units', title: 'Project Units Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Project Units' },
     { id: 'project-client-ledger', title: 'Owner Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Owner Ledger' },
+    { id: 'project-custom-reports', title: 'Custom Reports (Project Selling)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Reports' },
     { id: 'project-broker-report', title: 'Broker Report (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Broker Report' },
     { id: 'project-vendor-ledger', title: 'Vendor Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Vendor Ledger' },
+    { id: 'project-construction-custom-reports', title: 'Custom Reports (Construction)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Reports' },
     { id: 'project-contract-report', title: 'Contract Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Contract Report' },
     { id: 'project-material-report', title: 'Material Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Material Report' },
     { id: 'project-budget-vs-actual', title: 'Budget vs Actual Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Budget vs Actual' },
-    { id: 'project-custom-report-builder', title: 'Custom Report Builder', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Report Builder' },
     // Accounting — financial statements (consolidated / per-project)
     { id: 'accounting-profit-loss', title: 'Profit & Loss Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Profit & Loss' },
     { id: 'accounting-balance-sheet', title: 'Balance Sheet Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Balance Sheet' },
@@ -54,6 +56,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'accounting-overview', title: 'Overview Reports', group: 'Accounting', path: 'accounting', subPath: 'Reports:Overview Reports' },
     { id: 'accounting-bank-accounts', title: 'Bank Accounts Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Bank Accounts' },
     { id: 'accounting-consistency', title: 'Account Consistency Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Account Consistency' },
+    { id: 'accounting-report-designer', title: 'Report Designer', group: 'Accounting', path: 'accounting', subPath: 'Reports:Report Designer' },
 
     // General Reports
     { id: 'transfer-statistics', title: 'Transfer Statistics Report', group: 'General', path: 'dashboard', subPath: '' },

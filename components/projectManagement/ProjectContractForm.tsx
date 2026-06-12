@@ -289,9 +289,9 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 </div>
 
                 {/* Track Expense Category Section */}
-                <div className="border rounded-lg p-4 bg-slate-50 border-slate-200">
+                <div className="border rounded-lg p-4 bg-app-toolbar border-app-border">
                     <div className="flex items-center justify-between mb-3">
-                        <label className="block text-sm font-medium text-slate-700">Track Expense Category</label>
+                        <label className="block text-sm font-medium text-app-text">Track Expense Category</label>
                         <ComboBox
                             items={availableCategories}
                             selectedId=""
@@ -312,26 +312,26 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                     {expenseCategoryItems.length > 0 ? (
                         <>
                             {/* Data Grid */}
-                            <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                            <div className="bg-app-card border border-app-border rounded-lg overflow-hidden">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-sm">
-                                        <thead className="bg-slate-100 border-b border-slate-200">
+                                        <thead className="bg-app-table-header border-b border-app-border">
                                             <tr>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700">Expense Category</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700">Unit</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700">Quantity</th>
-                                                <th className="px-3 py-2 text-left font-semibold text-slate-700">Price per Unit</th>
-                                                <th className="px-3 py-2 text-right font-semibold text-slate-700">Net Value</th>
-                                                <th className="px-3 py-2 text-center font-semibold text-slate-700 w-12">Action</th>
+                                                <th className="px-3 py-2 text-left font-semibold text-app-text">Expense Category</th>
+                                                <th className="px-3 py-2 text-left font-semibold text-app-text">Unit</th>
+                                                <th className="px-3 py-2 text-left font-semibold text-app-text">Quantity</th>
+                                                <th className="px-3 py-2 text-left font-semibold text-app-text">Price per Unit</th>
+                                                <th className="px-3 py-2 text-right font-semibold text-app-text">Net Value</th>
+                                                <th className="px-3 py-2 text-center font-semibold text-app-text w-12">Action</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-200">
+                                        <tbody className="divide-y divide-app-border">
                                             {expenseCategoryItems.map((item) => {
                                                 const category = expenseCategories.find(c => c.id === item.categoryId);
                                                 return (
-                                                    <tr key={item.id} className="hover:bg-slate-50">
+                                                    <tr key={item.id} className="hover:bg-app-table-hover">
                                                         <td className="px-3 py-2">
-                                                            <span className="font-medium text-slate-800">{category?.name || 'Unknown'}</span>
+                                                            <span className="font-medium text-app-text">{category?.name || 'Unknown'}</span>
                                                         </td>
                                                         <td className="px-3 py-2">
                                                             <Select
@@ -388,7 +388,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveExpenseCategoryItem(item.id)}
-                                                                className="text-slate-400 hover:text-rose-500 transition-colors"
+                                                                className="text-slate-400 hover:text-ds-danger transition-colors"
                                                                 title="Remove"
                                                             >
                                                                 <div className="w-4 h-4">{ICONS.x}</div>
@@ -398,12 +398,12 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                                 );
                                             })}
                                         </tbody>
-                                        <tfoot className="bg-slate-100 border-t-2 border-slate-300">
+                                        <tfoot className="bg-app-table-header border-t-2 border-app-border">
                                             <tr>
-                                                <td colSpan={4} className="px-3 py-2 text-right font-bold text-slate-700">
+                                                <td colSpan={4} className="px-3 py-2 text-right font-bold text-app-text">
                                                     Total Gross Value (Contract Value):
                                                 </td>
-                                                <td className="px-3 py-2 text-right font-bold text-lg text-slate-800">
+                                                <td className="px-3 py-2 text-right font-bold text-lg text-app-text">
                                                     {CURRENCY} {totalGrossValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                                 </td>
                                                 <td></td>
@@ -414,7 +414,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                             </div>
                         </>
                     ) : (
-                        <p className="text-sm text-slate-400 italic py-4 text-center bg-white border border-slate-200 rounded">
+                        <p className="text-sm text-app-muted italic py-4 text-center bg-app-card border border-app-border rounded">
                             No expense categories added. Use the dropdown above to add categories.
                         </p>
                     )}
@@ -443,19 +443,19 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 />
 
                 {/* Document Upload Section */}
-                <div className="border rounded-lg p-4 bg-slate-50 border-slate-200">
-                    <label className="block text-sm font-medium text-slate-700 mb-2">Contract Document</label>
-                    <p className="text-xs text-slate-500 mb-3">Upload a scanned copy of the contract document.</p>
+                <div className="border rounded-lg p-4 bg-app-toolbar border-app-border">
+                    <label className="block text-sm font-medium text-app-text mb-2">Contract Document</label>
+                    <p className="text-xs text-app-muted mb-3">Upload a scanned copy of the contract document.</p>
 
                     {(documentId || (documentPath && !documentFile)) && (
-                        <div className="mb-3 p-3 bg-white border border-slate-200 rounded-lg flex items-center justify-between">
+                        <div className="mb-3 p-3 bg-app-card border border-app-border rounded-lg flex items-center justify-between">
                             <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
-                                    <div className="w-4 h-4 text-indigo-600">{ICONS.fileText}</div>
+                                <div className="w-8 h-8 bg-primary/10 rounded flex items-center justify-center">
+                                    <div className="w-4 h-4 text-primary">{ICONS.fileText}</div>
                                 </div>
                                 <div>
-                                    <p className="text-sm font-medium text-slate-800">Document attached</p>
-                                    <p className="text-xs text-slate-500">
+                                    <p className="text-sm font-medium text-app-text">Document attached</p>
+                                    <p className="text-xs text-app-muted">
                                         {documentId
                                             ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document')
                                             : documentPath.split('/').pop()}
@@ -515,8 +515,8 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                 }}
                                 className="hidden"
                             />
-                            <div className="cursor-pointer border-2 border-dashed border-slate-300 rounded-lg p-4 text-center hover:border-indigo-400 hover:bg-indigo-50 transition-colors">
-                                <div className="text-slate-600 text-sm">
+                            <div className="cursor-pointer border-2 border-dashed border-app-border rounded-lg p-4 text-center hover:border-primary hover:bg-app-highlight transition-colors">
+                                <div className="text-app-muted text-sm">
                                     {documentFile ? documentFile.name : 'Click to upload document'}
                                 </div>
                             </div>

@@ -20,6 +20,7 @@ import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useViewport } from '../../context/ViewportContext';
 import { isAdminRole } from '../../hooks/useRecordLock';
+import NavGroupHeader from './NavGroupHeader';
 
 interface SidebarProps {
     currentPage: Page;
@@ -414,18 +415,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 const isCollapsed = collapsedGroups[group.title] || false;
                                 return (
                                     <div key={idx} className="space-y-1">
-                                        <button
-                                            onClick={() => handleToggleGroup(group.title)}
-                                            className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
-                                        >
-                                            <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
-                                            <div className="text-slate-600 group-hover/header:text-slate-400">
-                                                {isCollapsed ?
-                                                    React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
-                                                    React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
-                                                }
-                                            </div>
-                                        </button>
+                                        <NavGroupHeader
+                                            title={group.title}
+                                            expanded={!isCollapsed}
+                                            onToggle={() => handleToggleGroup(group.title)}
+                                        />
 
                                         <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
                                             {group.items.map((item) => {
@@ -727,19 +721,11 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
                                 return (
                                     <div key={idx} className="space-y-1">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleToggleGroup(group.title)}
-                                            className="w-full flex items-center justify-between px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider hover:text-slate-300 transition-colors group/header"
-                                        >
-                                            <span className="opacity-80 group-hover/header:opacity-100">{group.title}</span>
-                                            <div className="text-slate-600 group-hover/header:text-slate-400">
-                                                {isCollapsed ?
-                                                    React.cloneElement(ICONS.chevronRight as any, { width: 14, height: 14 }) :
-                                                    React.cloneElement(ICONS.chevronDown as any, { width: 14, height: 14 })
-                                                }
-                                            </div>
-                                        </button>
+                                        <NavGroupHeader
+                                            title={group.title}
+                                            expanded={!isCollapsed}
+                                            onToggle={() => handleToggleGroup(group.title)}
+                                        />
 
                                         <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
                                             {group.items.map((item) => {

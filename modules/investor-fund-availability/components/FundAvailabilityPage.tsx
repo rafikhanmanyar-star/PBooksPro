@@ -184,11 +184,11 @@ export const FundAvailabilityPage: React.FC = () => {
 
                 <section
                     id="fund-availability-print"
-                    className="printable-area print-report-surface rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card"
+                    className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card"
                     data-print-scroll-container
                 >
                     <ReportHeader reportTitle="Investor Fund Availability" />
-                    <p className="text-center text-sm text-slate-600 mb-3">As of {endDate}</p>
+                    <p className="text-center text-sm text-app-muted mb-3">As of {endDate}</p>
                     {summaryQ.data && (
                         <div className="report-print-only mb-4">
                             <table className="w-full text-xs border-collapse border border-slate-300">

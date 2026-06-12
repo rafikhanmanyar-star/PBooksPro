@@ -71,6 +71,7 @@ import BulkPayPayslipsModal, { BulkPayItem } from './modals/BulkPayPayslipsModal
 import { runSalaryCreationForPeriodAsync } from './services/runSalaryCreation';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
@@ -1122,7 +1123,7 @@ const PayrollHub: React.FC = () => {
           className={`border-b border-app-border shrink-0 flex items-center gap-1 ${payrollSubNav.effectiveCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
         >
           {!payrollSubNav.effectiveCollapsed && (
-            <p className="text-[10px] font-bold uppercase tracking-wider text-app-muted">Payroll</p>
+            <NavSectionLabel variant="header">Payroll</NavSectionLabel>
           )}
           <SubNavModeToggle
             collapsed={payrollSubNav.effectiveCollapsed}
@@ -1170,7 +1171,7 @@ const PayrollHub: React.FC = () => {
       </aside>
 
       <div className="md:hidden shrink-0 border-b border-app-border bg-app-toolbar/30 px-3 py-2 no-print">
-        <label htmlFor="payroll-section" className="block text-[10px] font-bold uppercase tracking-wider text-app-muted mb-1">Payroll</label>
+        <NavSectionLabel as="label" variant="form" htmlFor="payroll-section">Payroll</NavSectionLabel>
         <select
           id="payroll-section"
           value={activeSubTab}

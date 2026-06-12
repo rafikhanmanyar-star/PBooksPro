@@ -45,7 +45,7 @@ const BackupRestorePage: React.FC = () => {
         return (
             <div className="p-4 sm:p-6">
                 <div className="max-w-2xl mx-auto">
-                    <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-bg/50 shadow-ds-card">
+                    <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-card shadow-ds-card">
                         {showSqliteCompanyBackup ? (
                             <CompanyBackupRestore />
                         ) : showPostgresBackup ? (
@@ -92,16 +92,16 @@ const BackupRestorePage: React.FC = () => {
     const renderSelectiveExport = () => (
         <div className="p-4 sm:p-6">
             <div className="max-w-2xl mx-auto">
-                <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-bg/50 shadow-ds-card">
+                <div className="p-5 sm:p-6 border border-app-border rounded-xl bg-app-card shadow-ds-card">
                     <h4 className="text-lg font-semibold text-app-text mb-1">Selective Export</h4>
                     <p className="text-sm text-app-muted mb-4">
                         Select specific data types to export as CSV or Excel. Choose formats and run the export.
                     </p>
                     <button
                         onClick={() => setIsExportDataModalOpen(true)}
-                        className="w-full p-4 bg-app-card border border-app-border rounded-lg hover:bg-blue-50 hover:border-blue-200 hover:shadow-ds-card transition-all text-left group flex items-center gap-3"
+                        className="w-full p-4 bg-app-toolbar/30 border border-app-border rounded-lg hover:bg-app-table-hover hover:border-primary/30 hover:shadow-ds-card transition-all text-left group flex items-center gap-3"
                     >
-                        <span className="flex-shrink-0 w-10 h-10 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <span className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/15 text-primary flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
                                 <polyline points="7 10 12 15 17 10"></polyline>
@@ -109,7 +109,7 @@ const BackupRestorePage: React.FC = () => {
                             </svg>
                         </span>
                         <div>
-                            <div className="font-semibold text-app-text group-hover:text-blue-700">Select data types and export</div>
+                            <div className="font-semibold text-app-text group-hover:text-primary">Select data types and export</div>
                             <p className="text-xs text-app-muted">Choose formats (CSV or Excel) and run export</p>
                         </div>
                     </button>

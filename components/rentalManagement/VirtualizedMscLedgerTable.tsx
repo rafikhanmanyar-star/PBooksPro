@@ -17,6 +17,11 @@ export type VirtualizedMscLedgerRowExtra = {
     onDelete: (row: MscLedgerRow) => void;
 };
 
+const statusBadgeClass = (status: string) =>
+    status === 'Rented'
+        ? 'bg-[color:var(--badge-paid-bg)] text-ds-success border border-ds-success/30'
+        : 'bg-[color:var(--badge-partial-bg)] text-[color:var(--badge-partial-text)] border border-[color:var(--badge-partial-text)]/30';
+
 const MscLedgerListRow = memo(function MscLedgerListRow(props: RowComponentProps<VirtualizedMscLedgerRowExtra>) {
     const { index, style, ariaAttributes, rows, transactionsById, onReceive, onWhatsApp, onEdit, onDelete } = props;
     const row = rows[index];
@@ -26,35 +31,31 @@ const MscLedgerListRow = memo(function MscLedgerListRow(props: RowComponentProps
         <div
             {...ariaAttributes}
             style={style}
-            className="flex items-stretch border-b border-slate-200 text-sm hover:bg-slate-50 transition-colors"
+            className="flex items-stretch border-b border-app-border text-sm hover:bg-app-table-hover transition-colors bg-app-card"
         >
-            <div className="w-[88px] shrink-0 px-3 py-2.5 whitespace-nowrap text-slate-700 font-medium">{row.monthKey}</div>
-            <div className="w-[100px] shrink-0 px-3 py-2.5 text-slate-800 truncate" title={row.unit}>
+            <div className="w-[88px] shrink-0 px-3 py-2.5 whitespace-nowrap text-app-text font-medium">{row.monthKey}</div>
+            <div className="w-[100px] shrink-0 px-3 py-2.5 text-app-text truncate" title={row.unit}>
                 {row.unit}
             </div>
-            <div className="min-w-[100px] flex-1 px-3 py-2.5 text-slate-700 truncate" title={row.ownerName}>
+            <div className="min-w-[100px] flex-1 px-3 py-2.5 text-app-muted truncate" title={row.ownerName}>
                 {row.ownerName}
             </div>
             <div className="w-[88px] shrink-0 px-3 py-2.5 flex justify-center">
-                <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        row.status === 'Rented' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
-                    }`}
-                >
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${statusBadgeClass(row.status)}`}>
                     {row.status}
                 </span>
             </div>
-            <div className="w-[112px] shrink-0 px-3 py-2.5 text-right font-mono text-slate-800">
+            <div className="w-[112px] shrink-0 px-3 py-2.5 text-right font-mono text-app-text">
                 {CURRENCY} {formatCurrency(row.totalDeducted)}
             </div>
             <div
                 className={`w-[120px] shrink-0 px-3 py-2.5 text-right font-mono font-semibold ${
-                    row.runningBalance < -0.01 ? 'text-red-600' : 'text-slate-700'
+                    row.runningBalance < -0.01 ? 'text-ds-danger' : 'text-app-text'
                 }`}
             >
                 {CURRENCY} {formatCurrency(row.runningBalance)}
             </div>
-            <div className="w-[120px] shrink-0 px-3 py-2.5 text-right font-mono text-slate-700">
+            <div className="w-[120px] shrink-0 px-3 py-2.5 text-right font-mono text-app-muted">
                 {CURRENCY} {formatCurrency(row.totalOwnerIncome)}
             </div>
             <div className="w-[200px] shrink-0 px-3 py-2.5 flex flex-wrap items-center justify-center gap-1.5">
@@ -62,7 +63,7 @@ const MscLedgerListRow = memo(function MscLedgerListRow(props: RowComponentProps
                     <button
                         type="button"
                         onClick={() => onReceive(row)}
-                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50"
+                        className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded hover:bg-app-highlight"
                     >
                         Receive
                     </button>
@@ -71,7 +72,7 @@ const MscLedgerListRow = memo(function MscLedgerListRow(props: RowComponentProps
                     <button
                         type="button"
                         onClick={() => void onWhatsApp(row)}
-                        className="inline-flex items-center gap-1 text-xs font-semibold text-green-700 px-1.5 py-0.5 rounded bg-green-50 hover:bg-green-100 transition-colors"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-ds-success px-1.5 py-0.5 rounded bg-[color:var(--badge-paid-bg)] hover:bg-[color:var(--badge-paid-bg)]/80 transition-colors"
                         title="Message owner about pending service charge / balance"
                     >
                         <span className="w-3.5 h-3.5 flex-shrink-0">{ICONS.whatsapp}</span>
@@ -82,14 +83,14 @@ const MscLedgerListRow = memo(function MscLedgerListRow(props: RowComponentProps
                     type="button"
                     onClick={() => onEdit(row)}
                     disabled={!tx}
-                    className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 px-1.5 py-0.5 rounded hover:bg-indigo-50 disabled:opacity-40"
+                    className="text-xs font-semibold text-primary hover:text-primary/80 px-1.5 py-0.5 rounded hover:bg-app-highlight disabled:opacity-40"
                 >
                     Edit
                 </button>
                 <button
                     type="button"
                     onClick={() => void onDelete(row)}
-                    className="text-xs font-semibold text-red-600 hover:text-red-800 px-1.5 py-0.5 rounded hover:bg-red-50"
+                    className="text-xs font-semibold text-ds-danger hover:text-ds-danger/80 px-1.5 py-0.5 rounded hover:bg-[color:var(--badge-unpaid-bg)]"
                 >
                     Delete
                 </button>
@@ -153,13 +154,13 @@ export const VirtualizedMscLedgerTable: React.FC<VirtualizedMscLedgerTableProps>
 
     if (rows.length === 0) {
         return (
-            <div className="px-4 py-12 text-center text-slate-500 border-t border-slate-200">{emptyMessage}</div>
+            <div className="px-4 py-12 text-center text-app-muted border-t border-app-border">{emptyMessage}</div>
         );
     }
 
     if (rows.length < VIRTUALIZE_THRESHOLD) {
         return (
-            <div className="divide-y divide-slate-200">
+            <div className="divide-y divide-app-border">
                 {rows.map((row, index) => (
                     <MscLedgerListRow
                         key={row.id}
@@ -179,8 +180,8 @@ export const VirtualizedMscLedgerTable: React.FC<VirtualizedMscLedgerTableProps>
                 style={{ height, width: '100%' }}
                 rowCount={rows.length}
                 rowHeight={ROW_HEIGHT}
-                rowProps={rowProps as any}
                 rowComponent={Row}
+                rowProps={rowProps}
             />
         </div>
     );

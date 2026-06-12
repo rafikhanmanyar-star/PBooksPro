@@ -2,6 +2,7 @@
 import React, { useState, useEffect, memo, Suspense } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import BillsPage from '../bills/BillsPage';
 import ProjectAgreementsPage from './ProjectAgreementsPage';
 import MarketingPage from '../marketing/MarketingPage';
@@ -18,6 +19,10 @@ import ProjectContractsPage from './ProjectContractsPage';
 import ProjectExpenseVouchersPage from './ProjectExpenseVouchersPage';
 /** Static import: nested React.lazy + file:// in Electron often causes "Failed to fetch dynamically imported module" for the child chunk. */
 import ProjectReceivedAssetsPage from './ProjectReceivedAssetsPage';
+import {
+  ProjectSellingCustomReportsPage,
+  ProjectConstructionCustomReportsPage,
+} from '../../modules/report-designer/ReportDesignerPage';
 
 // Lazy-loaded report imports to reduce initial bundle size
 const ProjectLayoutReport = React.lazy(() => import('../reports/ProjectLayoutReport'));
@@ -33,7 +38,6 @@ const ProjectContractReport = React.lazy(() => import('../reports/ProjectContrac
 const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
-const CustomReportBuilderPage = React.lazy(() => import('../reports/customReportBuilder/CustomReportBuilderPage'));
 const ProjectExpenseVoucherReportsPage = React.lazy(() => import('../reports/ProjectExpenseVoucherReportsPage'));
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 const ExpenseAnalyticsPage = React.lazy(() => import('../../modules/expense-analytics/ExpenseAnalyticsPage'));
@@ -52,7 +56,7 @@ type ProjectView =
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
     | 'PM Cost Report' | 'Contract Report'
-    | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Report Builder'
+    | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Reports' | 'Vendor Ledger'
     | 'Petty cash report';
 
 /** Project selling — operational tabs (persistent mount) */
@@ -63,10 +67,9 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Marketing Activity',
     'Revenue Analysis',
     'Broker Report',
-    'Owner Ledger',
     'Income by Category',
     'Expense by Category',
-    'Custom Report Builder',
+    'Custom Reports',
 ];
 
 /** Project construction */
@@ -79,6 +82,7 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'PM Cost Report',
     'Material Report',
     'Vendor Ledger',
+    'Custom Reports',
     'Owner Ledger',
     'Income by Category',
     'Expense by Category',
@@ -115,14 +119,14 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns', 'Broker Payouts',
         'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
-        'Owner Ledger', 'Broker Report', 'Income by Category', 'Expense by Category',
-        'Custom Report Builder',
+        'Broker Report', 'Income by Category', 'Expense by Category',
+        'Custom Reports',
     ];
 
     const allowedConstructionViews = [
         'Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report',
-        'PM Cost Report', 'Material Report', 'Vendor Ledger',
+        'PM Cost Report', 'Material Report', 'Vendor Ledger', 'Custom Reports',
         'Owner Ledger', 'Income by Category', 'Expense by Category', 'Petty cash report',
     ];
 
@@ -155,11 +159,19 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         if (isAccountingView(activeView)) {
             setActiveView(defaultView);
         } else if (isSellingMode) {
-            if (!allowedSellingViews.includes(activeView as string)) {
+            const legacy = activeView as string;
+            if (legacy === 'Custom Report Builder' || legacy === 'Customer Reports') {
+                setActiveView('Custom Reports');
+            } else if (!allowedSellingViews.includes(activeView as string)) {
                 setActiveView(defaultView);
             }
-        } else if (!allowedConstructionViews.includes(activeView as string)) {
-            setActiveView(defaultView);
+        } else {
+            const legacy = activeView as string;
+            if (legacy === 'Vendor Reports') {
+                setActiveView('Custom Reports');
+            } else if (!allowedConstructionViews.includes(activeView as string)) {
+                setActiveView(defaultView);
+            }
         }
     }, [initialTabs, dispatch, setActiveView, isSellingMode, activeView]);
 
@@ -187,11 +199,14 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Expense by Category': return <ProjectCategoryReport type={TransactionType.EXPENSE} />;
             case 'Material Report': return <ProjectMaterialReport />;
             case 'Vendor Ledger': return <VendorLedgerReport context="Project" />;
+            case 'Custom Reports':
+                return isSellingMode
+                    ? <ProjectSellingCustomReportsPage />
+                    : <ProjectConstructionCustomReportsPage />;
             case 'PM Cost Report': return <ProjectPMCostReport />;
             case 'Contract Report': return <ProjectContractReport />;
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
-            case 'Custom Report Builder': return <CustomReportBuilderPage />;
             case 'Petty cash report': return <ProjectExpenseVoucherReportsPage />;
             default: return null;
         }
@@ -281,7 +296,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     onClick={() => setActiveView(view)}
                     className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
                         ? 'bg-indigo-600 text-white shadow-sm'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                        : 'text-app-muted hover:bg-app-table-hover'
                         }`}
                 >
                     {short}
@@ -295,7 +310,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 onClick={() => setActiveView(view)}
                 className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
                     ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/20'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                    : 'text-app-muted hover:bg-app-table-hover'
                     }`}
             >
                 {label}
@@ -306,10 +321,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const sellingNavPanel = (subCollapsed: boolean) => (
         <>
             <div
-                className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
+                className={`border-b border-app-border shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
             >
                 {!subCollapsed && (
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project selling</p>
+                    <NavSectionLabel variant="header">Project selling</NavSectionLabel>
                 )}
                 <SubNavModeToggle
                     collapsed={sellingSubNav.effectiveCollapsed}
@@ -328,28 +343,28 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     <ModuleNavItem view="Sales Returns" label="Returns" collapsed={subCollapsed} />
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">
                     {!subCollapsed && (
-                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Payouts</p>
+                        <NavSectionLabel variant="section">Payouts</NavSectionLabel>
                     )}
                     <ModuleNavItem view="Broker Payouts" label="Brokers" collapsed={subCollapsed} />
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">
                     {!subCollapsed && (
-                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project views</p>
+                        <NavSectionLabel variant="section">Project views</NavSectionLabel>
                     )}
                     <ModuleNavItem view="Visual Layout" label="Visual" collapsed={subCollapsed} />
                     <ModuleNavItem view="Tabular View" label="Units" collapsed={subCollapsed} />
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
+                <div className="pt-3 mt-2 border-t border-app-border">
                     <button
                         type="button"
                         onClick={() => setSellingReportsExpanded((e) => !e)}
                         className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isSellingReportActive || sellingReportsExpanded
-                            ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                            ? 'bg-app-highlight text-primary'
+                            : 'text-app-muted hover:bg-app-table-hover'
                             }`}
                     >
                         {subCollapsed ? <span className="text-[10px] font-bold">RPT</span> : <span>Reports</span>}
@@ -374,10 +389,10 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const constructionNavPanel = (subCollapsed: boolean) => (
         <>
             <div
-                className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
+                className={`border-b border-app-border shrink-0 flex items-center gap-1 ${subCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
             >
                 {!subCollapsed && (
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Project construction</p>
+                    <NavSectionLabel variant="header">Project construction</NavSectionLabel>
                 )}
                 <SubNavModeToggle
                     collapsed={constructionSubNav.effectiveCollapsed}
@@ -394,21 +409,21 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     <ModuleNavItem view="Expense Vouchers" label="Petty Cash" collapsed={subCollapsed} />
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700 space-y-0.5">
+                <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">
                     {!subCollapsed && (
-                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Payouts</p>
+                        <NavSectionLabel variant="section">Payouts</NavSectionLabel>
                     )}
                     <ModuleNavItem view="PM Payouts" label="PM Fee Log" collapsed={subCollapsed} />
                 </div>
 
-                <div className="pt-3 mt-2 border-t border-slate-200 dark:border-slate-700">
+                <div className="pt-3 mt-2 border-t border-app-border">
                     <button
                         type="button"
                         data-tour="project-reports"
                         onClick={() => setConstructionReportsExpanded((e) => !e)}
                         className={`w-full flex items-center ${subCollapsed ? 'justify-center px-1' : 'justify-between px-3'} py-2 rounded-md text-sm font-medium transition-colors ${isConstructionReportActive || constructionReportsExpanded
-                            ? 'bg-indigo-50 dark:bg-indigo-950/50 text-accent'
-                            : 'text-slate-600 dark:text-slate-300 hover:bg-slate-200/80 dark:hover:bg-slate-700/80'
+                            ? 'bg-app-highlight text-primary'
+                            : 'text-app-muted hover:bg-app-table-hover'
                             }`}
                     >
                         {subCollapsed ? <span className="text-[10px] font-bold">RPT</span> : <span>Reports</span>}
@@ -435,18 +450,22 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         { value: 'Broker Payouts', label: 'Brokers', group: 'Payouts' },
         { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
         { value: 'Tabular View', label: 'Units', group: 'Project views' },
-        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Report Builder' ? 'Custom builder' : v, group: 'Reports' })),
+        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Reports' ? 'Custom reports' : v, group: 'Reports' })),
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
         ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v === 'Expense Vouchers' ? 'Petty Cash' : v, group: 'Operations' })),
         { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
-        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports' })),
+        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({
+            value: v,
+            label: v === 'Custom Reports' ? 'Custom reports' : v,
+            group: 'Reports',
+        })),
     ];
 
     const sharedContentShell = (children: React.ReactNode) => (
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col px-2 sm:px-3 md:px-0 pt-2 md:pt-0">
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-slate-400">Loading...</div>}>
+            <Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading...</div>}>
                 {children}
             </Suspense>
         </div>
@@ -457,19 +476,19 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         return (
             <div className="flex flex-col md:flex-row h-full min-h-0 w-full">
                 <aside
-                    className={`hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${sellingSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
+                    className={`hidden md:flex flex-col shrink-0 border-r border-app-border bg-app-toolbar/40 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${sellingSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
                     aria-label="Project selling secondary navigation"
                 >
                     {sellingNavPanel(sellingSubNav.effectiveCollapsed)}
                 </aside>
 
-                <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
-                    <label htmlFor="project-selling-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project selling</label>
+                <div className="md:hidden shrink-0 border-b border-app-border bg-app-toolbar/40 px-3 py-2">
+                    <NavSectionLabel as="label" variant="form" htmlFor="project-selling-view">Project selling</NavSectionLabel>
                     <select
                         id="project-selling-view"
                         value={activeView}
                         onChange={(e) => setActiveView(e.target.value as ProjectView)}
-                        className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
+                        className="w-full rounded-lg border border-app-border bg-app-input text-app-text text-sm py-2 px-3"
                         aria-label="Project selling section"
                     >
                         {['Operations', 'Payouts', 'Project views', 'Reports'].map((group) => {
@@ -495,19 +514,19 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     return (
         <div className="flex flex-col md:flex-row h-full min-h-0 w-full">
             <aside
-                className={`hidden md:flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${constructionSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
+                className={`hidden md:flex flex-col shrink-0 border-r border-app-border bg-app-toolbar/40 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${constructionSubNav.effectiveCollapsed ? 'w-14' : 'w-60'}`}
                 aria-label="Project construction secondary navigation"
             >
                 {constructionNavPanel(constructionSubNav.effectiveCollapsed)}
             </aside>
 
-            <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
-                <label htmlFor="project-construction-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project construction</label>
+            <div className="md:hidden shrink-0 border-b border-app-border bg-app-toolbar/40 px-3 py-2">
+                <NavSectionLabel as="label" variant="form" htmlFor="project-construction-view">Project construction</NavSectionLabel>
                 <select
                     id="project-construction-view"
                     value={activeView}
                     onChange={(e) => setActiveView(e.target.value as ProjectView)}
-                    className="w-full rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-slate-100 text-sm py-2 px-3"
+                        className="w-full ds-input-field text-sm py-2 px-3"
                     aria-label="Project construction section"
                 >
                     {['Operations', 'Payouts', 'Reports'].map((group) => {

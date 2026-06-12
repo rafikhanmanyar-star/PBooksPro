@@ -265,12 +265,12 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
     const addLabel = `Add ${settingCategories.find(c => c.id === activeCategory)?.label.slice(0, -1)}`;
 
     return (
-        <div className="flex flex-col h-full min-h-0 p-4 md:p-6">
+        <div className="flex flex-col h-full min-h-0 p-4 md:p-6 bg-app-bg">
             {!embeddedInRentalModule && (
                 <button
                     type="button"
                     onClick={() => dispatch({ type: 'SET_PAGE', payload: 'rentalManagement' })}
-                    className="self-start mb-3 text-sm font-medium text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300"
+                    className="self-start mb-3 text-sm font-medium text-primary hover:text-primary/80"
                 >
                     ← Back to rental operations
                 </button>
@@ -284,10 +284,12 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                             key={cat.id}
                             onClick={() => { setActiveCategory(cat.id); setSearchQuery(''); }}
                             className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                                activeCategory === cat.id ? 'bg-indigo-50 text-accent' : 'text-slate-600 hover:bg-slate-50'
+                                activeCategory === cat.id
+                                    ? 'bg-primary text-white shadow-sm'
+                                    : 'text-app-muted hover:bg-app-table-hover hover:text-app-text'
                             }`}
                         >
-                            <div className="w-5 h-5 opacity-70">{cat.icon}</div>
+                            <div className={`w-5 h-5 ${activeCategory === cat.id ? 'opacity-100' : 'opacity-70'}`}>{cat.icon}</div>
                             {cat.label}
                         </button>
                     ))}
@@ -295,9 +297,9 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
             </Card>
 
             {/* Content */}
-            <div className="flex-grow flex flex-col h-full">
-                <div className="mb-4 flex justify-between items-center">
-                    <h2 className="text-2xl font-bold text-slate-800">{settingCategories.find(c => c.id === activeCategory)?.label}</h2>
+            <div className="flex-grow flex flex-col h-full min-h-0">
+                <div className="mb-4 flex justify-between items-center gap-3 flex-wrap">
+                    <h2 className="text-2xl font-bold text-app-text">{settingCategories.find(c => c.id === activeCategory)?.label}</h2>
                     <div className="flex gap-2">
                         <div className="relative">
                             <Input 
@@ -307,7 +309,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                                 className="pr-8"
                             />
                              {searchQuery && (
-                                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-slate-400">
+                                <button onClick={() => setSearchQuery('')} className="absolute inset-y-0 right-0 flex items-center pr-2 text-app-muted hover:text-app-text">
                                     <div className="w-4 h-4">{ICONS.x}</div>
                                 </button>
                             )}
@@ -318,19 +320,19 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                     </div>
                 </div>
 
-                <div className="bg-white rounded-lg shadow-lg border border-slate-200 overflow-hidden flex-grow overflow-y-auto">
-                    <div className="divide-y divide-slate-100">
+                <div className="bg-app-card rounded-lg shadow-ds-card border border-app-border overflow-hidden flex-grow overflow-y-auto min-h-0">
+                    <div className="divide-y divide-app-border">
                         {filteredItems.map((item: any) => (
                             <div 
                                 key={item.id} 
                                 onClick={() => handleEdit(item)}
-                                className="p-4 hover:bg-slate-50 cursor-pointer flex justify-between items-center transition-colors"
+                                className="p-4 hover:bg-app-table-hover cursor-pointer flex justify-between items-center transition-colors"
                             >
-                                <span className="font-medium text-slate-700">{item.name}</span>
-                                <div className="text-slate-400">{ICONS.edit}</div>
+                                <span className="font-medium text-app-text">{item.name}</span>
+                                <div className="text-app-muted">{ICONS.edit}</div>
                             </div>
                         ))}
-                        {filteredItems.length === 0 && <div className="p-8 text-center text-slate-500">No items found.</div>}
+                        {filteredItems.length === 0 && <div className="p-8 text-center text-app-muted">No items found.</div>}
                     </div>
                 </div>
 

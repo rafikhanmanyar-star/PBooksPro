@@ -9,6 +9,7 @@ import ComboBox from '../ui/ComboBox';
 import Tabs from '../ui/Tabs';
 import { ICONS, CURRENCY } from '../../constants';
 import SettingsDetailPage from './SettingsDetailPage';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import { useKpis } from '../../context/KPIContext';
 import ErrorLogViewer from './ErrorLogViewer';
 import TransactionLogViewer from './TransactionLogViewer';
@@ -30,6 +31,7 @@ import { navigateToSettingsHome } from '../../utils/appNavigation';
 import { CompanyManagementSection } from '../company/CompanyManagementSection';
 import DbHealthPanel from '../diagnostics/DbHealthPanel';
 import ManualJournalEntrySection from './ManualJournalEntrySection';
+import InterfaceModeSettingsSection from './InterfaceModeSettingsSection';
 import AccountingPeriodsSection from './AccountingPeriodsSection';
 import PermissionManagementSection from './PermissionManagementSection';
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
@@ -897,6 +899,10 @@ const SettingsPage: React.FC = () => {
             {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
             {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
 
+            {!isLocalOnlyMode() && (
+                <InterfaceModeSettingsSection />
+            )}
+
             <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
                 <h4 className="font-semibold text-app-text mb-1">Date display time zone</h4>
                 <p className="text-sm text-app-muted mb-2">
@@ -1092,7 +1098,7 @@ const SettingsPage: React.FC = () => {
             {features.offlineMode && (
                 <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card p-6">
                     <h4 className="font-bold text-app-text mb-4 flex items-center gap-2">
-                        <div className="p-2 bg-emerald-50 text-ds-success rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
+                        <div className="p-2 bg-[color:var(--badge-paid-bg)] text-ds-success rounded-lg"><div className="w-5 h-5">{ICONS.trendingUp}</div></div>
                         Database Health
                     </h4>
                     <DatabaseAnalyzer />
@@ -1112,21 +1118,21 @@ const SettingsPage: React.FC = () => {
             </div>
             )}
 
-            <div className="bg-app-card rounded-xl border border-rose-100 shadow-ds-card p-6">
+            <div className="bg-app-card rounded-xl border border-ds-danger/30 shadow-ds-card p-6">
                 <h3 className="font-bold text-lg mb-4 text-ds-danger flex items-center gap-2">{ICONS.alertTriangle} Danger Zone</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {perms.canManageUsers && (
-                        <button onClick={() => setIsClearTransactionsModalOpen(true)} className="p-4 bg-rose-50 border border-rose-100 rounded-xl hover:bg-rose-100 hover:border-rose-300 transition-all text-left group">
+                        <button onClick={() => setIsClearTransactionsModalOpen(true)} className="p-4 bg-[color:var(--badge-unpaid-bg)] border border-ds-danger/30 rounded-xl hover:bg-app-table-hover hover:border-ds-danger/50 transition-all text-left group">
                             <div className="font-bold text-ds-danger mb-1 flex items-center gap-2">{ICONS.trash} Clear Transactions</div>
-                            <p className="text-xs text-ds-danger/80 leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
-                            <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
+                            <p className="text-xs text-app-text leading-relaxed">Deletes all financial data but keeps your entity structure (Accounts, Projects, etc.) intact.</p>
+                            <p className="text-xs text-ds-warning mt-2 font-semibold">⚠️ Admin Only</p>
                         </button>
                     )}
                     {perms.canManageUsers && (
-                        <button onClick={handleFactoryReset} className="p-4 bg-app-text border border-app-border rounded-xl hover:bg-app-text/90 transition-all text-left group">
-                            <div className="font-bold text-white mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
+                        <button onClick={handleFactoryReset} className="p-4 bg-app-toolbar/40 border border-ds-danger/40 rounded-xl hover:bg-[color:var(--badge-unpaid-bg)] hover:border-ds-danger/60 transition-all text-left group">
+                            <div className="font-bold text-ds-danger mb-1 flex items-center gap-2">{ICONS.alertTriangle} Factory Reset</div>
                             <p className="text-xs text-app-muted leading-relaxed">Completely wipes ALL data and restores the application to a fresh install state.</p>
-                            <p className="text-xs text-rose-500 mt-2 font-semibold">⚠️ Admin Only</p>
+                            <p className="text-xs text-ds-warning mt-2 font-semibold">⚠️ Admin Only</p>
                         </button>
                     )}
                 </div>
@@ -1164,7 +1170,7 @@ const SettingsPage: React.FC = () => {
 
                         return (
                             <div key={groupIdx} className="flex flex-row md:flex-col gap-1 md:gap-0">
-                                <h3 className="hidden md:block px-3 text-[10px] font-bold text-app-muted uppercase tracking-wider mb-2">{group.title}</h3>
+                                <NavSectionLabel as="h3" variant="section" className="hidden md:block mb-2">{group.title}</NavSectionLabel>
                                 <div className="flex flex-row md:flex-col gap-1">
                                     {visibleItems.map(item => (
                                         <button

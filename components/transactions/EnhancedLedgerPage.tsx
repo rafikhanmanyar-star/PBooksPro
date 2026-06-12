@@ -669,11 +669,11 @@ const EnhancedLedgerPage: React.FC = () => {
                 </div>
             )}
 
-            {/* Printable content - Summary + Table (unified print service) */}
-            <div className="flex flex-col gap-2 sm:gap-4 flex-grow min-h-0 printable-area" id="printable-area">
+            {/* Printable content - Summary + Table (print clones by #printable-area id) */}
+            <div className="flex flex-col gap-2 sm:gap-4 flex-grow min-h-0" id="printable-area">
                 <ReportHeader />
                 {/* Summary Area */}
-                <div className="flex-shrink-0 p-4 rounded-xl bg-app-toolbar border border-app-border shadow-ds-card relative overflow-hidden printable-area" data-tour="ledger-summary">
+                <div className="flex-shrink-0 p-4 rounded-xl bg-app-toolbar border border-app-border shadow-ds-card relative overflow-hidden" data-tour="ledger-summary">
                     <div className="absolute top-0 right-0 p-3 opacity-[0.08] pointer-events-none text-app-muted">
                         <div className="w-24 h-24">{ICONS.barChart}</div>
                     </div>
@@ -681,7 +681,7 @@ const EnhancedLedgerPage: React.FC = () => {
                 </div>
 
                 {/* Main Table Area */}
-                <div className="flex-1 min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative printable-area transition-shadow duration-ds">
+                <div className="flex-1 min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative transition-shadow duration-ds">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center bg-app-toolbar/30">
                         <div className="relative w-12 h-12 mb-4">

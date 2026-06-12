@@ -276,7 +276,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
         </Button>
       </div>
 
-      <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+      <div className="flex-grow overflow-y-auto min-h-0" id="printable-area">
         <Card className="min-h-full p-2 sm:p-3">
           <ReportHeader />
           <div className="text-center mb-2">

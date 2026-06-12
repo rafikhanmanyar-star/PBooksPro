@@ -1,6 +1,23 @@
 import path from 'path';
-import { pathToFileURL } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import fs from 'fs';
+
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+/** Resolve esbuild bundle next to backend/dist regardless of process.cwd(). */
+function resolveBundledEnginePath(fileName: string): string {
+  const candidates = [
+    path.join(moduleDir, '..', fileName),
+    path.join(moduleDir, '..', '..', 'dist', fileName),
+    path.join(process.cwd(), 'dist', fileName),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  throw new Error(
+    `Report engine bundle missing: ${fileName}. Tried:\n${candidates.join('\n')}\nRun npm run build:backend (ensure-*-engine scripts).`
+  );
+}
 
 /** Bundled report engines (esbuild from shared/report-engines). Central loader for Architecture v2. */
 const engineCache = new Map<string, unknown>();
@@ -28,12 +45,7 @@ export async function loadReportEngine<T>(bundleKey: ReportEngineBundleName): Pr
   const cached = engineCache.get(fileName);
   if (cached) return cached as T;
 
-  const bundled = path.join(process.cwd(), 'dist', fileName);
-  if (!fs.existsSync(bundled)) {
-    throw new Error(
-      `Report engine bundle missing: ${bundled}. Run npm run build:backend (ensure-*-engine scripts).`
-    );
-  }
+  const bundled = resolveBundledEnginePath(fileName);
   const mod = (await import(pathToFileURL(bundled).href)) as T;
   engineCache.set(fileName, mod);
   return mod;

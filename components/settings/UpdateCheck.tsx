@@ -4,6 +4,7 @@ import { useUpdate } from '../../context/UpdateContext';
 import { useNotification } from '../../context/NotificationContext';
 import Button from '../ui/Button';
 import { RefreshCw, CheckCircle, AlertCircle, Download, ArrowDownToLine, Copy, ExternalLink } from 'lucide-react';
+import { backupAlertError, backupAlertWarning } from './backupThemeClasses';
 import packageJson from '../../package.json';
 
 type UpdateStatus = 'idle' | 'checking' | 'available' | 'not-available' | 'downloading' | 'downloaded' | 'error';
@@ -164,7 +165,7 @@ const UpdateCheck: React.FC = () => {
   }, [error, errorDetails, currentVersion, status, showToast, isElectronUpdate]);
 
   return (
-    <div className="p-4 border border-app-border rounded-lg bg-app-bg/50" data-update-section>
+    <div className="p-4 border border-app-border rounded-lg bg-app-card" data-update-section>
       <h4 className="font-bold text-app-text mb-3 flex items-center gap-2">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
@@ -181,7 +182,7 @@ const UpdateCheck: React.FC = () => {
         </div>
 
         {isElectronUpdate && electronCheckNote && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-950">
+          <div className={`${backupAlertWarning} p-3 text-sm`}>
             {electronCheckNote}
           </div>
         )}
@@ -197,7 +198,7 @@ const UpdateCheck: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <Download className="w-4 h-4 text-ds-success" />
-              <span className="font-medium text-emerald-700">
+              <span className="font-medium text-ds-success">
                 {electronUpdateInfo
                   ? `Version ${electronUpdateInfo.version} is available`
                   : 'An update is available'}
@@ -239,7 +240,7 @@ const UpdateCheck: React.FC = () => {
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-sm">
               <CheckCircle className="w-4 h-4 text-ds-success" />
-              <span className="font-medium text-emerald-700">
+              <span className="font-medium text-ds-success">
                 {electronUpdateInfo
                   ? `Version ${electronUpdateInfo.version} downloaded. Ready to install.`
                   : 'Update downloaded. Ready to install.'}
@@ -293,7 +294,7 @@ const UpdateCheck: React.FC = () => {
                 </div>
               </div>
             ) : (
-              <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+              <div className={`${backupAlertError} p-3`}>
                 <div className="flex items-start gap-2 mb-2">
                   <AlertCircle className="w-4 h-4 text-ds-danger flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
@@ -301,7 +302,7 @@ const UpdateCheck: React.FC = () => {
                       {error || 'An error occurred while checking for updates.'}
                     </div>
                     {errorDetails && (
-                      <pre className="text-xs text-ds-danger bg-rose-100 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
+                      <pre className="text-xs text-ds-danger bg-app-toolbar/60 border border-ds-danger/20 p-2 rounded mt-2 overflow-x-auto whitespace-pre-wrap break-words font-mono max-h-48 overflow-y-auto">
                         {errorDetails}
                       </pre>
                     )}

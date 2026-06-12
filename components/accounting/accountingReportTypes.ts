@@ -10,10 +10,13 @@ export type AccountingView =
   | 'Overview Reports'
   | 'Banking Analytics'
   | 'Bank Accounts'
-  | 'Account Consistency';
+  | 'Account Consistency'
+  | 'Report Designer'
+  | 'Unposted Transactions';
 
 export const ACCOUNTING_FINANCIAL_REPORTS: AccountingView[] = [
   'Analytics',
+  'Unposted Transactions',
   'Profit & Loss',
   'Balance Sheet',
   'Trial Balance',
@@ -27,6 +30,7 @@ export const ACCOUNTING_PORTFOLIO_REPORTS: AccountingView[] = [
   'Banking Analytics',
   'Bank Accounts',
   'Account Consistency',
+  'Report Designer',
 ];
 
 export const ACCOUNTING_ALL_REPORTS: AccountingView[] = [

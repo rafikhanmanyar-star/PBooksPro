@@ -293,7 +293,7 @@ const ProjectInvestorReport: React.FC = () => {
     const projectName = selectedProjectId === 'all' ? 'All Projects' : state.projects.find(p => p.id === selectedProjectId)?.name || 'Unknown Project';
 
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full space-y-4 bg-app-bg min-h-0">
             <style>{STANDARD_PRINT_STYLES}</style>
             <div className="flex-shrink-0">
                 <ReportToolbar
@@ -312,48 +312,48 @@ const ProjectInvestorReport: React.FC = () => {
                     hideSearch={true}
                 >
                     <div className="w-full sm:w-48">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Project</label>
+                        <label className="block text-xs font-bold text-app-muted uppercase tracking-wider mb-0.5">Project</label>
                         <ComboBox label={undefined} items={projectItems} selectedId={selectedProjectId} onSelect={(item) => setSelectedProjectId(item?.id || 'all')} allowAddNew={false} />
                     </div>
                     
                     <div className="w-full sm:w-48">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">Investor</label>
+                        <label className="block text-xs font-bold text-app-muted uppercase tracking-wider mb-0.5">Investor</label>
                         <ComboBox label={undefined} items={investorItems} selectedId={selectedInvestorId} onSelect={(item) => setSelectedInvestorId(item?.id || 'all')} allowAddNew={false} />
                     </div>
                 </ReportToolbar>
             </div>
 
-            <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+            <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
                     <div className="text-center mb-6">
-                        <h3 className="text-2xl font-bold text-slate-800">Investor Distribution Report</h3>
-                        <p className="text-sm text-slate-500 font-medium">
+                        <h3 className="text-2xl font-bold text-app-text">Investor Distribution Report</h3>
+                        <p className="text-sm text-app-muted font-medium">
                             {projectName}
                             {selectedProjectId === 'all' && selectedInvestorId !== 'all' && (
                                 <span> · {state.accounts.find(a => a.id === selectedInvestorId)?.name ?? 'Investor'}</span>
                             )}
                         </p>
-                        <p className="text-xs text-slate-400">As of {formatDate(endDate)}</p>
+                        <p className="text-xs text-app-muted">As of {formatDate(endDate)}</p>
                     </div>
                     
                     {/* Summary Cards */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 mb-8 text-center">
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Principal</p>
-                            <p className="text-xl font-bold text-indigo-700">{CURRENCY} {(reportData.summary.totalEquityRaised || 0).toLocaleString()}</p>
+                        <div className="p-4 bg-app-toolbar rounded-xl border border-app-border">
+                            <p className="text-xs font-bold text-app-muted uppercase tracking-wider mb-1">Total Principal</p>
+                            <p className="text-xl font-bold text-primary">{CURRENCY} {(reportData.summary.totalEquityRaised || 0).toLocaleString()}</p>
                         </div>
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Profit Distributed</p>
-                            <p className="text-xl font-bold text-emerald-600">
+                        <div className="p-4 bg-app-toolbar rounded-xl border border-app-border">
+                            <p className="text-xs font-bold text-app-muted uppercase tracking-wider mb-1">Total Profit Distributed</p>
+                            <p className="text-xl font-bold text-ds-success">
                                 {CURRENCY} {(reportData.summary.totalProfitDistributed || 0).toLocaleString()}
                             </p>
                         </div>
-                        <div className="p-4 bg-slate-50 rounded-xl border border-slate-200">
-                            <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">
+                        <div className="p-4 bg-app-toolbar rounded-xl border border-app-border">
+                            <p className="text-xs font-bold text-app-muted uppercase tracking-wider mb-1">
                                 {selectedProjectId === 'all' ? 'Projects' : 'Investors'}
                             </p>
-                            <p className="text-xl font-bold text-slate-700">
+                            <p className="text-xl font-bold text-app-text">
                                 {selectedProjectId === 'all' ? projectBreakdownData.rows.length : reportData.rows.length}
                             </p>
                         </div>
@@ -361,27 +361,27 @@ const ProjectInvestorReport: React.FC = () => {
 
                     <div className="overflow-x-auto">
                         {selectedProjectId === 'all' ? (
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead className="bg-slate-50">
+                            <table className="min-w-full divide-y divide-app-border text-sm">
+                                <thead className="bg-app-toolbar">
                                     <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Project Name</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Principal Invested</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Share %</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Profit Realized</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Withdrawals</th>
-                                        <th className="px-4 py-3 text-right font-bold text-slate-700 uppercase tracking-wider text-xs bg-slate-100">Net Equity</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs">Project Name</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Principal Invested</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Share %</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Profit Realized</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Withdrawals</th>
+                                        <th className="px-4 py-3 text-right font-bold text-app-text uppercase tracking-wider text-xs bg-app-toolbar">Net Equity</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-200">
+                                <tbody className="divide-y divide-app-border">
                                     {projectBreakdownData.rows.length > 0 ? projectBreakdownData.rows.map((row) => (
                                         <tr
                                             key={row.projectId}
-                                            className={`hover:bg-slate-50 transition-colors ${selectedInvestorId !== 'all' ? 'cursor-pointer' : ''}`}
+                                            className={`hover:bg-app-toolbar transition-colors ${selectedInvestorId !== 'all' ? 'cursor-pointer' : ''}`}
                                             onClick={() => handleProjectRowClick(row)}
                                             title={selectedInvestorId !== 'all' ? 'Click to view transactions for this project' : undefined}
                                         >
-                                            <td className="px-4 py-3 font-medium text-slate-800">{row.projectName}</td>
-                                            <td className="px-4 py-3 text-right text-slate-600">{CURRENCY} {(row.equityInvested || 0).toLocaleString()}</td>
+                                            <td className="px-4 py-3 font-medium text-app-text">{row.projectName}</td>
+                                            <td className="px-4 py-3 text-right text-app-muted">{CURRENCY} {(row.equityInvested || 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">{(row.ownershipPercentage || 0).toFixed(2)}%</td>
                                             <td className="px-4 py-3 text-right font-semibold text-emerald-600">
                                                 {CURRENCY} {(row.profitDistributed || 0).toLocaleString()}
@@ -389,22 +389,22 @@ const ProjectInvestorReport: React.FC = () => {
                                             <td className="px-4 py-3 text-right text-rose-600">
                                                 {row.withdrawals > 0 ? `-${CURRENCY} ${row.withdrawals.toLocaleString()}` : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-bold text-slate-900 bg-slate-100/50">
+                                            <td className="px-4 py-3 text-right font-bold text-app-text bg-app-toolbar/50">
                                                 {CURRENCY} {(row.netBalance || 0).toLocaleString()}
                                             </td>
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan={6} className="px-4 py-12 text-center text-slate-500 italic bg-slate-50/30">
+                                            <td colSpan={6} className="px-4 py-12 text-center text-app-muted italic bg-app-toolbar/30">
                                                 No projects found.
                                             </td>
                                         </tr>
                                     )}
                                 </tbody>
                                 {projectBreakdownData.rows.length > 0 && (
-                                    <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                                    <tfoot className="bg-app-toolbar font-bold border-t-2 border-app-border">
                                         <tr>
-                                            <td className="px-4 py-3 text-right text-slate-700">NET TOTAL</td>
+                                            <td className="px-4 py-3 text-right text-app-text">NET TOTAL</td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {projectBreakdownData.rows.reduce((sum, r) => sum + r.equityInvested, 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right">
                                                 {selectedInvestorId === 'all'
@@ -413,33 +413,33 @@ const ProjectInvestorReport: React.FC = () => {
                                             </td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {projectBreakdownData.rows.reduce((sum, r) => sum + r.profitDistributed, 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {projectBreakdownData.rows.reduce((sum, r) => sum + r.withdrawals, 0).toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right bg-slate-100">{CURRENCY} {projectBreakdownData.rows.reduce((sum, r) => sum + r.netBalance, 0).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-right bg-app-toolbar">{CURRENCY} {projectBreakdownData.rows.reduce((sum, r) => sum + r.netBalance, 0).toLocaleString()}</td>
                                         </tr>
                                     </tfoot>
                                 )}
                             </table>
                         ) : (
-                            <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                <thead className="bg-slate-50">
+                            <table className="min-w-full divide-y divide-app-border text-sm">
+                                <thead className="bg-app-toolbar">
                                     <tr>
-                                        <th className="px-4 py-3 text-left font-semibold text-slate-600 uppercase tracking-wider text-xs">Investor Name</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Principal Invested</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Share %</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Profit Realized</th>
-                                        <th className="px-4 py-3 text-right font-semibold text-slate-600 uppercase tracking-wider text-xs">Withdrawals</th>
-                                        <th className="px-4 py-3 text-right font-bold text-slate-700 uppercase tracking-wider text-xs bg-slate-100">Net Equity</th>
+                                        <th className="px-4 py-3 text-left font-semibold text-app-muted uppercase tracking-wider text-xs">Investor Name</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Principal Invested</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Share %</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Profit Realized</th>
+                                        <th className="px-4 py-3 text-right font-semibold text-app-muted uppercase tracking-wider text-xs">Withdrawals</th>
+                                        <th className="px-4 py-3 text-right font-bold text-app-text uppercase tracking-wider text-xs bg-app-toolbar">Net Equity</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-slate-200">
+                                <tbody className="divide-y divide-app-border">
                                     {reportData.rows.length > 0 ? reportData.rows.map((row) => (
                                         <tr
                                             key={row.accountId}
-                                            className="hover:bg-slate-50 transition-colors cursor-pointer"
+                                            className="hover:bg-app-toolbar transition-colors cursor-pointer"
                                             onClick={() => handleRowClick(row)}
                                             title="Click to view full transaction history"
                                         >
-                                            <td className="px-4 py-3 font-medium text-slate-800">{row.investorName}</td>
-                                            <td className="px-4 py-3 text-right text-slate-600">{CURRENCY} {(row.equityInvested || 0).toLocaleString()}</td>
+                                            <td className="px-4 py-3 font-medium text-app-text">{row.investorName}</td>
+                                            <td className="px-4 py-3 text-right text-app-muted">{CURRENCY} {(row.equityInvested || 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right font-bold text-indigo-600">{(row.ownershipPercentage || 0).toFixed(2)}%</td>
                                             <td className="px-4 py-3 text-right font-semibold text-emerald-600">
                                                 {CURRENCY} {(row.profitDistributed || 0).toLocaleString()}
@@ -447,28 +447,28 @@ const ProjectInvestorReport: React.FC = () => {
                                             <td className="px-4 py-3 text-right text-rose-600">
                                                 {row.withdrawals > 0 ? `-${CURRENCY} ${row.withdrawals.toLocaleString()}` : '-'}
                                             </td>
-                                            <td className="px-4 py-3 text-right font-bold text-slate-900 bg-slate-100/50">
+                                            <td className="px-4 py-3 text-right font-bold text-app-text bg-app-toolbar/50">
                                                 {CURRENCY} {(row.netBalance || 0).toLocaleString()}
                                             </td>
                                         </tr>
                                     )) : (
                                         <tr>
-                                            <td colSpan={6} className="px-4 py-12 text-center text-slate-500 italic bg-slate-50/30">
+                                            <td colSpan={6} className="px-4 py-12 text-center text-app-muted italic bg-app-toolbar/30">
                                                 No equity data found for this selection.<br/>
-                                                <span className="text-xs text-slate-400 mt-2 block">Ensure Investor Equity accounts are credited via Transfer transactions linked to this project.</span>
+                                                <span className="text-xs text-app-muted mt-2 block">Ensure Investor Equity accounts are credited via Transfer transactions linked to this project.</span>
                                             </td>
                                         </tr>
                                     )}
                                 </tbody>
                                 {reportData.rows.length > 0 && (
-                                    <tfoot className="bg-slate-50 font-bold border-t-2 border-slate-300">
+                                    <tfoot className="bg-app-toolbar font-bold border-t-2 border-app-border">
                                         <tr>
-                                            <td className="px-4 py-3 text-right text-slate-700">TOTALS</td>
+                                            <td className="px-4 py-3 text-right text-app-text">TOTALS</td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {reportData.rows.reduce((sum, r) => sum + r.equityInvested, 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right">{reportData.rows.reduce((sum, r) => sum + r.ownershipPercentage, 0).toFixed(2)}%</td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {reportData.rows.reduce((sum, r) => sum + r.profitDistributed, 0).toLocaleString()}</td>
                                             <td className="px-4 py-3 text-right">{CURRENCY} {reportData.rows.reduce((sum, r) => sum + r.withdrawals, 0).toLocaleString()}</td>
-                                            <td className="px-4 py-3 text-right bg-slate-100">{CURRENCY} {reportData.rows.reduce((sum, r) => sum + r.netBalance, 0).toLocaleString()}</td>
+                                            <td className="px-4 py-3 text-right bg-app-toolbar">{CURRENCY} {reportData.rows.reduce((sum, r) => sum + r.netBalance, 0).toLocaleString()}</td>
                                         </tr>
                                     </tfoot>
                                 )}
@@ -476,7 +476,7 @@ const ProjectInvestorReport: React.FC = () => {
                         )}
                     </div>
                     
-                    <div className="mt-4 text-xs text-slate-400 italic">
+                    <div className="mt-4 text-xs text-app-muted italic">
                         * Net Equity = (Principal - Withdrawals) + Profit Realized.
                         <br/>
                         * Rollovers are represented by Net Equity remaining in the account.

@@ -28,20 +28,14 @@ function MetricBanner({
 }) {
   const bg =
     variant === 'emerald'
-      ? 'bg-emerald-50 border-emerald-200'
+      ? 'bg-ds-success/10 border-ds-success/30'
       : variant === 'amber'
-        ? 'bg-amber-50 border-amber-200'
-        : 'bg-slate-800 text-white border-slate-700';
-  const sub =
-    variant === 'dark' ? 'text-slate-400' : 'text-slate-600';
-  const val =
-    variant === 'dark'
-      ? 'text-white'
-      : 'text-slate-900';
+        ? 'bg-ds-warning/10 border-ds-warning/30'
+        : 'bg-app-toolbar border-app-border';
   return (
     <div className={`rounded-lg border p-4 ${bg}`}>
-      <p className={`text-xs font-bold uppercase tracking-wider mb-1 ${sub}`}>{label}</p>
-      <p className={`text-xl font-bold tabular-nums ${val}`}>
+      <p className="text-xs font-bold uppercase tracking-wider mb-1 text-app-muted">{label}</p>
+      <p className="text-xl font-bold tabular-nums text-app-text">
         {CURRENCY} {value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
       </p>
     </div>
@@ -171,15 +165,15 @@ const ProjectProfitLossReport: React.FC = () => {
       {rows.map((row) => (
         <tr
           key={`${row.id}-${row.level}`}
-          className="border-b border-slate-50 hover:bg-slate-50/80 cursor-pointer"
+          className="border-b border-app-border hover:bg-app-table-hover cursor-pointer"
           onClick={() => handleDrilldown(row.id, row.name, txType)}
         >
-          <td className="py-2 px-2 text-slate-700">
+          <td className="py-2 px-2 text-app-text">
             <div style={{ paddingLeft: `${row.level * 1.25}rem` }} className="flex items-center gap-1">
               {isOpex && row.level === 0 && row.type === 'group' && (
                 <button
                   type="button"
-                  className="text-slate-400 hover:text-slate-700 p-0.5"
+                  className="text-app-muted hover:text-app-text p-0.5"
                   aria-expanded={collapsedOpexRoots.has(row.id) ? 'false' : 'true'}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -189,12 +183,12 @@ const ProjectProfitLossReport: React.FC = () => {
                   {collapsedOpexRoots.has(row.id) ? '▶' : '▼'}
                 </button>
               )}
-              {row.level > 0 && <span className="text-slate-300 mr-1">└</span>}
-              <span className={row.type === 'group' ? 'font-semibold text-slate-800' : ''}>{row.name}</span>
+              {row.level > 0 && <span className="text-app-muted/50 mr-1">└</span>}
+              <span className={row.type === 'group' ? 'font-semibold text-app-text' : ''}>{row.name}</span>
             </div>
           </td>
           <td className="py-2 px-2 text-right font-medium tabular-nums">{CURRENCY} {row.amount.toLocaleString()}</td>
-          <td className="py-2 px-2 text-right text-slate-500 text-xs tabular-nums">{row.pctOfRevenue.toFixed(1)}%</td>
+          <td className="py-2 px-2 text-right text-app-muted text-xs tabular-nums">{row.pctOfRevenue.toFixed(1)}%</td>
         </tr>
       ))}
     </>
@@ -291,17 +285,17 @@ const ProjectProfitLossReport: React.FC = () => {
           </div>
         </ReportToolbar>
       </div>
-      <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+      <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
         <Card className="min-h-full">
           <ReportHeader />
-          <h3 className="text-2xl font-bold text-center mb-2 text-slate-800">Profit &amp; Loss Statement</h3>
-          <p className="text-center text-slate-500 mb-4 text-sm">
+          <h3 className="text-2xl font-bold text-center mb-2 text-app-text">Profit &amp; Loss Statement</h3>
+          <p className="text-center text-app-muted mb-4 text-sm">
             {projectLabel}
             <br />
             {formatDate(startDate)} — {formatDate(endDate)}
           </p>
           {!localOnly && loading && (
-            <p className="text-center text-xs text-slate-500 mb-2">Loading from server…</p>
+            <p className="text-center text-xs text-app-muted mb-2">Loading from server…</p>
           )}
 
           {showValidationBanner && (
@@ -309,13 +303,13 @@ const ProjectProfitLossReport: React.FC = () => {
               {validationErrors.map((iss, i) => (
                 <div
                   key={i}
-                  className="text-sm rounded px-3 py-2 bg-rose-50 text-rose-900 border border-rose-200"
+                  className="text-sm rounded px-3 py-2 bg-ds-danger/10 text-ds-danger border border-ds-danger/30"
                 >
                   {iss.message}
                 </div>
               ))}
               {!report.validation.ledgerMatch && (
-                <div className="text-xs text-slate-600">
+                <div className="text-xs text-app-muted">
                   Ledger P&amp;L net: {CURRENCY} {report.validation.legacyNetProfit.toFixed(2)} · Structured net: {CURRENCY}{' '}
                   {report.validation.structuredNetProfit.toFixed(2)}
                 </div>
@@ -323,11 +317,11 @@ const ProjectProfitLossReport: React.FC = () => {
             </div>
           )}
 
-          <div className="max-w-4xl mx-auto bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm space-y-6">
+          <div className="max-w-4xl mx-auto bg-app-card p-4 md:p-8 rounded-xl border border-app-border shadow-ds-card space-y-6">
             <section>
-              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide border-b pb-2 mb-2">A. Revenue</h4>
+              <h4 className="text-sm font-bold text-app-muted uppercase tracking-wide border-b border-app-border pb-2 mb-2">A. Revenue</h4>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                <thead className="bg-app-table-header text-xs text-app-muted uppercase">
                   <tr>
                     <th className="py-2 px-2 text-left">Line</th>
                     <th className="py-2 px-2 text-right">Amount</th>
@@ -338,12 +332,12 @@ const ProjectProfitLossReport: React.FC = () => {
                   {renderLineRows(report.revenue, TransactionType.INCOME)}
                   {report.revenue.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="py-3 text-center text-slate-400 italic">
+                      <td colSpan={3} className="py-3 text-center text-app-muted italic">
                         No revenue lines
                       </td>
                     </tr>
                   )}
-                  <tr className="bg-slate-100 font-bold">
+                  <tr className="bg-app-toolbar font-bold">
                     <td className="py-2 px-2">Total revenue</td>
                     <td className="py-2 px-2 text-right tabular-nums">
                       {CURRENCY} {report.totalRevenue.toLocaleString()}
@@ -355,9 +349,9 @@ const ProjectProfitLossReport: React.FC = () => {
             </section>
 
             <section>
-              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide border-b pb-2 mb-2">B. Cost of sales</h4>
+              <h4 className="text-sm font-bold text-app-muted uppercase tracking-wide border-b border-app-border pb-2 mb-2">B. Cost of sales</h4>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                <thead className="bg-app-table-header text-xs text-app-muted uppercase">
                   <tr>
                     <th className="py-2 px-2 text-left">Line</th>
                     <th className="py-2 px-2 text-right">Amount</th>
@@ -366,7 +360,7 @@ const ProjectProfitLossReport: React.FC = () => {
                 </thead>
                 <tbody>
                   {renderLineRows(report.cost_of_sales, TransactionType.EXPENSE)}
-                  <tr className="bg-slate-100 font-bold">
+                  <tr className="bg-app-toolbar font-bold">
                     <td className="py-2 px-2">Total cost of sales</td>
                     <td className="py-2 px-2 text-right tabular-nums">{CURRENCY} {cogsSubtotal.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right text-xs tabular-nums">
@@ -380,11 +374,11 @@ const ProjectProfitLossReport: React.FC = () => {
             <MetricBanner label="C. Gross profit" value={report.gross_profit} variant="emerald" />
 
             <section>
-              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide border-b pb-2 mb-2">
+              <h4 className="text-sm font-bold text-app-muted uppercase tracking-wide border-b border-app-border pb-2 mb-2">
                 D. Operating expenses
               </h4>
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs text-slate-500 uppercase">
+                <thead className="bg-app-table-header text-xs text-app-muted uppercase">
                   <tr>
                     <th className="py-2 px-2 text-left">Line</th>
                     <th className="py-2 px-2 text-right">Amount</th>
@@ -393,7 +387,7 @@ const ProjectProfitLossReport: React.FC = () => {
                 </thead>
                 <tbody>
                   {renderLineRows(opexVisible, TransactionType.EXPENSE, true)}
-                  <tr className="bg-slate-100 font-bold">
+                  <tr className="bg-app-toolbar font-bold">
                     <td className="py-2 px-2">Total operating expenses</td>
                     <td className="py-2 px-2 text-right tabular-nums">{CURRENCY} {opexSubtotal.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right text-xs tabular-nums">
@@ -407,11 +401,11 @@ const ProjectProfitLossReport: React.FC = () => {
             <MetricBanner label="E. Operating profit" value={report.operating_profit} variant="amber" />
 
             <section>
-              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide border-b pb-2 mb-2">F. Other income</h4>
+              <h4 className="text-sm font-bold text-app-muted uppercase tracking-wide border-b border-app-border pb-2 mb-2">F. Other income</h4>
               <table className="w-full text-sm">
                 <tbody>
                   {renderLineRows(report.other_income, TransactionType.INCOME)}
-                  <tr className="bg-slate-100 font-bold">
+                  <tr className="bg-app-toolbar font-bold">
                     <td className="py-2 px-2">Total other income</td>
                     <td className="py-2 px-2 text-right">{CURRENCY} {otherIncSub.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right text-xs">
@@ -423,11 +417,11 @@ const ProjectProfitLossReport: React.FC = () => {
             </section>
 
             <section>
-              <h4 className="text-sm font-bold text-slate-600 uppercase tracking-wide border-b pb-2 mb-2">G. Finance costs</h4>
+              <h4 className="text-sm font-bold text-app-muted uppercase tracking-wide border-b border-app-border pb-2 mb-2">G. Finance costs</h4>
               <table className="w-full text-sm">
                 <tbody>
                   {renderLineRows(report.finance_cost, TransactionType.EXPENSE)}
-                  <tr className="bg-slate-100 font-bold">
+                  <tr className="bg-app-toolbar font-bold">
                     <td className="py-2 px-2">Total finance costs</td>
                     <td className="py-2 px-2 text-right">{CURRENCY} {finSub.toLocaleString()}</td>
                     <td className="py-2 px-2 text-right text-xs">
@@ -442,8 +436,8 @@ const ProjectProfitLossReport: React.FC = () => {
               <MetricBanner label="H. Profit before tax" value={report.profit_before_tax} variant="dark" />
               <MetricBanner label="I. Tax expense" value={report.tax} variant="dark" />
             </div>
-            <div className="rounded-xl border-2 border-slate-800 bg-slate-900 text-white p-6 text-center shadow-lg">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">J. Net profit / (loss)</p>
+            <div className="rounded-xl border-2 border-primary/40 bg-app-toolbar p-6 text-center shadow-ds-card">
+              <p className="text-xs font-bold text-app-muted uppercase tracking-widest mb-2">J. Net profit / (loss)</p>
               <p className={`text-4xl font-bold tabular-nums ${report.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                 {CURRENCY}{' '}
                 {report.net_profit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

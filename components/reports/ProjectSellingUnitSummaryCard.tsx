@@ -113,7 +113,7 @@ const ProjectSellingUnitSummaryCardInner: React.FC<ProjectSellingUnitSummaryCard
                         title="List price (agreement)"
                     >
                         <span className="text-[8px] text-app-muted uppercase shrink-0">List</span>
-                        <span className="text-[9px] font-bold text-slate-900 dark:text-slate-100 tabular-nums truncate">
+                        <span className="text-[9px] font-bold text-app-text tabular-nums truncate">
                             {listFmt}
                         </span>
                     </div>
@@ -122,7 +122,7 @@ const ProjectSellingUnitSummaryCardInner: React.FC<ProjectSellingUnitSummaryCard
                         title="Selling price (agreement)"
                     >
                         <Banknote className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
-                        <span className="text-[9px] font-bold text-slate-900 dark:text-slate-100 tabular-nums truncate">
+                        <span className="text-[9px] font-bold text-app-text tabular-nums truncate">
                             {sellFmt}
                         </span>
                     </div>
@@ -139,7 +139,7 @@ const ProjectSellingUnitSummaryCardInner: React.FC<ProjectSellingUnitSummaryCard
                         <Wallet className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`text-[9px] font-bold tabular-nums truncate ${
-                                (unit.invoiceDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900 dark:text-slate-100'
+                                (unit.invoiceDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {invDueFmt}
@@ -149,7 +149,7 @@ const ProjectSellingUnitSummaryCardInner: React.FC<ProjectSellingUnitSummaryCard
                         <HandCoins className="w-3 h-3 flex-shrink-0 text-app-muted" aria-hidden />
                         <span
                             className={`text-[9px] font-bold tabular-nums truncate ${
-                                (unit.brokerRebateDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-slate-900 dark:text-slate-100'
+                                (unit.brokerRebateDue ?? 0) > 0.01 ? 'text-ds-danger' : 'text-app-text'
                             }`}
                         >
                             {brkDueFmt}

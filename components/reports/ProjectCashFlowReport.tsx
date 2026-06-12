@@ -146,7 +146,7 @@ function CashFlowDrillModal({
             <div className="max-h-[60vh] overflow-y-auto">
                 <table className="w-full text-sm">
                     <thead>
-                        <tr className="border-b border-slate-200 text-left text-slate-500">
+                        <tr className="border-b border-app-border text-left text-app-muted">
                             <th className="py-2 pr-2">Date</th>
                             <th className="py-2 pr-2">Subtype</th>
                             <th className="py-2 pr-2">Line</th>
@@ -156,14 +156,14 @@ function CashFlowDrillModal({
                     </thead>
                     <tbody>
                         {rows.map(({ tx, lineLabel }) => (
-                            <tr key={tx.id} className="border-b border-slate-100">
-                                <td className="py-2 pr-2 tabular-nums text-slate-700">{formatDate(tx.date)}</td>
-                                <td className="py-2 pr-2 text-xs text-slate-500 font-mono">
+                            <tr key={tx.id} className="border-b border-app-border">
+                                <td className="py-2 pr-2 tabular-nums text-app-text">{formatDate(tx.date)}</td>
+                                <td className="py-2 pr-2 text-xs text-app-muted font-mono">
                                     {tx.subtype != null ? String(tx.subtype) : '—'}
                                 </td>
-                                <td className="py-2 pr-2 text-slate-600">{lineLabel}</td>
-                                <td className="py-2 pr-2 text-slate-800">{tx.description || tx.type}</td>
-                                <td className="py-2 text-right tabular-nums font-medium text-slate-900">
+                                <td className="py-2 pr-2 text-app-muted">{lineLabel}</td>
+                                <td className="py-2 pr-2 text-app-text">{tx.description || tx.type}</td>
+                                <td className="py-2 text-right tabular-nums font-medium text-app-text">
                                     {CURRENCY}{' '}
                                     {tx.amount.toLocaleString(undefined, {
                                         minimumFractionDigits: 2,
@@ -175,7 +175,7 @@ function CashFlowDrillModal({
                     </tbody>
                 </table>
                 {rows.length === 0 && (
-                    <p className="text-sm text-slate-500 py-4">No linked transactions found in the current view.</p>
+                    <p className="text-sm text-app-muted py-4">No linked transactions found in the current view.</p>
                 )}
             </div>
             <div className="mt-4 flex justify-end">
@@ -377,7 +377,7 @@ const ProjectCashFlowReport: React.FC = () => {
                     onClick={() => toggleSection(collapseKey)}
                 >
                     <span>{title}</span>
-                    <span className="text-xs font-normal normal-case text-slate-500">{isCollapsed ? 'Show' : 'Hide'}</span>
+                    <span className="text-xs font-normal normal-case text-app-muted">{isCollapsed ? 'Show' : 'Hide'}</span>
                 </button>
                 {!isCollapsed && (
                     <table className="w-full text-sm">
@@ -385,7 +385,7 @@ const ProjectCashFlowReport: React.FC = () => {
                             {section.items.map((item, index) => (
                                 <tr
                                     key={`${item.label}-${index}`}
-                                    className="cursor-pointer hover:bg-slate-50"
+                                    className="cursor-pointer hover:bg-app-table-header"
                                     onClick={() =>
                                         setDrilldown({
                                             sectionTitle: `${title}: ${item.label}`,
@@ -393,10 +393,10 @@ const ProjectCashFlowReport: React.FC = () => {
                                         })
                                     }
                                 >
-                                    <td className="py-2 px-2 text-slate-700 pl-4">
+                                    <td className="py-2 px-2 text-app-text pl-4">
                                         {item.label}
                                         {item.isNonCash && (
-                                            <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                                            <span className="block text-xs font-normal text-app-muted mt-0.5">
                                                 {title === 'Financing Activities'
                                                     ? 'Non-cash equity movement (included in net financing total)'
                                                     : 'Non-cash (excluded from this section total)'}
@@ -406,7 +406,7 @@ const ProjectCashFlowReport: React.FC = () => {
                                     <td
                                         className={`py-2 px-2 text-right font-medium tabular-nums ${
                                             item.isNonCash
-                                                ? 'text-slate-600'
+                                                ? 'text-app-muted'
                                                 : item.amount >= 0
                                                   ? 'text-emerald-700'
                                                   : 'text-red-600'
@@ -420,8 +420,8 @@ const ProjectCashFlowReport: React.FC = () => {
                                     </td>
                                 </tr>
                             ))}
-                            <tr className="bg-slate-50 font-bold border-t border-slate-200">
-                                <td className="py-3 px-2 text-slate-900">
+                            <tr className="bg-app-table-header font-bold border-t border-app-border">
+                                <td className="py-3 px-2 text-app-text">
                                     Net cash from {SECTION_SHORT[title] ?? title} activities
                                 </td>
                                 <td
@@ -459,7 +459,7 @@ const ProjectCashFlowReport: React.FC = () => {
                     onClick={() => toggleSection('financing')}
                 >
                     <span>{title}</span>
-                    <span className="text-xs font-normal normal-case text-slate-500">{isCollapsed ? 'Show' : 'Hide'}</span>
+                    <span className="text-xs font-normal normal-case text-app-muted">{isCollapsed ? 'Show' : 'Hide'}</span>
                 </button>
                 {!isCollapsed && (
                     <table className="w-full text-sm">
@@ -467,7 +467,7 @@ const ProjectCashFlowReport: React.FC = () => {
                             {mainLines.map((item, index) => (
                                 <tr
                                     key={`${item.key}-${item.label}-${index}`}
-                                    className="cursor-pointer hover:bg-slate-50"
+                                    className="cursor-pointer hover:bg-app-table-header"
                                     onClick={() =>
                                         setDrilldown({
                                             sectionTitle: `${title}: ${item.label}`,
@@ -475,10 +475,10 @@ const ProjectCashFlowReport: React.FC = () => {
                                         })
                                     }
                                 >
-                                    <td className="py-2 px-2 text-slate-700 pl-4">
+                                    <td className="py-2 px-2 text-app-text pl-4">
                                         {item.label}
                                         {item.isNonCash && (
-                                            <span className="block text-xs font-normal text-slate-500 mt-0.5">
+                                            <span className="block text-xs font-normal text-app-muted mt-0.5">
                                                 Non-cash equity movement (included in net financing total)
                                             </span>
                                         )}
@@ -486,7 +486,7 @@ const ProjectCashFlowReport: React.FC = () => {
                                     <td
                                         className={`py-2 px-2 text-right font-medium tabular-nums ${
                                             item.isNonCash
-                                                ? 'text-slate-600'
+                                                ? 'text-app-muted'
                                                 : item.amount >= 0
                                                   ? 'text-emerald-700'
                                                   : 'text-red-600'
@@ -510,9 +510,9 @@ const ProjectCashFlowReport: React.FC = () => {
                                         })
                                     }
                                 >
-                                    <td className="py-2 px-2 text-slate-800 pl-4 font-medium">
+                                    <td className="py-2 px-2 text-app-text pl-4 font-medium">
                                         Equity transfers & payouts
-                                        <span className="block text-xs font-normal text-slate-600 mt-0.5">
+                                        <span className="block text-xs font-normal text-app-muted mt-0.5">
                                             Includes inter-project and capital payout lines for this project. Net financing
                                             below sums all financing rows (single-project view) so operating + financing
                                             matches project cash movement; compare closing cash to the balance sheet.
@@ -531,8 +531,8 @@ const ProjectCashFlowReport: React.FC = () => {
                                     </td>
                                 </tr>
                             )}
-                            <tr className="bg-slate-50 font-bold border-t border-slate-200">
-                                <td className="py-3 px-2 text-slate-900">
+                            <tr className="bg-app-table-header font-bold border-t border-app-border">
+                                <td className="py-3 px-2 text-app-text">
                                     Net cash from {SECTION_SHORT[title] ?? title} activities
                                 </td>
                                 <td
@@ -577,7 +577,7 @@ const ProjectCashFlowReport: React.FC = () => {
                             onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
                             allowAddNew={false}
                         />
-                        <label className="flex items-center gap-2 text-sm text-slate-600 ml-2 whitespace-nowrap">
+                        <label className="flex items-center gap-2 text-sm text-app-muted ml-2 whitespace-nowrap">
                             <input
                                 type="checkbox"
                                 checked={interestPaidAsOperating}
@@ -596,23 +596,23 @@ const ProjectCashFlowReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
+                <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
                     <Card className="min-h-full">
                         <ReportHeader />
                         <div className="text-center mb-6">
-                            <h3 className="text-2xl font-bold text-slate-800 uppercase tracking-wide">
+                            <h3 className="text-2xl font-bold text-app-text uppercase tracking-wide">
                                 Cash Flow Statement
                             </h3>
-                            <p className="text-sm text-slate-500 font-medium mt-1">
+                            <p className="text-sm text-app-muted font-medium mt-1">
                                 {selectedProjectId === 'all'
                                     ? 'All Projects'
                                     : projects.find((p) => p.id === selectedProjectId)?.name}
                             </p>
-                            <p className="text-xs text-slate-400">
+                            <p className="text-xs text-app-muted">
                                 Direct method — For the period from {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
                             {!localOnly && loading && (
-                                <p className="text-xs text-slate-500 mt-1">Loading from server…</p>
+                                <p className="text-xs text-app-muted mt-1">Loading from server…</p>
                             )}
                             {!localOnly && fetchError && (
                                 <p className="text-xs text-rose-600 mt-1">{fetchError}</p>
@@ -620,13 +620,13 @@ const ProjectCashFlowReport: React.FC = () => {
                         </div>
 
                         {!localOnly && !report ? (
-                            <p className="text-center text-sm text-slate-500 py-8">
+                            <p className="text-center text-sm text-app-muted py-8">
                                 {loading
                                     ? 'Loading cash flow statement for this organization…'
                                     : fetchError ?? 'Could not load cash flow statement from the server.'}
                             </p>
                         ) : (
-                        <div className="max-w-4xl mx-auto bg-white p-4 md:p-8 rounded-xl border border-slate-200 shadow-sm">
+                        <div className="max-w-4xl mx-auto bg-app-card p-4 md:p-8 rounded-xl border border-app-border shadow-ds-card">
                             {report!.flags.negative_opening_cash && (
                                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                     Opening cash is negative — verify bank and cash ledger balances.
@@ -666,9 +666,9 @@ const ProjectCashFlowReport: React.FC = () => {
                             {renderSection('Investing Activities', report.investing, 'investing')}
                             {renderFinancingSection()}
 
-                            <div className="mt-8 space-y-3 border-t-2 border-slate-400 pt-6">
+                            <div className="mt-8 space-y-3 border-t-2 border-app-border pt-6">
                                 <div className="flex justify-between items-center py-2">
-                                    <span className="text-sm font-bold text-slate-900 uppercase tracking-wide">
+                                    <span className="text-sm font-bold text-app-text uppercase tracking-wide">
                                         Net increase/(decrease) in cash
                                     </span>
                                     <span
@@ -684,8 +684,8 @@ const ProjectCashFlowReport: React.FC = () => {
                                     </span>
                                 </div>
                                 <div className="flex justify-between items-center py-2">
-                                    <span className="text-sm text-slate-700">Opening cash balance</span>
-                                    <span className="text-sm font-medium text-slate-800 tabular-nums">
+                                    <span className="text-sm text-app-text">Opening cash balance</span>
+                                    <span className="text-sm font-medium text-app-text tabular-nums">
                                         {CURRENCY}{' '}
                                         {report.summary.opening_cash.toLocaleString(undefined, {
                                             minimumFractionDigits: 2,
@@ -693,11 +693,11 @@ const ProjectCashFlowReport: React.FC = () => {
                                         })}
                                     </span>
                                 </div>
-                                <div className="flex justify-between items-center py-3 border-t-2 border-slate-300 pt-3">
-                                    <span className="text-base font-bold text-slate-900 uppercase tracking-wide">
+                                <div className="flex justify-between items-center py-3 border-t-2 border-app-border pt-3">
+                                    <span className="text-base font-bold text-app-text uppercase tracking-wide">
                                         Closing cash balance (balance sheet)
                                     </span>
-                                    <span className="text-base font-bold text-slate-900 tabular-nums">
+                                    <span className="text-base font-bold text-app-text tabular-nums">
                                         {CURRENCY}{' '}
                                         {report.summary.closing_cash.toLocaleString(undefined, {
                                             minimumFractionDigits: 2,
@@ -749,13 +749,13 @@ function CashFlowAuditModal({
 }) {
     return (
         <Modal isOpen={open} onClose={onClose} title="Cash flow audit" size="xl">
-            <p className="text-sm text-slate-600 mb-3">
+            <p className="text-sm text-app-muted mb-3">
                 Cash in/out reflect bank/cash legs only (IAS 7). Non-cash rows show notional equity amounts for
                 inter-project moves.
             </p>
-            <div className="max-h-[65vh] overflow-auto border border-slate-200 rounded-lg">
+            <div className="max-h-[65vh] overflow-auto border border-app-border rounded-lg">
                 <table className="w-full text-xs md:text-sm">
-                    <thead className="bg-slate-50 sticky top-0 text-left text-slate-600">
+                    <thead className="bg-app-table-header sticky top-0 text-left text-app-muted">
                         <tr>
                             <th className="p-2">Date</th>
                             <th className="p-2">Tx ID</th>
@@ -772,36 +772,36 @@ function CashFlowAuditModal({
                         {rows.map((r) => (
                             <tr
                                 key={`${r.transactionId}-${r.lineLabel ?? ''}-${r.date}`}
-                                className="border-t border-slate-100"
+                                className="border-t border-app-border"
                             >
                                 <td className="p-2 tabular-nums whitespace-nowrap">{formatDate(r.date)}</td>
                                 <td className="p-2 font-mono text-[10px] break-all max-w-[120px]">{r.transactionId}</td>
                                 <td className="p-2">
                                     {r.transactionType}
                                     {r.subtype ? (
-                                        <span className="block text-slate-500">{r.subtype}</span>
+                                        <span className="block text-app-muted">{r.subtype}</span>
                                     ) : null}
                                 </td>
                                 <td className="p-2 capitalize">{r.section}</td>
-                                <td className="p-2 text-slate-700">{r.lineLabel ?? '—'}</td>
+                                <td className="p-2 text-app-text">{r.lineLabel ?? '—'}</td>
                                 <td className="p-2 text-right tabular-nums">
                                     {r.cashIn > 0 ? `${CURRENCY} ${r.cashIn.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                                 </td>
                                 <td className="p-2 text-right tabular-nums">
                                     {r.cashOut > 0 ? `${CURRENCY} ${r.cashOut.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                                 </td>
-                                <td className="p-2 text-right tabular-nums text-slate-600">
+                                <td className="p-2 text-right tabular-nums text-app-muted">
                                     {r.notionalAmount != null
                                         ? `${CURRENCY} ${r.notionalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
                                         : '—'}
                                 </td>
-                                <td className="p-2 text-slate-600 max-w-[140px]">{r.sourceModule}</td>
+                                <td className="p-2 text-app-muted max-w-[140px]">{r.sourceModule}</td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
                 {rows.length === 0 && (
-                    <p className="p-4 text-sm text-slate-500">No classified movements in this period.</p>
+                    <p className="p-4 text-sm text-app-muted">No classified movements in this period.</p>
                 )}
             </div>
             <div className="mt-4 flex justify-end">

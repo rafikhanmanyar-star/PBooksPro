@@ -81,29 +81,29 @@ const ProjectReceivedAssetsPage: React.FC = () => {
                 />
             </div>
 
-            <div className="border border-slate-200 rounded-lg overflow-hidden">
+            <div className="border border-app-border rounded-lg overflow-hidden bg-app-card">
                 <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-slate-200">
-                        <thead className="bg-slate-50">
+                    <table className="min-w-full divide-y divide-app-border">
+                        <thead className="bg-app-table-header">
                             <tr>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Project</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Description</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Type</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 uppercase">Recorded value</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Received date</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Client</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Invoice #</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Status</th>
-                                <th className="px-3 py-2 text-left text-xs font-medium text-slate-600 uppercase">Sale date</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 uppercase">Sale amount</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 uppercase">Gain/Loss</th>
-                                <th className="px-3 py-2 text-right text-xs font-medium text-slate-600 uppercase">Actions</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Project</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Description</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Type</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-app-muted uppercase">Recorded value</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Received date</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Client</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Invoice #</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Status</th>
+                                <th className="px-3 py-2 text-left text-xs font-medium text-app-muted uppercase">Sale date</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-app-muted uppercase">Sale amount</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-app-muted uppercase">Gain/Loss</th>
+                                <th className="px-3 py-2 text-right text-xs font-medium text-app-muted uppercase">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="bg-white divide-y divide-slate-200">
+                        <tbody className="bg-app-card divide-y divide-app-border">
                             {filteredAssets.length === 0 ? (
                                 <tr>
-                                    <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
+                                    <td colSpan={12} className="px-3 py-6 text-center text-app-muted">
                                         No received assets. Use “Asset (plot, car, etc.)” when recording installment payments to add assets here.
                                     </td>
                                 </tr>
@@ -112,19 +112,19 @@ const ProjectReceivedAssetsPage: React.FC = () => {
                                     const sold = !!asset.soldDate;
                                     const gainLoss = sold && asset.saleAmount != null ? asset.saleAmount - asset.recordedValue : null;
                                     return (
-                                        <tr key={asset.id} className="hover:bg-slate-50/50">
-                                            <td className="px-3 py-2 text-sm text-slate-700">{getProjectName(asset.projectId)}</td>
-                                            <td className="px-3 py-2 text-sm text-slate-900">{asset.description}</td>
-                                            <td className="px-3 py-2 text-sm text-slate-700">{asset.assetType}</td>
-                                            <td className="px-3 py-2 text-sm text-right text-slate-700">
+                                        <tr key={asset.id} className="hover:bg-app-table-hover">
+                                            <td className="px-3 py-2 text-sm text-app-text">{getProjectName(asset.projectId)}</td>
+                                            <td className="px-3 py-2 text-sm text-app-text">{asset.description}</td>
+                                            <td className="px-3 py-2 text-sm text-app-text">{asset.assetType}</td>
+                                            <td className="px-3 py-2 text-sm text-right text-app-text">
                                                 {CURRENCY} {asset.recordedValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                             </td>
-                                            <td className="px-3 py-2 text-sm text-slate-700">{formatDate(asset.receivedDate)}</td>
-                                            <td className="px-3 py-2 text-sm text-slate-700">{getContactName(asset.contactId)}</td>
-                                            <td className="px-3 py-2 text-sm text-slate-700">{getInvoiceNumber(asset.invoiceId)}</td>
+                                            <td className="px-3 py-2 text-sm text-app-text">{formatDate(asset.receivedDate)}</td>
+                                            <td className="px-3 py-2 text-sm text-app-text">{getContactName(asset.contactId)}</td>
+                                            <td className="px-3 py-2 text-sm text-app-text">{getInvoiceNumber(asset.invoiceId)}</td>
                                             <td className="px-3 py-2 text-sm">{sold ? <span className="text-emerald-600">Sold</span> : <span className="text-amber-600">Held</span>}</td>
-                                            <td className="px-3 py-2 text-sm text-slate-700">{asset.soldDate ? formatDate(asset.soldDate) : '—'}</td>
-                                            <td className="px-3 py-2 text-sm text-right text-slate-700">
+                                            <td className="px-3 py-2 text-sm text-app-text">{asset.soldDate ? formatDate(asset.soldDate) : '—'}</td>
+                                            <td className="px-3 py-2 text-sm text-right text-app-text">
                                                 {asset.saleAmount != null ? `${CURRENCY} ${asset.saleAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : '—'}
                                             </td>
                                             <td className="px-3 py-2 text-sm text-right">

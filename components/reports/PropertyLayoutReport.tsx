@@ -815,7 +815,7 @@ const PropertyLayoutReport: React.FC = () => {
     }, [deferredLayoutInputs]);
 
 
-    /** Light red (unpaid) → light green (paid) from account receivable vs max receivable on the layout. */
+    /** Paid (green tint) → unpaid (red tint) from receivable vs max receivable; uses theme badge tokens on card base. */
     const getReceivableBackgroundStyle = useCallback((receivable: number, maxReceivable: number): React.CSSProperties => {
         const r = Math.max(0, receivable);
         const max = Math.max(0, maxReceivable);
@@ -825,10 +825,10 @@ const PropertyLayoutReport: React.FC = () => {
         } else {
             paidRatio = Math.min(1, Math.max(0, 1 - r / max));
         }
-        const lightRed = 'rgb(254 242 242)';
-        const lightGreen = 'rgb(220 252 231)';
+        const tint = `color-mix(in srgb, var(--badge-paid-bg) ${paidRatio * 100}%, var(--badge-unpaid-bg) ${(1 - paidRatio) * 100}%)`;
         return {
-            backgroundColor: `color-mix(in srgb, ${lightGreen} ${paidRatio * 100}%, ${lightRed} ${(1 - paidRatio) * 100}%)`,
+            backgroundColor: 'var(--card-bg)',
+            backgroundImage: `linear-gradient(${tint}, ${tint})`,
         };
     }, []);
 
@@ -914,7 +914,7 @@ const PropertyLayoutReport: React.FC = () => {
         return (
             <div
                 key={unit.id}
-                className={`relative rounded-xl bg-white border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem]
+                className={`relative rounded-xl bg-app-card border shadow-sm p-2 flex flex-col justify-between transition-all min-h-[12rem]
                     ${getColorClasses(unit, mode)}
                 `}
             >
@@ -1027,7 +1027,7 @@ const PropertyLayoutReport: React.FC = () => {
                         </div>
                     </div>
                 )}
-                <div className="printable-area" id="printable-area">
+                <div id="printable-area">
                     <ReportHeader />
 
                     {data.data.length === 0 ? (

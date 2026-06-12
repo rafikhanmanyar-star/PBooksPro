@@ -5,15 +5,22 @@
 import { apiClient } from './client';
 
 export const CUSTOM_REPORT_MODULE_PROJECT_SELLING = 'project_selling';
+export const CUSTOM_REPORT_MODULE_PROJECT_CONSTRUCTION = 'project_construction';
 export const CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS = 'rental_agreements';
+export const CUSTOM_REPORT_MODULE_ACCOUNTING_LEDGER = 'accounting_ledger';
 
 export const CUSTOM_REPORT_MODULES = [
   { key: CUSTOM_REPORT_MODULE_PROJECT_SELLING, label: 'Project selling' },
-  { key: CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS, label: 'Rental agreements' },
+  { key: CUSTOM_REPORT_MODULE_PROJECT_CONSTRUCTION, label: 'Project construction' },
+  { key: CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS, label: 'Rental management' },
+  { key: CUSTOM_REPORT_MODULE_ACCOUNTING_LEDGER, label: 'Accounting ledger' },
 ] as const;
 
 export type CustomReportModuleKey =
-  (typeof CUSTOM_REPORT_MODULES)[number]['key'];
+  | typeof CUSTOM_REPORT_MODULE_PROJECT_SELLING
+  | typeof CUSTOM_REPORT_MODULE_PROJECT_CONSTRUCTION
+  | typeof CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS
+  | typeof CUSTOM_REPORT_MODULE_ACCOUNTING_LEDGER;
 
 export type CustomReportFieldMeta = {
   key: string;
@@ -30,7 +37,12 @@ export type CustomReportFieldMeta = {
 
 export type CustomReportMetadataResponse = {
   module: string;
-  modules?: { key: string; label: string }[];
+  modules?: {
+    key: string;
+    label: string;
+    primaryEntity?: string;
+    relatedEntities?: string[];
+  }[];
   fields: CustomReportFieldMeta[];
   groupDimensions: string[];
   filterOperators: string[];

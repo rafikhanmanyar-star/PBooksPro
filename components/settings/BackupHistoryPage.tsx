@@ -21,6 +21,11 @@ import {
 } from '../../services/api/backupSchedulerApi';
 import { backupStorageApi, type OffsiteUpload } from '../../services/api/backupStorageApi';
 import { backupSecurityApi } from '../../services/api/backupSecurityApi';
+import {
+  backupAlertError,
+  backupAlertInfo,
+  backupAlertWarning,
+} from './backupThemeClasses';
 import Button from '../ui/Button';
 import Select from '../ui/Select';
 
@@ -226,7 +231,7 @@ const BackupHistoryPage: React.FC = () => {
   if (!canRead) {
     return (
       <div className="p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-ds-warning">
+        <div className={`max-w-4xl mx-auto ${backupAlertWarning} p-4 text-sm`}>
           You do not have permission to view backup history.
         </div>
       </div>
@@ -239,7 +244,7 @@ const BackupHistoryPage: React.FC = () => {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h3 className="text-lg font-semibold text-app-text flex items-center gap-2">
-              <HardDrive className="w-5 h-5 text-green-600" />
+              <HardDrive className="w-5 h-5 text-ds-success" />
               Backup History
             </h3>
             <p className="text-sm text-app-muted mt-0.5">
@@ -253,7 +258,7 @@ const BackupHistoryPage: React.FC = () => {
           </Button>
         </div>
 
-        <div className="rounded-lg border border-blue-100 bg-blue-50/80 p-3 text-xs text-blue-900 space-y-1">
+        <div className={`${backupAlertInfo} p-3 space-y-1`}>
           <p>
             Scheduler:{' '}
             <strong>{schedulerEnabled ? 'Active' : 'Inactive'}</strong>
@@ -289,9 +294,9 @@ const BackupHistoryPage: React.FC = () => {
                     <span
                       className={
                         job.status === 'running'
-                          ? 'text-blue-600'
+                          ? 'text-primary'
                           : job.status === 'failed'
-                            ? 'text-red-600'
+                            ? 'text-ds-danger'
                             : 'text-app-text'
                       }
                     >
@@ -304,7 +309,7 @@ const BackupHistoryPage: React.FC = () => {
                     type="button"
                     onClick={() => void handleRunNow(job.id)}
                     disabled={runningJobId === job.id || job.status === 'running'}
-                    className="mt-2 flex items-center gap-1 text-xs font-medium text-green-700 hover:text-green-800 disabled:opacity-50"
+                    className="mt-2 flex items-center gap-1 text-xs font-medium text-ds-success hover:text-ds-success/80 disabled:opacity-50"
                   >
                     <Play className="w-3 h-3" />
                     {runningJobId === job.id ? 'Running…' : 'Run now'}
@@ -377,13 +382,13 @@ const BackupHistoryPage: React.FC = () => {
                     <td className="px-3 py-2 text-app-muted">{run.attempt_number}</td>
                     <td className="px-3 py-2">
                       {run.success ? (
-                        <span className="inline-flex items-center gap-1 text-green-700">
+                        <span className="inline-flex items-center gap-1 text-ds-success">
                           <CheckCircle className="w-4 h-4" />
                           Success
                         </span>
                       ) : (
                         <span
-                          className="inline-flex items-center gap-1 text-red-700"
+                          className="inline-flex items-center gap-1 text-ds-danger"
                           title={run.failure_reason ?? undefined}
                         >
                           <XCircle className="w-4 h-4" />
@@ -397,7 +402,7 @@ const BackupHistoryPage: React.FC = () => {
                         if (!upload) return run.success ? '—' : '—';
                         if (upload.status === 'completed') {
                           return (
-                            <span className="inline-flex items-center gap-1 text-green-700">
+                            <span className="inline-flex items-center gap-1 text-ds-success">
                               <Cloud className="w-3.5 h-3.5" />
                               Uploaded
                             </span>
@@ -405,13 +410,13 @@ const BackupHistoryPage: React.FC = () => {
                         }
                         if (upload.status === 'failed') {
                           return (
-                            <span className="text-red-700" title={upload.failure_reason ?? undefined}>
+                            <span className="text-ds-danger" title={upload.failure_reason ?? undefined}>
                               Failed
                             </span>
                           );
                         }
                         return (
-                          <span className="text-blue-600 capitalize">{upload.status}</span>
+                          <span className="text-primary capitalize">{upload.status}</span>
                         );
                       })()}
                     </td>
@@ -422,7 +427,7 @@ const BackupHistoryPage: React.FC = () => {
                             type="button"
                             onClick={() => void handleRetry(run.id)}
                             disabled={retryingRunId === run.id}
-                            className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-800 disabled:opacity-50"
+                            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
                           >
                             <RotateCcw className="w-3 h-3" />
                             {retryingRunId === run.id ? 'Retrying…' : 'Retry'}
@@ -439,7 +444,7 @@ const BackupHistoryPage: React.FC = () => {
                                     : handleCloudUpload(run.id))
                                 }
                                 disabled={cloudActionRunId === run.id}
-                                className="inline-flex items-center gap-1 text-xs font-medium text-sky-600 hover:text-sky-800 disabled:opacity-50"
+                                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:text-primary/80 disabled:opacity-50"
                               >
                                 <CloudUpload className="w-3 h-3" />
                                 {cloudActionRunId === run.id
@@ -471,7 +476,7 @@ const BackupHistoryPage: React.FC = () => {
         </div>
 
         {runs.some((r) => !r.success && r.failure_reason) && (
-          <div className="rounded-lg border border-red-100 bg-red-50/50 p-3 text-xs text-red-800">
+          <div className={`${backupAlertError} p-3 text-xs`}>
             <p className="font-medium mb-1">Recent failures</p>
             <ul className="list-disc pl-4 space-y-1">
               {runs

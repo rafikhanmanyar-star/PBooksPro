@@ -73,44 +73,44 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
     return (
         <div className="h-full flex flex-col">
             <div
-                className="flex-grow overflow-y-auto printable-area print-report-surface p-4 bg-white"
+                className="flex-grow overflow-y-auto p-4 bg-app-bg"
                 id="project-contract-print-area"
             >
                 <ReportHeader />
 
-                <div className="border-b-2 border-slate-800 pb-4 mb-6">
-                    <h2 className="text-2xl font-bold text-slate-800">Contract Agreement</h2>
-                    <p className="text-sm text-slate-500">Ref: {contract.contractNumber}</p>
+                <div className="border-b-2 border-app-border pb-4 mb-6">
+                    <h2 className="text-2xl font-bold text-app-text">Contract Agreement</h2>
+                    <p className="text-sm text-app-muted">Ref: {contract.contractNumber}</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-6 mb-6">
                     <div>
-                        <h4 className="text-xs font-bold text-slate-500 uppercase">Project</h4>
-                        <p className="font-semibold text-lg">{project?.name}</p>
+                        <h4 className="text-xs font-bold text-app-muted uppercase">Project</h4>
+                        <p className="font-semibold text-lg text-app-text">{project?.name}</p>
                     </div>
                     <div className="text-right">
-                        <h4 className="text-xs font-bold text-slate-500 uppercase">Contractor / Vendor</h4>
-                        <p className="font-semibold text-lg">{vendor?.name}</p>
-                        <p className="text-sm text-slate-600">{vendor?.contactNo}</p>
+                        <h4 className="text-xs font-bold text-app-muted uppercase">Contractor / Vendor</h4>
+                        <p className="font-semibold text-lg text-app-text">{vendor?.name}</p>
+                        <p className="text-sm text-app-muted">{vendor?.contactNo}</p>
                     </div>
                 </div>
 
-                <div className="bg-slate-50 p-4 rounded-lg border border-slate-200 mb-6">
-                    <h3 className="font-bold text-lg text-slate-800 mb-2">{contract.name}</h3>
+                <div className="bg-app-toolbar p-4 rounded-lg border border-app-border mb-6">
+                    <h3 className="font-bold text-lg text-app-text mb-2">{contract.name}</h3>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                         <div>
-                            <span className="text-slate-500 block">Total Amount</span>
-                            <span className="font-bold text-lg">{CURRENCY} {totalAmount.toLocaleString()}</span>
+                            <span className="text-app-muted block">Total Amount</span>
+                            <span className="font-bold text-lg text-app-text">{CURRENCY} {totalAmount.toLocaleString()}</span>
                         </div>
                         {contract.area && contract.rate ? (
-                            <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-white p-2 rounded border border-slate-100">
+                            <div className="md:col-span-2 grid grid-cols-2 gap-4 bg-app-card p-2 rounded border border-app-border">
                                 <div>
-                                    <span className="text-slate-400 block text-xs uppercase">Total Area</span>
-                                    <span className="font-medium">{(contract.area ?? 0).toLocaleString()} sqft</span>
+                                    <span className="text-app-muted block text-xs uppercase">Total Area</span>
+                                    <span className="font-medium text-app-text">{(contract.area ?? 0).toLocaleString()} sqft</span>
                                 </div>
                                 <div>
-                                    <span className="text-slate-400 block text-xs uppercase">Rate</span>
-                                    <span className="font-medium">{CURRENCY} {(contract.rate ?? 0).toLocaleString()} / sqft</span>
+                                    <span className="text-app-muted block text-xs uppercase">Rate</span>
+                                    <span className="font-medium text-app-text">{CURRENCY} {(contract.rate ?? 0).toLocaleString()} / sqft</span>
                                 </div>
                             </div>
                         ) : (
@@ -118,31 +118,31 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                         )}
 
                         <div>
-                            <span className="text-slate-500 block">Start Date</span>
-                            <span className="font-medium">{formatDate(contract.startDate)}</span>
+                            <span className="text-app-muted block">Start Date</span>
+                            <span className="font-medium text-app-text">{formatDate(contract.startDate)}</span>
                         </div>
                         <div>
-                            <span className="text-slate-500 block">End Date</span>
-                            <span className="font-medium">{formatDate(contract.endDate)}</span>
+                            <span className="text-app-muted block">End Date</span>
+                            <span className="font-medium text-app-text">{formatDate(contract.endDate)}</span>
                         </div>
                         <div>
-                            <span className="text-slate-500 block">Status</span>
-                            <span className={`font-bold ${contract.status === 'Active' ? 'text-emerald-600' : 'text-slate-600'}`}>{contract.status}</span>
+                            <span className="text-app-muted block">Status</span>
+                            <span className={`font-bold ${contract.status === 'Active' ? 'text-ds-success' : 'text-app-muted'}`}>{contract.status}</span>
                         </div>
                     </div>
                 </div>
 
                 {contract.expenseCategoryItems && contract.expenseCategoryItems.length > 0 && (
                     <div className="mb-6">
-                        <h4 className="font-bold text-slate-700 mb-2 border-b pb-1">Contract Items (Scope of Work)</h4>
-                        <table className="w-full text-sm border-collapse border border-slate-300">
+                        <h4 className="font-bold text-app-text mb-2 border-b border-app-border pb-1">Contract Items (Scope of Work)</h4>
+                        <table className="w-full text-sm border-collapse border border-app-border">
                             <thead>
-                                <tr className="bg-slate-100">
-                                    <th className="border border-slate-300 px-3 py-2 text-left text-slate-700">Category</th>
-                                    <th className="border border-slate-300 px-3 py-2 text-center text-slate-700">Unit</th>
-                                    <th className="border border-slate-300 px-3 py-2 text-right text-slate-700">Quantity</th>
-                                    <th className="border border-slate-300 px-3 py-2 text-right text-slate-700">Rate</th>
-                                    <th className="border border-slate-300 px-3 py-2 text-right text-slate-700">Amount</th>
+                                <tr className="bg-app-table-header">
+                                    <th className="border border-app-border px-3 py-2 text-left text-app-text">Category</th>
+                                    <th className="border border-app-border px-3 py-2 text-center text-app-text">Unit</th>
+                                    <th className="border border-app-border px-3 py-2 text-right text-app-text">Quantity</th>
+                                    <th className="border border-app-border px-3 py-2 text-right text-app-text">Rate</th>
+                                    <th className="border border-app-border px-3 py-2 text-right text-app-text">Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -150,19 +150,19 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                                     const category = state.categories.find(c => c.id === item.categoryId);
                                     return (
                                         <tr key={index}>
-                                            <td className="border border-slate-300 px-3 py-2 text-slate-700">{category?.name || 'Unknown'}</td>
-                                            <td className="border border-slate-300 px-3 py-2 text-center text-slate-700">{item.unit}</td>
-                                            <td className="border border-slate-300 px-3 py-2 text-right text-slate-700 tabular-nums">{item.quantity?.toLocaleString()}</td>
-                                            <td className="border border-slate-300 px-3 py-2 text-right text-slate-700 tabular-nums">{CURRENCY} {item.pricePerUnit?.toLocaleString()}</td>
-                                            <td className="border border-slate-300 px-3 py-2 text-right font-medium text-slate-800 tabular-nums">{CURRENCY} {item.netValue?.toLocaleString()}</td>
+                                            <td className="border border-app-border px-3 py-2 text-app-text">{category?.name || 'Unknown'}</td>
+                                            <td className="border border-app-border px-3 py-2 text-center text-app-text">{item.unit}</td>
+                                            <td className="border border-app-border px-3 py-2 text-right text-app-text tabular-nums">{item.quantity?.toLocaleString()}</td>
+                                            <td className="border border-app-border px-3 py-2 text-right text-app-text tabular-nums">{CURRENCY} {item.pricePerUnit?.toLocaleString()}</td>
+                                            <td className="border border-app-border px-3 py-2 text-right font-medium text-app-text tabular-nums">{CURRENCY} {item.netValue?.toLocaleString()}</td>
                                         </tr>
                                     );
                                 })}
                             </tbody>
                             <tfoot>
-                                <tr className="bg-slate-50 font-bold">
-                                    <td colSpan={4} className="border border-slate-300 px-3 py-2 text-right text-slate-700">Total:</td>
-                                    <td className="border border-slate-300 px-3 py-2 text-right text-slate-900 tabular-nums">{CURRENCY} {contract.totalAmount?.toLocaleString()}</td>
+                                <tr className="bg-app-toolbar font-bold">
+                                    <td colSpan={4} className="border border-app-border px-3 py-2 text-right text-app-text">Total:</td>
+                                    <td className="border border-app-border px-3 py-2 text-right text-app-text tabular-nums">{CURRENCY} {contract.totalAmount?.toLocaleString()}</td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -170,42 +170,42 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                 )}
 
                 <div className="mb-6">
-                    <h4 className="font-bold text-slate-700 mb-2 border-b pb-1">Financial Status</h4>
-                    <div className="flex justify-between items-center mb-2 text-sm">
+                    <h4 className="font-bold text-app-text mb-2 border-b border-app-border pb-1">Financial Status</h4>
+                    <div className="flex justify-between items-center mb-2 text-sm text-app-text">
                         <span>Paid: {CURRENCY} {totalPaid.toLocaleString()}</span>
-                        <span className={balance < 0 ? 'text-red-600 font-bold' : 'text-slate-600'}>
+                        <span className={balance < 0 ? 'text-ds-danger font-bold' : 'text-app-muted'}>
                             Remaining: {CURRENCY} {balance.toLocaleString()}
                         </span>
                     </div>
-                    <div className="w-full bg-slate-200 rounded-full h-3">
+                    <div className="w-full bg-app-border rounded-full h-3">
                         <div
-                            className={`h-3 rounded-full ${balance < 0 ? 'bg-red-500' : 'bg-emerald-500'}`}
+                            className={`h-3 rounded-full ${balance < 0 ? 'bg-ds-danger' : 'bg-ds-success'}`}
                             style={{ width: `${Math.min(progress, 100)}%` }}
                         ></div>
                     </div>
                 </div>
 
                 <div className="mb-6">
-                    <h4 className="font-bold text-slate-700 mb-2 border-b pb-1">Terms & Conditions</h4>
-                    <div className="whitespace-pre-wrap text-sm text-slate-600 leading-relaxed p-3 bg-slate-50 rounded border border-slate-100">
+                    <h4 className="font-bold text-app-text mb-2 border-b border-app-border pb-1">Terms & Conditions</h4>
+                    <div className="whitespace-pre-wrap text-sm text-app-muted leading-relaxed p-3 bg-app-toolbar rounded border border-app-border">
                         {contract.termsAndConditions || "No specific terms defined."}
                     </div>
                 </div>
 
-                <div className="mt-8 pt-12 border-t border-slate-300 flex justify-between text-xs text-slate-500">
+                <div className="mt-8 pt-12 border-t border-app-border flex justify-between text-xs text-app-muted">
                     <div className="text-center w-40">
-                        <div className="border-t border-slate-400 mb-2"></div>
+                        <div className="border-t border-app-border mb-2"></div>
                         Employer Signature
                     </div>
                     <div className="text-center w-40">
-                        <div className="border-t border-slate-400 mb-2"></div>
+                        <div className="border-t border-app-border mb-2"></div>
                         Contractor Signature
                     </div>
                 </div>
                 <ReportFooter />
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t border-slate-100 no-print">
+            <div className="flex justify-between items-center pt-4 border-t border-app-border no-print">
                 <Button variant="secondary" onClick={onEdit}>Edit Contract</Button>
                 <div className="flex gap-2">
                     {vendor?.contactNo && (

@@ -74,16 +74,16 @@ const RentalAgreementContactRepairCard: React.FC = () => {
   };
 
   return (
-    <div className="mt-4 border border-amber-200/80 rounded-lg p-4 bg-amber-50/60 dark:bg-amber-950/20 dark:border-amber-800/50">
-      <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1">
+    <div className="mt-4 border border-ds-danger/30 rounded-lg p-4 bg-[color:var(--badge-unpaid-bg)]/25">
+      <h3 className="text-sm font-semibold text-app-text mb-1">
         Repair: missing tenant on agreement
       </h3>
-      <p className="text-xs text-slate-600 dark:text-slate-400 mb-3 leading-relaxed">
+      <p className="text-xs text-app-muted mb-3 leading-relaxed">
         If a row shows &quot;—&quot; for tenant after an ownership transfer, run this to copy the tenant from the
         previous agreement when the chain is available. New transfers already include the fix in code.
       </p>
       {!useApi && localPatches.length > 0 && (
-        <p className="text-xs text-slate-500 mb-2">{localPatches.length} agreement(s) can be fixed in local data.</p>
+        <p className="text-xs text-app-muted mb-2">{localPatches.length} agreement(s) can be fixed in local data.</p>
       )}
       <Button type="button" variant="secondary" disabled={busy} onClick={run} className="text-sm">
         {busy ? 'Working…' : 'Repair agreements'}

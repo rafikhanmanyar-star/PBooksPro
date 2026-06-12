@@ -276,6 +276,7 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
         passwordHash: '',
         tenantName: tenantRow.rows[0]?.tenant_name ?? demoUser.tenant_id,
         displayTimezone: demoUser.display_timezone ?? null,
+        interfaceMode: demoUser.interface_mode ?? 'auto',
         email: demoUser.email,
         lastTenantId: null,
         organizationStatus: 'ACTIVE',

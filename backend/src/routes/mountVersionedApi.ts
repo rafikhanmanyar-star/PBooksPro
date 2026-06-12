@@ -63,6 +63,10 @@ import { collectionsAnalyticsRouter } from './collectionsAnalyticsRoutes.js';
 import { vendorAnalyticsRouter } from './vendorAnalyticsRoutes.js';
 import { bankingAnalyticsRouter } from './bankingAnalyticsRoutes.js';
 import { customReportsRouter } from './customReportsRoutes.js';
+import { reportDesignerRouter } from './reportDesignerRoutes.js';
+import { customerReportingRouter } from './customerReportingRoutes.js';
+import { rentalReportingRouter } from './rentalReportingRoutes.js';
+import { constructionReportingRouter } from './constructionReportingRoutes.js';
 import { ownerRentalIncomeRouter } from './ownerRentalIncomeRoutes.js';
 import { rentalBillsDashboardRouter } from './rentalBillsDashboardRoutes.js';
 import { rentalReceivableRouter } from './rentalReceivableRoutes.js';
@@ -100,6 +104,7 @@ import { onboardingRouter } from '../modules/onboarding/routes/onboardingRoutes.
 import { systemRouter } from './systemRoutes.js';
 import { appUpdateRouter } from './appUpdateRoutes.js';
 import { dataManagementRouter } from './dataManagementRoutes.js';
+import { mobileRouter } from './mobileRoutes.js';
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
@@ -164,6 +169,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     requirePermissionWhenPathStartsWith('/reports/reconciliation', 'reports.trial_balance.read'),
     financialReconciliationRouter
   );
+  app.use(prefix, authMiddleware, requireActiveSubscription(), mobileRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardMetricsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardSnapshotsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rentalAnalyticsRouter);
@@ -423,6 +429,10 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   );
   app.use(prefix, authMiddleware, requireActiveSubscription(), tasksRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), customReportsRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), reportDesignerRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), customerReportingRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), rentalReportingRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), constructionReportingRouter);
   app.use(
     prefix,
     authMiddleware,

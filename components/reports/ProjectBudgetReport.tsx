@@ -290,7 +290,7 @@ const ProjectBudgetReport: React.FC = () => {
     };
     
     const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
+        <span className="ml-1 text-[10px] text-app-muted">
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
         </span>
     );
@@ -299,7 +299,7 @@ const ProjectBudgetReport: React.FC = () => {
         return (
             <Card>
                 <div className="text-center py-12">
-                    <p className="text-slate-500 mb-4">Please select a project to view the budget report</p>
+                    <p className="text-app-muted mb-4">Please select a project to view the budget report</p>
                     <Select
                         value={selectedProjectId}
                         onChange={(e) => setSelectedProjectId(e.target.value)}
@@ -320,12 +320,12 @@ const ProjectBudgetReport: React.FC = () => {
     return (
         <div className="space-y-2">
             {/* Header with title and controls */}
-            <div className="no-print flex flex-col sm:flex-row justify-between items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+            <div className="no-print flex flex-col sm:flex-row justify-between items-center gap-3 bg-app-card p-3 rounded-lg border border-app-border shadow-sm">
                 <div className="flex-1">
-                    <h1 className="text-xl font-bold text-slate-800">Budget vs Actual Spending Report</h1>
-                    <div className="mt-0.5 text-xs text-slate-600">
-                        <span className="font-medium">{selectedProject?.name}</span>
-                        <span className="text-slate-400 ml-2">• All Time</span>
+                    <h1 className="text-xl font-bold text-app-text">Budget vs Actual Spending Report</h1>
+                    <div className="mt-0.5 text-xs text-app-muted">
+                        <span className="font-medium text-app-text">{selectedProject?.name}</span>
+                        <span className="text-app-muted ml-2">• All Time</span>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -349,12 +349,12 @@ const ProjectBudgetReport: React.FC = () => {
             </div>
             
             {/* Report Content */}
-            <Card id="printable-area" className="printable-area print-report-surface">
+            <Card id="printable-area">
                 <ReportHeader reportTitle="Budget vs Actual Spending Report" />
-                <div className="text-center border-b border-slate-200 pb-2 mb-2 report-title-block">
-                    <div className="text-xs text-slate-600">
-                        <span className="font-medium">{selectedProject?.name}</span>
-                        <span className="text-slate-400 ml-2">• All Time</span>
+                <div className="text-center border-b border-app-border pb-2 mb-2 report-title-block">
+                    <div className="text-xs text-app-muted">
+                        <span className="font-medium text-app-text">{selectedProject?.name}</span>
+                        <span className="text-app-muted ml-2">• All Time</span>
                     </div>
                 </div>
                 
@@ -396,8 +396,8 @@ const ProjectBudgetReport: React.FC = () => {
                 
                 {/* Data Summary */}
                 {projectTransactions.length > 0 && (
-                    <div className="bg-slate-50 px-2 py-0.5 rounded mb-1.5 text-xs">
-                        <p className="text-slate-700">
+                    <div className="bg-app-toolbar px-2 py-0.5 rounded mb-1.5 text-xs border border-app-border">
+                        <p className="text-app-text">
                             <strong>Includes:</strong> {projectTransactions.length} transactions • {allMonths.length} months • {categoryData.length} categor{categoryData.length !== 1 ? 'ies' : 'y'}
                         </p>
                     </div>
@@ -405,7 +405,7 @@ const ProjectBudgetReport: React.FC = () => {
                 
                 {/* Monthly Spending Table */}
                 {categoryData.length > 0 ? (
-                    <div className="relative border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="relative border border-app-border rounded-lg overflow-hidden">
                         <style>{`
                             .budget-report-scroll::-webkit-scrollbar {
                                 height: 14px;
@@ -436,17 +436,17 @@ const ProjectBudgetReport: React.FC = () => {
                         >
                             <table className="text-sm" style={{ width: 'max-content', minWidth: '100%' }}>
                                 <thead className="sticky top-0 z-20">
-                                    <tr className="bg-slate-50 border-b border-slate-200">
-                                        <th onClick={() => handleSort('categoryName')} className="text-left py-1.5 px-2 text-xs font-bold text-slate-700 sticky left-0 bg-slate-50 z-30 border-r border-slate-200 shadow-sm min-w-[150px] cursor-pointer hover:bg-slate-100 select-none">Category <SortIcon column="categoryName"/></th>
-                                        <th onClick={() => handleSort('budgeted')} className="text-right py-1.5 px-2 text-xs font-bold text-slate-700 bg-slate-50 min-w-[90px] cursor-pointer hover:bg-slate-100 select-none">Budget <SortIcon column="budgeted"/></th>
-                                        <th onClick={() => handleSort('totalSpent')} className="text-right py-1.5 px-2 text-xs font-bold text-slate-700 bg-slate-50 min-w-[90px] cursor-pointer hover:bg-slate-100 select-none">Spent <SortIcon column="totalSpent"/></th>
-                                        <th onClick={() => handleSort('variance')} className="text-right py-1.5 px-2 text-xs font-bold text-slate-700 bg-slate-50 min-w-[90px] cursor-pointer hover:bg-slate-100 select-none">Remaining <SortIcon column="variance"/></th>
-                                        <th onClick={() => handleSort('percentUsed')} className="text-right py-1.5 px-2 text-xs font-bold text-slate-700 bg-slate-50 min-w-[70px] cursor-pointer hover:bg-slate-100 select-none">% Used <SortIcon column="percentUsed"/></th>
+                                    <tr className="bg-app-table-header border-b border-app-border">
+                                        <th onClick={() => handleSort('categoryName')} className="text-left py-1.5 px-2 text-xs font-bold text-app-text sticky left-0 bg-app-table-header z-30 border-r border-app-border shadow-sm min-w-[150px] cursor-pointer hover:bg-app-table-hover select-none">Category <SortIcon column="categoryName"/></th>
+                                        <th onClick={() => handleSort('budgeted')} className="text-right py-1.5 px-2 text-xs font-bold text-app-text bg-app-table-header min-w-[90px] cursor-pointer hover:bg-app-table-hover select-none">Budget <SortIcon column="budgeted"/></th>
+                                        <th onClick={() => handleSort('totalSpent')} className="text-right py-1.5 px-2 text-xs font-bold text-app-text bg-app-table-header min-w-[90px] cursor-pointer hover:bg-app-table-hover select-none">Spent <SortIcon column="totalSpent"/></th>
+                                        <th onClick={() => handleSort('variance')} className="text-right py-1.5 px-2 text-xs font-bold text-app-text bg-app-table-header min-w-[90px] cursor-pointer hover:bg-app-table-hover select-none">Remaining <SortIcon column="variance"/></th>
+                                        <th onClick={() => handleSort('percentUsed')} className="text-right py-1.5 px-2 text-xs font-bold text-app-text bg-app-table-header min-w-[70px] cursor-pointer hover:bg-app-table-hover select-none">% Used <SortIcon column="percentUsed"/></th>
                                         {allMonths.map(month => (
-                                            <th key={month} className="text-right py-1.5 px-2 text-xs font-bold text-slate-700 whitespace-nowrap bg-slate-50 min-w-[80px]">
+                                            <th key={month} className="text-right py-1.5 px-2 text-xs font-bold text-app-text whitespace-nowrap bg-app-table-header min-w-[80px]">
                                                 {new Date(month + '-01').toLocaleDateString('en-US', { month: 'short', year: '2-digit' })}
                                                 <br />
-                                                <span className="text-[10px] font-normal text-slate-500">Amt (%)</span>
+                                                <span className="text-[10px] font-normal text-app-muted">Amt (%)</span>
                                             </th>
                                         ))}
                                     </tr>
@@ -454,11 +454,11 @@ const ProjectBudgetReport: React.FC = () => {
                                 <tbody>
                                 {categoryData.map((item, index) => {
                                     return (
-                                        <tr key={item.categoryId} className={`border-b border-slate-100 hover:bg-slate-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-100'}`}>
-                                            <td className="py-1.5 px-2 sticky left-0 z-10 border-r border-slate-200 shadow-sm bg-inherit min-w-[150px]">
-                                                <p className="text-xs font-semibold text-slate-800">{item.categoryName}</p>
+                                        <tr key={item.categoryId} className={`border-b border-app-border hover:bg-app-table-hover ${index % 2 === 0 ? 'bg-app-card' : 'bg-app-toolbar/50'}`}>
+                                            <td className="py-1.5 px-2 sticky left-0 z-10 border-r border-app-border shadow-sm bg-inherit min-w-[150px]">
+                                                <p className="text-xs font-semibold text-app-text">{item.categoryName}</p>
                                                 {item.budgeted > 0 && (
-                                                    <div className="mt-0.5 w-full bg-slate-200 rounded-full h-1 max-w-xs">
+                                                    <div className="mt-0.5 w-full bg-app-border rounded-full h-1 max-w-xs">
                                                         <div
                                                             className={`h-1 rounded-full transition-all ${
                                                                 item.status === 'over' ? 'bg-red-500' : 
@@ -470,16 +470,16 @@ const ProjectBudgetReport: React.FC = () => {
                                                     </div>
                                                 )}
                                             </td>
-                                            <td className="text-right py-1.5 px-2 text-xs font-medium text-slate-700 min-w-[90px]">
+                                            <td className="text-right py-1.5 px-2 text-xs font-medium text-app-text min-w-[90px]">
                                                 {CURRENCY} {item.budgeted.toLocaleString()}
                                             </td>
-                                            <td className="text-right py-1.5 px-2 text-xs font-medium text-slate-700 min-w-[90px]">
+                                            <td className="text-right py-1.5 px-2 text-xs font-medium text-app-text min-w-[90px]">
                                                 {CURRENCY} {item.totalSpent.toLocaleString()}
                                             </td>
-                                            <td className={`text-right py-1.5 px-2 text-xs font-bold min-w-[90px] ${item.variance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                            <td className={`text-right py-1.5 px-2 text-xs font-bold min-w-[90px] ${item.variance >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>
                                                 {CURRENCY} {Math.abs(item.variance).toLocaleString()}
                                             </td>
-                                            <td className={`text-right py-1.5 px-2 text-xs font-bold min-w-[70px] ${item.totalSpent > item.budgeted ? 'text-red-600' : 'text-slate-700'}`}>
+                                            <td className={`text-right py-1.5 px-2 text-xs font-bold min-w-[70px] ${item.totalSpent > item.budgeted ? 'text-ds-danger' : 'text-app-text'}`}>
                                                 {item.budgeted > 0 ? ((item.totalSpent / item.budgeted) * 100).toFixed(1) : '0'}%
                                             </td>
                                             {allMonths.map(month => {
@@ -490,14 +490,14 @@ const ProjectBudgetReport: React.FC = () => {
                                                     <td key={month} className="text-right py-1.5 px-2 whitespace-nowrap min-w-[80px]">
                                                         {monthSpent > 0 ? (
                                                             <>
-                                                                <span className="text-xs font-medium text-slate-700">{CURRENCY} {monthSpent.toLocaleString()}</span>
+                                                                <span className="text-xs font-medium text-app-text">{CURRENCY} {monthSpent.toLocaleString()}</span>
                                                                 <br />
-                                                                <span className={`text-[10px] font-semibold ${percentOfBudget > 20 ? 'text-rose-600' : 'text-slate-500'}`}>
+                                                                <span className={`text-[10px] font-semibold ${percentOfBudget > 20 ? 'text-ds-danger' : 'text-app-muted'}`}>
                                                                     ({percentOfBudget.toFixed(1)}%)
                                                                 </span>
                                                             </>
                                                         ) : (
-                                                            <span className="text-xs text-slate-400">-</span>
+                                                            <span className="text-xs text-app-muted">-</span>
                                                         )}
                                                     </td>
                                                 );
@@ -507,18 +507,18 @@ const ProjectBudgetReport: React.FC = () => {
                                 })}
                                 
                                 {/* Totals Row */}
-                                <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold">
-                                    <td className="py-1.5 px-2 text-xs text-slate-900 sticky left-0 bg-slate-100 z-10 border-r border-slate-200 shadow-sm min-w-[150px]">TOTAL</td>
-                                    <td className="text-right py-1.5 px-2 text-xs text-slate-900 min-w-[90px]">
+                                <tr className="bg-app-table-header border-t-2 border-app-border font-bold">
+                                    <td className="py-1.5 px-2 text-xs text-app-text sticky left-0 bg-app-table-header z-10 border-r border-app-border shadow-sm min-w-[150px]">TOTAL</td>
+                                    <td className="text-right py-1.5 px-2 text-xs text-app-text min-w-[90px]">
                                         {CURRENCY} {totals.totalBudgeted.toLocaleString()}
                                     </td>
-                                    <td className="text-right py-1.5 px-2 text-xs text-slate-900 min-w-[90px]">
+                                    <td className="text-right py-1.5 px-2 text-xs text-app-text min-w-[90px]">
                                         {CURRENCY} {totals.totalSpent.toLocaleString()}
                                     </td>
-                                    <td className={`text-right py-1.5 px-2 text-xs min-w-[90px] ${totals.totalVariance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    <td className={`text-right py-1.5 px-2 text-xs min-w-[90px] ${totals.totalVariance >= 0 ? 'text-ds-success' : 'text-ds-danger'}`}>
                                         {CURRENCY} {Math.abs(totals.totalVariance).toLocaleString()}
                                     </td>
-                                    <td className={`text-right py-1.5 px-2 text-xs min-w-[70px] ${totals.totalSpent > totals.totalBudgeted ? 'text-red-600' : 'text-slate-900'}`}>
+                                    <td className={`text-right py-1.5 px-2 text-xs min-w-[70px] ${totals.totalSpent > totals.totalBudgeted ? 'text-ds-danger' : 'text-app-text'}`}>
                                         {totals.totalBudgeted > 0 ? ((totals.totalSpent / totals.totalBudgeted) * 100).toFixed(1) : '0'}%
                                     </td>
                                     {allMonths.map(month => {
@@ -530,14 +530,14 @@ const ProjectBudgetReport: React.FC = () => {
                                             <td key={month} className="text-right py-1.5 px-2 whitespace-nowrap min-w-[80px]">
                                                 {monthTotal > 0 ? (
                                                     <>
-                                                        <span className="text-xs text-slate-900">{CURRENCY} {monthTotal.toLocaleString()}</span>
+                                                        <span className="text-xs text-app-text">{CURRENCY} {monthTotal.toLocaleString()}</span>
                                                         <br />
-                                                        <span className="text-[10px] font-semibold text-slate-700">
+                                                        <span className="text-[10px] font-semibold text-app-muted">
                                                             ({percentOfBudget.toFixed(1)}%)
                                                         </span>
                                                     </>
                                                 ) : (
-                                                    <span className="text-xs text-slate-400">-</span>
+                                                    <span className="text-xs text-app-muted">-</span>
                                                 )}
                                             </td>
                                         );
@@ -549,8 +549,8 @@ const ProjectBudgetReport: React.FC = () => {
                     </div>
                 ) : (
                     <div className="text-center py-8">
-                        <p className="text-slate-500">No budget data available for this project.</p>
-                        <p className="text-sm text-slate-400 mt-2">Set budgets in the Configuration → Budget Management section.</p>
+                        <p className="text-app-muted">No budget data available for this project.</p>
+                        <p className="text-sm text-app-muted mt-2">Set budgets in the Configuration → Budget Management section.</p>
                     </div>
                 )}
                 <ReportFooter />

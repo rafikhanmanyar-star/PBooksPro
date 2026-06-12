@@ -136,6 +136,7 @@ const initApp = async () => {
       { OnboardingProvider },
       { ProductTourProvider },
       { SystemProvider },
+      { ExecutiveModeProvider },
     ] = await Promise.all([
       import('./App'),
       import('./context/ThemeContext'),
@@ -158,6 +159,7 @@ const initApp = async () => {
       import('./context/OnboardingContext'),
       import('./context/ProductTourContext'),
       import('./context/SystemContext'),
+      import('./context/ExecutiveModeContext'),
     ]);
 
     const { getQueryClient } = await import('./config/queryClient');
@@ -177,6 +179,7 @@ const initApp = async () => {
           <ViewportProvider>
           <CompanyGate>
           <AuthProvider>
+            <ExecutiveModeProvider>
             <SystemProvider>
             <OnboardingProvider>
             <AppProvider>
@@ -208,6 +211,7 @@ const initApp = async () => {
             </AppProvider>
             </OnboardingProvider>
             </SystemProvider>
+            </ExecutiveModeProvider>
           </AuthProvider>
           </CompanyGate>
           </ViewportProvider>

@@ -2,9 +2,12 @@
 import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition, lazy } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 import { Page } from '../../types';
 import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import useLocalStorage from '../../hooks/useLocalStorage';
+/** Static import: nested lazy + file:// in Electron breaks dynamic chunk fetch (see ProjectManagementPage). */
+import { RentalCustomReportsPage } from '../../modules/report-designer/ReportDesignerPage';
 
 /** Lazy-load each rental sub-page so opening the module does not parse one giant bundle on the main thread. */
 const RentalSettingsPage = lazy(() => import('./RentalSettingsPage'));
@@ -50,7 +53,7 @@ type RentalView =
     | 'Agreement Expiry' | 'Building Analysis' | 'BM Analysis' | 'Invoice & Payment Analysis'
     | 'Owner Rental Income' | 'Owner Rental Income Summary'
     | 'Service Charges Deduction' | 'Tenant Ledger' | 'Vendor Ledger'
-    | 'Security Deposit' | 'Broker Fees' | 'Rental Receivable';
+    | 'Security Deposit' | 'Broker Fees' | 'Rental Receivable' | 'Custom Reports';
 
 const ANALYSIS_REPORTS: RentalView[] = [
     'Agreement Expiry',
@@ -70,10 +73,11 @@ const LEDGER_REPORTS: RentalView[] = [
     'Owner Rental Income Summary',
     'Service Charges Deduction',
     'Tenant Ledger',
+    'Custom Reports',
+    'Rental Receivable',
     'Vendor Ledger',
     'Security Deposit',
     'Broker Fees',
-    'Rental Receivable',
 ];
 
 /** Ledger reports that keep their React state when switching to other rental views or app pages (Rental tab stays mounted). */
@@ -126,6 +130,14 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
     /** Legacy nav label “Owner Security Deposit” renamed to “Security Deposit”. */
     useEffect(() => {
         if ((activeView as string) === 'Owner Security Deposit') setActiveView('Security Deposit');
+    }, [activeView, setActiveView]);
+
+    /** Legacy saved views → Custom Reports. */
+    useEffect(() => {
+        const legacy = activeView as string;
+        if (legacy === 'Tenant Reports' || legacy === 'Customer Reports') {
+            setActiveView('Custom Reports');
+        }
     }, [activeView, setActiveView]);
 
     const normalizedView: RentalView =
@@ -309,10 +321,12 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 return wrap(<ServiceChargesDeductionReport />);
             case 'Tenant Ledger':
                 return wrap(<TenantLedgerReport />);
-            case 'Vendor Ledger':
-                return wrap(<VendorLedgerReport context="Rental" />);
+            case 'Custom Reports':
+                return wrap(<RentalCustomReportsPage />);
             case 'Rental Receivable':
                 return wrap(<RentalReceivableReport />);
+            case 'Vendor Ledger':
+                return wrap(<VendorLedgerReport context="Rental" />);
             default:
                 return null;
         }
@@ -359,7 +373,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 className={`border-b border-slate-200 dark:border-slate-700 shrink-0 flex items-center gap-1 ${subNavCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
             >
                 {!subNavCollapsed && (
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Rental module</p>
+                    <NavSectionLabel variant="header">Rental module</NavSectionLabel>
                 )}
                 <SubNavModeToggle collapsed={subNavCollapsed} onToggle={toggleSubNav} title={subNavToggleTitle} compact />
             </div>
@@ -378,7 +392,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
 
                 <div className="pt-3 mt-2 border-t border-app-border space-y-0.5">
                     {!subNavCollapsed && (
-                        <p className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-app-muted">Property views</p>
+                        <NavSectionLabel variant="section">Property views</NavSectionLabel>
                     )}
                     <NavItem view="Visual Layout" label="Visual layout" />
                     <NavItem view="Tabular Layout" label="Tabular layout" />
@@ -409,7 +423,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                         <div className="mt-1 space-y-2 pl-0">
                             <div>
                                 {!subNavCollapsed && (
-                                    <p className="px-3 py-1 text-[10px] font-semibold text-app-muted uppercase tracking-wide">Analysis</p>
+                                    <NavSectionLabel variant="section" className="py-1">Analysis</NavSectionLabel>
                                 )}
                                 <div className="space-y-0.5">
                                     {ANALYSIS_REPORTS.map((name) => (
@@ -419,7 +433,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                             </div>
                             <div>
                                 {!subNavCollapsed && (
-                                    <p className="px-3 py-1 text-[10px] font-semibold text-app-muted uppercase tracking-wide">Ledgers</p>
+                                    <NavSectionLabel variant="section" className="py-1">Ledgers</NavSectionLabel>
                                 )}
                                 <div className="space-y-0.5">
                                     {LEDGER_REPORTS.map((name) => (
@@ -439,7 +453,11 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         { value: 'Visual Layout', label: 'Visual layout', group: 'Property views' },
         { value: 'Tabular Layout', label: 'Tabular layout', group: 'Property views' },
         ...ANALYSIS_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Analysis' })),
-        ...LEDGER_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Ledgers' })),
+        ...LEDGER_REPORTS.map((v) => ({
+            value: v,
+            label: v === 'Custom Reports' ? 'Custom reports' : v,
+            group: 'Reports — Ledgers',
+        })),
     ];
 
     return (
@@ -454,7 +472,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
 
             {/* Mobile: compact picker (second-level nav) */}
             <div className="md:hidden shrink-0 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 px-3 py-2">
-                    <label htmlFor="rental-module-view" className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Rental</label>
+                    <NavSectionLabel as="label" variant="form" htmlFor="rental-module-view">Rental</NavSectionLabel>
                     <select
                         id="rental-module-view"
                         value={normalizedView}

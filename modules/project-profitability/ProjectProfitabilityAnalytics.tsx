@@ -227,7 +227,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                 </div>
             )}
 
-            <div id="project-profitability-print" className="printable-area print-report-surface flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
+            <div id="project-profitability-print" className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
                 <div className="report-print-only">
                     <ReportHeader reportTitle="Project Profitability Analytics" />
                     <p className="text-center text-sm text-slate-600 mt-2">

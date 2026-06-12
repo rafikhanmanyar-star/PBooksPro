@@ -44,6 +44,7 @@ async function loadUserTenant(
   role: string;
   tenantId: string;
   displayTimezone: string | null;
+  interfaceMode: string;
   tenantName: string;
 } | null> {
   const pool = getPool();
@@ -54,9 +55,10 @@ async function loadUserTenant(
     role: string;
     tenant_id: string;
     display_timezone: string | null;
+    interface_mode: string;
     tenant_name: string;
   }>(
-    `SELECT u.id, u.username, u.name, u.role, u.tenant_id, u.display_timezone, t.name AS tenant_name
+    `SELECT u.id, u.username, u.name, u.role, u.tenant_id, u.display_timezone, u.interface_mode, t.name AS tenant_name
      FROM users u
      JOIN tenants t ON t.id = u.tenant_id
      WHERE u.id = $1 AND u.tenant_id = $2 AND u.is_active = TRUE`,
@@ -71,6 +73,7 @@ async function loadUserTenant(
     role: row.role,
     tenantId: row.tenant_id,
     displayTimezone: row.display_timezone ?? null,
+    interfaceMode: row.interface_mode ?? 'auto',
     tenantName: row.tenant_name,
   };
 }
@@ -90,6 +93,7 @@ function formatAuthPayload(
       role: user.role,
       tenantId: user.tenantId,
       displayTimezone: user.displayTimezone,
+      interfaceMode: user.interfaceMode,
     },
     tenant: {
       id: user.tenantId,

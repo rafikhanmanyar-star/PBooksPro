@@ -338,7 +338,7 @@ const ProjectSummaryReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
                 
-                <div className="flex-grow overflow-y-auto printable-area min-h-0 bg-background" id="printable-area">
+                <div className="flex-grow overflow-y-auto min-h-0 bg-background" id="printable-area">
                     <Card className="min-h-full flex flex-col p-4 md:p-6">
                          <ReportHeader />
                          <div className="text-center mb-6">

@@ -10,6 +10,7 @@ import {
   type RestorePolicy,
 } from '../../services/api/backupSecurityApi';
 import Button from '../ui/Button';
+import { backupAlertSuccess, backupAlertWarning } from './backupThemeClasses';
 
 const BackupSecurityPage: React.FC = () => {
   const { has } = usePermissions();
@@ -155,9 +156,7 @@ const BackupSecurityPage: React.FC = () => {
       {restorePolicy && (
         <div
           className={`p-4 rounded-xl border ${
-            restorePolicy.canRestore
-              ? 'border-emerald-200 bg-emerald-50/50'
-              : 'border-amber-200 bg-amber-50/50'
+            restorePolicy.canRestore ? backupAlertSuccess : backupAlertWarning
           }`}
         >
           <div className="flex items-center gap-2 font-medium text-app-text">

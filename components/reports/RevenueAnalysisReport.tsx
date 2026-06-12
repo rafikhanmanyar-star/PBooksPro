@@ -182,7 +182,7 @@ const RevenueAnalysisReport: React.FC = () => {
                     onRangeChange={handleRangeChange}
                 />
             </div>
-            <div className="flex-grow overflow-y-auto printable-area min-h-0 bg-background" id="printable-area">
+            <div className="flex-grow overflow-y-auto min-h-0 bg-background" id="printable-area">
                 <Card className="min-h-full flex flex-col p-4 md:p-6">
                     <ReportHeader />
                     <h3 className="text-2xl font-bold text-center mb-2 text-app-text">Revenue Analysis Report</h3>

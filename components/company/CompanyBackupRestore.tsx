@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { storageService } from '../payroll/services/storageService';
 import { persistPayrollToDbInOrder } from '../payroll/services/payrollDb';
+import { backupMessageAlertClass } from '../settings/backupThemeClasses';
 
 /**
  * Flush all app state to SQLite before backup so no data is lost.
@@ -153,11 +154,11 @@ const CompanyBackupRestore: React.FC = () => {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-            <Database className="w-5 h-5 text-green-600" />
+          <h3 className="text-base font-semibold text-app-text flex items-center gap-2">
+            <Database className="w-5 h-5 text-ds-success" />
             Company Backup
           </h3>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <p className="text-sm text-app-muted mt-0.5">
             {activeCompany.company_name} &middot; {activeCompany.slug}.db
           </p>
         </div>
@@ -165,7 +166,7 @@ const CompanyBackupRestore: React.FC = () => {
           <button
             onClick={loadBackups}
             disabled={loading}
-            className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+            className="p-2 text-app-muted hover:text-app-text transition-colors"
             title="Refresh backup list"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
@@ -175,25 +176,15 @@ const CompanyBackupRestore: React.FC = () => {
 
       {/* Message */}
       {message && (
-        <div className={`p-3 rounded-lg flex items-start gap-2 ${
-          message.type === 'success' ? 'bg-green-50 border border-green-200'
-            : message.type === 'warning' ? 'bg-amber-50 border border-amber-200'
-            : 'bg-red-50 border border-red-200'
-        }`}>
+        <div className={backupMessageAlertClass(message.type)}>
           {message.type === 'success' ? (
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0" />
+            <CheckCircle className="w-5 h-5 text-ds-success flex-shrink-0" />
           ) : message.type === 'warning' ? (
-            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            <AlertTriangle className="w-5 h-5 text-ds-warning flex-shrink-0" />
           ) : (
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <AlertCircle className="w-5 h-5 text-ds-danger flex-shrink-0" />
           )}
-          <p className={`text-sm ${
-            message.type === 'success' ? 'text-green-700'
-              : message.type === 'warning' ? 'text-amber-700'
-              : 'text-red-700'
-          }`}>
-            {message.text}
-          </p>
+          <p className="text-sm text-app-text">{message.text}</p>
         </div>
       )}
 
@@ -202,7 +193,7 @@ const CompanyBackupRestore: React.FC = () => {
         <button
           onClick={handleBackup}
           disabled={isBusy}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 bg-ds-success text-white rounded-lg font-medium hover:bg-ds-success/90 transition-colors disabled:opacity-50"
           title="Create a full snapshot of all company data (database and payroll) and save it to the backups folder"
         >
           {backingUp ? (
@@ -220,7 +211,7 @@ const CompanyBackupRestore: React.FC = () => {
         <button
           onClick={handleImportBackup}
           disabled={isBusy}
-          className="flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
+          className="flex items-center gap-2 px-4 py-2 border border-app-border text-app-text rounded-lg font-medium hover:bg-app-table-hover transition-colors disabled:opacity-50"
           title="Browse for a backup file (.db) from another PC or USB drive to restore"
         >
           <FileUp className="w-4 h-4" />
@@ -229,26 +220,26 @@ const CompanyBackupRestore: React.FC = () => {
       </div>
 
       {/* Hint */}
-      <p className="text-xs text-gray-400">
+      <p className="text-xs text-app-muted">
         <strong>Backup Now</strong> saves a full copy of all company data to the backups folder. Use <strong>Import Backup File</strong> on any PC running the same app version to restore from a backup file.
       </p>
 
       {/* Backup list */}
       {backups.length > 0 && (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+        <div className="border border-app-border rounded-lg overflow-hidden">
+          <div className="px-3 py-2 bg-app-toolbar border-b border-app-border">
+            <p className="text-xs font-medium text-app-muted uppercase tracking-wide">
               Available Backups ({backups.length})
             </p>
           </div>
-          <div className="divide-y divide-gray-100 max-h-60 overflow-y-auto">
+          <div className="divide-y divide-app-border max-h-60 overflow-y-auto">
             {backups.map((backup) => (
-              <div key={backup.name} className="flex items-center justify-between px-3 py-2.5 hover:bg-gray-50">
+              <div key={backup.name} className="flex items-center justify-between px-3 py-2.5 hover:bg-app-table-hover">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <HardDrive className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                  <HardDrive className="w-4 h-4 text-app-muted flex-shrink-0" />
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{backup.name}</p>
-                    <p className="text-xs text-gray-400 flex items-center gap-2">
+                    <p className="text-sm font-medium text-app-text truncate">{backup.name}</p>
+                    <p className="text-xs text-app-muted flex items-center gap-2">
                       <span className="flex items-center gap-1">
                         <Clock className="w-3 h-3" />
                         {formatDate(backup.createdAt)}
@@ -260,7 +251,7 @@ const CompanyBackupRestore: React.FC = () => {
                 <button
                   onClick={() => handleRestore(backup.path)}
                   disabled={restoring}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50"
+                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/10 rounded transition-colors disabled:opacity-50"
                 >
                   <Upload className="w-3 h-3" />
                   Restore
@@ -272,7 +263,7 @@ const CompanyBackupRestore: React.FC = () => {
       )}
 
       {backups.length === 0 && !loading && (
-        <p className="text-sm text-gray-400 text-center py-4">No backups found for this company.</p>
+        <p className="text-sm text-app-muted text-center py-4">No backups found for this company.</p>
       )}
     </div>
   );
