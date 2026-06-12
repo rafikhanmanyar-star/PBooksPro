@@ -15,6 +15,9 @@ import {
 import DatePicker from '../ui/DatePicker';
 import { exportJsonToExcel } from '../../services/exportService';
 import { useNotification } from '../../context/NotificationContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 
 interface TransactionLogViewerProps {
     isOpen: boolean;
@@ -28,6 +31,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
     const { showConfirm, showToast } = useNotification();
     const currentUser = useCurrentUser();
     const transactionLog = useTransactionLog();
+    const printReport = usePrintReport();
     
     const [dateRange, setDateRange] = useState<DateRangeType>('today');
     const [startDate, setStartDate] = useState(todayLocalYyyyMmDd());
@@ -128,22 +132,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
     };
 
     const handlePrint = () => {
-        // Simple print logic for the current view
-        const printContent = document.getElementById('log-table-container');
-        if (printContent) {
-            const win = window.open('', '', 'height=700,width=900');
-            if (win) {
-                win.document.write('<html><head><title>Transaction Log</title>');
-                win.document.write('<link href="https://cdn.tailwindcss.com" rel="stylesheet">'); // Include tailwind for basic styling match
-                win.document.write('<style>@page { size: A4; margin: 12.7mm; }</style>');
-                win.document.write('</head><body class="p-8">');
-                win.document.write(`<h1 class="text-2xl font-bold mb-4">Transaction Log (${formatDate(startDate)} - ${formatDate(endDate)})</h1>`);
-                win.document.write(printContent.innerHTML);
-                win.document.write('</body></html>');
-                win.document.close();
-                win.print();
-            }
-        }
+        printReport({ elementId: 'transaction-log-print-area' });
     };
 
     const SortIcon = ({ colKey }: { colKey: keyof TransactionLogEntry }) => (
@@ -201,8 +190,19 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                     </div>
                 </div>
 
-                {/* Grid */}
-                <div className="flex-grow overflow-auto border rounded-lg shadow-inner bg-app-card" id="log-table-container">
+                <div
+                    id="transaction-log-print-area"
+                    className="printable-area print-report-surface flex-grow overflow-auto border rounded-lg shadow-inner bg-app-card flex flex-col min-h-0"
+                    data-print-scroll-container
+                >
+                    <div className="p-3 flex-shrink-0">
+                        <ReportHeader reportTitle="Transaction Log" />
+                        <p className="text-center text-sm text-slate-600 report-title-block">
+                            {formatDate(startDate)} – {formatDate(endDate)}
+                            {searchQuery ? ` · Filter: "${searchQuery}"` : ''}
+                        </p>
+                    </div>
+                    <div className="flex-grow overflow-auto">
                     <table className="min-w-full divide-y divide-app-border text-sm">
                         <thead className="bg-app-bg sticky top-0 shadow-ds-card">
                             <tr>
@@ -211,7 +211,7 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                                 <th onClick={() => handleSort('action')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">Action <SortIcon colKey="action"/></th>
                                 <th onClick={() => handleSort('entityType')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none whitespace-nowrap">Entity <SortIcon colKey="entityType"/></th>
                                 <th onClick={() => handleSort('description')} className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-surface-2 select-none">Description <SortIcon colKey="description"/></th>
-                                <th className="px-4 py-3 text-right font-semibold text-app-muted">Restore</th>
+                                <th className="px-4 py-3 text-right font-semibold text-app-muted no-print">Restore</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-app-border">
@@ -235,8 +235,8 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                                         </span>
                                     </td>
                                     <td className="px-4 py-2 whitespace-nowrap text-app-text font-medium">{log.entityType}</td>
-                                    <td className="px-4 py-2 text-app-muted max-w-xs truncate" title={log.description}>{log.description}</td>
-                                    <td className="px-4 py-2 text-right">
+                                    <td className="px-4 py-2 text-app-muted whitespace-normal">{log.description}</td>
+                                    <td className="px-4 py-2 text-right no-print">
                                         {log.action === 'DELETE' && log.entityType === 'Transaction' && (
                                             <button 
                                                 onClick={() => handleRestore(log)} 
@@ -254,6 +254,8 @@ const TransactionLogViewer: React.FC<TransactionLogViewerProps> = ({ isOpen, onC
                             )}
                         </tbody>
                     </table>
+                    </div>
+                    <ReportFooter generatedBy={currentUser?.name} />
                 </div>
                 
                 <div className="flex justify-end pt-2">

@@ -326,6 +326,28 @@ const PayrollReport: React.FC = () => {
             </div>
           </div>
 
+          {deptData.length > 0 && (
+            <div className="report-print-only bg-white p-4 print-card mb-4">
+              <h3 className="text-xs font-bold uppercase tracking-widest text-slate-600 mb-3">Departmental Cost Distribution</h3>
+              <table className="min-w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-300">
+                    <th className="text-left py-2 pr-4 font-semibold text-slate-700">Department</th>
+                    <th className="text-right py-2 font-semibold text-slate-700">Total Basic (PKR)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deptData.map((d) => (
+                    <tr key={d.name} className="border-b border-slate-100">
+                      <td className="py-2 pr-4 text-slate-800">{d.name}</td>
+                      <td className="py-2 text-right tabular-nums text-slate-800">{formatCurrency(d.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {/* Grade distribution table */}
           <div className="bg-app-card p-4 sm:p-8 rounded-2xl sm:rounded-3xl border border-app-border shadow-ds-card print-card">
             <h3 className="text-xs sm:text-sm font-black text-app-muted uppercase tracking-widest mb-4 sm:mb-6">Cost by Grade</h3>

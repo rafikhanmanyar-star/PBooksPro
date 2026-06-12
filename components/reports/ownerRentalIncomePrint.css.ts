@@ -8,7 +8,7 @@ const PRINT_CTX =
 export const OWNER_RENTAL_INCOME_PRINT_CSS = `
   @page owner-rental-income {
     size: A4 landscape;
-    margin: 8mm;
+    margin: 12.7mm;
   }
 
   @media print {

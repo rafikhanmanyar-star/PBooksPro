@@ -16,7 +16,20 @@ export type TourPrepareAction =
   | 'openKpiPanel'
   | 'openKpiReports'
   | 'openAccountingTrialBalance'
-  | 'openAccountingOverviewReport';
+  | 'openAccountingOverviewReport'
+  | 'openAccountingProfitLoss'
+  | 'openSettingsContacts'
+  | 'openSettingsAssets'
+  | 'openSettingsChartOfAccounts'
+  | 'openProjectSellingMarketing'
+  | 'openProjectSellingAgreements'
+  | 'openProjectSellingInvoices'
+  | 'openProjectSellingCollections'
+  | 'openProjectConstructionContracts'
+  | 'openProjectConstructionBills'
+  | 'openRentalAgreements'
+  | 'openRentalInvoices'
+  | 'openRentalCollections';
 
 export type ProductTourStep = {
   id: string;
@@ -231,32 +244,140 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
   demo_overview: {
     id: 'demo_overview',
     title: 'Live demo tour',
-    description: 'Quick orientation for the demo environment.',
+    description: 'End-to-end walkthrough from setup through project selling, construction, rental, and P&L.',
     steps: [
       {
-        id: 'dashboard',
-        title: 'Executive Dashboard',
-        body: 'See portfolio KPIs, cash position, and alerts at a glance.',
+        id: 'welcome',
+        title: 'Welcome to the live demo',
+        body: 'Sample properties, projects, and ledger data are pre-loaded. This tour follows the full workflow from setup to your Profit & Loss statement.',
         selector: '[data-tour="nav-dashboard"]',
         page: 'dashboard',
       },
       {
-        id: 'rental',
-        title: 'Property & Rental Management',
-        body: 'Manage buildings, units, agreements, invoicing, and tenant ledgers.',
-        selector: '[data-tour="nav-rental"]',
+        id: 'contacts',
+        title: '1 · Add contacts',
+        body: 'Start in Settings → Contacts. Add owners, tenants, brokers, vendors, and staff — they power agreements, invoices, and ledgers.',
+        selector: '[data-tour="settings-contacts"]',
+        page: 'settings',
+        prepare: 'openSettingsContacts',
       },
       {
-        id: 'projects',
-        title: 'Construction Projects',
-        body: 'Track project costing, installments, vendors, and job profitability.',
-        selector: '[data-tour="nav-projects"]',
+        id: 'assets',
+        title: '2 · Register assets',
+        body: 'Under Settings → Assets, add buildings, rental properties, construction projects, and sellable units.',
+        selector: '[data-tour="settings-assets"]',
+        page: 'settings',
+        prepare: 'openSettingsAssets',
       },
       {
-        id: 'ledger',
-        title: 'Financial Ledger & Reports',
-        body: 'Explore transactions, trial balance, P&L, and 30+ real estate reports.',
-        selector: '[data-tour="nav-ledger"]',
+        id: 'chart-of-accounts',
+        title: '3 · Chart of accounts',
+        body: 'Configure bank accounts, income, expense, and equity categories so every transaction posts to the right ledger.',
+        selector: '[data-tour="settings-chart-of-accounts"]',
+        page: 'settings',
+        prepare: 'openSettingsChartOfAccounts',
+      },
+      {
+        id: 'selling-plan',
+        title: '4 · Project selling — plan',
+        body: 'Open Project selling → Marketing to define installment plans, amenities, and unit pricing before booking sales.',
+        selector: '[data-tour="selling-plan"]',
+        page: 'projectSelling',
+        prepare: 'openProjectSellingMarketing',
+      },
+      {
+        id: 'selling-agreements',
+        title: '5 · Sales agreements',
+        body: 'Create buyer agreements, link units, and attach installment plans. Invoices generate automatically from terms.',
+        selector: '[data-tour="selling-agreements"]',
+        page: 'projectSelling',
+        prepare: 'openProjectSellingAgreements',
+      },
+      {
+        id: 'selling-invoices',
+        title: '6 · Sales invoices',
+        body: 'Review installment invoices, send reminders, and track outstanding buyer receivables.',
+        selector: '[data-tour="selling-invoices"]',
+        page: 'projectSelling',
+        prepare: 'openProjectSellingInvoices',
+      },
+      {
+        id: 'selling-collections',
+        title: '7 · Payment receiving',
+        body: 'Record buyer payments in Collections. Receipts update unit balances and flow to the general ledger.',
+        selector: '[data-tour="selling-collections"]',
+        page: 'projectSelling',
+        prepare: 'openProjectSellingCollections',
+      },
+      {
+        id: 'vendors',
+        title: '8 · Vendor directory',
+        body: 'Add construction vendors and suppliers. Their bills, quotations, and payment history stay in one place.',
+        selector: '[data-tour="vendor-directory"]',
+        page: 'vendorDirectory',
+      },
+      {
+        id: 'construction-contracts',
+        title: '9 · Construction contracts',
+        body: 'In Project construction → Contracts, link vendors to jobs and track committed costs against each project.',
+        selector: '[data-tour="project-contracts"]',
+        page: 'projectManagement',
+        prepare: 'openProjectConstructionContracts',
+      },
+      {
+        id: 'construction-bills',
+        title: '10 · Vendor bills',
+        body: 'Record vendor bills against projects and cost categories. Approved bills update job cost and accounts payable.',
+        selector: '[data-tour="project-bills"]',
+        page: 'projectManagement',
+        prepare: 'openProjectConstructionBills',
+      },
+      {
+        id: 'construction-payments',
+        title: '11 · Bill payments',
+        body: 'Pay approved bills from the Bills screen. Payments reduce payables and post to your cash and expense accounts.',
+        selector: '[data-tour="project-bills"]',
+        page: 'projectManagement',
+        prepare: 'openProjectConstructionBills',
+      },
+      {
+        id: 'rental-agreements',
+        title: '12 · Rental agreements',
+        body: 'In Rental → Agreements, create tenant leases, link units, and set recurring rent terms.',
+        selector: '[data-tour="rental-agreements"]',
+        page: 'rentalManagement',
+        prepare: 'openRentalAgreements',
+      },
+      {
+        id: 'rental-invoices',
+        title: '13 · Rental invoices',
+        body: 'Generate rent invoices from agreements. Track due dates, partial payments, and tenant balances.',
+        selector: '[data-tour="rental-invoices"]',
+        page: 'rentalManagement',
+        prepare: 'openRentalInvoices',
+      },
+      {
+        id: 'rental-collections',
+        title: '14 · Rent payment receiving',
+        body: 'Record tenant payments in Collections. Receipts update receivables and owner payout calculations.',
+        selector: '[data-tour="rental-collections"]',
+        page: 'rentalManagement',
+        prepare: 'openRentalCollections',
+      },
+      {
+        id: 'rental-reports',
+        title: '15 · Rental reports',
+        body: 'Open rental reports for tenant ledgers, receivables, owner income, and building analysis.',
+        selector: '[data-tour="rental-reports"]',
+        page: 'rentalManagement',
+      },
+      {
+        id: 'profit-loss',
+        title: '16 · Profit & Loss statement',
+        body: 'Finish in Accounting → Profit & Loss. See revenue, costs, and net income across projects, rental, and portfolio.',
+        selector: '[data-tour="report-profit-loss"]',
+        page: 'accounting',
+        prepare: 'openAccountingProfitLoss',
       },
     ],
   },

@@ -47,7 +47,19 @@ export const ReportLayout: React.FC<ReportLayoutProps> = ({ data }) => {
             ? ' fund-availability-report-print'
             : data.elementId === 'dashboard-print-area'
               ? ' dashboard-report-print'
-              : '';
+              : data.elementId === 'equity-ledger-print-area'
+                ? ' equity-ledger-report-print'
+                : data.elementId === 'transaction-log-print-area'
+                  ? ' transaction-log-report-print'
+                  : data.elementId === 'project-contract-print-area'
+                    ? ' project-contract-report-print'
+                    : data.elementId === 'project-profitability-print'
+                      ? ' project-profitability-report-print'
+                      : data.elementId === 'undistributed-funds-print'
+                        ? ' undistributed-funds-report-print'
+                        : data.elementId === 'inv-mgmt-profit-print'
+                          ? ' inv-mgmt-profit-report-print'
+                          : '';
 
   return (
     <div

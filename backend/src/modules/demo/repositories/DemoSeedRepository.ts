@@ -216,8 +216,8 @@ export async function seedDemoBusinessData(
   }
 
   const demoAccounts: Array<[string, string, string, number]> = [
-    [ids.accOperating, 'Main Operating Account', 'BANK', 2450000],
-    [ids.accEscrow, 'Project Escrow Account', 'BANK', 850000],
+    [ids.accOperating, 'Main Operating Account', 'BANK', 0],
+    [ids.accEscrow, 'Project Escrow Account', 'BANK', 0],
   ];
   for (const [id, name, type, opening] of demoAccounts) {
     await client.query(
@@ -900,6 +900,36 @@ export async function seedDemoBusinessData(
         row.vendorId ?? null,
         row.billId ?? null,
       ]
+    );
+  }
+
+  const bankTransfers: Array<[string, number, string, string, string, string]> = [
+    [
+      `${prefix}-tx-xfer-operating`,
+      2400000,
+      monthStart(1),
+      'Transfer to Main Operating Account',
+      SYS_CASH,
+      ids.accOperating,
+    ],
+    [
+      `${prefix}-tx-xfer-escrow`,
+      950000,
+      monthStart(2),
+      'Transfer to Project Escrow Account',
+      SYS_CASH,
+      ids.accEscrow,
+    ],
+  ];
+  for (const [id, amount, date, desc, fromId, toId] of bankTransfers) {
+    await client.query(
+      `INSERT INTO transactions (id, tenant_id, type, amount, date, description, account_id, from_account_id, to_account_id, version, created_at, updated_at)
+       VALUES ($1, $2, 'Transfer', $3, $4, $5, $6, $7, $8, 1, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET
+         amount = EXCLUDED.amount, description = EXCLUDED.description, date = EXCLUDED.date,
+         from_account_id = EXCLUDED.from_account_id, to_account_id = EXCLUDED.to_account_id,
+         updated_at = NOW(), deleted_at = NULL`,
+      [id, tenantId, amount, date, desc, fromId, fromId, toId]
     );
   }
 

@@ -268,3 +268,12 @@ export class UserTenantRepository {
 
 export { randomUUID as newSessionId };
 export type { UserTenantAccountRow };
+
+export class UserProfileRepository {
+  async getEmailById(client: pg.PoolClient, userId: string): Promise<string | null> {
+    const r = await client.query<{ email: string | null }>(`SELECT email FROM users WHERE id = $1`, [
+      userId,
+    ]);
+    return r.rows[0]?.email ?? null;
+  }
+}

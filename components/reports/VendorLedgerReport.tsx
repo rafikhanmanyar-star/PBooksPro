@@ -528,7 +528,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                         </div>
 
                         <div id="printable-area" className="printable-area flex flex-col min-h-0">
-                            <div className="hidden print:block">
+                            <div className="report-print-only">
                                 <ReportHeader />
                                 <div className="text-center mb-4">
                                     <h3 className="text-2xl font-bold text-app-text">
@@ -672,7 +672,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                                     </div>
                                 )}
                             </div>
-                            <div className="hidden print:block mt-4">
+                            <div className="report-print-only mt-4">
                                 <ReportFooter />
                             </div>
                         </div>

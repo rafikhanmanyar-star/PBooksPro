@@ -22,9 +22,8 @@ import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitab
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
 import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
 import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
-import { printFromTemplate, getPrintTemplateWrapper } from '../../services/printService';
 import { formatCurrency } from '../../utils/numberUtils';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { usePrintReport } from '../../hooks/usePrintReport';
 import { computeEquityBalances, getInvestorEquityAccounts, roundEquityBalance, EQUITY_BALANCE_EPS } from '../investmentManagement/equityMetrics';
 import {
     getEquityFlowLegs,
@@ -158,8 +157,8 @@ export interface ProjectEquityManagementProps {
 
 const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equityTab, onEquityTabChange }) => {
     const state = useProjectReportAppState();
-    const { printSettings } = state;
     const dispatch = useDispatchOnly();
+    const printReport = usePrintReport();
     const { showToast, showAlert, showConfirm } = useNotification();
     
     // State - default to 'root-investors' so the ledger shows all equity transactions on load
@@ -994,60 +993,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
     };
     
     const handlePrint = () => {
-        const { printSettings } = state;
-        
-        // Generate table rows HTML
-        let tableRows = '';
-        if (sortedLedgerData.length === 0) {
-            tableRows = '<tr><td colspan="6" style="text-align: center; padding: 2rem; color: #64748b;">No transactions found</td></tr>';
-        } else {
-            tableRows = sortedLedgerData.map(tx => {
-                const amountSign = tx.isDeposit ? '+' : '-';
-                const amountColor = tx.isDeposit ? '#10b981' : '#ef4444';
-                const balanceColor = tx.balance >= 0 ? '#10b981' : '#ef4444';
-                const amountStr = `${amountSign}${CURRENCY} ${Math.abs(tx.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                const balanceStr = `${tx.balance >= 0 ? '' : '-'}${CURRENCY} ${Math.abs(tx.balance).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                
-                return `
-                    <tr>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${formatDate(tx.date)}</td>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${tx.paymentType}</td>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb;">${tx.description || ''}</td>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; font-size: 0.75rem; color: #6b7280;">${tx.info || ''}</td>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: ${amountColor}; font-family: monospace;">${amountStr}</td>
-                        <td style="padding: 0.5rem 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: right; font-weight: 600; color: ${balanceColor}; font-family: monospace;">${balanceStr}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // Generate table HTML
-        const tableHtml = `
-            <div style="margin-bottom: 2rem;">
-                <h2 style="font-size: 1.5rem; font-weight: 700; color: #1e293b; margin-bottom: 1.5rem; text-align: center;">Equity Ledger</h2>
-                <table style="width: 100%; border-collapse: collapse; font-size: 0.875rem;">
-                    <thead>
-                        <tr style="background-color: #f8fafc; border-bottom: 2px solid #e2e8f0;">
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Date</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Type</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Description</th>
-                            <th style="padding: 0.75rem; text-align: left; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Info</th>
-                            <th style="padding: 0.75rem; text-align: right; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Amount</th>
-                            <th style="padding: 0.75rem; text-align: right; font-weight: 600; color: #475569; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em;">Balance</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRows}
-                    </tbody>
-                </table>
-            </div>
-        `;
-
-        // Wrap with print template
-        const html = getPrintTemplateWrapper(tableHtml, printSettings);
-        
-        // Print using template
-        printFromTemplate(html, printSettings);
+        printReport({ elementId: 'equity-ledger-print-area' });
     };
 
     const handleExport = () => {
@@ -1325,10 +1271,12 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
             <div className="flex-1 min-h-0 overflow-hidden bg-white dark:bg-slate-900/20 p-4 flex flex-col">
             {equityTab === 'Ledger' && (
                 <>
-                    <style>{STANDARD_PRINT_STYLES}</style>
-                    {/* Printable area for print mode - hidden in screen, visible in print */}
-                    <div className="hidden print:block printable-area" id="printable-area">
-                        <ReportHeader />
+                    <div
+                        id="equity-ledger-print-area"
+                        className="printable-area print-report-surface fixed left-[-10000px] top-0 w-[210mm] pointer-events-none"
+                        aria-hidden="true"
+                    >
+                        <ReportHeader reportTitle="Equity Ledger" />
                         <div className="mb-4">
                             <h2 className="text-xl font-bold text-slate-900 text-center">Equity Ledger</h2>
                             {selectedTreeType === 'staff' && selectedTreeId && (

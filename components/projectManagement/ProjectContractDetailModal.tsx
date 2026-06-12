@@ -8,8 +8,7 @@ import PrintButton from '../ui/PrintButton';
 import { formatDate } from '../../utils/dateUtils';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
-import { usePrint } from '../../hooks/usePrint';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { usePrintReport } from '../../hooks/usePrintReport';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
@@ -22,7 +21,7 @@ interface ProjectContractDetailModalProps {
 
 const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({ contract, onClose, onEdit }) => {
     const state = useProjectReportAppState();
-    const { handlePrint } = usePrint();
+    const printReport = usePrintReport();
     const { openChat } = useWhatsApp();
     const { showAlert } = useNotification();
 
@@ -73,9 +72,10 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
 
     return (
         <div className="h-full flex flex-col">
-            <style>{STANDARD_PRINT_STYLES}</style>
-
-            <div className="flex-grow overflow-y-auto printable-area p-4 bg-white" id="printable-area">
+            <div
+                className="flex-grow overflow-y-auto printable-area print-report-surface p-4 bg-white"
+                id="project-contract-print-area"
+            >
                 <ReportHeader />
 
                 <div className="border-b-2 border-slate-800 pb-4 mb-6">
@@ -222,7 +222,7 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                     )}
                     <PrintButton
                         variant="primary"
-                        onPrint={handlePrint}
+                        onPrint={() => printReport({ elementId: 'project-contract-print-area' })}
                     />
                     <Button variant="secondary" onClick={onClose}>Close</Button>
                 </div>

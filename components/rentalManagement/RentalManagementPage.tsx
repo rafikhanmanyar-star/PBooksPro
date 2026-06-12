@@ -194,6 +194,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     [
                         'Agreements',
                         'Invoices',
+                        'Collections Analytics',
                         'Monthly Service Charges',
                         'Bills',
                     ].includes(mainTab)
@@ -367,8 +368,8 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                     <NavItem view="Rental setup" label="Rental setup" />
                     <NavItem view="Analytics" label="Analytics" dataTour="rental-analytics" />
                     <NavItem view="Agreements" label="Agreements" dataTour="rental-agreements" />
-                    <NavItem view="Invoices" label="Invoices" />
-                    <NavItem view="Collections Analytics" label="Collections" dataTour="rental-collections-analytics" />
+                    <NavItem view="Invoices" label="Invoices" dataTour="rental-invoices" />
+                    <NavItem view="Collections Analytics" label="Collections" dataTour="rental-collections" />
                     <NavItem view="Monthly Service Charges" label="Monthly Service Charges" />
                     <NavItem view="Bills" label="Bills" />
                     <NavItem view="Expense Analytics" label="Expense Analytics" dataTour="rental-expense-analytics" />

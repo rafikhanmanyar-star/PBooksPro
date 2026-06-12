@@ -3,10 +3,12 @@ import { Router } from 'express';
 import { AdminRequest } from '../../../adminPortal/middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../../../adminPortal/adminPortalDb.js';
 import { getGlobalOnlineUserCount } from '../../../services/presenceService.js';
+import { AdminSystemMetricsRepository } from '../repositories/AdminTenantRepository.js';
 import os from 'os';
 
 const router = Router();
 const getDb = () => getDatabaseService();
+const systemMetricsRepo = new AdminSystemMetricsRepository();
 
 // Store request metrics in memory
 interface RequestMetrics {
@@ -165,60 +167,24 @@ router.get('/', async (req: AdminRequest, res) => {
         };
 
         try {
-            const [
-                dbSize,
-                tablesSizes,
-                connections,
-                maxConn,
-                queryStats,
-                slowQueries,
-            ] = await Promise.all([
-                db.query<{ size: string }>(
-                    `SELECT pg_size_pretty(pg_database_size(current_database())) as size`
-                ),
-                db.query<{ table_name: string; size: string; row_count: string }>(
-                    `SELECT 
-              schemaname || '.' || tablename AS table_name,
-              pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size,
-              n_live_tup AS row_count
-            FROM pg_stat_user_tables
-            ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
-            LIMIT 10`
-                ),
-                db.query<{ state: string; count: string }>(
-                    `SELECT state, COUNT(*) as count 
-             FROM pg_stat_activity 
-             WHERE datname = current_database()
-             GROUP BY state`
-                ),
-                db.query<{ max_connections: string }>(`SHOW max_connections`),
-                db.query<{ calls: string; mean_exec_time: string }>(
-                    `SELECT 
-              SUM(calls)::bigint as calls,
-              AVG(mean_exec_time) as mean_exec_time
-             FROM pg_stat_statements
-             WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())`
-                ).catch(() => [{ calls: '0', mean_exec_time: '0' }]),
-                db.query<{ count: string }>(
-                    `SELECT COUNT(*)::bigint as count
-             FROM pg_stat_statements
-             WHERE mean_exec_time > 1000 AND dbid = (SELECT oid FROM pg_database WHERE datname = current_database())`
-                ).catch(() => [{ count: '0' }]),
-            ]);
+            const pgMetrics = await systemMetricsRepo.getPostgresMetrics();
 
-            dbMetrics.size.database = dbSize[0]?.size || 'Unknown';
-            dbMetrics.size.tables = tablesSizes;
+            dbMetrics.size.database = pgMetrics.dbSize;
+            dbMetrics.size.tables = pgMetrics.tables;
 
-            const activeConnections = connections.find(c => c.state === 'active');
+            const activeConnections = (pgMetrics.connections as Array<{ state: string; count: string }>).find(
+                (c) => c.state === 'active'
+            );
             dbMetrics.connections.active = parseInt(activeConnections?.count || '0', 10);
-            dbMetrics.connections.total = connections.reduce((sum, c) => sum + parseInt(c.count || '0', 10), 0);
-            dbMetrics.connections.maxConnections = parseInt(maxConn[0]?.max_connections || '100', 10);
+            dbMetrics.connections.total = (pgMetrics.connections as Array<{ count: string }>).reduce(
+                (sum, c) => sum + parseInt(c.count || '0', 10),
+                0
+            );
+            dbMetrics.connections.maxConnections = pgMetrics.maxConnections;
 
-            if (queryStats.length > 0) {
-                dbMetrics.performance.queryCount = parseInt(queryStats[0]?.calls || '0', 10);
-                dbMetrics.performance.averageQueryTime = parseFloat(queryStats[0]?.mean_exec_time || '0');
-            }
-            dbMetrics.performance.slowQueries = parseInt(slowQueries[0]?.count || '0', 10);
+            dbMetrics.performance.queryCount = pgMetrics.queryStats.calls;
+            dbMetrics.performance.averageQueryTime = pgMetrics.queryStats.meanExecTime;
+            dbMetrics.performance.slowQueries = pgMetrics.slowQueries;
 
         } catch (dbError: any) {
             console.error('Error fetching detailed database metrics:', dbError);
@@ -234,46 +200,12 @@ router.get('/', async (req: AdminRequest, res) => {
         };
 
         try {
-            const [activeSessions, activeUsers, tenantDist, recentActivity] = await Promise.all([
-                db.query<{ count: string }>(
-                    `SELECT COUNT(DISTINCT user_id) AS count
-                     FROM user_sessions
-                     WHERE last_activity_at > NOW() - INTERVAL '30 minutes'`
-                ),
-                db.query<{ count: string }>(
-                    `SELECT COUNT(DISTINCT user_id) AS count
-                     FROM login_events
-                     WHERE status = 'success'
-                       AND user_id IS NOT NULL
-                       AND login_time > NOW() - INTERVAL '24 hours'`
-                ),
-                db.query<{ tenant_name: string; user_count: string; active_users: string }>(
-                    `SELECT
-                       COALESCE(NULLIF(t.company_name, ''), t.name) AS tenant_name,
-                       COUNT(DISTINCT u.id) AS user_count,
-                       COUNT(DISTINCT CASE
-                         WHEN us.last_activity_at > NOW() - INTERVAL '24 hours' THEN us.user_id
-                       END) AS active_users
-                     FROM tenants t
-                     LEFT JOIN users u ON u.tenant_id = t.id AND u.is_active = TRUE
-                     LEFT JOIN user_sessions us ON us.tenant_id = t.id
-                     WHERE t.license_status = 'active'
-                     GROUP BY t.id, t.name, t.company_name
-                     ORDER BY active_users DESC, tenant_name ASC
-                     LIMIT 10`
-                ),
-                db.query<{ count: string }>(
-                    `SELECT COUNT(*) as count 
-             FROM transactions 
-             WHERE created_at > NOW() - INTERVAL '1 hour'`
-                ).catch(() => [{ count: '0' }]),
-            ]);
-
-            const sessionCount = parseInt(activeSessions[0]?.count || '0', 10);
+            const clientMetricsRaw = await systemMetricsRepo.getClientMetrics();
+            const sessionCount = clientMetricsRaw.activeSessions;
             clientMetrics.activeSessions = Math.max(sessionCount, getGlobalOnlineUserCount());
-            clientMetrics.activeUsers = parseInt(activeUsers[0]?.count || '0', 10);
-            clientMetrics.tenantDistribution = tenantDist;
-            clientMetrics.recentActivity = parseInt(recentActivity[0]?.count || '0', 10);
+            clientMetrics.activeUsers = clientMetricsRaw.activeUsers;
+            clientMetrics.tenantDistribution = clientMetricsRaw.tenantDistribution;
+            clientMetrics.recentActivity = clientMetricsRaw.recentActivity;
 
         } catch (clientError: any) {
             console.error('Error fetching client metrics:', clientError);

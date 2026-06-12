@@ -50,8 +50,8 @@ const formulaSchema = z.object({
   expression: z.string().min(1).max(2000),
 });
 
-/** Core payload without refinements — safe to `.extend()` / `.omit()`. */
-const customReportGenerateCoreSchema = z.object({
+/** Core payload object — safe to `.extend()` / `.omit()` before refinements. */
+const customReportGenerateCoreObjectSchema = z.object({
   module: z.string().min(1).max(128),
   fields: z.array(z.string()).min(1).max(64).optional(),
   columns: z.array(columnProjectionSchema).max(64).optional(),
@@ -62,8 +62,27 @@ const customReportGenerateCoreSchema = z.object({
   formulas: z.array(formulaSchema).max(24).optional(),
   search: z.string().max(200).optional(),
   page: z.coerce.number().int().positive().optional().default(1),
-  pageSize: z.coerce.number().int().positive().max(500).optional().default(50),
+  pageSize: z.coerce.number().int().positive().max(5000).optional().default(50),
+  /** When true, allows pageSize up to 5000 (print-all flow). Preview remains capped at 500. */
+  forPrint: z.boolean().optional(),
 });
+
+function refinePageSize(
+  data: z.infer<typeof customReportGenerateCoreObjectSchema>,
+  ctx: z.RefinementCtx
+): void {
+  const ps = data.pageSize ?? 50;
+  const max = data.forPrint ? 5000 : 500;
+  if (ps > max) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: data.forPrint ? 'pageSize cannot exceed 5000 for print' : 'pageSize cannot exceed 500 for preview',
+      path: ['pageSize'],
+    });
+  }
+}
+
+const customReportGenerateCoreSchema = customReportGenerateCoreObjectSchema.superRefine(refinePageSize);
 
 function refineHasFieldsOrColumns(
   data: { columns?: unknown[]; fields?: unknown[] },
@@ -87,16 +106,17 @@ export const customReportGenerateBodySchema = customReportGenerateCoreSchema.sup
 
 export type CustomReportGeneratePayload = z.infer<typeof customReportGenerateBodySchema>;
 
-export const customReportExportBodySchema = customReportGenerateCoreSchema
+export const customReportExportBodySchema = customReportGenerateCoreObjectSchema
   .extend({
     format: z.enum(['csv', 'xlsx', 'pdf']),
     reportName: z.string().max(200).optional(),
   })
+  .superRefine(refinePageSize)
   .superRefine((data, ctx) => {
     refineHasFieldsOrColumns(data, ctx, []);
   });
 
-export const savedTemplateConfigurationSchema = customReportGenerateCoreSchema.omit({
+export const savedTemplateConfigurationSchema = customReportGenerateCoreObjectSchema.omit({
   module: true,
   page: true,
   pageSize: true,

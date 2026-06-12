@@ -99,7 +99,7 @@ const InvMgmtProfitReport: React.FC = () => {
 
             <div className="flex-1 min-h-0 overflow-auto border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900/40">
                 <div id="inv-mgmt-profit-print" className="printable-area min-w-0">
-                    <div className="hidden print:block">
+                    <div className="report-print-only">
                         <ReportHeader />
                         <p className="text-center text-sm text-slate-600 mt-2">As of {formatDate(endDate)}</p>
                     </div>
@@ -163,7 +163,7 @@ const InvMgmtProfitReport: React.FC = () => {
                         </table>
                     </div>
 
-                    <div className="hidden print:block mt-6">
+                    <div className="report-print-only mt-6">
                         <ReportFooter />
                     </div>
                 </div>

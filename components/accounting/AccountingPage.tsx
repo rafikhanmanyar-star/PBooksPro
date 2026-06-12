@@ -199,7 +199,7 @@ const AccountingPage: React.FC = () => {
                 view={name}
                 label={name}
                 collapsed={collapsed}
-                dataTour={name === 'Trial Balance' ? 'report-trial-balance' : undefined}
+                dataTour={name === 'Trial Balance' ? 'report-trial-balance' : name === 'Profit & Loss' ? 'report-profit-loss' : undefined}
               />
             ))}
           </>

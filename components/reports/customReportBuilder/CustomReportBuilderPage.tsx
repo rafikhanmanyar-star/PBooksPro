@@ -11,6 +11,7 @@ import {
 } from '@tanstack/react-table';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../../context/AuthContext';
+import { useNotification } from '../../../context/NotificationContext';
 import { usePrintReport } from '../../../hooks/usePrintReport';
 import ReportHeader from '../ReportHeader';
 import ReportFooter from '../ReportFooter';
@@ -22,6 +23,7 @@ import {
   fetchCustomReportMetadata,
   generateCustomReport,
   fetchAllCustomReportRows,
+  CUSTOM_REPORT_MAX_PRINT_ROWS,
   fetchCustomReportTemplates,
   saveCustomReportTemplate,
   deleteCustomReportTemplate,
@@ -118,6 +120,7 @@ export type BuilderFilterRow = {
 
 export const CustomReportBuilderPage: React.FC = () => {
   const { user } = useAuth();
+  const { showConfirm } = useNotification();
   const cap = backendReportCapability(user?.role);
   const printReport = usePrintReport();
 
@@ -297,6 +300,28 @@ export const CustomReportBuilderPage: React.FC = () => {
 
   const handlePrintReport = useCallback(async () => {
     if (!preview) return;
+
+    if (preview.totalCount > CUSTOM_REPORT_MAX_PRINT_ROWS) {
+      const downloadPdf = await showConfirm(
+        `This report has ${preview.totalCount.toLocaleString()} rows. Browser print is limited to ${CUSTOM_REPORT_MAX_PRINT_ROWS.toLocaleString()} rows. Download the full PDF export, or print only the first ${CUSTOM_REPORT_MAX_PRINT_ROWS.toLocaleString()} rows?`,
+        {
+          title: 'Large report',
+          confirmLabel: 'Download PDF',
+          cancelLabel: `Print first ${CUSTOM_REPORT_MAX_PRINT_ROWS.toLocaleString()}`,
+        }
+      );
+      if (downloadPdf) {
+        try {
+          await downloadCustomReportExport({
+            body: { ...buildPayload(), format: 'pdf', reportName: templateName },
+          });
+        } catch (e) {
+          setPreviewError(e instanceof Error ? e.message : String(e));
+        }
+        return;
+      }
+    }
+
     setPrintLoading(true);
     try {
       let snapshot = preview;
@@ -311,7 +336,7 @@ export const CustomReportBuilderPage: React.FC = () => {
     } finally {
       setPrintLoading(false);
     }
-  }, [preview, buildPayload, printReport]);
+  }, [preview, buildPayload, printReport, showConfirm, templateName]);
 
   /** Stable key so dynamic column sets remount after each successful preview (avoids stale column-visibility / cell maps). */
   const previewTableMountKey = preview
@@ -541,8 +566,17 @@ export const CustomReportBuilderPage: React.FC = () => {
             className="px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-600 text-sm"
             disabled={!preview || printLoading}
             onClick={() => void handlePrintReport()}
+            title={
+              preview && preview.totalCount > CUSTOM_REPORT_MAX_PRINT_ROWS
+                ? `Print is limited to ${CUSTOM_REPORT_MAX_PRINT_ROWS.toLocaleString()} rows; larger reports offer PDF export`
+                : undefined
+            }
           >
-            {printLoading ? 'Preparing…' : 'Print'}
+            {printLoading
+              ? 'Preparing…'
+              : preview && preview.totalCount > CUSTOM_REPORT_MAX_PRINT_ROWS
+                ? `Print (max ${CUSTOM_REPORT_MAX_PRINT_ROWS.toLocaleString()})`
+                : 'Print'}
           </button>
         </div>
       </header>
@@ -1081,9 +1115,9 @@ export const CustomReportBuilderPage: React.FC = () => {
             <p className="text-center text-xs text-slate-600 mb-2 report-title-block">
               {(printSnapshot ?? preview)!.totalCount} row{(printSnapshot ?? preview)!.totalCount === 1 ? '' : 's'}
               {printSnapshot && printSnapshot.rows.length < preview!.totalCount
-                ? ` (capped at ${printSnapshot.rows.length.toLocaleString()} for print)`
+                ? ` (print capped at ${printSnapshot.rows.length.toLocaleString()} rows; use PDF export for full export)`
                 : preview && preview.rows.length < preview.totalCount
-                  ? ` — screen shows page ${page}; print loads all filtered rows`
+                  ? ` — screen shows page ${page}; print loads all filtered rows (up to 5,000)`
                   : ''}
             </p>
           )}

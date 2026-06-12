@@ -53,7 +53,9 @@ import PayslipModal from './modals/PayslipModal';
 import AdjustmentModal from './modals/AdjustmentModal';
 import { useAuth } from '../../context/AuthContext';
 import { useProjects, useBuildings, useWhatsAppMode } from '../../hooks/useSelectiveState';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
+import ReportHeader from '../reports/ReportHeader';
+import ReportFooter from '../reports/ReportFooter';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType } from '../../types';
@@ -78,7 +80,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
   const buildings = useBuildings();
   const whatsAppMode = useWhatsAppMode();;
   
-  const { print: triggerPrint } = usePrintContext();
+  const printReport = usePrintReport();
   const { openChat } = useWhatsApp();
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
@@ -626,7 +628,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
           {viewMode === 'details' && (
             <>
               <button 
-                onClick={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
+                onClick={() => printReport()}
                 className="p-2 sm:px-4 sm:py-2 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-sm flex items-center gap-2"
                 title="Print Profile Summary"
               >
@@ -693,7 +695,10 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
 
       {/* Profile Details View */}
       {viewMode === 'details' && (
-        <div id="printable-area" className="printable-area bg-app-card rounded-2xl sm:rounded-3xl shadow-ds-card border border-app-border overflow-hidden print-full">
+        <div id="printable-area" className="printable-area print-report-surface bg-app-card rounded-2xl sm:rounded-3xl shadow-ds-card border border-app-border overflow-hidden print-full">
+          <div className="px-4 sm:px-8 pt-4 print:pt-2">
+            <ReportHeader reportTitle={`Employee Profile — ${employee.name}`} />
+          </div>
           <div className="h-24 sm:h-32 bg-gradient-to-r from-primary via-primary to-ds-primary-hover no-print opacity-95"></div>
           <div className="px-4 sm:px-8 pb-6 sm:pb-8 -mt-12 sm:-mt-16 print:mt-0">
             {/* Profile Header */}
@@ -843,7 +848,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                               </option>
                             ))}
                           </select>
-                          <p className="hidden print:block text-sm font-black text-app-text">{p.project_name}</p>
+                          <p className="report-print-only text-sm font-black text-app-text">{p.project_name}</p>
                           <div className="no-print max-w-md">
                             <DatePicker
                               label="Effective from"
@@ -856,7 +861,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                               className="!rounded-xl !border-app-border !font-bold !text-app-text"
                             />
                           </div>
-                          <p className="hidden print:block text-[10px] font-bold text-app-muted">
+                          <p className="report-print-only text-[10px] font-bold text-app-muted">
                             Effective from {formatDateLong(p.start_date || employee.joining_date)}
                           </p>
                         </div>
@@ -903,7 +908,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                               </option>
                             ))}
                           </select>
-                          <p className="hidden print:block text-sm font-black text-app-text">{b.building_name}</p>
+                          <p className="report-print-only text-sm font-black text-app-text">{b.building_name}</p>
                           <div className="no-print max-w-md">
                             <DatePicker
                               label="Effective from"
@@ -916,7 +921,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                               className="!rounded-xl !border-app-border !font-bold !text-app-text"
                             />
                           </div>
-                          <p className="hidden print:block text-[10px] font-bold text-app-muted">
+                          <p className="report-print-only text-[10px] font-bold text-app-muted">
                             Effective from {formatDateLong(b.start_date || employee.joining_date)}
                           </p>
                         </div>
@@ -1016,6 +1021,9 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+          <div className="px-4 sm:px-8 pb-4">
+            <ReportFooter generatedBy={user?.name} />
           </div>
         </div>
       )}

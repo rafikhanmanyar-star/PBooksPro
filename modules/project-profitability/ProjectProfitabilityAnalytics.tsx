@@ -8,9 +8,9 @@ import ReportHeader from '../../components/reports/ReportHeader';
 import Button from '../../components/ui/Button';
 import { CURRENCY } from '../../constants';
 import { useAuth } from '../../context/AuthContext';
-import { usePrintContext } from '../../context/PrintContext';
+import { usePrintReport } from '../../hooks/usePrintReport';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
-import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import { formatCompactMoney, formatRoi } from './utils/financialFormat';
 import {
     CollectionTrendChart,
     MonthlyProfitTrendChart,
@@ -67,7 +67,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     const { projects, defaultProjectId } = state;
     const { user } = useAuth();
     const perm = useProfitabilityPermissions(user?.role);
-    const { print: triggerPrint } = usePrintContext();
+    const printReport = usePrintReport();
     const queryClient = useQueryClient();
     const filters = useProfitabilityFiltersStore((s) => s.filters);
     const setFilter = useProfitabilityFiltersStore((s) => s.setFilter);
@@ -148,8 +148,6 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full min-h-0 space-y-4 bg-app-bg">
-            <style>{STANDARD_PRINT_STYLES}</style>
-
             <div className="flex flex-col gap-3 shrink-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -186,7 +184,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                         <Button variant="secondary" type="button" onClick={() => exportProfitabilityCsv(exportRows)} disabled={!perm.canExport || exportRows.length === 0}>
                             CSV
                         </Button>
-                        <Button variant="secondary" type="button" onClick={() => triggerPrint('REPORT', { elementId: 'project-profitability-print' })}>
+                        <Button variant="secondary" type="button" onClick={() => printReport({ elementId: 'project-profitability-print' })}>
                             <Printer className="h-4 w-4 mr-1 inline" />
                             Print
                         </Button>
@@ -229,13 +227,40 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                 </div>
             )}
 
-            <div id="project-profitability-print" className="printable-area flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
-                <div className="hidden print:block">
-                    <ReportHeader />
-                    <p className="text-center text-sm text-app-muted mt-2">
+            <div id="project-profitability-print" className="printable-area print-report-surface flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
+                <div className="report-print-only">
+                    <ReportHeader reportTitle="Project Profitability Analytics" />
+                    <p className="text-center text-sm text-slate-600 mt-2">
                         {CURRENCY} · As of {formatDate(endDate)}
+                        {selectedProjectName ? ` · ${selectedProjectName}` : ''}
                     </p>
                 </div>
+
+                {displaySummary && (
+                    <div className="report-print-only mb-2">
+                        <table className="w-full text-xs border-collapse border border-slate-300">
+                            <tbody>
+                                <tr className="border-b border-slate-200">
+                                    <td className="px-2 py-1.5 font-medium text-slate-700">Total revenue</td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(displaySummary.totalRevenue)}</td>
+                                </tr>
+                                <tr className="border-b border-slate-200">
+                                    <td className="px-2 py-1.5 font-medium text-slate-700">Total expense</td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(displaySummary.totalExpense)}</td>
+                                </tr>
+                                <tr className="border-b border-slate-200">
+                                    <td className="px-2 py-1.5 font-medium text-slate-700">Net profit</td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(displaySummary.netProfit)}</td>
+                                </tr>
+                                <tr>
+                                    <td className="px-2 py-1.5 font-medium text-slate-700">Portfolio ROI</td>
+                                    <td className="px-2 py-1.5 text-right tabular-nums">{formatRoi(displaySummary.roiPctAggregate)}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <p className="mt-2 text-[10px] text-slate-500 text-center">Charts omitted from print — see project table below.</p>
+                    </div>
+                )}
 
                 {displaySummary && (
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 print:hidden shrink-0">
@@ -297,7 +322,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     />
                 </div>
 
-                <div className="hidden print:block mt-6">
+                <div className="report-print-only mt-6">
                     <ReportFooter />
                 </div>
             </div>

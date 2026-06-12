@@ -4,6 +4,7 @@
 
 import {
   getApiBaseUrl,
+  getApiRootUrl,
   getDefaultApiRootUrl,
   getLanApiPort,
   getStoredLanApiRootUrl,
@@ -113,7 +114,7 @@ async function probeServerRoot(rootUrl: string, timeoutMs: number): Promise<bool
 }
 
 function normalizeRoot(url: string): string {
-  return url.replace(/\/api\/?$/i, '').replace(/\/+$/, '');
+  return url.replace(/\/api(\/v1)?\/?$/i, '').replace(/\/+$/, '');
 }
 
 /**
@@ -301,7 +302,7 @@ export async function resolveSubnetBaseForScan(manualSubnet?: string): Promise<s
   }
   const local = await getLocalIPv4ViaWebRTC();
   if (local) return ipv4ToSubnetBase(local);
-  const base = getApiBaseUrl().replace(/\/api\/?$/i, '');
+  const base = getApiRootUrl();
   try {
     const u = new URL(base.includes('://') ? base : `http://${base}`);
     const h = u.hostname;

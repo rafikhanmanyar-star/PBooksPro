@@ -34,6 +34,7 @@ import { exportFundAvailabilityCsv, exportFundAvailabilityExcel, exportFundAvail
 import { validateWithdrawal } from '../utils/validateWithdrawal';
 import type { WithdrawalValidationResult } from '../types/fundAvailability.types';
 import { WithdrawalValidationModal } from './WithdrawalValidationModal';
+import { formatCompactMoney } from '../utils/financialFormat';
 
 export const FundAvailabilityPage: React.FC = () => {
     const state = useFinancialReportAppState();
@@ -188,6 +189,35 @@ export const FundAvailabilityPage: React.FC = () => {
                 >
                     <ReportHeader reportTitle="Investor Fund Availability" />
                     <p className="text-center text-sm text-slate-600 mb-3">As of {endDate}</p>
+                    {summaryQ.data && (
+                        <div className="report-print-only mb-4">
+                            <table className="w-full text-xs border-collapse border border-slate-300">
+                                <tbody>
+                                    <tr className="border-b border-slate-200">
+                                        <td className="px-2 py-1.5 font-medium text-slate-700">Total investor equity</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(summaryQ.data.totals.investorEquity)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-200">
+                                        <td className="px-2 py-1.5 font-medium text-slate-700">Available cash</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(summaryQ.data.totals.availableCash)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-200">
+                                        <td className="px-2 py-1.5 font-medium text-slate-700">Distributable funds</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(summaryQ.data.totals.distributableFunds)}</td>
+                                    </tr>
+                                    <tr className="border-b border-slate-200">
+                                        <td className="px-2 py-1.5 font-medium text-slate-700">Reserved (ops)</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(summaryQ.data.totals.reservedFunds)}</td>
+                                    </tr>
+                                    <tr>
+                                        <td className="px-2 py-1.5 font-medium text-slate-700">Pending payables</td>
+                                        <td className="px-2 py-1.5 text-right tabular-nums">{formatCompactMoney(summaryQ.data.totals.pendingPayables)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <p className="mt-2 text-[10px] text-slate-500 text-center">Charts omitted from print — see portfolio table below.</p>
+                        </div>
+                    )}
                     <FundAvailabilityDataTable
                         rows={rows}
                         isLoading={summaryQ.isLoading}
