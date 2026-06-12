@@ -8,16 +8,21 @@ export type UnpostedTransactionStatus =
   | 'rejected';
 
 export const UNPOSTED_TRANSACTION_TYPES = [
-  { id: 'supplier_payment', label: 'Paid supplier (cash)' },
-  { id: 'employee_payment', label: 'Paid worker wages' },
-  { id: 'material_purchase', label: 'Purchased materials' },
-  { id: 'customer_collection', label: 'Received customer payment' },
-  { id: 'fuel_expense', label: 'Fuel expense' },
-  { id: 'site_expense', label: 'Site expense' },
-  { id: 'travel_expense', label: 'Travel expense' },
-  { id: 'office_expense', label: 'Office expense' },
+  { id: 'fuel_expense', label: 'Fuel Expense' },
+  { id: 'office_expense', label: 'Office Expense' },
+  { id: 'site_expense', label: 'Site Expense' },
+  { id: 'advance_payment', label: 'Advance Payment' },
+  { id: 'customer_collection', label: 'Customer Collection' },
+  { id: 'supplier_payment', label: 'Vendor Payment' },
+  { id: 'cash_deposit', label: 'Cash Deposit' },
+  { id: 'cash_withdrawal', label: 'Cash Withdrawal' },
+  { id: 'employee_payment', label: 'Worker Wages' },
+  { id: 'material_purchase', label: 'Material Purchase' },
+  { id: 'travel_expense', label: 'Travel Expense' },
   { id: 'other', label: 'Other' },
 ] as const;
+
+export const UNPOSTED_SOURCE_EXECUTIVE_APP = 'EXECUTIVE_APP' as const;
 
 export type MobileMetric = {
   id: string;
@@ -45,6 +50,8 @@ export type UnpostedTransaction = {
   customerId?: string;
   projectId?: string;
   propertyId?: string;
+  costCenterCode?: string;
+  source?: string;
   createdBy: string;
   createdByName?: string;
   status: UnpostedTransactionStatus;
@@ -75,6 +82,7 @@ export type ExecutiveView =
   | 'quickTransaction'
   | 'reports'
   | 'settings'
+  | 'profile'
   | 'myTransactions'
   | 'approvals'
   | 'notifications';

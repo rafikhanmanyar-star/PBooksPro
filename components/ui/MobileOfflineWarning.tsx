@@ -7,11 +7,12 @@
 
 import React from 'react';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
-import { isMobileDevice } from '../../utils/platformDetection';
+import { useViewportOptional } from '../../context/ViewportContext';
 
 const MobileOfflineWarning: React.FC = () => {
   const { isOffline, isChecking } = useConnectionStatus();
-  const isMobile = isMobileDevice();
+  const viewport = useViewportOptional();
+  const isMobile = viewport?.isMobileViewport ?? false;
 
   // Only show on mobile devices when offline
   if (!isMobile || !isOffline || isChecking) {

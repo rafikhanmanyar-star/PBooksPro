@@ -17,6 +17,9 @@ const TYPE_ICONS: Record<string, ReactNode> = {
   employee_payment: ICONS.users,
   material_purchase: ICONS.package,
   customer_collection: ICONS.arrowDownCircle,
+  cash_deposit: ICONS.arrowDownCircle,
+  cash_withdrawal: ICONS.wallet,
+  advance_payment: ICONS.handDollar,
   fuel_expense: ICONS.activity,
   site_expense: ICONS.building,
   travel_expense: ICONS.mapPin,
@@ -32,6 +35,8 @@ export const OUTFLOW_TYPE_IDS = new Set([
   'site_expense',
   'travel_expense',
   'office_expense',
+  'advance_payment',
+  'cash_withdrawal',
   'other',
 ]);
 
@@ -67,5 +72,5 @@ export function partyPlaceholder(transactionType: string): string {
 }
 
 export function isInflowType(id: string): boolean {
-  return id === 'customer_collection';
+  return id === 'customer_collection' || id === 'cash_deposit';
 }

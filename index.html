@@ -9,12 +9,14 @@
         var t;
         if (s === 'light' || s === 'dark') {
           t = s;
-        } else {
+        } else if (s === 'system' || !s) {
           t = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } else {
+          t = 'light';
         }
         document.documentElement.setAttribute('data-theme', t);
         var meta = document.querySelector('meta[name="theme-color"]');
-        if (meta) meta.setAttribute('content', t === 'dark' ? '#1e1e1e' : '#ffffff');
+        if (meta) meta.setAttribute('content', t === 'dark' ? '#0f172a' : '#f8fafc');
       } catch (e) {
         document.documentElement.setAttribute('data-theme', 'light');
       }
@@ -106,15 +108,27 @@
   <div id="root"></div>
   <script>
     (function() {
-      var w = window.screen ? window.screen.width : 1920;
-      var h = window.screen ? window.screen.height : 1080;
-      var compact = w <= 1400 || h <= 800;
+      var vv = window.visualViewport;
+      var iw = Math.round(vv && vv.width ? vv.width : window.innerWidth);
+      var ih = Math.round(vv && vv.height ? vv.height : window.innerHeight);
+      var sw = window.screen ? window.screen.width : iw;
+      var sh = window.screen ? window.screen.height : ih;
+      var compact = sw <= 1400 || sh <= 800;
+      var mobile = iw <= 767;
+      var tablet = !mobile && iw <= 1023;
+      var bp = mobile ? 'mobile' : tablet ? 'tablet' : 'desktop';
       var root = document.documentElement;
       root.style.setProperty('--viewport-compact', compact ? '1' : '0');
+      root.style.setProperty('--viewport-mobile', mobile ? '1' : '0');
+      root.style.setProperty('--viewport-inner-width', iw + 'px');
+      root.style.setProperty('--viewport-inner-height', ih + 'px');
       root.style.setProperty('--sidebar-width', compact ? '14rem' : '16rem');
       root.style.setProperty('--content-padding', compact ? '0.5rem' : '1rem');
       root.style.setProperty('--content-padding-lg', compact ? '0.75rem' : '1.5rem');
       root.dataset.viewportCompact = compact ? 'true' : 'false';
+      root.dataset.viewport = bp;
+      root.dataset.mobileViewport = mobile ? 'true' : 'false';
+      root.dataset.executiveViewport = (mobile || (tablet && ih > iw)) ? 'true' : 'false';
     })();
   </script>
   <script>

@@ -16,6 +16,7 @@
     "backfill-documents-metadata": "tsx src/scripts/backfillDocumentsMetadata.ts",
     "repair:test-company-staging": "tsx src/scripts/repairTestCompanyStaging.ts",
     "demo:reset": "tsx src/scripts/resetDemoTenant.ts",
+    "demo:seed-presentation": "tsx src/scripts/seedPresentationDemo.ts",
     "org:create": "tsx src/scripts/createOrganization.ts",
     "org:approve": "tsx src/scripts/approveOrganizationCli.ts",
     "org:suspend": "tsx src/scripts/suspendOrganizationCli.ts",

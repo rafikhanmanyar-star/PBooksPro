@@ -13,6 +13,8 @@ export type CreateUnpostedTransactionPayload = {
   customerId?: string;
   projectId?: string;
   propertyId?: string;
+  costCenterCode?: string;
+  source?: 'EXECUTIVE_APP' | 'DESKTOP' | 'API';
   status?: 'draft' | 'submitted';
 };
 

@@ -1,8 +1,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { useAuth } from './AuthContext';
+import { useViewportOptional } from './ViewportContext';
 import { apiClient } from '../services/api/client';
-import { isMobileDevice, isTabletPortrait } from '../utils/platformDetection';
+import { isMobileDevice } from '../utils/platformDetection';
 import {
   persistInterfaceMode,
   resolveEffectiveInterfaceMode,
@@ -13,10 +14,9 @@ type ExecutiveModeContextValue = {
   interfaceMode: InterfaceMode;
   isExecutiveMobileActive: boolean;
   isCloudEligible: boolean;
+  isMobileViewport: boolean;
   setInterfaceMode: (mode: InterfaceMode) => Promise<void>;
-  /** Temporary switch to full ERP for this browser tab/session only (not saved to server). */
   enterFullErpSession: () => void;
-  /** Return to executive mobile UI without changing server preference (unless server is full_erp). */
   returnToExecutiveMobile: () => Promise<void>;
   view: ExecutiveView;
   setView: (view: ExecutiveView) => void;
@@ -30,19 +30,23 @@ const ExecutiveModeContext = createContext<ExecutiveModeContextValue | null>(nul
 function resolveExecutiveActive(
   interfaceMode: InterfaceMode,
   cloudEligible: boolean,
-  sessionFullErp: boolean
+  sessionFullErp: boolean,
+  isExecutiveViewport: boolean
 ): boolean {
   if (!cloudEligible) return false;
   if (sessionFullErp || interfaceMode === 'full_erp') return false;
   if (interfaceMode === 'executive_mobile') return true;
-  return isMobileDevice() || isTabletPortrait();
+  return isExecutiveViewport;
 }
 
 export function ExecutiveModeProvider({ children }: { children: React.ReactNode }) {
   const { user, updateUserProfile } = useAuth();
+  const viewport = useViewportOptional();
   const cloudEligible = !isLocalOnlyMode();
   const [sessionFullErp, setSessionFullErpState] = useState(false);
-  const [viewportTick, setViewportTick] = useState(0);
+
+  const isExecutiveViewport = viewport?.isExecutiveViewport ?? false;
+  const isMobileViewport = viewport?.isMobileViewport ?? false;
 
   const interfaceMode: InterfaceMode = resolveEffectiveInterfaceMode(
     user?.interfaceMode as InterfaceMode | undefined,
@@ -58,8 +62,8 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
   }, [user?.interfaceMode]);
 
   const isExecutiveMobileActive = useMemo(
-    () => resolveExecutiveActive(interfaceMode, cloudEligible, sessionFullErp),
-    [interfaceMode, cloudEligible, sessionFullErp, viewportTick]
+    () => resolveExecutiveActive(interfaceMode, cloudEligible, sessionFullErp, isExecutiveViewport),
+    [interfaceMode, cloudEligible, sessionFullErp, isExecutiveViewport]
   );
 
   const setInterfaceMode = useCallback(
@@ -98,21 +102,12 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
     setView('moduleDashboard');
   }, []);
 
-  useEffect(() => {
-    const onViewportChange = () => setViewportTick((n) => n + 1);
-    window.addEventListener('resize', onViewportChange);
-    window.addEventListener('orientationchange', onViewportChange);
-    return () => {
-      window.removeEventListener('resize', onViewportChange);
-      window.removeEventListener('orientationchange', onViewportChange);
-    };
-  }, []);
-
   const value = useMemo(
     () => ({
       interfaceMode,
       isExecutiveMobileActive,
       isCloudEligible: cloudEligible,
+      isMobileViewport,
       setInterfaceMode,
       enterFullErpSession,
       returnToExecutiveMobile,
@@ -126,6 +121,7 @@ export function ExecutiveModeProvider({ children }: { children: React.ReactNode 
       interfaceMode,
       isExecutiveMobileActive,
       cloudEligible,
+      isMobileViewport,
       setInterfaceMode,
       enterFullErpSession,
       returnToExecutiveMobile,

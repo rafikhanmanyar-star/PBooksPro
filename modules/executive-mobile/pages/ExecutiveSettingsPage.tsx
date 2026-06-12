@@ -3,6 +3,7 @@ import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useFeatures } from '../../../hooks/useFeatures';
 import { getEditionDisplayLabel } from '../../../shared/systemFeatures';
 import { ClientVersionInfo } from '../../../components/ui/ClientVersionLabel';
+import ThemeSettingsSection from '../components/ThemeSettingsSection';
 import type { InterfaceMode } from '../../../types/executiveMobile.types';
 
 const MODES: { id: InterfaceMode; label: string; description: string }[] = [
@@ -51,9 +52,14 @@ export default function ExecutiveSettingsPage() {
   }
 
   return (
-    <div className="p-4 pb-24 space-y-4">
+    <div className="p-4 pb-28 space-y-4 bg-app-bg min-h-full">
+      <section className="rounded-2xl border border-app-border bg-app-card p-4 shadow-ds-card">
+        <h2 className="text-sm font-semibold text-app-text mb-3">Appearance</h2>
+        <ThemeSettingsSection />
+      </section>
+
       <div>
-        <h1 className="text-lg font-bold">Interface Mode</h1>
+        <h1 className="text-lg font-bold text-app-text">Interface Mode</h1>
         <p className="text-xs text-app-muted mt-1">Stored per user on the server.</p>
       </div>
 
