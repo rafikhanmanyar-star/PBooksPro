@@ -1,0 +1,20 @@
+# PBooks Pro Cloud — cache control for static hosting (Render, Cloudflare Pages, Netlify)
+# https://developers.cloudflare.com/pages/configuration/headers/
+
+/index.html
+  Cache-Control: no-cache, must-revalidate
+
+/version.json
+  Cache-Control: no-cache, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache, must-revalidate
+
+/sw.js
+  Cache-Control: no-cache, must-revalidate
+
+/env-config.json
+  Cache-Control: no-cache, must-revalidate
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

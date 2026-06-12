@@ -31,7 +31,7 @@ const EDITION_FEATURE_MAP: Record<AppEdition, SystemFeatures> = {
     advancedReporting: true,
   },
   cloud: {
-    applicationUpdates: false,
+    applicationUpdates: true,
     localBackup: false,
     offlineMode: false,
     tenantManagement: false,

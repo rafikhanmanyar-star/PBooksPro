@@ -33,9 +33,9 @@ describe('systemFeatureService', () => {
     assert.equal(getAppEdition(), 'cloud');
   });
 
-  it('enables application updates on desktop only', () => {
+  it('enables application updates on desktop and cloud', () => {
     assert.equal(isFeatureEnabled('applicationUpdates', 'desktop'), true);
-    assert.equal(isFeatureEnabled('applicationUpdates', 'cloud'), false);
+    assert.equal(isFeatureEnabled('applicationUpdates', 'cloud'), true);
   });
 
   it('builds consistent system info payload', () => {
@@ -46,7 +46,7 @@ describe('systemFeatureService', () => {
       version: '1.2.3',
       features: getFeaturesForEdition('cloud'),
     });
-    assert.equal(info.features.applicationUpdates, false);
+    assert.equal(info.features.applicationUpdates, true);
     assert.equal(info.features.advancedReporting, true);
   });
 });

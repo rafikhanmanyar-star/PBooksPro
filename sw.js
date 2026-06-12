@@ -1,101 +1,108 @@
-// Service Worker for PBooksPro
-const CACHE_NAME = 'finance-tracker-pro-v1.1.4';
-const urlsToCache = [
-  './',
-  './index.html',
-  './index.tsx',
-  './App.tsx',
-  './manifest.json',
-];
+// Service Worker for PBooks Pro Cloud (PWA)
+// CACHE_NAME is injected at build time from version.json.
 
-// Install event - cache resources
+const CACHE_NAME = '%%PBOOKS_CACHE_NAME%%';
+const IMMUTABLE_ASSET_PATTERN = /\/assets\/[^/]+-[a-f0-9]{8,}\.(js|css|woff2?|png|jpg|jpeg|gif|svg|webp|wasm)$/i;
+
+const NEVER_CACHE_PATHS = new Set([
+  '/index.html',
+  '/version.json',
+  '/manifest.json',
+  '/sw.js',
+  '/env-config.json',
+]);
+
+function normalizePath(pathname) {
+  if (pathname === '/' || pathname === '') return '/index.html';
+  return pathname.endsWith('/') ? `${pathname}index.html` : pathname;
+}
+
+function shouldNeverCache(url) {
+  const path = normalizePath(url.pathname);
+  if (NEVER_CACHE_PATHS.has(path)) return true;
+  if (path.endsWith('/index.html')) return true;
+  if (path.endsWith('/version.json')) return true;
+  if (path.endsWith('/manifest.json')) return true;
+  if (path.endsWith('/sw.js')) return true;
+  return false;
+}
+
+function isImmutableHashedAsset(url) {
+  return IMMUTABLE_ASSET_PATTERN.test(url.pathname);
+}
+
 self.addEventListener('install', (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => {
-        console.log('Opened cache');
-        return cache.addAll(urlsToCache);
-      })
-      .catch((err) => {
-        console.error('Cache install failed:', err);
-      })
+    caches.open(CACHE_NAME).then(() => undefined)
   );
-  // REMOVED: self.skipWaiting() - Don't automatically take control
-  // The service worker will wait until user chooses to update
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
+    (async () => {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
       );
-    })
-  );
-  // REMOVED: self.clients.claim() - Don't automatically take control
-  // Wait for user action before activating new version
-});
-
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  // SECURITY: Never cache or intercept mutation requests (POST, PUT, DELETE, PATCH)
-  // Caching these could cause silent data loss or serve stale responses
-  if (event.request.method !== 'GET') {
-    return; // Let mutation requests go directly to network
-  }
-
-  // Don't intercept API requests - only cache static assets
-  const url = new URL(event.request.url);
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
-    return; // API responses must never be cached by the service worker
-  }
-
-  // Don't intercept requests from admin portal (port 5174) or Vite internals
-  if (url.port === '5174' || url.hostname.includes('admin') ||
-    url.pathname.includes('/@vite') || url.pathname.includes('/@react-refresh') ||
-    url.pathname.includes('/src/') || url.pathname.includes('.ts') || url.pathname.includes('.tsx') ||
-    url.search.includes('t=')) { // Vite timestamp
-    return; // Let the request go through normally
-  }
-
-  event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        // Return cached version or fetch from network
-        return response || fetch(event.request);
-      })
-      .catch(() => {
-        // If both fail, return offline page or fallback
-        if (event.request.destination === 'document') {
-          return caches.match('./index.html').then(indexRes => {
-            return indexRes || new Response('<h1>Offline</h1><p>You are offline and the app is not cached.</p>', {
-              status: 503,
-              headers: { 'Content-Type': 'text/html' }
-            });
-          });
-        }
-
-        // Ensure we return a valid response object for non-document requests to avoid "Failed to convert value to 'Response'"
-        return new Response('Offline/Network Error', {
-          status: 503,
-          statusText: 'Service Unavailable',
-          headers: new Headers({ 'Content-Type': 'text/plain' })
-        });
-      })
+      await self.clients.claim();
+    })()
   );
 });
 
-// Listen for SKIP_WAITING message from client (user-initiated update)
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
-    // User requested update - now take control
+  if (event.data?.type === 'SKIP_WAITING') {
     self.skipWaiting();
   }
 });
 
+self.addEventListener('fetch', (event) => {
+  if (event.request.method !== 'GET') return;
+
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/auth/')) {
+    return;
+  }
+
+  if (
+    url.port === '5174' ||
+    url.hostname.includes('admin') ||
+    url.pathname.includes('/@vite') ||
+    url.pathname.includes('/@react-refresh') ||
+    url.pathname.includes('/src/') ||
+    url.search.includes('t=')
+  ) {
+    return;
+  }
+
+  if (shouldNeverCache(url)) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('./index.html'))
+    );
+    return;
+  }
+
+  if (isImmutableHashedAsset(url)) {
+    event.respondWith(
+      caches.match(event.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(event.request).then((response) => {
+          if (!response || response.status !== 200) return response;
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          return response;
+        });
+      })
+    );
+    return;
+  }
+
+  // Default: network-first for everything else (icons, unhashed public files).
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => response)
+      .catch(() => caches.match(event.request))
+  );
+});

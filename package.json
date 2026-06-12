@@ -86,6 +86,7 @@
     "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",
     "test:ledger-reconciliation": "tsx tests/ledgerReconciliation.test.ts",
     "test:financial-reconciliation": "tsx tests/financialReconciliationEngine.test.ts",
+    "test:version-check": "tsx tests/versionCheck.test.ts",
     "dev:backend": "npm run dev --prefix backend",
     "start:backend": "npm run start --prefix backend",
     "build:backend": "npm install --prefix backend --include=dev && npm run build --prefix backend",

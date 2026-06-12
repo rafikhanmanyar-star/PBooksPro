@@ -951,19 +951,14 @@ const App: React.FC = () => {
 
         <UpdateNotification />
         <VersionUpdateNotification onUpdateRequested={() => {
-          // Use PWA context to apply update if available
           if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistration().then(registration => {
+            navigator.serviceWorker.getRegistration().then((registration) => {
               if (registration?.waiting) {
                 registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-                setTimeout(() => window.location.reload(), 500);
-              } else {
-                // Fallback: just reload
-                window.location.reload();
               }
-            });
+              setTimeout(() => window.location.reload(), 500);
+            }).catch(() => window.location.reload());
           } else {
-            // Fallback: just reload
             window.location.reload();
           }
         }} />

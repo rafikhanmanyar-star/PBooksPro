@@ -3,9 +3,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
+import { generateBuildVersionMeta } from './scripts/generate-build-version.mjs'
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
+const buildVersionMeta = generateBuildVersionMeta();
 
 // Plugin to suppress sql.js Node.js module warnings
 // These warnings are harmless - sql.js handles Node.js modules internally
@@ -56,6 +58,8 @@ export default defineConfig({
     'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.API_KEY || process.env.VITE_API_KEY || ''),
     // Inject application version at build time
     'import.meta.env.APP_VERSION': JSON.stringify(packageJson.version),
+    'import.meta.env.VITE_APP_BUILD_VERSION': JSON.stringify(buildVersionMeta.version),
+    'import.meta.env.VITE_APP_BUILD_TIME': JSON.stringify(buildVersionMeta.buildTime),
   },
   assetsInclude: isElectronBuild ? [] : ['**/*.wasm'],
   optimizeDeps: {
@@ -146,10 +150,26 @@ export default defineConfig({
       },
     },
     {
-      name: 'write-env-config',
+      name: 'write-deployment-artifacts',
       closeBundle() {
         const distDir = join(process.cwd(), 'dist');
+        const publicDir = join(process.cwd(), 'public');
         if (!existsSync(distDir)) mkdirSync(distDir, { recursive: true });
+
+        const meta = generateBuildVersionMeta();
+        const versionPayload = {
+          version: meta.version,
+          buildTime: meta.buildTime,
+          packageVersion: meta.packageVersion,
+        };
+
+        writeFileSync(join(distDir, 'version.json'), JSON.stringify(versionPayload, null, 2));
+        if (!isElectronBuild) {
+          if (!existsSync(publicDir)) mkdirSync(publicDir, { recursive: true });
+          writeFileSync(join(publicDir, 'version.json'), JSON.stringify(versionPayload, null, 2));
+        }
+        console.log(`✅ Wrote version.json (${meta.version})`);
+
         const apiUrl = process.env.VITE_API_URL || '';
         const isStaging =
           process.env.VITE_STAGING === 'true' ||
@@ -161,27 +181,27 @@ export default defineConfig({
           JSON.stringify({ apiUrl, isStaging, appName: isStaging ? 'PBooks Pro Staging' : 'PBooks Pro' }, null, 2)
         );
         console.log(`✅ Wrote env-config.json (isStaging=${isStaging})`);
-      }
-    },
-    {
-      name: 'copy-icons',
-      closeBundle() {
-        // Copy icon files and service worker to dist folder
-        const filesToCopy = [
-          { source: join(process.cwd(), 'electron/assets', 'icon.ico'), dest: join(process.cwd(), 'dist', 'icon.ico') },
-          { source: join(process.cwd(), 'sw.js'), dest: join(process.cwd(), 'dist', 'sw.js') }
-        ];
 
-        filesToCopy.forEach(({ source, dest }) => {
-          if (existsSync(source)) {
-            try {
-              copyFileSync(source, dest);
-              console.log(`✅ Copied ${source.split(/[/\\]/).pop()} to dist folder`);
-            } catch (error) {
-              // Silently ignore - icons are optional during testing
-            }
+        const swSource = join(process.cwd(), 'sw.js');
+        const swDest = join(distDir, 'sw.js');
+        if (existsSync(swSource) && !isElectronBuild) {
+          const swBody = readFileSync(swSource, 'utf-8').replaceAll(
+            '%%PBOOKS_CACHE_NAME%%',
+            `pbookspro-${meta.version}`
+          );
+          writeFileSync(swDest, swBody);
+          console.log('✅ Wrote sw.js with deployment cache key');
+        }
+
+        const iconSource = join(process.cwd(), 'electron/assets', 'icon.ico');
+        const iconDest = join(distDir, 'icon.ico');
+        if (existsSync(iconSource)) {
+          try {
+            copyFileSync(iconSource, iconDest);
+          } catch {
+            /* optional */
           }
-        });
+        }
       }
     },
   ],
