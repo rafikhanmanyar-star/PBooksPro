@@ -13,6 +13,7 @@ import Select from '../ui/Select';
 import { ICONS } from '../../constants';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';
+import { isValidEmailFormat, normalizeUserEmail } from '../../shared/auth/emailIdentity';
 
 interface User {
     id: string;
@@ -165,10 +166,32 @@ const UserManagement: React.FC = () => {
         e.preventDefault();
         if (isSubmitting) return;
 
-        if (!username || !name) {
-            await showAlert("Username and Name are required.");
+        if (!name.trim()) {
+            await showAlert('Full name is required.');
             return;
         }
+        const emailVal = email.trim();
+        if (!emailVal) {
+            await showAlert('Email address is required.');
+            return;
+        }
+        if (!isValidEmailFormat(emailVal)) {
+            await showAlert('Enter a valid email address.');
+            return;
+        }
+        const normalizedEmail = normalizeUserEmail(emailVal);
+        if (!normalizedEmail) {
+            await showAlert('Email address is required.');
+            return;
+        }
+        const duplicate = users.some(
+            u => u.id !== userToEdit?.id && normalizeUserEmail(u.email) === normalizedEmail
+        );
+        if (duplicate) {
+            await showAlert('This email address is already assigned to another user.');
+            return;
+        }
+        const resolvedUsername = username.trim() || normalizedEmail.split('@')[0] || 'user';
 
         if (!userToEdit && !password && !useCompanyBridge) {
             await showAlert("Password is required for new users.");
@@ -180,14 +203,14 @@ const UserManagement: React.FC = () => {
             if (useCompanyBridge) {
                 if (userToEdit) {
                     const result = await companyCtx!.updateUser(userToEdit.id, {
-                        username, name, role, email: email || undefined,
+                        username: resolvedUsername, name, role, email: normalizedEmail,
                         password: password || undefined,
                     });
                     if (!result.ok) { await showAlert(result.error || 'Failed to update user'); return; }
                     showToast('User updated successfully.');
                 } else {
                     const result = await companyCtx!.createUser({
-                        username, name, role, email: email || undefined,
+                        username: resolvedUsername, name, role, email: normalizedEmail,
                         password: password || undefined,
                     });
                     if (!result.ok) { await showAlert(result.error || 'Failed to create user'); return; }
@@ -201,12 +224,12 @@ const UserManagement: React.FC = () => {
                     if (password) {
                         db.execute(
                             'UPDATE users SET username = ?, name = ?, email = ?, role = ?, password = ?, updated_at = datetime(\'now\') WHERE id = ?',
-                            [username, name, email || null, role, password, userToEdit.id]
+                            [resolvedUsername, name, normalizedEmail, role, password, userToEdit.id]
                         );
                     } else {
                         db.execute(
                             'UPDATE users SET username = ?, name = ?, email = ?, role = ?, updated_at = datetime(\'now\') WHERE id = ?',
-                            [username, name, email || null, role, userToEdit.id]
+                            [resolvedUsername, name, normalizedEmail, role, userToEdit.id]
                         );
                     }
                     showToast('User updated successfully.');
@@ -214,18 +237,18 @@ const UserManagement: React.FC = () => {
                     const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
                     db.execute(
                         'INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime(\'now\'), datetime(\'now\'))',
-                        [id, tenantId, username, name, role, password, email || null]
+                        [id, tenantId, resolvedUsername, name, role, password, normalizedEmail]
                     );
                     showToast('User created successfully.');
                 }
             } else {
                 if (userToEdit) {
-                    const updateData: any = { username, name, email: email || undefined, role };
+                    const updateData: any = { username: resolvedUsername, name, email: normalizedEmail, role };
                     if (password) updateData.password = password;
                     await apiClient.put(`/users/${userToEdit.id}`, updateData);
                     showToast('User updated successfully.');
                 } else {
-                    const created = await apiClient.post<User>('/users', { username, name, email: email || undefined, password, role });
+                    const created = await apiClient.post<User>('/users', { username: resolvedUsername, name, email: normalizedEmail, password, role });
                     showToast('User created successfully.');
                     setUsers(prev => {
                         const map = new Map(prev.map(u => [u.id, u]));
@@ -362,22 +385,23 @@ const UserManagement: React.FC = () => {
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} preventCloseWhile={isSubmitting} title={userToEdit ? 'Edit User' : 'New User'}>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Input
+                        label="Email Address"
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                    />
+                    <Input
+                        label="Username (display)"
+                        value={username}
+                        onChange={e => setUsername(e.target.value)}
+                        placeholder="Optional — defaults from email"
+                    />
+                    <Input
                         label="Full Name"
                         value={name}
                         onChange={e => setName(e.target.value)}
                         required
-                    />
-                    <Input
-                        label="Username"
-                        value={username}
-                        onChange={e => setUsername(e.target.value)}
-                        required
-                    />
-                    <Input
-                        label="Email (Optional)"
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
                     />
 
                     <div>

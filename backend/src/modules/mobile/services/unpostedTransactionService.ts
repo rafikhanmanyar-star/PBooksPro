@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import type pg from 'pg';
+import {
+  notifyOnUnpostedTransactionCreated,
+  notifyOnUnpostedTransactionStatusChange,
+} from '../../notifications/services/unpostedTransactionNotificationService.js';
 import { UnpostedTransactionRepository } from '../repositories/UnpostedTransactionRepository.js';
 import {
   UNPOSTED_TRANSACTION_TYPES,
@@ -91,7 +95,9 @@ export async function createUnpostedTransaction(
   const repo = new UnpostedTransactionRepository(tenantId, client);
   const row = await repo.create(input, userId);
   const names = await userNameMap(client, tenantId, [userId]);
-  return rowToUnpostedTransactionApi(row, names.get(userId));
+  const creatorName = names.get(userId) ?? 'Executive';
+  await notifyOnUnpostedTransactionCreated(client, tenantId, row, creatorName);
+  return rowToUnpostedTransactionApi(row, creatorName);
 }
 
 export async function updateUnpostedTransactionStatus(
@@ -103,8 +109,16 @@ export async function updateUnpostedTransactionStatus(
   rejectionReason?: string
 ) {
   const repo = new UnpostedTransactionRepository(tenantId, client);
+  const existing = await repo.getById(id);
   const row = await repo.updateStatus(id, status, actorId, rejectionReason);
   if (!row) return null;
+  await notifyOnUnpostedTransactionStatusChange(
+    client,
+    tenantId,
+    row,
+    existing?.status ?? null,
+    actorId
+  );
   const names = await userNameMap(client, tenantId, [row.created_by]);
   return rowToUnpostedTransactionApi(row, names.get(row.created_by));
 }

@@ -56,7 +56,7 @@ function mapAccountRow(row: UserTenantAccountRow): MatchedUserAccount {
 }
 
 /**
- * Find active user accounts matching email or username (case-insensitive).
+ * Find active user accounts matching email (case-insensitive).
  * Excludes internal demo master tenants.
  */
 export async function findAccountsByLoginIdentifier(

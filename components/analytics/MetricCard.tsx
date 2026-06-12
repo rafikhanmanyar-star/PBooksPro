@@ -128,7 +128,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         ${className}
       `}
     >
-      <div className="flex justify-between items-start gap-2 mb-3">
+      <div className="flex justify-between items-start gap-2 mb-3 pr-1">
         {Icon && (
           <div className={`p-2.5 rounded-xl border transition-transform group-hover:scale-105 ${iconWrapClass(status)}`}>
             <Icon className="w-4 h-4 md:w-5 md:h-5" strokeWidth={2} />
@@ -136,7 +136,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
         )}
         {showTrend && (
           <div
-            className={`flex items-center gap-0.5 text-[10px] md:text-xs font-semibold px-2 py-1 rounded-full tabular-nums ${
+            className={`flex items-center gap-0.5 text-[10px] md:text-xs font-semibold px-2 py-1 rounded-full tabular-nums shrink-0 ${
               trendUp ? 'ds-badge-paid' : 'ds-badge-unpaid'
             }`}
           >
@@ -147,7 +147,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       </div>
 
       <div>
-        <p className="text-xs md:text-sm font-medium text-app-muted mb-1">{label}</p>
+        <p className="text-xs md:text-sm font-medium text-app-muted mb-1 line-clamp-2 leading-snug min-h-[2.5rem]">{label}</p>
         <p className={`text-xl md:text-2xl font-bold tracking-tight tabular-nums ${statusAccent(status)}`}>
           {format === 'currency' && (
             <span className="text-xs md:text-sm font-normal text-app-muted mr-1">{CURRENCY}</span>
@@ -168,7 +168,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       </div>
 
       {onClick && (
-        <ChevronRight className="absolute top-4 right-4 w-4 h-4 text-app-muted opacity-0 group-hover:opacity-100 transition-opacity" />
+        <ChevronRight className="absolute top-4 right-4 w-4 h-4 text-app-muted opacity-0 transition-opacity pointer-events-none max-md:hidden [@media(hover:hover)]:group-hover:opacity-100" />
       )}
     </div>
   );

@@ -105,6 +105,7 @@ import { systemRouter } from './systemRoutes.js';
 import { appUpdateRouter } from './appUpdateRoutes.js';
 import { dataManagementRouter } from './dataManagementRoutes.js';
 import { mobileRouter } from './mobileRoutes.js';
+import { notificationsRouter } from '../modules/notifications/routes/notificationsRoutes.js';
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
@@ -170,6 +171,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     financialReconciliationRouter
   );
   app.use(prefix, authMiddleware, requireActiveSubscription(), mobileRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), notificationsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardMetricsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardSnapshotsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rentalAnalyticsRouter);

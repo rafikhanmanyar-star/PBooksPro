@@ -1356,6 +1356,28 @@ class DatabaseService {
                         }
                     }
 
+                    if (currentVersion < 24) {
+                        try {
+                            const { runEmailAuthMigrationSqlite } = await import('./emailAuthMigration.js');
+                            const report = runEmailAuthMigrationSqlite(
+                                {
+                                    query: <T,>(sql: string, params?: unknown[]) =>
+                                        this.rawQuery<T>(sql, params),
+                                    execute: (sql: string, params?: unknown[]) =>
+                                        this.rawExecute(sql, params),
+                                },
+                                'desktop'
+                            );
+                            if (report.usersBackfilled > 0) {
+                                console.log(
+                                    `[EmailAuthMigration] Backfilled ${report.usersBackfilled} user email(s) for desktop SQLite`
+                                );
+                            }
+                        } catch (v24Error) {
+                            console.warn('[EmailAuthMigration] v24 migration warning:', v24Error);
+                        }
+                    }
+
                     // Update schema version directly (setMetadata relies on isReady)
                     this.rawExecute(
                         'INSERT OR REPLACE INTO metadata (key, value, updated_at) VALUES (?, ?, datetime(\'now\'))',

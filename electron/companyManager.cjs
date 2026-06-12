@@ -8,6 +8,7 @@ const { ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { runEmailAuthMigration, normalizeEmail } = require('./emailAuthMigration.cjs');
 
 let masterDb = null;
 let activeCompanyId = null;
@@ -671,33 +672,50 @@ function checkCredentials(companyId) {
 
   try {
     const Database = require('better-sqlite3');
-    const tmpDb = new Database(company.db_file_path, { readonly: true });
-    // Return all active users so any company user can log in; credentials checked at login
+    const tmpDb = new Database(company.db_file_path);
+    runEmailAuthMigration(tmpDb);
     const users = tmpDb.prepare(
-      'SELECT id, username, password, force_password_change FROM users WHERE is_active = 1 LIMIT 50'
+      'SELECT id, username, email, password, force_password_change FROM users WHERE is_active = 1 LIMIT 50'
     ).all();
     tmpDb.close();
 
     const hasPassword = users.some(u => u.password && u.password.length > 0);
-    return { ok: true, requiresLogin: hasPassword, users: users.map(u => ({ id: u.id, username: u.username })) };
+    return {
+      ok: true,
+      requiresLogin: hasPassword,
+      users: users.map(u => ({
+        id: u.id,
+        username: u.username,
+        email: u.email || `${u.username}@company.local`,
+      })),
+    };
   } catch (err) {
     return { ok: false, error: err.message };
   }
 }
 
-function loginToCompany(companyId, username, password) {
+function loginToCompany(companyId, emailOrLegacy, password) {
   const company = getCompanyById(companyId);
   if (!company) return { ok: false, error: 'Company not found.' };
 
   try {
     const Database = require('better-sqlite3');
-    const tmpDb = new Database(company.db_file_path, { readonly: true });
+    const tmpDb = new Database(company.db_file_path);
+    runEmailAuthMigration(tmpDb);
+    const loginKey = String(emailOrLegacy || '').trim().toLowerCase();
     const user = tmpDb.prepare(
-      "SELECT id, username, password, name, role, force_password_change, display_timezone FROM users WHERE username = ? AND is_active = 1"
-    ).get(username);
+      `SELECT id, username, email, password, name, role, force_password_change, display_timezone
+       FROM users
+       WHERE is_active = 1
+         AND (
+           LOWER(TRIM(COALESCE(email, ''))) = ?
+           OR (INSTR(?, '@') = 0 AND LOWER(username) = ?)
+         )
+       LIMIT 1`
+    ).get(loginKey, loginKey, loginKey);
     tmpDb.close();
 
-    if (!user) return { ok: false, error: 'Invalid username or password.' };
+    if (!user) return { ok: false, error: 'Invalid email or password.' };
 
     // NULL password means no password set yet - allow access
     if (!user.password) {
@@ -706,6 +724,7 @@ function loginToCompany(companyId, username, password) {
         user: {
           id: user.id,
           username: user.username,
+          email: user.email || normalizeEmail(`${user.username}@company.local`),
           name: user.name,
           role: user.role,
           displayTimezone: user.display_timezone != null && user.display_timezone !== '' ? user.display_timezone : null,
@@ -715,7 +734,7 @@ function loginToCompany(companyId, username, password) {
     }
 
     if (!verifyPassword(password, user.password)) {
-      return { ok: false, error: 'Invalid username or password.' };
+      return { ok: false, error: 'Invalid email or password.' };
     }
 
     return {
@@ -723,6 +742,7 @@ function loginToCompany(companyId, username, password) {
       user: {
         id: user.id,
         username: user.username,
+        email: user.email || normalizeEmail(`${user.username}@company.local`),
         name: user.name,
         role: user.role,
         displayTimezone: user.display_timezone != null && user.display_timezone !== '' ? user.display_timezone : null,

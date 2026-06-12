@@ -34,6 +34,8 @@ export function useCreateUnpostedTransaction() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['unposted-transactions'] });
       void qc.invalidateQueries({ queryKey: ['unposted-transaction-counts'] });
+      void qc.invalidateQueries({ queryKey: ['user-notifications'] });
+      void qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
     },
   });
 }
@@ -53,6 +55,8 @@ export function useUpdateUnpostedTransactionStatus() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['unposted-transactions'] });
       void qc.invalidateQueries({ queryKey: ['unposted-transaction-counts'] });
+      void qc.invalidateQueries({ queryKey: ['user-notifications'] });
+      void qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
     },
   });
 }

@@ -1,21 +1,11 @@
 import nodemailer from 'nodemailer';
 
 function createTransport() {
-  const host =
-    process.env.ORG_APPROVAL_SMTP_HOST ||
-    process.env.EMAIL_AUTOMATION_SMTP_HOST ||
-    process.env.MARKETING_SMTP_HOST ||
-    process.env.DR_SMTP_HOST;
+  const host = process.env.ORG_APPROVAL_SMTP_HOST?.trim();
   if (!host) return null;
   return nodemailer.createTransport({
     host,
-    port: Number(
-      process.env.ORG_APPROVAL_SMTP_PORT ||
-        process.env.EMAIL_AUTOMATION_SMTP_PORT ||
-        process.env.MARKETING_SMTP_PORT ||
-        process.env.DR_SMTP_PORT ||
-        587
-    ),
+    port: Number(process.env.ORG_APPROVAL_SMTP_PORT || 587),
     secure: process.env.ORG_APPROVAL_SMTP_SECURE === 'true',
     auth:
       process.env.ORG_APPROVAL_SMTP_USER && process.env.ORG_APPROVAL_SMTP_PASS
@@ -24,6 +14,9 @@ function createTransport() {
             pass: process.env.ORG_APPROVAL_SMTP_PASS,
           }
         : undefined,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 15_000,
   });
 }
 

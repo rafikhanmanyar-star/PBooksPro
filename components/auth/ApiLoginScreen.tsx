@@ -320,7 +320,7 @@ function AuthCardHeader({
 const ApiLoginScreen: React.FC = () => {
   const { login, registerTenant, enterDemoSession, error: authError, isLoading, clearAuthError } = useAuth();
   const [demoEntering, setDemoEntering] = useState(false);
-  const { hideProgress } = useNotification();
+  const { hideProgress, showAlert } = useNotification();
   const [serverUrl, setServerUrl] = useState('');
   const [email, setEmail] = useState(() => readStoredLastEmail());
   const [password, setPassword] = useState(() => readSavedApiPassword(readStoredLastEmail()));
@@ -831,7 +831,7 @@ const ApiLoginScreen: React.FC = () => {
                         aria-required
                       />
                     </IconField>
-                    <FieldHelper>Use the email on your account, or your username if no email is set.</FieldHelper>
+                    <FieldHelper>Your globally unique sign-in email for this organization.</FieldHelper>
                   </div>
                 )}
 
@@ -913,6 +913,24 @@ const ApiLoginScreen: React.FC = () => {
                 </Button>
                 )}
 
+                {!isDemoTenantLogin && (
+                  <p className="text-center text-ds-small">
+                    <button
+                      type="button"
+                      className="font-medium text-app-muted underline-offset-2 transition-colors hover:text-app-text hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-primary/40"
+                      onClick={() => {
+                        setError(null);
+                        void showAlert(
+                          'Enter your account email on the sign-in form and we will send reset instructions when email delivery is enabled on your server. Contact your administrator if you need help immediately.'
+                        );
+                      }}
+                      disabled={isLoading}
+                    >
+                      Forgot password?
+                    </button>
+                  </p>
+                )}
+
                 {!isDemoTenantLogin && !websiteDemoEntry && (
                   <>
                     <div className="relative my-3 flex items-center gap-3">
@@ -920,6 +938,16 @@ const ApiLoginScreen: React.FC = () => {
                       <span className="text-ds-small text-app-muted">or</span>
                       <div className="h-px flex-1 bg-app-border/70" aria-hidden />
                     </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled
+                      className="w-full opacity-70"
+                      title="Coming soon"
+                    >
+                      Login with Google (Coming Soon)
+                    </Button>
 
                     <Button
                       type="button"

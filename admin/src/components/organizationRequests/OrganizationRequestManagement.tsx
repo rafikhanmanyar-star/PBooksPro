@@ -58,15 +58,18 @@ const OrganizationRequestManagement: React.FC = () => {
   const [rejectReason, setRejectReason] = useState(REJECTION_PRESETS[0]!);
   const [customRejectReason, setCustomRejectReason] = useState('');
 
-  const loadList = useCallback(async () => {
+  const loadList = useCallback(async (options?: { silent?: boolean }) => {
     try {
       setLoading(true);
-      setError('');
+      if (!options?.silent) setError('');
       const result = await adminApi.getOrganizationRequests({ status: statusFilter, limit: 200 });
       setItems(result.items);
       setTotal(result.total);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to load organization requests');
+      if (!options?.silent) {
+        setError(err instanceof Error ? err.message : 'Failed to load organization requests');
+      }
+      throw err;
     } finally {
       setLoading(false);
     }
@@ -97,7 +100,19 @@ const OrganizationRequestManagement: React.FC = () => {
     try {
       const updated = await action();
       setDetail(updated);
-      await loadList();
+      if (updated.status !== statusFilter) {
+        setItems((prev) => prev.filter((item) => item.id !== updated.id));
+        setTotal((count) => Math.max(0, count - 1));
+      } else {
+        setItems((prev) =>
+          prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item))
+        );
+      }
+      try {
+        await loadList({ silent: true });
+      } catch (refreshErr) {
+        console.warn('Organization list refresh failed after action:', refreshErr);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Action failed');
     } finally {

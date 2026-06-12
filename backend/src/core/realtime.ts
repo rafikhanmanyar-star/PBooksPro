@@ -287,3 +287,22 @@ export function emitInternalChatMessage(tenantId: string, payload: InternalChatM
   if (!io) return;
   io.to(tenantRoom(tenantId)).emit('chat:message', payload);
 }
+
+export type UserNotificationSocketPayload = {
+  tenantId: string;
+  userId: string;
+  notificationId: string;
+  ts: string;
+};
+
+/** Notify a specific user to refresh their bell icon (clients filter by userId). */
+export function emitUserNotification(tenantId: string, userId: string, notificationId: string): void {
+  if (!io) return;
+  const body: UserNotificationSocketPayload = {
+    tenantId,
+    userId,
+    notificationId,
+    ts: new Date().toISOString(),
+  };
+  io.to(tenantRoom(tenantId)).emit('notification_created', body);
+}
