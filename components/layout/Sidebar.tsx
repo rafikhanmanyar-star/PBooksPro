@@ -20,6 +20,7 @@ import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useViewport } from '../../context/ViewportContext';
 import { isAdminRole } from '../../hooks/useRecordLock';
+import { usePermissions } from '../../hooks/usePermissions';
 import NavGroupHeader from './NavGroupHeader';
 
 interface SidebarProps {
@@ -214,6 +215,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const roleLc = effectiveRole.toLowerCase();
     const isAccountsOnly = roleLc === 'accounts';
     const isAdmin = isAdminRole(effectiveRole);
+    const {
+        enterpriseRole,
+        canReadProjectSelling,
+        canWriteFinancial,
+        canReadPayroll,
+    } = usePermissions();
+    const isSalesFocusedUser = enterpriseRole === 'sales_user';
+    const canAccessProjectSellingNav = canReadProjectSelling;
 
     /** Show count below the user card: LAN/API when server count loaded; local-only = single session. */
     const showLoggedInUsersRow =
@@ -289,14 +298,32 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             });
         }
 
-        // Filter groups based on modules
+        // Filter groups based on modules and role
         return groups.filter(group => {
             const hasRealEstate = hasModule('real_estate');
             const hasRental = hasModule('rental');
 
+            if (isSalesFocusedUser) {
+                if (group.title === 'Financials' || group.title === 'Construction' || group.title === 'People') {
+                    return false;
+                }
+            }
+
             if (group.title === 'Selling') {
-                // Project Selling & Inv Mgmt require Real Estate
-                return hasRealEstate;
+                const showSellingSection = hasRealEstate || canAccessProjectSellingNav;
+                if (!showSellingSection) return false;
+                group.items = group.items.filter((item) => {
+                    if (item.page === 'projectSelling') return canAccessProjectSellingNav;
+                    if (item.page === 'investmentManagement') {
+                        return hasRealEstate && !isSalesFocusedUser && canWriteFinancial;
+                    }
+                    return true;
+                });
+                return group.items.length > 0;
+            }
+            if (group.title === 'Financials') {
+                if (isSalesFocusedUser) return false;
+                return true;
             }
             if (group.title === 'Construction') {
                 group.items = group.items.filter(item => {
@@ -309,9 +336,23 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 return hasRental;
             }
 
-            return true; // Always show Overview, Financials, People, System
+            if (group.title === 'People') {
+                if (isSalesFocusedUser) return false;
+                if (!canReadPayroll && !canWriteFinancial) return false;
+                return true;
+            }
+
+            return true; // Always show Overview, System (when added)
         });
-    }, [isAccountsOnly, hasModule, isAdmin]);
+    }, [
+        isAccountsOnly,
+        hasModule,
+        isAdmin,
+        isSalesFocusedUser,
+        canAccessProjectSellingNav,
+        canWriteFinancial,
+        canReadPayroll,
+    ]);
 
     const isCurrent = (itemPage: Page) => {
         if (currentPage === itemPage) return true;

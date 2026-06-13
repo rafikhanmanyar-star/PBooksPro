@@ -4,6 +4,7 @@ import { listAccounts, type AccountRow } from '../accountsService.js';
 import { getProfitLossReportJson } from '../profitLossReportService.js';
 import {
   appendBuildingFilter,
+  buildDashboardEntityFilter,
   computeTrendPercent,
   invoiceCollectionQuery,
   metricStatusForTrend,
@@ -66,25 +67,10 @@ function entityFilter(
     property?: string;
     vendor?: string;
     customer?: string;
-  }
+  },
+  baseParamIndex = 1
 ): FilterClause {
-  const clauses: string[] = [];
-  const params: unknown[] = [];
-  let idx = 0;
-  const add = (col: string | undefined, val: string | undefined) => {
-    if (!col || !val) return;
-    idx += 1;
-    clauses.push(`${col} = $${idx}`);
-    params.push(val);
-  };
-  add(columnMap.project, filters.projectId);
-  add(columnMap.property, filters.propertyId);
-  add(columnMap.vendor, filters.vendorId);
-  add(columnMap.customer, filters.customerId);
-  if (filters.buildingId && columnMap.alias) {
-    appendBuildingFilter(columnMap.alias, filters.buildingId, params, clauses);
-  }
-  return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
+  return buildDashboardEntityFilter(filters, columnMap, baseParamIndex);
 }
 
 async function sumAccountsReceivable(

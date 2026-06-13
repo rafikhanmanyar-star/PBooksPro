@@ -54,6 +54,46 @@ export function invoiceCollectionQuery(
   };
 }
 
+/** Entity filter for AR/AP queries; param indices start after tenant_id ($1). */
+export function buildDashboardEntityFilter(
+  filters: Pick<DashboardFilters, 'projectId' | 'propertyId' | 'vendorId' | 'customerId' | 'buildingId'>,
+  columnMap: {
+    alias?: string;
+    project?: string;
+    property?: string;
+    vendor?: string;
+    customer?: string;
+  },
+  baseParamIndex = 1
+): { sql: string; params: unknown[] } {
+  const clauses: string[] = [];
+  const params: unknown[] = [];
+  let idx = baseParamIndex;
+  const add = (col: string | undefined, val: string | undefined) => {
+    if (!col || !val) return;
+    idx += 1;
+    clauses.push(`${col} = $${idx}`);
+    params.push(val);
+  };
+  add(columnMap.project, filters.projectId);
+  add(columnMap.property, filters.propertyId);
+  add(columnMap.vendor, filters.vendorId);
+  add(columnMap.customer, filters.customerId);
+  if (filters.buildingId && columnMap.alias) {
+    idx += 1;
+    const p = `$${idx}`;
+    params.push(filters.buildingId);
+    clauses.push(`(
+      ${columnMap.alias}.building_id = ${p}
+      OR ${columnMap.alias}.property_id IN (
+        SELECT pr.id FROM properties pr
+        WHERE pr.tenant_id = $1 AND pr.building_id = ${p} AND pr.deleted_at IS NULL
+      )
+    )`);
+  }
+  return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
+}
+
 export function parseDateOnly(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);

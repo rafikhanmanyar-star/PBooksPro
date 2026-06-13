@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  buildDashboardEntityFilter,
   computeTrendPercent,
   defaultDashboardPeriod,
   isValidDateOnly,
@@ -45,5 +46,24 @@ describe('dashboardMetricsHelpers', () => {
     assert.equal(computeTrendPercent(100, 0), 100);
     assert.equal(computeTrendPercent(0, 0), 0);
     assert.equal(computeTrendPercent(50, 100), -50);
+  });
+
+  it('buildDashboardEntityFilter uses $2 for building when tenant is $1', () => {
+    const ef = buildDashboardEntityFilter(
+      { buildingId: 'bld-1' },
+      { alias: 'i', project: 'i.project_id', property: 'i.property_id' }
+    );
+    assert.match(ef.sql, /i\.building_id = \$2/);
+    assert.deepEqual(ef.params, ['bld-1']);
+  });
+
+  it('buildDashboardEntityFilter stacks project and building param indices', () => {
+    const ef = buildDashboardEntityFilter(
+      { projectId: 'proj-1', buildingId: 'bld-1' },
+      { alias: 'i', project: 'i.project_id', property: 'i.property_id' }
+    );
+    assert.match(ef.sql, /i\.project_id = \$2/);
+    assert.match(ef.sql, /i\.building_id = \$3/);
+    assert.deepEqual(ef.params, ['proj-1', 'bld-1']);
   });
 });
