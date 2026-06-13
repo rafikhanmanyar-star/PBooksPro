@@ -9,12 +9,19 @@ import { listProjectAgreementsWithUnits, rowToProjectAgreementApi } from './proj
 import { listUnits, rowToUnitApi } from './unitsService.js';
 import { listProjectReceivedAssets, rowToProjectReceivedAssetApi } from './projectReceivedAssetsService.js';
 import { listProjects, rowToProjectApi } from './projectsService.js';
+import { listBuildings, rowToBuildingApi } from './buildingsService.js';
+import { listProperties, rowToPropertyApi } from './propertiesService.js';
 import { loadJournalLedgerInput } from './journalLedgerLoadService.js';
 
 type BalanceSheetEngineModule = {
   computeBalanceSheetReport: (
     state: Record<string, unknown>,
-    options: { asOfDate: string; selectedProjectId: string; useJournalLedger?: boolean }
+    options: {
+      asOfDate: string;
+      selectedProjectId: string;
+      selectedBuildingId?: string;
+      useJournalLedger?: boolean;
+    }
   ) => Record<string, unknown>;
 };
 
@@ -31,7 +38,7 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
  */
 /** Exported for profit-loss and other reports that share the same minimal state shape. */
 export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId: string, asOfDate: string) {
-  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows, journalData] =
+  const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows, buildingRows, propertyRows, journalData] =
     await Promise.all([
       listAccounts(client, tenantId),
       listTransactions(client, tenantId, {
@@ -47,6 +54,8 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
       listProjectAgreementsWithUnits(client, tenantId),
       fetchPlSubTypesForTenant(client, tenantId),
       listProjects(client, tenantId),
+      listBuildings(client, tenantId),
+      listProperties(client, tenantId),
       loadJournalLedgerInput(client, tenantId, { asOfDate }),
     ]);
 
@@ -58,6 +67,8 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
   const projectReceivedAssets = praRows.map((r) => asRecord(rowToProjectReceivedAssetApi(r)));
   const units = unitRows.map((r) => asRecord(rowToUnitApi(r)));
   const projects = projectRows.map((r) => asRecord(rowToProjectApi(r)));
+  const buildings = buildingRows.map((r) => asRecord(rowToBuildingApi(r)));
+  const properties = propertyRows.map((r) => asRecord(rowToPropertyApi(r)));
   const projectAgreements = paWithUnits.map(({ row, unitIds }) => {
     const api = rowToProjectAgreementApi(row, unitIds) as Record<string, unknown>;
     return asRecord(api);
@@ -73,6 +84,8 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
     projectReceivedAssets,
     units,
     projects,
+    buildings,
+    properties,
     journalLedger: {
       ...journalData,
       accounts,
@@ -86,13 +99,15 @@ export async function getBalanceSheetReportJson(
   tenantId: string,
   asOfDate: string,
   selectedProjectId: string,
-  options?: { includeDebug?: boolean }
+  options?: { includeDebug?: boolean; selectedBuildingId?: string }
 ) {
   const state = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
   const { computeBalanceSheetReport } = await loadBalanceSheetEngine();
+  const selectedBuildingId = options?.selectedBuildingId ?? 'all';
   const report = computeBalanceSheetReport(state as never, {
     asOfDate,
     selectedProjectId,
+    selectedBuildingId,
     useJournalLedger: true,
   }) as {
     assets: { current: unknown[]; non_current: unknown[]; total: number };

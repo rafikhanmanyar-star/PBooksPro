@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState, useProjects, useBuildings } from '../../hooks/useSelectiveState';
 import { TransactionType } from '../../types';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
@@ -8,7 +8,12 @@ import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { computeProfitLossReport, type ProfitLossLine, type ProfitLossReportResult } from './profitLossEngine';
-import ComboBox from '../ui/ComboBox';
+import FinancialEntityFilterCombo from './FinancialEntityFilterCombo';
+import {
+  entityScopeFromFilterId,
+  financialEntityFilterLabel,
+  FINANCIAL_ENTITY_FILTER_ALL,
+} from './financialEntityScope';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import { usePrintContext } from '../../context/PrintContext';
@@ -44,13 +49,15 @@ function MetricBanner({
 
 const ProjectProfitLossReport: React.FC = () => {
   const projects = useProjects();
+  const buildings = useBuildings();
   const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
 
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
   const [startDate, setStartDate] = useState('2000-01-01');
   const [endDate, setEndDate] = useState(() => toLocalDateString(new Date()));
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [entityFilterId, setEntityFilterId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
+  const entityScope = useMemo(() => entityScopeFromFilterId(entityFilterId), [entityFilterId]);
   const [collapsedOpexRoots, setCollapsedOpexRoots] = useState<Set<string>>(new Set());
 
   const [drilldownData, setDrilldownData] = useState<{
@@ -60,7 +67,10 @@ const ProjectProfitLossReport: React.FC = () => {
     type: TransactionType;
   } | null>(null);
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
+  const entityLabel = useMemo(
+    () => financialEntityFilterLabel(entityFilterId, projects, buildings),
+    [entityFilterId, projects, buildings]
+  );
 
   const localOnly = isLocalOnlyMode();
   const tenantId = useReportTenantId();
@@ -75,7 +85,12 @@ const ProjectProfitLossReport: React.FC = () => {
     let cancelled = false;
     setServerReport(null);
     setLoading(true);
-    void fetchProfitLossReport({ from: startDate, to: endDate, projectId: selectedProjectId })
+    void fetchProfitLossReport({
+      from: startDate,
+      to: endDate,
+      projectId: entityScope.projectId,
+      buildingId: entityScope.buildingId,
+    })
       .then((r) => {
         if (!cancelled) setServerReport(r);
       })
@@ -88,7 +103,7 @@ const ProjectProfitLossReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, startDate, endDate, selectedProjectId]);
+  }, [localOnly, tenantId, startDate, endDate, entityScope]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -116,8 +131,14 @@ const ProjectProfitLossReport: React.FC = () => {
   };
 
   const clientReport = useMemo(
-    () => computeProfitLossReport(reportState, { startDate, endDate, selectedProjectId }),
-    [reportState, startDate, endDate, selectedProjectId]
+    () =>
+      computeProfitLossReport(reportState, {
+        startDate,
+        endDate,
+        selectedProjectId: entityScope.projectId,
+        selectedBuildingId: entityScope.buildingId,
+      }),
+    [reportState, startDate, endDate, entityScope]
   );
   const report = !localOnly ? serverReport : clientReport;
 
@@ -218,7 +239,7 @@ const ProjectProfitLossReport: React.FC = () => {
     exportJsonToExcel(data, 'profit-loss-report.xlsx', 'P&L');
   };
 
-  const projectLabel = selectedProjectId === 'all' ? 'All Projects' : projects.find((p) => p.id === selectedProjectId)?.name;
+  const projectLabel = entityLabel;
 
   if (!localOnly && !report) {
     return (
@@ -236,15 +257,11 @@ const ProjectProfitLossReport: React.FC = () => {
           hideSearch
           compact
         >
-          <div className="w-40 sm:w-48 flex-shrink-0">
-            <ComboBox
-              items={projectItems}
-              selectedId={selectedProjectId}
-              onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
-              allowAddNew={false}
-              placeholder="Select Project"
-            />
-          </div>
+          <FinancialEntityFilterCombo
+            className="w-44 sm:w-52 flex-shrink-0"
+            selectedId={entityFilterId}
+            onSelect={setEntityFilterId}
+          />
         </ReportToolbar>
         <p className="text-center text-sm text-app-muted py-8">
           {loading ? 'Loading profit & loss for this organization…' : 'Could not load profit & loss from the server.'}
@@ -274,15 +291,11 @@ const ProjectProfitLossReport: React.FC = () => {
           onRangeChange={handleRangeChange}
           hideSearch={true}
         >
-          <div className="w-40 sm:w-48 flex-shrink-0">
-            <ComboBox
-              items={projectItems}
-              selectedId={selectedProjectId}
-              onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
-              allowAddNew={false}
-              placeholder="Select Project"
-            />
-          </div>
+          <FinancialEntityFilterCombo
+            className="w-44 sm:w-52 flex-shrink-0"
+            selectedId={entityFilterId}
+            onSelect={setEntityFilterId}
+          />
         </ReportToolbar>
       </div>
       <div className="flex-grow overflow-y-auto min-h-0 bg-app-bg" id="printable-area">
@@ -455,8 +468,9 @@ const ProjectProfitLossReport: React.FC = () => {
         data={
           drilldownData
             ? {
-                projectId: selectedProjectId,
-                projectName: projectLabel || 'All Projects',
+                projectId: entityScope.projectId,
+                buildingId: entityScope.buildingId,
+                projectName: projectLabel || 'All Projects & Buildings',
                 categoryId: drilldownData.categoryId,
                 categoryName: drilldownData.categoryName,
                 type: drilldownData.type === TransactionType.INCOME ? 'Income' : 'Expense',

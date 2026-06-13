@@ -24,7 +24,6 @@ import { openDocumentById } from '../../services/documentUploadService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
-import BillLinkedPaymentsSidePanel from './BillLinkedPaymentsSidePanel';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { isVendorSettlementCashMirrorReference } from '../../config/vendorSettlementRefs';
 import {
@@ -1603,27 +1602,15 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
                 title={billToEdit ? "Edit Bill" : "New Project Bill"}
                 size="xl"
-                className={billToEdit?.id ? 'sm:!max-w-7xl' : undefined}
+                className="sm:!max-w-7xl"
             >
-                <div
-                    className={`flex flex-col lg:flex-row lg:items-stretch -m-3 sm:-m-4 md:-m-6 lg:-m-8 ${billToEdit?.id ? 'lg:min-h-[min(720px,calc(100vh-10rem))]' : ''}`}
-                >
-                    <div className="flex-1 min-w-0 min-h-0">
-                        <InvoiceBillForm
-                            onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
-                            type="bill"
-                            itemToEdit={billToEdit || undefined}
-                            initialData={duplicateBillData || newBillContextPrefill || undefined}
-                            projectContext={projectContext}
-                        />
-                    </div>
-                    {billToEdit?.id ? (
-                        <BillLinkedPaymentsSidePanel
-                            billId={billToEdit.id}
-                            className="lg:w-[min(100%,380px)] lg:flex-shrink-0 lg:max-w-full lg:sticky lg:top-0 lg:self-start lg:max-h-[min(85vh,calc(100vh-8rem))] lg:overflow-y-auto"
-                        />
-                    ) : null}
-                </div>
+                <InvoiceBillForm
+                    onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
+                    type="bill"
+                    itemToEdit={billToEdit || undefined}
+                    initialData={duplicateBillData || newBillContextPrefill || undefined}
+                    projectContext={projectContext}
+                />
             </Modal>
 
             <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={paymentBill ? `Pay Bill #${paymentBill.billNumber}` : "Pay Bill"}>

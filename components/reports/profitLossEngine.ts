@@ -200,16 +200,17 @@ function buildRowsForBucket(
  */
 export function computeProfitLossReport(
   state: ProfitLossStateInput,
-  opts: { startDate: string; endDate: string; selectedProjectId: string }
+  opts: { startDate: string; endDate: string; selectedProjectId: string; selectedBuildingId?: string }
 ): ProfitLossReportResult {
   const { startDate, endDate, selectedProjectId } = opts;
+  const selectedBuildingId = opts.selectedBuildingId ?? 'all';
   const journalOpts = state.journalLedger
     ? {
         requireJournalMirror: true,
         mirroredTransactionIds: mirroredTransactionIds(state.journalLedger),
       }
     : undefined;
-  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate, journalOpts);
+  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate, journalOpts, selectedBuildingId);
   const { categoryAmounts, assetSaleRevenue, assetSaleCost, netProfit: legacyNet } = pl;
 
   const issues: ProfitLossValidationIssue[] = [];

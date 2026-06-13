@@ -1,12 +1,17 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState, useProjects, useBuildings } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import ComboBox from '../ui/ComboBox';
+import FinancialEntityFilterCombo from './FinancialEntityFilterCombo';
+import {
+  entityScopeFromFilterId,
+  financialEntityFilterLabel,
+  FINANCIAL_ENTITY_FILTER_ALL,
+} from './financialEntityScope';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -50,11 +55,13 @@ function groupLinesByKey(lines: BalanceSheetLine[]): Map<BsGroupKey, BalanceShee
 
 const ProjectBalanceSheetReport: React.FC = () => {
   const projects = useProjects();
+  const buildings = useBuildings();
   const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
   const [asOfDate, setAsOfDate] = useState(toLocalDateString(new Date()));
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [entityFilterId, setEntityFilterId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
+  const entityScope = useMemo(() => entityScopeFromFilterId(entityFilterId), [entityFilterId]);
   const [hideZeros, setHideZeros] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [ledger, setLedger] = useState<{ id: string; name: string } | null>(null);
@@ -64,7 +71,10 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
+  const entityLabel = useMemo(
+    () => financialEntityFilterLabel(entityFilterId, projects, buildings),
+    [entityFilterId, projects, buildings]
+  );
 
   useEffect(() => {
     if (localOnly || !tenantId) {
@@ -74,7 +84,12 @@ const ProjectBalanceSheetReport: React.FC = () => {
     let cancelled = false;
     setServerReport(null);
     setLoading(true);
-    void fetchBalanceSheetReport({ asOfDate, projectId: selectedProjectId, debug: debugOpen })
+    void fetchBalanceSheetReport({
+      asOfDate,
+      projectId: entityScope.projectId,
+      buildingId: entityScope.buildingId,
+      debug: debugOpen,
+    })
       .then((r) => {
         if (!cancelled) setServerReport(r);
       })
@@ -87,11 +102,16 @@ const ProjectBalanceSheetReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, asOfDate, selectedProjectId, debugOpen]);
+  }, [localOnly, tenantId, asOfDate, entityScope, debugOpen]);
 
   const clientReport = useMemo(
-    () => computeBalanceSheetReport(reportState, { asOfDate, selectedProjectId }),
-    [reportState, asOfDate, selectedProjectId]
+    () =>
+      computeBalanceSheetReport(reportState, {
+        asOfDate,
+        selectedProjectId: entityScope.projectId,
+        selectedBuildingId: entityScope.buildingId,
+      }),
+    [reportState, asOfDate, entityScope]
   );
   const report = !localOnly ? serverReport : clientReport;
 
@@ -249,15 +269,11 @@ const ProjectBalanceSheetReport: React.FC = () => {
           singleDateMode={true}
           compact
         >
-          <div className="w-40 sm:w-48 flex-shrink-0">
-            <ComboBox
-              items={projectItems}
-              selectedId={selectedProjectId}
-              onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
-              allowAddNew={false}
-              placeholder="Select Project"
-            />
-          </div>
+          <FinancialEntityFilterCombo
+            className="w-44 sm:w-52 flex-shrink-0"
+            selectedId={entityFilterId}
+            onSelect={setEntityFilterId}
+          />
         </ReportToolbar>
       </div>
 
@@ -284,9 +300,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
               Statement of Financial Position
             </h3>
             <p className="text-xs text-app-muted font-medium mt-0.5 leading-tight">
-              {selectedProjectId === 'all'
-                ? 'All Projects'
-                : projects.find((p) => p.id === selectedProjectId)?.name}
+              {entityLabel}
             </p>
             <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
             {!localOnly && loading && (

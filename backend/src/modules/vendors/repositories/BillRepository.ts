@@ -146,6 +146,23 @@ export class BillRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
+  async sumBilledForContract(
+    client: pg.PoolClient,
+    contractId: string,
+    excludeBillId?: string
+  ): Promise<number> {
+    const params: unknown[] = [this.tenantId, contractId];
+    let q = `SELECT COALESCE(SUM(amount), 0)::numeric AS total
+             FROM bills
+             WHERE tenant_id = $1 AND contract_id = $2 AND deleted_at IS NULL`;
+    if (excludeBillId?.trim()) {
+      params.push(excludeBillId.trim());
+      q += ` AND id <> $${params.length}`;
+    }
+    const r = await client.query<{ total: string }>(q, params);
+    return Number(r.rows[0]?.total ?? 0);
+  }
+
   async listChangedSince(client: pg.PoolClient, since: Date): Promise<BillRow[]> {
     const r = await client.query<BillRow>(
       `SELECT ${BILL_COLUMNS}

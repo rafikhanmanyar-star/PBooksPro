@@ -26,7 +26,6 @@ import { ImportType } from '../../services/importService';
 import ResizeHandle from '../ui/ResizeHandle';
 import AllQuotationsTable from './AllQuotationsTable';
 import AllBillsTable from './AllBillsTable';
-import BillLinkedPaymentsSidePanel from '../bills/BillLinkedPaymentsSidePanel';
 import VendorComparisonReport from '../reports/VendorComparisonReport';
 const VendorAnalyticsPage = React.lazy(() => import('../../modules/vendor-analytics/VendorAnalyticsPage'));
 import VendorLedgerReport from '../reports/VendorLedgerReport';
@@ -743,7 +742,7 @@ const VendorDirectoryPage: React.FC = () => {
                                     isVendorForm={true}
                                 />
                             </Modal>
-                            <Modal isOpen={isCreateBillModalOpen} onClose={() => setIsCreateBillModalOpen(false)} title={duplicateBillData ? `Duplicate Bill for ${selectedVendor.name}` : `Create Bill for ${selectedVendor.name}`}>
+                            <Modal isOpen={isCreateBillModalOpen} onClose={() => setIsCreateBillModalOpen(false)} title={duplicateBillData ? `Duplicate Bill for ${selectedVendor.name}` : `Create Bill for ${selectedVendor.name}`} size="xl" className="sm:!max-w-7xl">
                                 <InvoiceBillForm
                                     key={duplicateBillData ? 'dup-bill' : `new-bill-${selectedVendor.id}`}
                                     type="bill"
@@ -914,21 +913,13 @@ const VendorDirectoryPage: React.FC = () => {
                     size="xl"
                     className="sm:!max-w-7xl"
                 >
-                    <div className="flex flex-col lg:flex-row lg:items-stretch -m-3 sm:-m-4 md:-m-6 lg:-m-8 lg:min-h-[min(720px,calc(100vh-10rem))]">
-                        <div className="flex-1 min-w-0 min-h-0">
-                            <InvoiceBillForm
-                                key={billToEdit.id}
-                                onClose={() => setEditingItem(null)}
-                                type="bill"
-                                itemToEdit={billToEdit}
-                                onDuplicate={handleDuplicateBill}
-                            />
-                        </div>
-                        <BillLinkedPaymentsSidePanel
-                            billId={billToEdit.id}
-                            className="lg:w-[min(100%,380px)] lg:flex-shrink-0 lg:max-w-full lg:sticky lg:top-0 lg:self-start lg:max-h-[min(85vh,calc(100vh-8rem))] lg:overflow-y-auto"
-                        />
-                    </div>
+                    <InvoiceBillForm
+                        key={billToEdit.id}
+                        onClose={() => setEditingItem(null)}
+                        type="bill"
+                        itemToEdit={billToEdit}
+                        onDuplicate={handleDuplicateBill}
+                    />
                 </Modal>
             )}
 

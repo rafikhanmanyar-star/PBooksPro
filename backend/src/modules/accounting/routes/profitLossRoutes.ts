@@ -26,12 +26,15 @@ profitLossRouter.get('/reports/profit-loss', async (req: AuthedRequest, res) => 
   const projectRaw = req.query.projectId ?? req.query.project;
   const selectedProjectId =
     typeof projectRaw === 'string' && projectRaw.trim() ? projectRaw.trim() : 'all';
+  const buildingRaw = req.query.buildingId ?? req.query.building;
+  const selectedBuildingId =
+    typeof buildingRaw === 'string' && buildingRaw.trim() ? buildingRaw.trim() : 'all';
 
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getProfitLossReportJson(client, tenantId, from, to, selectedProjectId);
+      const data = await getProfitLossReportJson(client, tenantId, from, to, selectedProjectId, selectedBuildingId);
       sendSuccess(res, data);
     } finally {
       client.release();

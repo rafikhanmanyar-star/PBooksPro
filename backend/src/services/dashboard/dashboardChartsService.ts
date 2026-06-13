@@ -5,7 +5,7 @@ import {
   extractPlRevenueAndExpenses,
   prepareProfitLossState,
 } from '../profitLossReportService.js';
-import { parseDateOnly, toDateOnlyString } from './dashboardMetricsHelpers.js';
+import { appendBuildingFilter, invoiceCollectionQuery, parseDateOnly, toDateOnlyString } from './dashboardMetricsHelpers.js';
 import type { DashboardFilters } from './dashboardMetricsTypes.js';
 import type { DashboardChartsResponse } from './dashboardChartsTypes.js';
 
@@ -73,7 +73,7 @@ async function cashFlowTrendByMonth(
   tenantId: string,
   year: number,
   excludedIds: string[],
-  projectId?: string
+  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>
 ): Promise<DashboardChartsResponse['cashFlowTrend']> {
   const { months } = monthRangeForYear(year);
 
@@ -90,10 +90,11 @@ async function cashFlowTrendByMonth(
         params.push(excludedIds);
         clauses.push(`(t.category_id IS NULL OR t.category_id <> ALL($${params.length}::text[]))`);
       }
-      if (projectId) {
-        params.push(projectId);
+      if (filters.projectId) {
+        params.push(filters.projectId);
         clauses.push(`t.project_id = $${params.length}`);
       }
+      appendBuildingFilter('t', filters.buildingId, params, clauses);
       const r = await client.query<{ inflow: string; outflow: string }>(
         `SELECT
            COALESCE(SUM(CASE WHEN t.type = 'Income' THEN t.amount ELSE 0 END), 0)::text AS inflow,
@@ -114,11 +115,18 @@ async function receivablesAging(
   filters: DashboardFilters
 ): Promise<DashboardChartsResponse['receivablesAging']> {
   const params: unknown[] = [tenantId];
-  let projectSql = '';
+  const invoiceClauses = [
+    'i.tenant_id = $1',
+    'i.deleted_at IS NULL',
+    'i.status <> \'Paid\'',
+    '(i.description IS NULL OR i.description NOT LIKE \'%VOIDED%\')',
+    '(i.agreement_id IS NULL OR pa.status IS NULL OR pa.status <> \'Cancelled\')',
+  ];
   if (filters.projectId) {
     params.push(filters.projectId);
-    projectSql = ` AND i.project_id = $${params.length}`;
+    invoiceClauses.push(`i.project_id = $${params.length}`);
   }
+  appendBuildingFilter('i', filters.buildingId, params, invoiceClauses);
   const r = await client.query<{ bucket: string; total: string }>(
     `SELECT bucket, COALESCE(SUM(balance), 0)::text AS total FROM (
        SELECT
@@ -132,10 +140,7 @@ async function receivablesAging(
          GREATEST(i.amount - COALESCE(i.paid_amount, 0), 0) AS balance
        FROM invoices i
        LEFT JOIN project_agreements pa ON pa.id = i.agreement_id AND pa.tenant_id = i.tenant_id
-       WHERE i.tenant_id = $1 AND i.deleted_at IS NULL AND i.status <> 'Paid'
-         AND (i.description IS NULL OR i.description NOT LIKE '%VOIDED%')
-         AND (i.agreement_id IS NULL OR pa.status IS NULL OR pa.status <> 'Cancelled')
-         ${projectSql}
+       WHERE ${invoiceClauses.join(' AND ')}
      ) sub
      GROUP BY bucket
      ORDER BY CASE bucket
@@ -213,6 +218,7 @@ async function expenseBreakdown(
     params.push(filters.projectId);
     clauses.push(`t.project_id = $${params.length}`);
   }
+  appendBuildingFilter('t', filters.buildingId, params, clauses);
   const r = await client.query<{ name: string; total: string }>(
     `SELECT COALESCE(c.name, 'Uncategorized') AS name, SUM(t.amount)::text AS total
      FROM transactions t
@@ -230,28 +236,14 @@ async function collectionsPerformance(
   client: pg.PoolClient,
   tenantId: string,
   year: number,
-  projectId?: string
+  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>
 ): Promise<DashboardChartsResponse['collectionsPerformance']> {
   const { months } = monthRangeForYear(year);
 
   return Promise.all(
     months.map(async (m) => {
-      const params: unknown[] = [tenantId, m.from, m.to];
-      let projectSql = '';
-      if (projectId) {
-        params.push(projectId);
-        projectSql = ` AND i.project_id = $${params.length}`;
-      }
-      const r = await client.query<{ due: string; collected: string }>(
-        `SELECT
-           COALESCE(SUM(i.amount), 0)::text AS due,
-           COALESCE(SUM(i.paid_amount), 0)::text AS collected
-         FROM invoices i
-         WHERE i.tenant_id = $1 AND i.deleted_at IS NULL
-           AND i.issue_date >= $2::date AND i.issue_date <= $3::date
-           ${projectSql}`,
-        params
-      );
+      const q = invoiceCollectionQuery(tenantId, m.from, m.to, filters);
+      const r = await client.query<{ due: string; collected: string }>(q.sql, q.params);
       const due = Number(r.rows[0]?.due ?? 0);
       const collected = Number(r.rows[0]?.collected ?? 0);
       return {
@@ -284,11 +276,11 @@ export async function getDashboardChartsJson(
     collectionsPerformancePoints,
   ] = await Promise.all([
     revenueVsExpensesByMonth(client, tenantId, year, projectId),
-    cashFlowTrendByMonth(client, tenantId, year, excludedIds, projectId),
+    cashFlowTrendByMonth(client, tenantId, year, excludedIds, filters),
     receivablesAging(client, tenantId, filters),
     salesPipeline(client, tenantId, projectId),
     expenseBreakdown(client, tenantId, filters, excludedIds),
-    collectionsPerformance(client, tenantId, year, projectId),
+    collectionsPerformance(client, tenantId, year, filters),
   ]);
 
   return {

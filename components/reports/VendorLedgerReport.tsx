@@ -684,6 +684,8 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                 isOpen={!!billToEdit}
                 onClose={() => setBillToEdit(null)}
                 title={billToEdit ? `Edit Bill #${billToEdit.billNumber}` : 'Edit Bill'}
+                size="xl"
+                className="sm:!max-w-7xl"
             >
                 {billToEdit && (
                     <InvoiceBillForm

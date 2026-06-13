@@ -15,13 +15,13 @@ export type AccountingView =
   | 'Unposted Transactions';
 
 export const ACCOUNTING_FINANCIAL_REPORTS: AccountingView[] = [
-  'Analytics',
-  'Unposted Transactions',
   'Profit & Loss',
   'Balance Sheet',
+  'Cash Flows',
+  'Analytics',
+  'Unposted Transactions',
   'Trial Balance',
   'Reconciliation',
-  'Cash Flows',
   'Investor Distribution',
 ];
 

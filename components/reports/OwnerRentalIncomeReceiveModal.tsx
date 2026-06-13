@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import { flushSync } from 'react-dom';
 import {
     useAccounts,
     useCategories,
@@ -19,6 +20,8 @@ import { toLocalDateString } from '../../utils/dateUtils';
 import { billAffectsOwnerRentalIncomeLedger } from '../../utils/rentalBillPayments';
 import { resolveSystemCategoryId } from '../../services/systemEntityIds';
 import { resolveOwnerForPropertyOnDate, resolveOwnerForTransaction, hasMultipleOwnersOnDate, getOwnerSharePercentageOnDate } from '../../services/propertyOwnershipService';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 export type ReceiveLineKind = 'bill' | 'serviceCharge';
 
@@ -42,6 +45,8 @@ export interface OwnerRentalIncomeReceiveModalProps {
     selectedOwnerId: string;
     selectedUnitId: string;
     reportClosingBalance: number;
+    onLedgerMutationStart?: () => void;
+    onLedgerMutationComplete?: () => void;
 }
 
 /** Rental Income receipts linked to a bill (owner reimbursement from Receive modal). */
@@ -131,6 +136,8 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
     selectedOwnerId,
     selectedUnitId,
     reportClosingBalance,
+    onLedgerMutationStart,
+    onLedgerMutationComplete,
 }) => {
     const rentalState = useRentalReportAppState();
     const accounts = useAccounts();
@@ -354,6 +361,7 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
         }
 
         setIsSubmitting(true);
+        onLedgerMutationStart?.();
         try {
 
         const ts = Date.now();
@@ -394,11 +402,31 @@ const OwnerRentalIncomeReceiveModal: React.FC<OwnerRentalIncomeReceiveModalProps
             }
         }
 
-        dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: newTxs });
+        if (isAccountingBackedByRemoteApi()) {
+            const api = getAppStateApiService();
+            const savedTransactions: Transaction[] = [];
+            for (const tx of newTxs) {
+                const saved = await api.saveTransaction(tx);
+                savedTransactions.push(saved as Transaction);
+            }
+            flushSync(() => {
+                dispatch({
+                    type: 'BATCH_ADD_TRANSACTIONS',
+                    payload: savedTransactions,
+                    _isRemote: true,
+                } as never);
+            });
+        } else {
+            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: newTxs });
+        }
 
         const grandTotal = ops.reduce((sum, o) => sum + o.amount, 0);
         showToast(`Recorded ${newTxs.length} receipt(s) totaling ${CURRENCY} ${formatCurrency(grandTotal)}.`, 'success');
+        onLedgerMutationComplete?.();
         onClose();
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            await showAlert(`Failed to record receipt: ${msg}`);
         } finally {
             setIsSubmitting(false);
         }

@@ -21,13 +21,17 @@ const COMPARISON_OPTIONS: { id: DashboardComparisonPeriod; label: string }[] = [
 
 export interface DashboardFilterBarProps {
   projectOptions?: { id: string; name: string }[];
+  buildingOptions?: { id: string; name: string }[];
   showProjectFilter?: boolean;
+  showBuildingFilter?: boolean;
   className?: string;
 }
 
 export const DashboardFilterBar: React.FC<DashboardFilterBarProps> = ({
   projectOptions = [],
+  buildingOptions = [],
   showProjectFilter = true,
+  showBuildingFilter = true,
   className = '',
 }) => {
   const filters = useDashboardFiltersStore((s) => s.filters);
@@ -105,6 +109,23 @@ export const DashboardFilterBar: React.FC<DashboardFilterBarProps> = ({
             {projectOptions.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {showBuildingFilter && buildingOptions.length > 0 && (
+          <select
+            value={filters.buildingId ?? 'all'}
+            onChange={(e) =>
+              setFilter('buildingId', e.target.value === 'all' ? undefined : e.target.value)
+            }
+            className="text-xs rounded-lg border border-app-border bg-app-toolbar px-2 py-1.5 text-app-text max-w-[160px]"
+          >
+            <option value="all">All buildings</option>
+            {buildingOptions.map((b) => (
+              <option key={b.id} value={b.id}>
+                {b.name}
               </option>
             ))}
           </select>

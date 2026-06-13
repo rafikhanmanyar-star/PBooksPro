@@ -48,6 +48,7 @@ const defaultFilters = (): DashboardFilters => {
     to,
     comparisonPeriod: 'previous_period',
     projectId: undefined,
+    buildingId: undefined,
     propertyId: undefined,
     vendorId: undefined,
     customerId: undefined,

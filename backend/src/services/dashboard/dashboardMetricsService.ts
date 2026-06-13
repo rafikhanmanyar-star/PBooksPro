@@ -3,7 +3,9 @@ import { GLOBAL_SYSTEM_TENANT_ID } from '../../constants/globalSystemChart.js';
 import { listAccounts, type AccountRow } from '../accountsService.js';
 import { getProfitLossReportJson } from '../profitLossReportService.js';
 import {
+  appendBuildingFilter,
   computeTrendPercent,
+  invoiceCollectionQuery,
   metricStatusForTrend,
   resolveComparisonRange,
 } from './dashboardMetricsHelpers.js';
@@ -58,7 +60,13 @@ type FilterClause = { sql: string; params: unknown[] };
 
 function entityFilter(
   filters: DashboardFilters,
-  columnMap: { project?: string; property?: string; vendor?: string; customer?: string }
+  columnMap: {
+    alias?: string;
+    project?: string;
+    property?: string;
+    vendor?: string;
+    customer?: string;
+  }
 ): FilterClause {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -73,6 +81,9 @@ function entityFilter(
   add(columnMap.property, filters.propertyId);
   add(columnMap.vendor, filters.vendorId);
   add(columnMap.customer, filters.customerId);
+  if (filters.buildingId && columnMap.alias) {
+    appendBuildingFilter(columnMap.alias, filters.buildingId, params, clauses);
+  }
   return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
 }
 
@@ -81,7 +92,7 @@ async function sumAccountsReceivable(
   tenantId: string,
   filters: DashboardFilters
 ): Promise<number> {
-  const ef = entityFilter(filters, { project: 'i.project_id', property: 'i.property_id' });
+  const ef = entityFilter(filters, { alias: 'i', project: 'i.project_id', property: 'i.property_id' });
   const r = await client.query<{ total: string }>(
     `SELECT COALESCE(SUM(i.amount - i.paid_amount), 0)::text AS total
      FROM invoices i
@@ -102,7 +113,12 @@ async function sumAccountsPayable(
   tenantId: string,
   filters: DashboardFilters
 ): Promise<number> {
-  const ef = entityFilter(filters, { project: 'b.project_id', property: 'b.property_id', vendor: 'b.vendor_id' });
+  const ef = entityFilter(filters, {
+    alias: 'b',
+    project: 'b.project_id',
+    property: 'b.property_id',
+    vendor: 'b.vendor_id',
+  });
   const r = await client.query<{ total: string }>(
     `SELECT COALESCE(SUM(GREATEST(b.amount - COALESCE(b.paid_amount, 0), 0)), 0)::text AS total
      FROM bills b
@@ -165,6 +181,7 @@ async function operatingCashFlow(
     params.push(filters.propertyId);
     clauses.push(`t.property_id = $${params.length}`);
   }
+  appendBuildingFilter('t', filters.buildingId, params, clauses);
   if (filters.vendorId) {
     params.push(filters.vendorId);
     clauses.push(`t.vendor_id = $${params.length}`);
@@ -200,7 +217,7 @@ async function computeSnapshot(
   tenantId: string,
   filters: DashboardFilters
 ): Promise<RawMetricSnapshot> {
-  const { from, to, projectId } = filters;
+  const { from, to, projectId, buildingId } = filters;
   const [accounts, excludedIds] = await Promise.all([
     listAccounts(client, tenantId),
     fetchExcludedCategoryIds(client, tenantId),
@@ -253,33 +270,52 @@ async function computeSnapshot(
          ${projectId ? ' AND u.project_id = $2' : ''}`,
       projectId ? [tenantId, projectId] : [tenantId]
     ),
-    client.query<{ due: string; collected: string }>(
-      `SELECT
-         COALESCE(SUM(i.amount), 0)::text AS due,
-         COALESCE(SUM(i.paid_amount), 0)::text AS collected
-       FROM invoices i
-       WHERE i.tenant_id = $1 AND i.deleted_at IS NULL
-         AND i.issue_date >= $2::date AND i.issue_date <= $3::date
-         ${projectId ? ' AND i.project_id = $4' : ''}`,
-      projectId ? [tenantId, from, to, projectId] : [tenantId, from, to]
-    ),
+    (() => {
+      const q = invoiceCollectionQuery(tenantId, from, to, filters);
+      return client.query<{ due: string; collected: string }>(q.sql, q.params);
+    })(),
     countInPeriod(
       client,
-      `SELECT COUNT(DISTINCT ra.property_id)::text AS c
+      buildingId
+        ? `SELECT COUNT(DISTINCT ra.property_id)::text AS c
+       FROM rental_agreements ra
+       INNER JOIN properties p ON p.id = ra.property_id AND p.tenant_id = ra.tenant_id
+       WHERE ra.tenant_id = $1 AND ra.deleted_at IS NULL
+         AND ra.status = 'Active'
+         AND p.building_id = $2 AND p.deleted_at IS NULL
+         ${filters.propertyId ? ' AND ra.property_id = $3' : ''}`
+        : `SELECT COUNT(DISTINCT ra.property_id)::text AS c
        FROM rental_agreements ra
        WHERE ra.tenant_id = $1 AND ra.deleted_at IS NULL
          AND ra.status = 'Active'
          ${filters.propertyId ? ' AND ra.property_id = $2' : ''}`,
-      filters.propertyId ? [tenantId, filters.propertyId] : [tenantId]
+      buildingId
+        ? filters.propertyId
+          ? [tenantId, buildingId, filters.propertyId]
+          : [tenantId, buildingId]
+        : filters.propertyId
+          ? [tenantId, filters.propertyId]
+          : [tenantId]
     ),
-    client.query<{ occupied: string; total: string }>(
-      `SELECT
+    buildingId
+      ? client.query<{ occupied: string; total: string }>(
+          `SELECT
+         (SELECT COUNT(DISTINCT ra.property_id)::text FROM rental_agreements ra
+          INNER JOIN properties p ON p.id = ra.property_id AND p.tenant_id = ra.tenant_id
+          WHERE ra.tenant_id = $1 AND ra.deleted_at IS NULL AND ra.status = 'Active'
+            AND p.building_id = $2 AND p.deleted_at IS NULL) AS occupied,
+         (SELECT COUNT(*)::text FROM properties p
+          WHERE p.tenant_id = $1 AND p.deleted_at IS NULL AND p.building_id = $2) AS total`,
+          [tenantId, buildingId]
+        )
+      : client.query<{ occupied: string; total: string }>(
+          `SELECT
          (SELECT COUNT(DISTINCT ra.property_id)::text FROM rental_agreements ra
           WHERE ra.tenant_id = $1 AND ra.deleted_at IS NULL AND ra.status = 'Active') AS occupied,
          (SELECT COUNT(*)::text FROM properties p
           WHERE p.tenant_id = $1 AND p.deleted_at IS NULL) AS total`,
-      [tenantId]
-    ),
+          [tenantId]
+        ),
     countInPeriod(
       client,
       `SELECT COUNT(*)::text AS c FROM contacts

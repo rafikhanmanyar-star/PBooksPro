@@ -6,6 +6,54 @@ export function isValidDateOnly(s: string): boolean {
   return DATE_RE.test(s);
 }
 
+/** Restrict rows to a rental building (direct building_id or property under that building). */
+export function appendBuildingFilter(
+  alias: string,
+  buildingId: string | undefined,
+  params: unknown[],
+  clauses: string[],
+  tenantParamRef = '$1'
+): void {
+  if (!buildingId) return;
+  params.push(buildingId);
+  const p = `$${params.length}`;
+  clauses.push(`(
+    ${alias}.building_id = ${p}
+    OR ${alias}.property_id IN (
+      SELECT pr.id FROM properties pr
+      WHERE pr.tenant_id = ${tenantParamRef} AND pr.building_id = ${p} AND pr.deleted_at IS NULL
+    )
+  )`);
+}
+
+export function invoiceCollectionQuery(
+  tenantId: string,
+  from: string,
+  to: string,
+  filters: { projectId?: string; buildingId?: string }
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [tenantId, from, to];
+  const clauses = [
+    'i.tenant_id = $1',
+    'i.deleted_at IS NULL',
+    'i.issue_date >= $2::date',
+    'i.issue_date <= $3::date',
+  ];
+  if (filters.projectId) {
+    params.push(filters.projectId);
+    clauses.push(`i.project_id = $${params.length}`);
+  }
+  appendBuildingFilter('i', filters.buildingId, params, clauses);
+  return {
+    sql: `SELECT
+         COALESCE(SUM(i.amount), 0)::text AS due,
+         COALESCE(SUM(i.paid_amount), 0)::text AS collected
+       FROM invoices i
+       WHERE ${clauses.join(' AND ')}`,
+    params,
+  };
+}
+
 export function parseDateOnly(s: string): Date {
   const [y, m, d] = s.split('-').map(Number);
   return new Date(y, m - 1, d);
@@ -100,6 +148,7 @@ export function parseDashboardFilters(query: Record<string, unknown>): Dashboard
     to,
     comparisonPeriod,
     projectId: str('projectId') ?? str('project'),
+    buildingId: str('buildingId') ?? str('building'),
     propertyId: str('propertyId') ?? str('property'),
     vendorId: str('vendorId') ?? str('vendor'),
     customerId: str('customerId') ?? str('customer'),
@@ -116,6 +165,7 @@ export function dashboardCacheKey(tenantId: string, filters: DashboardFilters): 
     filters.to,
     filters.comparisonPeriod,
     filters.projectId ?? '',
+    filters.buildingId ?? '',
     filters.propertyId ?? '',
     filters.vendorId ?? '',
     filters.customerId ?? '',

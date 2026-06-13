@@ -104,18 +104,49 @@ function cashLineNetEffect(debit: number, credit: number): number {
   return roundMoney(debit - credit);
 }
 
+function entityScopeJournalSql(
+  selectedProjectId: string,
+  selectedBuildingId: string,
+  params: unknown[],
+  lineAlias = 'jl'
+): string {
+  if (selectedBuildingId !== 'all') {
+    params.push(selectedBuildingId);
+    const n = params.length;
+    return ` AND EXISTS (
+      SELECT 1 FROM journal_entries je_scope
+      INNER JOIN transactions t_scope ON t_scope.id = je_scope.source_id
+        AND je_scope.source_module = 'transaction'
+        AND t_scope.tenant_id = je.tenant_id
+        AND t_scope.deleted_at IS NULL
+      WHERE je_scope.id = ${lineAlias}.journal_entry_id AND t_scope.building_id = $${n}
+    )`;
+  }
+  if (selectedProjectId !== 'all') {
+    params.push(selectedProjectId);
+    const n = params.length;
+    return ` AND ${lineAlias}.project_id = $${n} AND NOT EXISTS (
+      SELECT 1 FROM journal_entries je_scope
+      INNER JOIN transactions t_scope ON t_scope.id = je_scope.source_id
+        AND je_scope.source_module = 'transaction'
+        AND t_scope.tenant_id = je.tenant_id
+        AND t_scope.deleted_at IS NULL
+      WHERE je_scope.id = ${lineAlias}.journal_entry_id
+        AND t_scope.building_id IS NOT NULL AND t_scope.building_id <> ''
+    )`;
+  }
+  return '';
+}
+
 async function sumCashBalanceThrough(
   client: pg.PoolClient,
   tenantId: string,
   asOfInclusive: string,
-  projectId: string | 'all'
+  selectedProjectId: string,
+  selectedBuildingId: string
 ): Promise<number> {
   const params: unknown[] = [tenantId, GLOBAL_SYSTEM_TENANT_ID, asOfInclusive];
-  let projCond = '';
-  if (projectId !== 'all') {
-    projCond = ` AND jl.project_id = $${params.length + 1}`;
-    params.push(projectId);
-  }
+  const scopeSql = entityScopeJournalSql(selectedProjectId, selectedBuildingId, params);
   const r = await client.query<{ s: string }>(
     `SELECT COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0)::text AS s
      FROM journal_lines jl
@@ -125,7 +156,7 @@ async function sumCashBalanceThrough(
        AND je.entry_date <= $3::date
        AND a.deleted_at IS NULL
        AND LOWER(a.type) IN ('bank', 'cash')
-       ${projCond}`,
+       ${scopeSql}`,
     params
   );
   return roundMoney(Number(r.rows[0]?.s ?? 0));
@@ -136,7 +167,8 @@ export async function getCashFlowReportFromJournal(
   tenantId: string,
   from: string,
   to: string,
-  selectedProjectId: string
+  selectedProjectId: string,
+  selectedBuildingId: string = 'all'
 ): Promise<{
   from: string;
   to: string;
@@ -171,14 +203,11 @@ export async function getCashFlowReportFromJournal(
   meta: { cashLineCount: number };
 }> {
   const projectFilter = selectedProjectId === 'all' ? 'all' : selectedProjectId;
+  const buildingFilter = selectedBuildingId === 'all' ? 'all' : selectedBuildingId;
   const mapping = await loadCashflowAccountMappings(client, tenantId);
 
   const params: unknown[] = [tenantId, GLOBAL_SYSTEM_TENANT_ID, from, to];
-  let projectSql = '';
-  if (projectFilter !== 'all') {
-    projectSql = ` AND jl.project_id = $${params.length + 1}`;
-    params.push(projectFilter);
-  }
+  const scopeSql = entityScopeJournalSql(selectedProjectId, selectedBuildingId, params);
 
   const cashLines = await client.query<JlRow>(
     `SELECT jl.id, jl.journal_entry_id, jl.account_id, jl.debit_amount, jl.credit_amount, jl.project_id,
@@ -191,7 +220,7 @@ export async function getCashFlowReportFromJournal(
        AND je.entry_date >= $3::date AND je.entry_date <= $4::date
        AND a.deleted_at IS NULL
        AND LOWER(a.type) IN ('bank', 'cash')
-       ${projectSql}
+       ${scopeSql}
      ORDER BY je.entry_date ASC, jl.line_number ASC`,
     params
   );
@@ -305,8 +334,20 @@ export async function getCashFlowReportFromJournal(
   const netChange = roundMoney(netOperating + netInvesting + netFinancing);
 
   const dayBeforeFrom = addDaysYmd(from, -1);
-  const opening_cash = await sumCashBalanceThrough(client, tenantId, dayBeforeFrom, projectFilter);
-  const balance_sheet_cash = await sumCashBalanceThrough(client, tenantId, to, projectFilter);
+  const opening_cash = await sumCashBalanceThrough(
+    client,
+    tenantId,
+    dayBeforeFrom,
+    selectedProjectId,
+    selectedBuildingId
+  );
+  const balance_sheet_cash = await sumCashBalanceThrough(
+    client,
+    tenantId,
+    to,
+    selectedProjectId,
+    selectedBuildingId
+  );
   const computed_closing_cash = roundMoney(opening_cash + netChange);
   const discrepancy = roundMoney(computed_closing_cash - balance_sheet_cash);
   const reconciled = Math.abs(discrepancy) <= EPS;
@@ -320,7 +361,7 @@ export async function getCashFlowReportFromJournal(
       `Cash flow reconciliation (journal): computed closing ${computed_closing_cash.toFixed(2)} vs GL cash ${balance_sheet_cash.toFixed(2)} (discrepancy ${discrepancy.toFixed(2)}).`
     );
   }
-  if (projectFilter !== 'all' && cashLines.rows.some((r) => r.project_id == null)) {
+  if (projectFilter !== 'all' && buildingFilter === 'all' && cashLines.rows.some((r) => r.project_id == null)) {
     messages.push(
       'Some journal lines have no project_id; run migration 041 and repost or backfill project on lines for accurate project cash flow.'
     );

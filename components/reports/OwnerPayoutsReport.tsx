@@ -40,8 +40,10 @@ import {
     type OwnerRentalIncomeSortKey,
     type ReportRow,
 } from './ownerRentalIncomeLedgerEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { fetchOwnerRentalIncomeReport } from '../../services/api/rentalReportsApi';
+import { getAppStateApiService } from '../../services/api/appStateApi';
+import { useServerRentalReportLedger } from '../../hooks/useServerRentalReportLedger';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
 
@@ -146,15 +148,6 @@ const OwnerPayoutsReport: React.FC = () => {
         }));
     };
 
-    const localOnly = isLocalOnlyMode();
-    const [serverLedger, setServerLedger] = useState<{
-        openingBalance: number;
-        reportData: ReportRow[];
-        fullLedgerClosingBalance: number;
-    } | null>(null);
-    const [ledgerLoading, setLedgerLoading] = useState(false);
-    const [ledgerFetchError, setLedgerFetchError] = useState<string | null>(null);
-
     const localLedger = useMemo(
         () =>
             computeOwnerRentalIncomeReport(rentalState, {
@@ -169,59 +162,52 @@ const OwnerPayoutsReport: React.FC = () => {
         [rentalState, startDate, endDate, searchQuery, selectedBuildingId, selectedOwnerId, selectedUnitId, sortConfig]
     );
 
-    useEffect(() => {
-        if (localOnly) {
-            setServerLedger(null);
-            setLedgerFetchError(null);
-            return;
-        }
-        let cancelled = false;
-        setLedgerLoading(true);
-        setLedgerFetchError(null);
-        void fetchOwnerRentalIncomeReport({
+    const ledgerFilterKey = `${startDate}|${endDate}|${selectedBuildingId}|${selectedOwnerId}|${selectedUnitId}|${searchQuery}|${sortConfig.key}|${sortConfig.direction}`;
+
+    const fetchServerLedger = useCallback(
+        () =>
+            fetchOwnerRentalIncomeReport({
+                startDate,
+                endDate,
+                buildingId: selectedBuildingId,
+                ownerId: selectedOwnerId,
+                propertyId: selectedUnitId,
+                search: searchQuery,
+                sortKey: sortConfig.key,
+                sortDirection: sortConfig.direction,
+            }).then((r) => ({
+                openingBalance: r.openingBalance,
+                reportData: r.rows,
+                fullLedgerClosingBalance: r.fullLedgerClosingBalance,
+            })),
+        [
             startDate,
             endDate,
-            buildingId: selectedBuildingId,
-            ownerId: selectedOwnerId,
-            propertyId: selectedUnitId,
-            search: searchQuery,
-            sortKey: sortConfig.key,
-            sortDirection: sortConfig.direction,
-        })
-            .then((r) => {
-                if (cancelled) return;
-                setServerLedger({
-                    openingBalance: r.openingBalance,
-                    reportData: r.rows,
-                    fullLedgerClosingBalance: r.fullLedgerClosingBalance,
-                });
-            })
-            .catch((e) => {
-                if (cancelled) return;
-                setLedgerFetchError(e instanceof Error ? e.message : String(e));
-                setServerLedger(null);
-            })
-            .finally(() => {
-                if (!cancelled) setLedgerLoading(false);
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [
-        localOnly,
-        startDate,
-        endDate,
-        selectedBuildingId,
-        selectedOwnerId,
-        selectedUnitId,
-        searchQuery,
-        sortConfig.key,
-        sortConfig.direction,
-    ]);
+            selectedBuildingId,
+            selectedOwnerId,
+            selectedUnitId,
+            searchQuery,
+            sortConfig.key,
+            sortConfig.direction,
+        ]
+    );
 
-    const { openingBalance, reportData, fullLedgerClosingBalance } = localOnly
-        ? localLedger
-        : serverLedger ?? { openingBalance: 0, reportData: [] as ReportRow[], fullLedgerClosingBalance: 0 };
+    const {
+        localOnly,
+        result: ledgerResult,
+        loading: ledgerLoading,
+        updating: ledgerUpdating,
+        error: ledgerFetchError,
+        beginUpdating: beginLedgerUpdating,
+        requestRefresh: requestLedgerRefresh,
+    } = useServerRentalReportLedger({
+        localResult: localLedger,
+        fetchServer: fetchServerLedger,
+        filterKey: ledgerFilterKey,
+        initialEmpty: { openingBalance: 0, reportData: [] as ReportRow[], fullLedgerClosingBalance: 0 },
+    });
+
+    const { openingBalance, reportData, fullLedgerClosingBalance } = ledgerResult;
 
     /** Multiple owners visible with no owner filter — opening balance is not a single chain; hide aggregate opening row. */
     const perOwnerLedgerMode = useMemo(() => {
@@ -462,12 +448,28 @@ const OwnerPayoutsReport: React.FC = () => {
         setWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
     };
 
-    const handleConfirmWarning = () => {
+    const handleConfirmWarning = async () => {
         const { transaction, action } = warningModalState;
         if (transaction && action === 'delete') {
             const linkedItemName = getLinkedItemName(transaction);
-            dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id });
-            showToast(`Transaction deleted successfully. ${linkedItemName && linkedItemName !== 'a linked item' ? `The linked ${linkedItemName} has been updated.` : ''}`, 'info');
+            beginLedgerUpdating();
+            try {
+                if (isAccountingBackedByRemoteApi()) {
+                    const api = getAppStateApiService();
+                    await api.deleteTransaction(transaction.id);
+                    dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id, _isRemote: true } as never);
+                } else {
+                    dispatch({ type: 'DELETE_TRANSACTION', payload: transaction.id });
+                }
+                showToast(
+                    `Transaction deleted successfully. ${linkedItemName && linkedItemName !== 'a linked item' ? `The linked ${linkedItemName} has been updated.` : ''}`,
+                    'info'
+                );
+                requestLedgerRefresh();
+            } catch (e) {
+                const msg = e instanceof Error ? e.message : String(e);
+                await showAlert(`Failed to delete transaction: ${msg}`);
+            }
         }
         setWarningModalState({ isOpen: false, transaction: null, action: null });
     };
@@ -548,8 +550,10 @@ const OwnerPayoutsReport: React.FC = () => {
                         <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
                             <div className="flex-shrink-0">
                                 <ReportHeader />
-                                {!localOnly && ledgerLoading && (
-                                    <p className="px-6 pt-2 text-sm text-app-muted">Loading ledger from server…</p>
+                                {!localOnly && (ledgerLoading || ledgerUpdating) && (
+                                    <p className="px-6 pt-2 text-sm text-app-muted">
+                                        {ledgerUpdating ? 'Updating ledger…' : 'Loading ledger from server…'}
+                                    </p>
                                 )}
                                 {!localOnly && ledgerFetchError && (
                                     <p className="px-6 pt-2 text-sm text-ds-danger">
@@ -687,7 +691,7 @@ const OwnerPayoutsReport: React.FC = () => {
 
                             {/* Data table (scroll container) — this block alone is cloned for print / PDF */}
                             <div
-                                className="owner-rental-income-print-root flex-1 min-h-0 flex flex-col px-6 pb-2"
+                                className={`owner-rental-income-print-root flex-1 min-h-0 flex flex-col px-6 pb-2${ledgerUpdating ? ' opacity-80 pointer-events-none' : ''}`}
                                 id="owner-rental-income-print-root"
                                 data-print-orientation="landscape"
                                 data-print-page-size="a4"
@@ -794,7 +798,13 @@ const OwnerPayoutsReport: React.FC = () => {
                 {transactionToEdit && (
                     <TransactionForm
                         transactionToEdit={transactionToEdit}
-                        onClose={() => setTransactionToEdit(null)}
+                        onClose={() => {
+                            setTransactionToEdit(null);
+                            if (!localOnly) {
+                                beginLedgerUpdating();
+                                window.setTimeout(() => requestLedgerRefresh(), 400);
+                            }
+                        }}
                         onShowDeleteWarning={handleShowDeleteWarning}
                     />
                 )}
@@ -803,7 +813,13 @@ const OwnerPayoutsReport: React.FC = () => {
             {serviceChargeEditTransaction && (
                 <ServiceChargeUpdateModal
                     isOpen={!!serviceChargeEditTransaction}
-                    onClose={() => setServiceChargeEditTransaction(null)}
+                    onClose={() => {
+                        setServiceChargeEditTransaction(null);
+                        if (!localOnly) {
+                            beginLedgerUpdating();
+                            window.setTimeout(() => requestLedgerRefresh(), 400);
+                        }
+                    }}
                     transaction={serviceChargeEditTransaction}
                 />
             )}
@@ -825,6 +841,8 @@ const OwnerPayoutsReport: React.FC = () => {
                     property={payModalProperty}
                     reportPayableBalance={fullLedgerClosingBalance}
                     preSelectedBuildingId={payModalProperty?.buildingId}
+                    onLedgerMutationStart={beginLedgerUpdating}
+                    onLedgerMutationComplete={requestLedgerRefresh}
                 />
             )}
 
@@ -838,6 +856,8 @@ const OwnerPayoutsReport: React.FC = () => {
                     selectedOwnerId={selectedOwnerId}
                     selectedUnitId={selectedUnitId}
                     reportClosingBalance={fullLedgerClosingBalance}
+                    onLedgerMutationStart={beginLedgerUpdating}
+                    onLedgerMutationComplete={requestLedgerRefresh}
                 />
             )}
         </div>

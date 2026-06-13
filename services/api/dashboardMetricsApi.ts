@@ -13,6 +13,7 @@ function buildQuery(filters: Partial<DashboardFilters>, extra?: Record<string, s
     ['to', filters.to],
     ['comparisonPeriod', filters.comparisonPeriod],
     ['projectId', filters.projectId],
+    ['buildingId', filters.buildingId],
     ['propertyId', filters.propertyId],
     ['vendorId', filters.vendorId],
     ['customerId', filters.customerId],

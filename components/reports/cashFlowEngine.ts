@@ -18,6 +18,12 @@ import {
   TransactionType,
 } from '../../types';
 import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
+import {
+  FINANCIAL_ENTITY_FILTER_ALL,
+  scopeTargetsProject,
+  transactionMatchesFinancialEntityScope,
+  type FinancialEntityScope,
+} from './financialEntityScope';
 import { computeBalanceSheetReport, type BalanceSheetReportResult } from './balanceSheetEngine';
 import { resolvePlTypeForCategory } from './profitLossEngine';
 import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../../services/database/resolveProfitDistributionExpenseCategory';
@@ -42,6 +48,7 @@ export interface CashFlowEngineOptions {
   fromDate: string;
   toDate: string;
   selectedProjectId: string;
+  selectedBuildingId?: string;
   /** Default IAS 7: interest paid is usually classified under operating activities. */
   interestPaidAsOperating?: boolean;
   /** account_id → section override (ambiguous accounts / bank-specific rules). */
@@ -366,9 +373,17 @@ export function computeCashFlowReport(
     fromDate,
     toDate,
     selectedProjectId,
+    selectedBuildingId = FINANCIAL_ENTITY_FILTER_ALL,
     interestPaidAsOperating = true,
     cashFlowCategoryByAccountId = {},
   } = options;
+  const entityScope: FinancialEntityScope = { projectId: selectedProjectId, buildingId: selectedBuildingId };
+  const reportSlice = {
+    invoices: state.invoices,
+    bills: state.bills,
+    projectAgreements: state.projectAgreements,
+    properties: state.properties,
+  };
 
   const accountsById = new Map(state.accounts.map((a) => [a.id, a]));
   const catById = new Map(state.categories.map((c) => [c.id, c]));
@@ -388,10 +403,12 @@ export function computeCashFlowReport(
   const openingBs = computeBalanceSheetReport(state as never, {
     asOfDate: addDaysYyyyMmDd(fromDate, -1),
     selectedProjectId,
+    selectedBuildingId,
   });
   const closingBs = computeBalanceSheetReport(state as never, {
     asOfDate: toDate,
     selectedProjectId,
+    selectedBuildingId,
   });
 
   const opening_cash = sumCashFromBalanceSheet(openingBs);
@@ -414,11 +431,7 @@ export function computeCashFlowReport(
   for (const tx of state.transactions || []) {
     if (!inPeriodInclusive(tx.date, fromDate, toDate)) continue;
 
-    const projectId = resolveProjectIdForTransaction(tx, state);
-    if (selectedProjectId !== 'all') {
-      if (projectId !== selectedProjectId) continue;
-      if (!projectId) continue;
-    }
+    if (!transactionMatchesFinancialEntityScope(tx, reportSlice, entityScope)) continue;
 
     const cashDelta = getTransactionCashDelta(tx, accountsById, clearingId);
     if (Math.abs(cashDelta) < EPS) continue;
@@ -599,11 +612,12 @@ export function computeCashFlowReport(
 
   // Inter-project equity moves: real bank/cash legs appear in the main loop above. Legacy Clearing↔Equity
   // batches (zero cash delta) stay here as non-cash disclosure for project analysis only.
-  if (selectedProjectId !== 'all') {
+  if (scopeTargetsProject(entityScope)) {
     for (const tx of state.transactions || []) {
       if (!inPeriodInclusive(tx.date, fromDate, toDate)) continue;
+      if (!transactionMatchesFinancialEntityScope(tx, reportSlice, entityScope)) continue;
       const pid = resolveProjectIdForTransaction(tx, state);
-      if (pid !== selectedProjectId) continue;
+      if (pid !== entityScope.projectId) continue;
       if (tx.subtype !== EquityLedgerSubtype.MOVE_OUT && tx.subtype !== EquityLedgerSubtype.MOVE_IN) {
         continue;
       }

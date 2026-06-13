@@ -21,7 +21,7 @@ import {
 import { buildTrialBalanceRawRowsFromTransactions } from './trialBalanceFromTransactions';
 import type { Account, Transaction } from '../../types';
 import {
-  filterTransactionsForTrialBalanceProjectScope,
+  filterTransactionsForTrialBalanceEntityScope,
   type ReportStateSlice,
 } from '../../components/reports/reportUtils';
 
@@ -54,9 +54,11 @@ export type FetchTrialBalanceOptions = {
     accounts: Account[];
   };
   /**
-   * When not `all`, trial balance is built from operational transactions for that project only
-   * (same scope as Project P&amp;L). Journal aggregates are not used because lines are not project-tagged.
+   * When not `all`, trial balance is built from operational transactions for that project/building only
+   * (same scope as Project P&amp;L). Journal aggregates are not used because lines are not fully entity-tagged.
    */
+  entityScopeId?: string;
+  /** @deprecated Use entityScopeId (`project:…` / `building:…` / `all`) */
   projectScopeId?: string;
   projectScopeState?: ReportStateSlice;
 };
@@ -137,18 +139,21 @@ export async function fetchTrialBalanceReport(
   const to = options.to;
   const basis = options.basis ?? 'period';
 
-  const projectScope =
-    options.projectScopeId && options.projectScopeId !== 'all' ? options.projectScopeId : null;
-  if (projectScope) {
+  const scopeFilterId =
+    options.entityScopeId ??
+    (options.projectScopeId && options.projectScopeId !== 'all'
+      ? `project:${options.projectScopeId}`
+      : 'all');
+  if (scopeFilterId !== 'all') {
     const fb = options.ledgerFallback;
     const st = options.projectScopeState;
     if (!fb?.accounts?.length) {
-      throw new Error('Project-scoped trial balance requires accounts to be loaded.');
+      throw new Error('Entity-scoped trial balance requires accounts to be loaded.');
     }
     if (!st) {
-      throw new Error('Project-scoped trial balance requires invoice/bill context (projectScopeState).');
+      throw new Error('Entity-scoped trial balance requires invoice/bill context (projectScopeState).');
     }
-    const scopedTx = filterTransactionsForTrialBalanceProjectScope(fb.transactions, projectScope, st);
+    const scopedTx = filterTransactionsForTrialBalanceEntityScope(fb.transactions, scopeFilterId, st);
     let rawRows: TrialBalanceRawRow[] = buildTrialBalanceRawRowsFromTransactions(
       scopedTx,
       fb.accounts,

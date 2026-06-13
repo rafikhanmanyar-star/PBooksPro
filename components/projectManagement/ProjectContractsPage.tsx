@@ -18,6 +18,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import ContractRetentionMonitoringWidget from './ContractRetentionMonitoringWidget';
 import { retentionStatusBadge } from './ContractRetentionUI';
+import { ContractDocumentListHint, getContractDocumentFileName } from './ContractDocumentUI';
 
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
@@ -373,6 +374,9 @@ const ProjectContractsPage: React.FC = () => {
                                     <th onClick={() => handleSort('name')} className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Contract Details <SortIcon column="name" />
                                     </th>
+                                    <th className="px-4 py-2.5 text-center text-[10px] font-bold text-app-muted uppercase tracking-wider border-b border-app-border w-12">
+                                        Doc
+                                    </th>
                                     <th className="px-4 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider border-b border-app-border">Vendor</th>
                                     <th onClick={() => handleSort('totalAmount')} className="px-4 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover select-none border-b border-app-border transition-colors">
                                         Value <SortIcon column="totalAmount" />
@@ -419,6 +423,22 @@ const ProjectContractsPage: React.FC = () => {
                                                 <div className="text-[10px] text-app-muted font-medium truncate max-w-[150px] uppercase tracking-tight mt-0.5">
                                                     {project?.name || 'No Project'}
                                                 </div>
+                                                <ContractDocumentListHint
+                                                    contract={contract}
+                                                    documents={state.documents}
+                                                />
+                                            </td>
+                                            <td className="px-4 py-2.5 text-center">
+                                                {contract.documentId || contract.documentPath ? (
+                                                    <span
+                                                        className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-primary/10 text-primary"
+                                                        title={getContractDocumentFileName(contract, state.documents)}
+                                                    >
+                                                        <div className="w-3.5 h-3.5">{ICONS.fileText}</div>
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-app-muted/40 text-[10px]">—</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-2.5">
                                                 <div className="flex items-center gap-2">
@@ -469,7 +489,7 @@ const ProjectContractsPage: React.FC = () => {
                                     );
                                 }) : (
                                     <tr>
-                                        <td colSpan={9} className="px-4 py-16 text-center">
+                                        <td colSpan={10} className="px-4 py-16 text-center">
                                             <div className="flex flex-col items-center justify-center text-app-muted opacity-60">
                                                 <div className="w-12 h-12 bg-app-toolbar rounded-full flex items-center justify-center mb-3 border border-app-border">
                                                     <div className="w-6 h-6">{ICONS.fileText}</div>
