@@ -39,6 +39,7 @@ import { collectQuotationViolations } from '../../utils/quotationValidationFlow'
 import { buildOverridePayload, recordQuotationPriceOverrideApi } from '../../services/quotationValidationApi';
 import type { QuotationValidationResult } from '../../shared/quotation-validation/types';
 import { backupAlertWarning, backupAlertError } from '../settings/backupThemeClasses';
+import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 
 const billSegmentTabActive = 'bg-primary text-ds-on-primary border-primary';
 const billSegmentTabInactive = 'bg-app-card text-app-muted border-app-border hover:bg-app-table-hover';

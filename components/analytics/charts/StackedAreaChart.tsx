@@ -1,10 +1,9 @@
-import React from 'react';
+import React, { memo, useMemo } from 'react';
 import {
   Area,
   AreaChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -13,6 +12,7 @@ import { CURRENCY } from '../../../constants';
 import { formatRoundedNumber } from '../../../utils/numberUtils';
 import { CHART_COLORS, useChartTheme } from '../chartTheme';
 import type { TrendSeriesPoint } from './AreaTrendChart';
+import { FixedSizeChartContainer } from './FixedSizeChartContainer';
 
 export interface StackedAreaChartProps {
   data: TrendSeriesPoint[];
@@ -21,13 +21,23 @@ export interface StackedAreaChartProps {
   emptyLabel?: string;
 }
 
-export const StackedAreaChart: React.FC<StackedAreaChartProps> = ({
+export const StackedAreaChart: React.FC<StackedAreaChartProps> = memo(function StackedAreaChart({
   data,
   series,
   height = 280,
   emptyLabel = 'No cash flow data for this period.',
-}) => {
+}) {
   const theme = useChartTheme();
+
+  const tooltipStyle = useMemo(
+    () => ({
+      borderRadius: 12,
+      border: `1px solid ${theme.tooltipBorder}`,
+      backgroundColor: theme.tooltipBg,
+      color: theme.tooltipText,
+    }),
+    [theme.tooltipBorder, theme.tooltipBg, theme.tooltipText],
+  );
 
   if (!data.length) {
     return (
@@ -38,50 +48,43 @@ export const StackedAreaChart: React.FC<StackedAreaChartProps> = ({
   }
 
   return (
-    <div className="w-full min-w-0">
-      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.grid} />
-          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme.tick, fontSize: 11 }} />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: theme.tick, fontSize: 11 }}
-            tickFormatter={(v) => formatRoundedNumber(Number(v))}
-            width={64}
-          />
-          <Tooltip
-            contentStyle={{
-              borderRadius: 12,
-              border: `1px solid ${theme.tooltipBorder}`,
-              backgroundColor: theme.tooltipBg,
-              color: theme.tooltipText,
-            }}
-            formatter={(value: number, name: string) => [`${CURRENCY} ${formatRoundedNumber(value)}`, name]}
-          />
-          <Legend />
-          {series.map((s, i) => {
-            const colors = [CHART_COLORS.inflow, CHART_COLORS.outflow, CHART_COLORS.net];
-            const color = s.color ?? colors[i % colors.length];
-            return (
-              <Area
-                key={s.key}
-                type="monotone"
-                dataKey={s.key}
-                name={s.label}
-                stackId={s.stackId ?? 'stack'}
-                stroke={color}
-                fill={color}
-                fillOpacity={0.35}
-                strokeWidth={2}
-                isAnimationActive={false}
-              />
-            );
-          })}
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+    <FixedSizeChartContainer height={height}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.grid} />
+        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme.tick, fontSize: 11 }} />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.tick, fontSize: 11 }}
+          tickFormatter={(v) => formatRoundedNumber(Number(v))}
+          width={64}
+        />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          formatter={(value: number, name: string) => [`${CURRENCY} ${formatRoundedNumber(value)}`, name]}
+        />
+        <Legend />
+        {series.map((s, i) => {
+          const colors = [CHART_COLORS.inflow, CHART_COLORS.outflow, CHART_COLORS.net];
+          const color = s.color ?? colors[i % colors.length];
+          return (
+            <Area
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stackId={s.stackId ?? 'stack'}
+              stroke={color}
+              fill={color}
+              fillOpacity={0.35}
+              strokeWidth={2}
+              isAnimationActive={false}
+            />
+          );
+        })}
+      </AreaChart>
+    </FixedSizeChartContainer>
   );
-};
+});
 
 export default StackedAreaChart;

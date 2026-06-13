@@ -7,6 +7,13 @@ const SHORT_LABELS: Record<string, string> = {
   pendingBillAmount: 'Pending Amt.',
   activeProjects: 'Active Projects',
   pendingBills: 'Pending Bills',
+  activeEmployees: 'Active Staff',
+  onLeave: 'On Leave',
+  unpaidPayslips: 'Unpaid Payslips',
+  monthlyPayroll: 'Monthly Payroll',
+  payrollOutstanding: 'Outstanding',
+  departments: 'Departments',
+  payrollDraft: 'Draft Runs',
 };
 
 const METRIC_ICONS: Record<string, { icon: ReactNode; wrap: string }> = {
@@ -18,6 +25,13 @@ const METRIC_ICONS: Record<string, { icon: ReactNode; wrap: string }> = {
   leads: { icon: ICONS.trendingUp, wrap: 'executive-metric-icon executive-metric-icon--violet' },
   totalCashBalance: { icon: ICONS.creditCard, wrap: 'executive-metric-icon executive-metric-icon--teal' },
   accountsReceivable: { icon: ICONS.fileText, wrap: 'executive-metric-icon executive-metric-icon--violet' },
+  activeEmployees: { icon: ICONS.users, wrap: 'executive-metric-icon executive-metric-icon--blue' },
+  onLeave: { icon: ICONS.calendar, wrap: 'executive-metric-icon executive-metric-icon--amber' },
+  unpaidPayslips: { icon: ICONS.fileText, wrap: 'executive-metric-icon executive-metric-icon--rose' },
+  monthlyPayroll: { icon: ICONS.dollarSign, wrap: 'executive-metric-icon executive-metric-icon--teal' },
+  payrollOutstanding: { icon: ICONS.clock, wrap: 'executive-metric-icon executive-metric-icon--violet' },
+  departments: { icon: ICONS.briefcase, wrap: 'executive-metric-icon executive-metric-icon--blue' },
+  payrollDraft: { icon: ICONS.edit, wrap: 'executive-metric-icon executive-metric-icon--amber' },
 };
 
 function formatValue(metric: MobileMetric): string {

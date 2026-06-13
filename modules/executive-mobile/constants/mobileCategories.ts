@@ -12,9 +12,9 @@ export const APPROVAL_TYPE_META: Record<
     description: 'Project expense vouchers awaiting approval',
   },
   installment_plan: {
-    label: 'Installment Plans',
-    shortLabel: 'Plans',
-    description: 'Sales installment plans pending sign-off',
+    label: 'Marketing Plan Approvals',
+    shortLabel: 'Marketing',
+    description: 'Sales marketing plans pending review and recently approved',
   },
   contractor_bill: {
     label: 'Contractor Bills',

@@ -863,14 +863,7 @@ const App: React.FC = () => {
     return (
       <OfflineProvider>
         <Suspense fallback={<LoadingShell />}>
-          <ExecutiveMobileShell
-            onExitToFullErp={async (page) => {
-              executiveMode.enterFullErpSession();
-              if (page) {
-                handleSetPage(page);
-              }
-            }}
-          />
+          <ExecutiveMobileShell />
         </Suspense>
       </OfflineProvider>
     );

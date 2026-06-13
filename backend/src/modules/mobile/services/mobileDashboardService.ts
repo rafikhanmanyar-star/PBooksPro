@@ -230,35 +230,63 @@ export async function getMobileHrSummary(
   client: pg.PoolClient,
   tenantId: string
 ): Promise<MobileDashboardResponse> {
-  const today = toDateOnlyString(new Date());
-  const [employeesR, leaveR, payrollR] = await Promise.all([
-    client.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM payroll_employees
-       WHERE tenant_id = $1 AND deleted_at IS NULL AND is_active = TRUE`,
-      [tenantId]
-    ),
-    client.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM payroll_leave_requests
-       WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'pending'`,
-      [tenantId]
-    ).catch(() => ({ rows: [{ count: '0' }] })),
-    client.query<{ status: string; count: string }>(
-      `SELECT status, COUNT(*)::text AS count FROM payroll_runs
-       WHERE tenant_id = $1 AND deleted_at IS NULL
-       GROUP BY status`,
-      [tenantId]
-    ).catch(() => ({ rows: [] as { status: string; count: string }[] })),
-  ]);
+  const now = new Date();
+  const currentMonth = now.toLocaleString('en-US', { month: 'long' });
+  const currentYear = now.getFullYear();
 
-  const draftPayroll = payrollR.rows.find((r) => r.status === 'DRAFT')?.count ?? '0';
+  const [employeesR, onLeaveR, departmentsR, draftPayrollR, unpaidPayslipsR, monthlyPayrollR] =
+    await Promise.all([
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM payroll_employees
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'ACTIVE'`,
+        [tenantId]
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM payroll_employees
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'ON_LEAVE'`,
+        [tenantId]
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM payroll_departments
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND is_active = TRUE`,
+        [tenantId]
+      ),
+      client.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM payroll_runs
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND status = 'DRAFT'`,
+        [tenantId]
+      ),
+      client.query<{ count: string; amount: string }>(
+        `SELECT COUNT(*)::text AS count,
+                COALESCE(SUM(GREATEST(net_pay - paid_amount, 0)), 0)::text AS amount
+         FROM payslips
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND is_paid = FALSE`,
+        [tenantId]
+      ),
+      client.query<{ total: string }>(
+        `SELECT COALESCE(total_amount, 0)::text AS total FROM payroll_runs
+         WHERE tenant_id = $1 AND deleted_at IS NULL AND month = $2 AND year = $3
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [tenantId, currentMonth, currentYear]
+      ),
+    ]);
 
   return {
     generatedAt: new Date().toISOString(),
     metrics: [
-      metric('employees', 'Employees', Number(employeesR.rows[0]?.count ?? 0), 'number'),
-      metric('attendanceToday', 'Attendance Today', 0, 'number'),
-      metric('leaveRequests', 'Leave Requests', Number(leaveR.rows[0]?.count ?? 0), 'number'),
-      metric('payrollDraft', 'Payroll Draft Runs', Number(draftPayroll), 'number'),
+      metric('activeEmployees', 'Active Employees', Number(employeesR.rows[0]?.count ?? 0), 'number'),
+      metric('onLeave', 'On Leave', Number(onLeaveR.rows[0]?.count ?? 0), 'number'),
+      metric('unpaidPayslips', 'Unpaid Payslips', Number(unpaidPayslipsR.rows[0]?.count ?? 0), 'number'),
+      metric('monthlyPayroll', 'Monthly Payroll', Number(monthlyPayrollR.rows[0]?.total ?? 0), 'currency'),
+      metric('departments', 'Departments', Number(departmentsR.rows[0]?.count ?? 0), 'number'),
+      metric('payrollDraft', 'Draft Payroll Runs', Number(draftPayrollR.rows[0]?.count ?? 0), 'number'),
+      metric(
+        'payrollOutstanding',
+        'Payroll Outstanding',
+        Number(unpaidPayslipsR.rows[0]?.amount ?? 0),
+        'currency'
+      ),
     ],
   };
 }

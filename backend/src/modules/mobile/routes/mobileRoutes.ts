@@ -29,6 +29,7 @@ import {
 import type { UnpostedTransactionStatus } from '../types/index.js';
 import {
   approveMobileApproval,
+  getMobileInstallmentPlanDetail,
   listMobileApprovals,
   rejectMobileApproval,
 } from '../services/mobileApprovalsService.js';
@@ -309,6 +310,27 @@ mobileRouter.patch('/mobile/unposted-transactions/:id/status', async (req: Authe
       sendFailure(res, 400, 'VALIDATION_ERROR', e.errors.map((x) => x.message).join('; '));
       return;
     }
+    handleRouteError(res, e);
+  }
+});
+
+mobileRouter.get('/mobile/approvals/installment_plan/:id', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  const userId = req.userId;
+  if (!tenantId || !userId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const detail = await withClient((client) =>
+      getMobileInstallmentPlanDetail(client, tenantId, userId, req.role, req.params.id)
+    );
+    if (!detail) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Marketing plan not found');
+      return;
+    }
+    sendSuccess(res, detail);
+  } catch (e) {
     handleRouteError(res, e);
   }
 });

@@ -15,6 +15,13 @@ const METRIC_STYLES: Record<string, MetricStyle> = {
   revenue: { icon: ICONS.handDollar, iconWrap: 'bg-teal-500/10 text-teal-600 dark:text-teal-400' },
   expenses: { icon: ICONS.creditCard, iconWrap: 'bg-pink-500/10 text-pink-600 dark:text-pink-400' },
   netIncome: { icon: ICONS.trendingUp, iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400' },
+  activeEmployees: { icon: ICONS.users, iconWrap: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+  onLeave: { icon: ICONS.calendar, iconWrap: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
+  unpaidPayslips: { icon: ICONS.fileText, iconWrap: 'bg-rose-500/10 text-rose-600 dark:text-rose-400' },
+  monthlyPayroll: { icon: ICONS.dollarSign, iconWrap: 'bg-teal-500/10 text-teal-600 dark:text-teal-400' },
+  payrollOutstanding: { icon: ICONS.clock, iconWrap: 'bg-violet-500/10 text-violet-600 dark:text-violet-400' },
+  departments: { icon: ICONS.briefcase, iconWrap: 'bg-blue-500/10 text-blue-600 dark:text-blue-400' },
+  payrollDraft: { icon: ICONS.edit, iconWrap: 'bg-amber-500/10 text-amber-600 dark:text-amber-400' },
 };
 
 function formatValue(metric: MobileMetric): string {

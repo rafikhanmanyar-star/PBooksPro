@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   filterApprovalsForUser,
   isPendingInstallmentPlan,
+  marketingPlanVisibleToMobileUser,
   normalizeStatus,
   sortApprovalsByDate,
   type MobileApprovalItem,
@@ -69,6 +70,56 @@ describe('canReviewUnpostedTransactions', () => {
   it('denies read-only roles', () => {
     assert.equal(canReviewUnpostedTransactions('Read Only User'), false);
     assert.equal(canReviewUnpostedTransactions('viewer'), false);
+  });
+});
+
+describe('marketingPlanVisibleToMobileUser', () => {
+  it('shows pending plan to assigned approver', () => {
+    assert.equal(
+      marketingPlanVisibleToMobileUser(
+        {
+          status: 'Pending Approval',
+          approval_requested_to: 'u1',
+          approval_reviewed_by: null,
+          approval_requested_at: new Date(),
+        },
+        'u1',
+        false
+      ),
+      true
+    );
+  });
+
+  it('shows approved history to reviewer', () => {
+    assert.equal(
+      marketingPlanVisibleToMobileUser(
+        {
+          status: 'Approved',
+          approval_requested_to: 'u1',
+          approval_reviewed_by: 'u2',
+          approval_requested_at: new Date(),
+        },
+        'u2',
+        false
+      ),
+      true
+    );
+  });
+
+  it('hides approved plan without approval workflow', () => {
+    assert.equal(
+      marketingPlanVisibleToMobileUser(
+        {
+          status: 'Approved',
+          approval_requested_to: 'u1',
+          approval_reviewed_by: 'u2',
+          approval_requested_at: null,
+        },
+        'u2',
+        false
+      ),
+      false
+    );
   });
 });
 
