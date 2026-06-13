@@ -102,6 +102,12 @@ async function upsertPresentationTenantAndUser(
       `UPDATE users SET password_hash = $2, is_active = TRUE, updated_at = NOW() WHERE id = $1`,
       [row.id, passwordHash]
     );
+    await client.query(
+      `INSERT INTO user_tenants (id, user_id, tenant_id, role, is_default)
+       VALUES ($1, $2, $3, 'Admin', TRUE)
+       ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role, is_default = TRUE`,
+      [`ut_${row.id}`, row.id, row.tenant_id]
+    );
     return { tenantId: row.tenant_id, username: row.username };
   }
 
