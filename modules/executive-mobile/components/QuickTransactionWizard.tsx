@@ -102,6 +102,12 @@ export default function QuickTransactionWizard() {
     setStep((s) => Math.max(s - 1, 1));
   };
 
+  const selectTransactionType = (typeId: (typeof UNPOSTED_TRANSACTION_TYPES)[number]['id']) => {
+    setError(null);
+    setTransactionType(typeId);
+    setStep(2);
+  };
+
   const handleSubmit = async () => {
     setError(null);
     const parsedAmount = Number(amount);
@@ -183,7 +189,7 @@ export default function QuickTransactionWizard() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-1 shrink-0">
-            {step < totalSteps ? (
+            {step > 1 && step < totalSteps ? (
               <button
                 type="button"
                 onClick={goNext}
@@ -192,7 +198,7 @@ export default function QuickTransactionWizard() {
                 Next
                 <span className="w-4 h-4">{ICONS.chevronRight}</span>
               </button>
-            ) : (
+            ) : step === totalSteps ? (
               <button
                 type="button"
                 onClick={() => void handleSubmit()}
@@ -206,7 +212,7 @@ export default function QuickTransactionWizard() {
                   </>
                 )}
               </button>
-            )}
+            ) : null}
             {step === 4 && (
               <button
                 type="button"
@@ -247,7 +253,7 @@ export default function QuickTransactionWizard() {
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setTransactionType(t.id)}
+                      onClick={() => selectTransactionType(t.id)}
                       className={`p-3 rounded-xl border text-left touch-manipulation transition-colors ${
                         selected
                           ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
@@ -274,7 +280,7 @@ export default function QuickTransactionWizard() {
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => setTransactionType(t.id)}
+                      onClick={() => selectTransactionType(t.id)}
                       className={`p-3 rounded-xl border text-left touch-manipulation flex items-center gap-3 ${
                         selected
                           ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
