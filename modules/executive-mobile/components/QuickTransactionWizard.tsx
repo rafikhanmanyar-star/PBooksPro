@@ -1,11 +1,18 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Input from '../../../components/ui/Input';
 import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
 import { useCreateUnpostedTransaction } from '../hooks/useUnpostedTransactions';
 import { uploadUnpostedAttachment } from '../../../services/api/unpostedTransactionsApi';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
+import { useAuth } from '../../../context/AuthContext';
 import { CURRENCY, ICONS } from '../../../constants';
 import { todayLocalYyyyMmDd } from '../../../utils/dateUtils';
+import FieldSuggestionChips from './FieldSuggestionChips';
+import {
+  getLastQuickCaptureSnapshot,
+  getQuickCaptureSuggestions,
+  saveQuickCaptureFields,
+} from '../utils/quickCaptureFieldHistory';
 import {
   isInflowType,
   OUTFLOW_TYPE_IDS,
@@ -37,6 +44,8 @@ function formatAmount(value: string): string {
 
 export default function QuickTransactionWizard() {
   const { setView } = useExecutiveMode();
+  const { user } = useAuth();
+  const tenantId = user?.tenantId;
   const createMutation = useCreateUnpostedTransaction();
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +59,10 @@ export default function QuickTransactionWizard() {
   const [attachment, setAttachment] = useState<File | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldSuggestions, setFieldSuggestions] = useState(() =>
+    getQuickCaptureSuggestions(UNPOSTED_TRANSACTION_TYPES[0].id, tenantId)
+  );
+  const [lastSnapshot, setLastSnapshot] = useState(() => getLastQuickCaptureSnapshot(tenantId));
 
   const currentStepMeta = WIZARD_STEPS[step - 1];
   const totalSteps = WIZARD_STEPS.length;
@@ -62,6 +75,43 @@ export default function QuickTransactionWizard() {
     () => UNPOSTED_TRANSACTION_TYPES.filter((t) => isInflowType(t.id)),
     []
   );
+
+  const persistDetailFields = () => {
+    saveQuickCaptureFields(
+      transactionType,
+      { partyName, description, projectId, costCenterCode },
+      tenantId
+    );
+    setFieldSuggestions(getQuickCaptureSuggestions(transactionType, tenantId));
+    setLastSnapshot(getLastQuickCaptureSnapshot(tenantId));
+  };
+
+  const applyLastSnapshot = () => {
+    const snap = getLastQuickCaptureSnapshot(tenantId);
+    if (!snap) return;
+    if (snap.partyName) setPartyName(snap.partyName);
+    if (snap.description) setDescription(snap.description);
+    if (snap.projectId) setProjectId(snap.projectId);
+    if (snap.costCenterCode) setCostCenterCode(snap.costCenterCode);
+  };
+
+  const lastSnapshotSummary = useMemo(() => {
+    if (!lastSnapshot) return '';
+    return [
+      lastSnapshot.partyName,
+      lastSnapshot.description,
+      lastSnapshot.projectId,
+      lastSnapshot.costCenterCode,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }, [lastSnapshot]);
+
+  useEffect(() => {
+    if (step !== 3) return;
+    setFieldSuggestions(getQuickCaptureSuggestions(transactionType, tenantId));
+    setLastSnapshot(getLastQuickCaptureSnapshot(tenantId));
+  }, [step, transactionType, tenantId]);
 
   const resetWizard = () => {
     setStep(1);
@@ -94,6 +144,7 @@ export default function QuickTransactionWizard() {
 
   const goNext = () => {
     if (!validateStep()) return;
+    if (step === 3) persistDetailFields();
     setStep((s) => Math.min(s + 1, totalSteps));
   };
 
@@ -142,6 +193,7 @@ export default function QuickTransactionWizard() {
           fileData,
         });
       }
+      persistDetailFields();
       setSubmitted(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Submission failed');
@@ -355,31 +407,71 @@ export default function QuickTransactionWizard() {
 
         {step === 3 && (
           <div className="space-y-4">
-            <Input
-              label={partyPlaceholder(transactionType)}
-              value={partyName}
-              onChange={(e) => setPartyName(e.target.value)}
-              placeholder={partyPlaceholder(transactionType)}
-              autoFocus
-            />
-            <Input
-              label="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="e.g. Cement delivery, site visit fuel…"
-            />
-            <Input
-              label="Project (optional)"
-              value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
-              placeholder="Project name or ID"
-            />
-            <Input
-              label="Cost Center (optional)"
-              value={costCenterCode}
-              onChange={(e) => setCostCenterCode(e.target.value)}
-              placeholder="e.g. SITE-01"
-            />
+            {lastSnapshotSummary && (
+              <button
+                type="button"
+                onClick={applyLastSnapshot}
+                className="w-full text-left p-3 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation active:bg-ds-primary/10"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-ds-primary mb-1">
+                  Use last capture
+                </p>
+                <p className="text-sm text-app-text line-clamp-2">{lastSnapshotSummary}</p>
+              </button>
+            )}
+            <div>
+              <Input
+                label={partyPlaceholder(transactionType)}
+                value={partyName}
+                onChange={(e) => setPartyName(e.target.value)}
+                placeholder={partyPlaceholder(transactionType)}
+                autoFocus
+              />
+              <FieldSuggestionChips
+                suggestions={fieldSuggestions.partyName}
+                currentValue={partyName}
+                onSelect={setPartyName}
+              />
+            </div>
+            <div>
+              <Input
+                label="Description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="e.g. Cement delivery, site visit fuel…"
+              />
+              <FieldSuggestionChips
+                suggestions={fieldSuggestions.description}
+                currentValue={description}
+                onSelect={setDescription}
+              />
+            </div>
+            <div>
+              <Input
+                label="Project (optional)"
+                value={projectId}
+                onChange={(e) => setProjectId(e.target.value)}
+                placeholder="Project name or ID"
+              />
+              <FieldSuggestionChips
+                suggestions={fieldSuggestions.projectId}
+                currentValue={projectId}
+                onSelect={setProjectId}
+              />
+            </div>
+            <div>
+              <Input
+                label="Cost Center (optional)"
+                value={costCenterCode}
+                onChange={(e) => setCostCenterCode(e.target.value)}
+                placeholder="e.g. SITE-01"
+              />
+              <FieldSuggestionChips
+                suggestions={fieldSuggestions.costCenterCode}
+                currentValue={costCenterCode}
+                onSelect={setCostCenterCode}
+              />
+            </div>
           </div>
         )}
 
