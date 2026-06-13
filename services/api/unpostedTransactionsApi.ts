@@ -18,22 +18,41 @@ export type CreateUnpostedTransactionPayload = {
   status?: 'draft' | 'submitted';
 };
 
-export async function listUnpostedTransactions(options?: {
+export type UnpostedTransactionListOptions = {
   status?: UnpostedTransactionStatus | UnpostedTransactionStatus[];
   mine?: boolean;
+  createdBy?: string;
+  dateFrom?: string;
+  dateTo?: string;
   limit?: number;
   offset?: number;
-}): Promise<UnpostedTransaction[]> {
+};
+
+export type UnpostedTransactionSubmitter = {
+  id: string;
+  name: string;
+};
+
+export async function listUnpostedTransactions(
+  options?: UnpostedTransactionListOptions
+): Promise<UnpostedTransaction[]> {
   const params = new URLSearchParams();
   if (options?.status) {
     const statuses = Array.isArray(options.status) ? options.status : [options.status];
     params.set('status', statuses.join(','));
   }
   if (options?.mine) params.set('mine', 'true');
+  if (options?.createdBy) params.set('createdBy', options.createdBy);
+  if (options?.dateFrom) params.set('dateFrom', options.dateFrom);
+  if (options?.dateTo) params.set('dateTo', options.dateTo);
   if (options?.limit != null) params.set('limit', String(options.limit));
   if (options?.offset != null) params.set('offset', String(options.offset));
   const qs = params.toString();
   return apiClient.get<UnpostedTransaction[]>(`/mobile/unposted-transactions${qs ? `?${qs}` : ''}`);
+}
+
+export async function listUnpostedTransactionSubmitters(): Promise<UnpostedTransactionSubmitter[]> {
+  return apiClient.get<UnpostedTransactionSubmitter[]>('/mobile/unposted-transactions/submitters');
 }
 
 export async function getUnpostedTransactionCounts(): Promise<Record<string, number>> {

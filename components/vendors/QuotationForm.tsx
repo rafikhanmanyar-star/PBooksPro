@@ -1,32 +1,45 @@
 import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useNotification } from '../../context/NotificationContext';
-import { Quotation, QuotationItem, Contact, TransactionType, Document } from '../../types';
+import { Quotation, QuotationItem, Contact, TransactionType, Document, ProcurementSettings } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
+import Select from '../ui/Select';
 import { ICONS } from '../../constants';
 import { documentService } from '../../services/documentService';
 import { fromPickerDateToYyyyMmDd, todayLocalYyyyMmDd } from '../../utils/dateUtils';
+import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 
 interface QuotationFormProps {
     onClose: () => void;
     quotationToEdit?: Quotation;
     vendorId: string;
     vendorName: string;
+    procurementSettings?: ProcurementSettings;
 }
 
-const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit, vendorId, vendorName }) => {
+const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit, vendorId, vendorName, procurementSettings }) => {
     const state = useFinancialReportAppState();
     const { categories } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
+    const entityFormModal = useEntityFormModal();
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [name, setName] = useState(vendorName);
+    const [quotationNumber, setQuotationNumber] = useState(quotationToEdit?.quotationNumber || '');
     const [date, setDate] = useState(todayLocalYyyyMmDd());
+    const [expiryDate, setExpiryDate] = useState(quotationToEdit?.expiryDate || '');
+    const [enablePriceValidation, setEnablePriceValidation] = useState(
+        quotationToEdit?.enablePriceValidation !== false
+    );
+    const [validationScope, setValidationScope] = useState<'CATEGORY' | 'ITEM'>(
+        quotationToEdit?.validationScope === 'ITEM' ? 'ITEM' : 'CATEGORY'
+    );
+    const [isActive, setIsActive] = useState(quotationToEdit?.isActive !== false);
     const [items, setItems] = useState<QuotationItem[]>([]);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [documentId, setDocumentId] = useState<string | undefined>(quotationToEdit?.documentId);
@@ -40,7 +53,12 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
     useEffect(() => {
         if (quotationToEdit) {
             setName(quotationToEdit.name);
+            setQuotationNumber(quotationToEdit.quotationNumber || '');
             setDate(quotationToEdit.date);
+            setExpiryDate(quotationToEdit.expiryDate || '');
+            setEnablePriceValidation(quotationToEdit.enablePriceValidation !== false);
+            setValidationScope(quotationToEdit.validationScope === 'ITEM' ? 'ITEM' : 'CATEGORY');
+            setIsActive(quotationToEdit.isActive !== false);
             setItems(quotationToEdit.items || []);
             setDocumentId(quotationToEdit.documentId);
         }
@@ -121,6 +139,22 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
         try {
 
         const quotationId = quotationToEdit?.id || Date.now().toString();
+        let finalQuotationNumber = quotationNumber.trim();
+        if (!finalQuotationNumber && procurementSettings?.quotationNumberSettings) {
+            const { prefix, nextNumber, padding } = procurementSettings.quotationNumberSettings;
+            finalQuotationNumber = `${prefix}${String(nextNumber).padStart(padding, '0')}`;
+            dispatch({
+                type: 'UPDATE_PROCUREMENT_SETTINGS',
+                payload: {
+                    ...procurementSettings,
+                    quotationNumberSettings: {
+                        ...procurementSettings.quotationNumberSettings,
+                        nextNumber: nextNumber + 1,
+                    },
+                },
+            });
+        }
+
         let finalDocumentId = documentId;
 
         // Save document if file is selected
@@ -152,7 +186,12 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
             id: quotationId,
             vendorId,
             name: name.trim(),
+            quotationNumber: finalQuotationNumber || undefined,
             date,
+            expiryDate: expiryDate || undefined,
+            enablePriceValidation,
+            validationScope,
+            isActive,
             items,
             documentId: finalDocumentId,
             totalAmount,
@@ -176,7 +215,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
 
     return (
         <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <Input
                     id="quotation-vendor-name"
                     name="quotation-vendor-name"
@@ -184,6 +223,14 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     required
+                />
+                <Input
+                    id="quotation-number"
+                    name="quotation-number"
+                    label="Quotation No."
+                    value={quotationNumber}
+                    onChange={(e) => setQuotationNumber(e.target.value)}
+                    placeholder="Auto-generated if empty"
                 />
                 <DatePicker
                     id="quotation-date"
@@ -193,6 +240,40 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                     onChange={(d) => setDate(fromPickerDateToYyyyMmDd(d))}
                     required
                 />
+                <DatePicker
+                    id="quotation-expiry-date"
+                    name="quotation-expiry-date"
+                    label="Expiry Date (Optional)"
+                    value={expiryDate}
+                    onChange={(d) => setExpiryDate(fromPickerDateToYyyyMmDd(d))}
+                />
+                <Select
+                    label="Validation Scope"
+                    value={validationScope}
+                    onChange={(e) => setValidationScope(e.target.value as 'CATEGORY' | 'ITEM')}
+                >
+                    <option value="CATEGORY">Category — all items in category</option>
+                    <option value="ITEM">Item — category + unit</option>
+                </Select>
+            </div>
+
+            <div className="flex flex-wrap gap-6">
+                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={enablePriceValidation}
+                        onChange={(e) => setEnablePriceValidation(e.target.checked)}
+                    />
+                    Enable Price Validation
+                </label>
+                <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                    <input
+                        type="checkbox"
+                        checked={isActive}
+                        onChange={(e) => setIsActive(e.target.checked)}
+                    />
+                    Active Quotation
+                </label>
             </div>
 
             <div className="border-t border-slate-200 pt-4">
@@ -237,6 +318,12 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                                             selectedId={item.categoryId}
                                             onSelect={(selected) => updateItem(item.id, 'categoryId', selected?.id || '')}
                                             placeholder="Select category"
+                                            entityType="category"
+                                            onAddNew={(_entityType, name) => {
+                                                entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
+                                                    updateItem(item.id, 'categoryId', newId);
+                                                });
+                                            }}
                                             required
                                         />
                                     </div>
@@ -354,6 +441,17 @@ const QuotationForm: React.FC<QuotationFormProps> = ({ onClose, quotationToEdit,
                     {quotationToEdit ? 'Update Quotation' : 'Save Quotation'}
                 </LoadingButton>
             </div>
+
+            <EntityFormModal
+                isOpen={entityFormModal.isFormOpen}
+                formType={entityFormModal.formType}
+                initialName={entityFormModal.initialName}
+                contactType={entityFormModal.contactType}
+                categoryType={entityFormModal.categoryType}
+                onClose={entityFormModal.closeForm}
+                onSubmit={entityFormModal.handleSubmit}
+                isSubmitting={entityFormModal.isSubmitting}
+            />
         </div>
     );
 };

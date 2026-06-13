@@ -12,6 +12,12 @@ export const STAGING_TENANT_NAME = 'test company';
 /** Default staging login when STAGING_ADMIN_PASSWORD is unset (min 8 chars per password policy). */
 export const STAGING_DEFAULT_ADMIN_PASSWORD = 'Rafi1234';
 
+/** Company email pattern for staging orgs: slugified company name @pbookspro.com */
+export function stagingCompanyEmail(companyName: string, tenantId: string): string {
+  const slug = (companyName || tenantId).toLowerCase().replace(/[^a-z0-9]+/g, '') || tenantId.replace(/[^a-z0-9]+/g, '');
+  return `${slug}@pbookspro.com`;
+}
+
 /**
  * Idempotent staging defaults: organization "test company", admin Rafi / Rafi1234.
  * Safe to run on every deploy; upserts tenant, user password, and system chart.
@@ -29,11 +35,12 @@ export async function seedStagingDefaults(): Promise<void> {
     }
   }
   const userId = (process.env.STAGING_ADMIN_USER_ID || 'user_rafi_test_company').trim();
+  const companyEmail = stagingCompanyEmail(tenantName, tenantId);
 
   await pool.query(
-    `INSERT INTO tenants (id, name, is_active) VALUES ($1, $2, TRUE)
-     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, is_active = TRUE, updated_at = NOW()`,
-    [tenantId, tenantName]
+    `INSERT INTO tenants (id, name, email, is_active) VALUES ($1, $2, $3, TRUE)
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, is_active = TRUE, updated_at = NOW()`,
+    [tenantId, tenantName, companyEmail]
   );
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -98,8 +105,9 @@ export async function seedDevIfEnabled(): Promise<void> {
   const passwordHash = await bcrypt.hash(process.env.DEV_ADMIN_PASSWORD || 'admin', 10);
 
   await pool.query(
-    `INSERT INTO tenants (id, name) VALUES ('default', 'Default tenant')
-     ON CONFLICT (id) DO NOTHING`
+    `INSERT INTO tenants (id, name, email) VALUES ('default', 'Default tenant', $1)
+     ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email, updated_at = NOW()`,
+    [stagingCompanyEmail('Default tenant', 'default')]
   );
 
   const userCount = await pool.query(`SELECT 1 FROM users WHERE tenant_id = 'default' AND username = 'admin' LIMIT 1`);

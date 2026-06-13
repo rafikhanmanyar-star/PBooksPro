@@ -120,7 +120,7 @@ interface AuthContextType extends AuthState {
   }) => Promise<{ backupCodes: string[] }>;
   lookupTenants: (organizationEmail: string) => Promise<Array<{ id: string; name: string; company_name: string; email: string }>>;
   smartLogin: (username: string, password: string, tenantId: string) => Promise<void>;
-  unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<void>;
+  unifiedLogin: (organizationEmail: string, username: string, password: string) => Promise<LoginResult>;
   registerTenant: (data: TenantRegistrationData) => Promise<{
     tenantId: string;
     trialDaysRemaining: number;
@@ -790,171 +790,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
 
   /**
-   * Unified login - takes organizationEmail, username, and password all at once
-   */
-  const unifiedLogin = useCallback(async (organizationEmail: string, username: string, password: string) => {
-    if (isLocalOnlyMode()) {
-      const companyUser = companyCtx?.authenticatedUser;
-      const activeCompany = companyCtx?.activeCompany;
-      const user: User = companyUser
-        ? {
-            id: companyUser.id,
-            username: companyUser.username,
-            name: companyUser.name,
-            role: companyUser.role,
-            tenantId: 'local',
-            displayTimezone: companyUser.displayTimezone,
-          }
-        : LOCAL_USER;
-      const tenant: Tenant = activeCompany
-        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
-        : LOCAL_TENANT;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('tenant_id', 'local');
-        localStorage.setItem('user_id', user.id);
-      }
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        user,
-        tenant,
-        isLoading: false,
-        error: null,
-      }));
-      syncDisplayTimezoneFromUser(user);
-      setSessionDataSource('sqlite');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:login-success'));
-      }
-      return;
-    }
-    setState(prev => ({ ...prev, isLoading: true, error: null }));
-    logger.logCategory('auth', '🔐 Starting unified login:', {
-      orgEmail: organizationEmail.substring(0, 15) + '...',
-      username: username.substring(0, 10) + '...',
-      hasPassword: !!password
-    });
-
-    try {
-      logger.logCategory('auth', '📤 Sending unified login request to server...');
-      const response = await apiClient.post<{
-        token: string;
-        user: User;
-        tenant: Tenant;
-      }>('/auth/unified-login', {
-        organizationEmail,
-        username,
-        password,
-      });
-
-      logger.logCategory('auth', '📥 Received unified login response:', {
-        hasToken: !!response.token,
-        hasUser: !!response.user,
-        hasTenant: !!response.tenant
-      });
-
-      if (response.token && response.user && response.tenant) {
-        logger.logCategory('auth', '✅ Unified login successful, processing response...');
-
-        // Store tenant info in localStorage for post-login session management
-        localStorage.setItem('last_tenant_id', response.tenant.id);
-        localStorage.setItem('last_username', username);
-        localStorage.setItem('last_organization_email', organizationEmail);
-        localStorage.setItem('user_id', response.user.id); // Store user_id for local database tracking
-
-        // Set authentication
-        apiClient.setAuth(response.token, response.tenant.id);
-        setSessionDataSource('postgres_api');
-
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem('pbooks_api_last_sync_at');
-          sessionStorage.removeItem('pbooks_api_sync_tenant_id');
-        }
-
-        // Verify token is valid by checking it can be decoded
-        try {
-          const parts = response.token.split('.');
-          if (parts.length === 3) {
-            const payload = JSON.parse(atob(parts[1]));
-            const exp = payload.exp * 1000;
-            if (Date.now() >= exp) {
-              logger.errorCategory('auth', '❌ Token received from server is already expired!');
-              throw new Error('Token is expired');
-            }
-            logger.logCategory('auth', '✅ Token validated - expires at:', new Date(exp).toISOString());
-          }
-        } catch (tokenError) {
-          logger.errorCategory('auth', '❌ Invalid token format received from server:', tokenError);
-          throw new Error('Invalid token received from server');
-        }
-
-        setState(prev => ({
-          ...prev,
-          isAuthenticated: true,
-          user: response.user,
-          tenant: response.tenant,
-          isLoading: false,
-          error: null,
-        }));
-        syncDisplayTimezoneFromUser(response.user);
-
-        logger.logCategory('auth', '✅ Unified login completed successfully');
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('auth:login-success'));
-        }
-
-        // Load license immediately so features enable without waiting for LicenseContext effect.
-        // Defer dispatch so LicenseContext has committed and can receive the event.
-        checkLicenseStatus()
-          .then((licenseStatus) => {
-            if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
-              const dispatch = () => window.dispatchEvent(new CustomEvent('license-status-loaded', { detail: licenseStatus }));
-              if (typeof requestAnimationFrame !== 'undefined') requestAnimationFrame(dispatch);
-              else setTimeout(dispatch, 0);
-            }
-          })
-          .catch((err) => logger.warnCategory('auth', 'Post-login license fetch failed (will retry in context):', err));
-
-        // Cloud settings sync removed -- local-only architecture
-        try {
-          const cloudSettings: any = null;
-
-          // Dispatch settings to AppContext if available
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('load-cloud-settings', {
-              detail: cloudSettings
-            }));
-          }
-
-          logger.logCategory('auth', '✅ Settings loaded from cloud database');
-        } catch (settingsError) {
-          logger.warnCategory('auth', '⚠️ Failed to load settings from cloud, will use local settings:', settingsError);
-        }
-      } else {
-        logger.errorCategory('auth', '❌ Invalid response from server:', { response });
-        throw new Error('Invalid response from server - missing token, user, or tenant');
-      }
-    } catch (error: any) {
-      logger.errorCategory('auth', '❌ Unified login error caught:', {
-        error: error,
-        message: error?.message,
-        status: error?.status,
-        errorProperty: error?.error
-      });
-      const errorMessage = error?.error || error?.message || 'Login failed';
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: false,
-        user: null,
-        tenant: null,
-        isLoading: false,
-        error: errorMessage,
-      }));
-      throw error;
-    }
-  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, checkLicenseStatus]);
-
-  /**
    * Apply a successful auth session (JWT + user + tenant) after login or MFA.
    */
   const applyAuthSession = useCallback((payload: AuthSessionPayload) => {
@@ -1135,6 +970,94 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
   }, [applyAuthSession, parseAuthLoginResponse]);
+
+  /**
+   * Unified login - company email identifies the organization; username + password authenticate the user.
+   */
+  const unifiedLogin = useCallback(async (
+    organizationEmail: string,
+    username: string,
+    password: string
+  ): Promise<LoginResult> => {
+    if (isLocalOnlyMode()) {
+      const companyUser = companyCtx?.authenticatedUser;
+      const activeCompany = companyCtx?.activeCompany;
+      const user: User = companyUser
+        ? {
+            id: companyUser.id,
+            username: companyUser.username,
+            name: companyUser.name,
+            role: companyUser.role,
+            tenantId: 'local',
+            displayTimezone: companyUser.displayTimezone,
+          }
+        : LOCAL_USER;
+      const tenant: Tenant = activeCompany
+        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
+        : LOCAL_TENANT;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('tenant_id', 'local');
+        localStorage.setItem('user_id', user.id);
+      }
+      setState(prev => ({
+        ...prev,
+        isAuthenticated: true,
+        user,
+        tenant,
+        isLoading: false,
+        error: null,
+      }));
+      syncDisplayTimezoneFromUser(user);
+      setSessionDataSource('sqlite');
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:login-success'));
+      }
+      return { status: 'authenticated' };
+    }
+    setState(prev => ({ ...prev, isLoading: true, error: null, pendingCompanySelection: null }));
+
+    try {
+      const response = await apiClient.post<{
+        requiresCompanySelection?: boolean;
+        selectionToken?: string;
+        companies?: CompanySummary[];
+        preferredCompanyId?: string | null;
+        token?: string;
+        mfaRequired?: boolean;
+        mfaToken?: string;
+        mfaSetupRequired?: boolean;
+        mfaSetupToken?: string;
+        loginEventId?: string;
+        user?: User;
+        tenant?: Tenant;
+        company?: Tenant;
+      }>('/auth/unified-login', {
+        organizationEmail: organizationEmail.trim(),
+        username: username.trim(),
+        password,
+      });
+
+      const result = parseAuthLoginResponse(response, username.trim());
+      if (result.status === 'authenticated') {
+        localStorage.setItem('last_organization_email', organizationEmail.trim());
+        localStorage.setItem('last_username', username.trim());
+        localStorage.setItem('last_identifier', username.trim());
+      }
+      return result;
+    } catch (error: any) {
+      const errorMessage = error?.error || error?.message || 'Login failed';
+      setState(prev => ({
+        ...prev,
+        isAuthenticated: false,
+        user: null,
+        tenant: null,
+        isLoading: false,
+        error: errorMessage,
+        pendingCompanySelection: null,
+      }));
+      throw error;
+    }
+  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, parseAuthLoginResponse]);
 
   const selectCompany = useCallback(async (
     companyId: string,
@@ -1442,7 +1365,7 @@ export const useAuth = (): AuthContextType => {
       completeMfaSetupLogin: async () => { throw new Error('AuthProvider not mounted'); },
       lookupTenants: async () => [],
       smartLogin: async () => { },
-      unifiedLogin: async () => { },
+      unifiedLogin: async () => ({ status: 'authenticated' as const }),
       registerTenant: async () => ({ tenantId: '', trialDaysRemaining: 0, pendingApproval: false }),
       enterDemoSession: async () => { },
       logout: () => { },

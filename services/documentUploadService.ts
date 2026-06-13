@@ -85,6 +85,28 @@ export async function uploadEntityDocument(
   return doc.id;
 }
 
+function openBlobInTab(
+  blob: Blob,
+  mimeType: string,
+  openInNewTab: (url: string) => void
+): void {
+  const typedBlob = blob.type ? blob : new Blob([blob], { type: mimeType || 'application/octet-stream' });
+  const url = URL.createObjectURL(typedBlob);
+  openInNewTab(url);
+}
+
+function openBase64InTab(
+  fileData: string,
+  mimeType: string,
+  openInNewTab: (url: string) => void
+): void {
+  const base64Data = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+  const byteChars = atob(base64Data);
+  const bytes = new Uint8Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  openBlobInTab(new Blob([bytes], { type: mimeType || 'application/octet-stream' }), mimeType, openInNewTab);
+}
+
 /**
  * Open a document by ID: use in-memory fileData if available, otherwise fetch from API and open in new tab.
  */
@@ -97,12 +119,7 @@ export async function openDocumentById(
   const doc = documentsFromState?.find(d => d.id === documentId);
   if (doc?.fileData) {
     try {
-      const byteChars = atob(doc.fileData);
-      const bytes = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([bytes], { type: doc.mimeType || 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      openInNewTab(url);
+      openBase64InTab(doc.fileData, doc.mimeType || 'application/octet-stream', openInNewTab);
     } catch {
       await showAlert('Failed to open document.');
     }
@@ -118,10 +135,17 @@ export async function openDocumentById(
     const res = await fetch(`${baseUrl}/documents/${documentId}/file`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
-    if (!res.ok) throw new Error('Failed to load document');
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    openInNewTab(url);
+    if (res.ok) {
+      const blob = await res.blob();
+      openBlobInTab(blob, blob.type || 'application/octet-stream', openInNewTab);
+      return;
+    }
+    const remote = await apiClient.get<Document>(`/documents/${documentId}`);
+    if (remote?.fileData) {
+      openBase64InTab(remote.fileData, remote.mimeType || 'application/octet-stream', openInNewTab);
+      return;
+    }
+    throw new Error('Document file is empty or missing');
   } catch {
     await showAlert('Document not available or failed to load.');
   }

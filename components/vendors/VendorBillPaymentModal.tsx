@@ -22,6 +22,8 @@ import {
     offerConstructionBillPaymentWhatsApp,
 } from '../../utils/constructionBillPaymentWhatsApp';
 import { resolveBillLinkedExpenseCategoryId } from '../../utils/billExpenseCategory';
+import { checkContractRetentionForPayment } from '../../utils/contractRetentionAlerts';
+import { backupAlertSuccess } from '../settings/backupThemeClasses';
 
 const EPS = 0.015;
 
@@ -541,6 +543,34 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 }
             }
 
+            const contractPayTotals = new Map<string, number>();
+            for (const bill of selectedBillsSorted) {
+                if (!bill.contractId) continue;
+                const plan = fifoPlans.get(bill.id)!;
+                const payTotal =
+                    Math.round((plan.cash + plan.adjustments.reduce((s, a) => s + a.amount, 0)) * 100) / 100;
+                contractPayTotals.set(
+                    bill.contractId,
+                    (contractPayTotals.get(bill.contractId) || 0) + payTotal
+                );
+            }
+            for (const [contractId, payAdd] of contractPayTotals) {
+                const contract = state.contracts?.find((c) => c.id === contractId);
+                const retentionAlert = checkContractRetentionForPayment(
+                    contract,
+                    state.transactions || [],
+                    payAdd
+                );
+                if (retentionAlert) {
+                    const icon = retentionAlert.alertLevel === 'critical' ? '🚨' : '⚠';
+                    const proceed = await showConfirm(
+                        `${icon} ${retentionAlert.title}\n\n${retentionAlert.message}\n\nProceed with payment anyway?`,
+                        { title: retentionAlert.title }
+                    );
+                    if (!proceed) return;
+                }
+            }
+
             const batchId = `batch-pay-${Date.now()}`;
             const billLines = selectedBillsSorted.map((bill) => {
                 const plan = fifoPlans.get(bill.id)!;
@@ -813,24 +843,24 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     return (
         <Modal isOpen={isOpen} onClose={onClose} preventCloseWhile={isSubmitting} title={modalTitle} size="xl">
             <div className="flex flex-col h-full max-h-[80vh]">
-                <div className="p-4 bg-slate-50 border-b border-slate-200">
+                <div className="p-4 bg-app-toolbar/40 border-b border-app-border">
                     <div className="flex justify-between items-center mb-2">
-                        <h3 className="font-bold text-slate-700">Pending Bills</h3>
-                        <div className="text-sm text-slate-500">
+                        <h3 className="font-bold text-app-text">Pending Bills</h3>
+                        <div className="text-sm text-app-muted">
                             {selectedBillIds.size} selected | Due (selected){' '}
-                            <span className="font-bold text-slate-800">
+                            <span className="font-bold text-app-text">
                                 {CURRENCY} {totalDueSelectedUi.toLocaleString()}
                             </span>
                             {advanceSettlementPath ? (
                                 <>
                                     {' '}
                                     | From prepaid:{' '}
-                                    <span className="font-bold text-emerald-800">
+                                    <span className="font-bold text-ds-success">
                                         {CURRENCY} {appliedFromAdvances.toLocaleString()}
                                     </span>
                                     {' '}
                                     | Cash (bank){' '}
-                                    <span className="font-bold text-slate-800">
+                                    <span className="font-bold text-app-text">
                                         {CURRENCY} {cashToPayFromBank.toLocaleString()}
                                     </span>
                                 </>
@@ -838,7 +868,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 <>
                                     {' '}
                                     | Paying now:{' '}
-                                    <span className="font-bold text-slate-800">{CURRENCY} {parseFloat(totalAmount || '0').toLocaleString()}</span>
+                                    <span className="font-bold text-app-text">{CURRENCY} {parseFloat(totalAmount || '0').toLocaleString()}</span>
                                 </>
                             )}
                         </div>
@@ -847,11 +877,11 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     {!isLocalOnlyMode() &&
                         advancesLoaded &&
                         (supplierAdvances.some((a) => a.remainingAmount > EPS) || !!editSettlement) && (
-                        <div className="mb-3 p-3 rounded-lg border border-emerald-200 bg-emerald-50/90 text-xs text-emerald-900 leading-relaxed space-y-2">
-                            <p className="font-semibold text-sm">
+                        <div className={`${backupAlertSuccess} mb-3 p-3 text-xs leading-relaxed space-y-2`}>
+                            <p className="font-semibold text-sm text-app-text">
                                 {editSettlement ? 'Editing hybrid settlement (prepaid + bank)' : 'Supplier prepaid advances detected'}
                             </p>
-                            <p>
+                            <p className="text-app-text">
                                 Outstanding prepaid balance for advances issued to{' '}
                                 <strong>{vendor.name}</strong>:
                                {' '}
@@ -861,7 +891,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                             </p>
                             {!supplierPartiesMixed && !editSettlement && (
                                 <>
-                                    <label className="flex items-start gap-2.5 cursor-pointer rounded-md bg-white/60 border border-emerald-100 px-3 py-2">
+                                    <label className="flex items-start gap-2.5 cursor-pointer rounded-md bg-app-card/80 border border-ds-success/20 px-3 py-2">
                                         <input
                                             type="checkbox"
                                             checked={applyPrepaidFifo}
@@ -872,10 +902,10 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                                     setManualAdvanceAmounts({});
                                                 }
                                             }}
-                                            className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500"
+                                            className="mt-0.5 rounded text-ds-success border-app-border focus:ring-primary"
                                             aria-label="Apply supplier prepaid advances toward this payment"
                                         />
-                                        <span>
+                                        <span className="text-app-text">
                                             <span className="font-semibold">Apply prepaid to this payment (FIFO).</span>{' '}
                                             Turn off to pay selected bills normally from your bank/cash account only (no prepaid
                                             allocation).
@@ -885,8 +915,8 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                         <label
                                             className={`flex flex-col gap-1 rounded-md border px-3 py-2 ${
                                                 selectedSorted.length !== 1
-                                                    ? 'border-slate-200 bg-slate-50/90 text-slate-500 cursor-not-allowed'
-                                                    : 'cursor-pointer bg-white/60 border-emerald-100'
+                                                    ? 'border-app-border bg-app-toolbar/50 text-app-muted cursor-not-allowed'
+                                                    : 'cursor-pointer bg-app-card/80 border-ds-success/20 text-app-text'
                                             }`}
                                             title={
                                                 selectedSorted.length !== 1
@@ -897,7 +927,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                             <span className="flex items-start gap-2.5">
                                                 <input
                                                     type="checkbox"
-                                                    className="mt-0.5 rounded text-emerald-700 border-emerald-300 focus:ring-emerald-500 disabled:opacity-50"
+                                                    className="mt-0.5 rounded text-ds-success border-app-border focus:ring-primary disabled:opacity-50"
                                                     aria-label="Set prepaid and bank amounts manually"
                                                     checked={manualSettlementSplit}
                                                     disabled={selectedSorted.length !== 1}
@@ -938,16 +968,16 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 </>
                             )}
                             {supplierPartiesMixed && (
-                                <p className="text-rose-700 font-semibold">
+                                <p className="text-ds-danger font-semibold">
                                     Mixed contact/vendor linkage on selection — unsettle-able until you select bills for one party only.
                                 </p>
                             )}
                         </div>
                     )}
 
-                    <div className="max-h-64 overflow-y-auto border rounded-lg bg-white shadow-sm">
-                        <table className="min-w-full divide-y divide-slate-200 text-sm">
-                            <thead className="bg-slate-100 sticky top-0">
+                    <div className="max-h-64 overflow-y-auto border border-app-border rounded-lg bg-app-card shadow-ds-card">
+                        <table className="min-w-full divide-y divide-app-border text-sm">
+                            <thead className="bg-app-table-header sticky top-0">
                                 <tr>
                                     <th className="px-4 py-2 text-center w-10">
                                         <input
@@ -959,19 +989,19 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                             className="rounded text-accent focus:ring-accent disabled:opacity-50"
                                         />
                                     </th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">Date</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">Bill #</th>
-                                    <th className="px-4 py-2 text-left font-medium text-slate-600">Description</th>
-                                    <th className="px-4 py-2 text-right font-medium text-slate-600">Due</th>
+                                    <th className="px-4 py-2 text-left font-medium text-app-muted">Date</th>
+                                    <th className="px-4 py-2 text-left font-medium text-app-muted">Bill #</th>
+                                    <th className="px-4 py-2 text-left font-medium text-app-muted">Description</th>
+                                    <th className="px-4 py-2 text-right font-medium text-app-muted">Due</th>
                                     {advanceSettlementPath && (
                                         <>
-                                            <th className="px-4 py-2 text-right font-medium text-slate-600">From advance</th>
-                                            <th className="px-4 py-2 text-right font-medium text-slate-600">Cash</th>
+                                            <th className="px-4 py-2 text-right font-medium text-app-muted">From advance</th>
+                                            <th className="px-4 py-2 text-right font-medium text-app-muted">Cash</th>
                                         </>
                                     )}
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-app-border bg-app-card">
                                 {pendingBills.length > 0 ? (
                                     pendingBills.map((bill) => {
                                         const due = bill.amount - bill.paidAmount;
@@ -981,7 +1011,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                         return (
                                             <tr
                                                 key={bill.id}
-                                                className={selectedBillIds.has(bill.id) ? 'bg-indigo-50' : 'hover:bg-slate-50'}
+                                                className={selectedBillIds.has(bill.id) ? 'bg-primary/10' : 'hover:bg-app-table-hover'}
                                             >
                                                 <td className="px-4 py-2 text-center">
                                                     <input
@@ -993,16 +1023,16 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                                         className="rounded text-accent focus:ring-accent disabled:opacity-50"
                                                     />
                                                 </td>
-                                                <td className="px-4 py-2 text-slate-700">{formatDate(bill.issueDate)}</td>
-                                                <td className="px-4 py-2 font-medium text-slate-800">{bill.billNumber}</td>
-                                                <td className="px-4 py-2 text-slate-500 truncate max-w-[180px]" title={bill.description}>
+                                                <td className="px-4 py-2 text-app-text">{formatDate(bill.issueDate)}</td>
+                                                <td className="px-4 py-2 font-medium text-app-text">{bill.billNumber}</td>
+                                                <td className="px-4 py-2 text-app-muted truncate max-w-[180px]" title={bill.description}>
                                                     {bill.description}
                                                 </td>
-                                                <td className="px-4 py-2 text-right font-mono text-slate-700">{CURRENCY} {due.toLocaleString()}</td>
+                                                <td className="px-4 py-2 text-right font-mono text-app-text">{CURRENCY} {due.toLocaleString()}</td>
                                                 {advanceSettlementPath && (
                                                     <>
-                                                        <td className="px-4 py-2 text-right font-mono text-emerald-800">{CURRENCY} {advPart.toLocaleString()}</td>
-                                                        <td className="px-4 py-2 text-right font-mono text-slate-700">{CURRENCY} {cashPart.toLocaleString()}</td>
+                                                        <td className="px-4 py-2 text-right font-mono text-ds-success">{CURRENCY} {advPart.toLocaleString()}</td>
+                                                        <td className="px-4 py-2 text-right font-mono text-app-text">{CURRENCY} {cashPart.toLocaleString()}</td>
                                                     </>
                                                 )}
                                             </tr>
@@ -1012,7 +1042,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                     <tr>
                                         <td
                                             colSpan={advanceSettlementPath ? 8 : 5}
-                                            className="px-4 py-8 text-center text-slate-500"
+                                            className="px-4 py-8 text-center text-app-muted"
                                         >
                                             No pending bills found for this vendor.
                                         </td>
@@ -1023,9 +1053,9 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     </div>
 
                     {showAdvanceBreakdownPanel && (
-                        <div className="mt-3 p-3 rounded-lg border border-slate-200 bg-white shadow-sm space-y-2">
+                        <div className="mt-3 p-3 rounded-lg border border-app-border bg-app-card shadow-ds-card space-y-2">
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                                <p className="text-xs font-semibold text-slate-700">
+                                <p className="text-xs font-semibold text-app-text">
                                     {editSettlement
                                         ? 'Prepaid applied from each advance'
                                         : 'Prepaid — edit amounts (0 = none from this advance)'}
@@ -1054,27 +1084,27 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 )}
                             </div>
                             {editSettlement ? (
-                                <p className="text-[11px] text-slate-500">
+                                <p className="text-[11px] text-app-muted">
                                     You may increase or decrease this settlement after reversal limits (server validates). Prepaid plus
                                     bank/cash total must stay positive.
                                 </p>
                             ) : (
                                 manualSettlementSplit && (
-                                    <p className="text-[11px] text-slate-500">
+                                    <p className="text-[11px] text-app-muted">
                                         Unpaid on selected bill{' '}
-                                        <span className="font-mono font-semibold text-slate-800">
+                                        <span className="font-mono font-semibold text-app-text">
                                             {CURRENCY} {singleSelectedBillDueUi.toLocaleString()}
                                         </span>
                                         . Paid this time{' '}
-                                        <span className="font-mono font-semibold text-slate-800">
+                                        <span className="font-mono font-semibold text-app-text">
                                             {CURRENCY} {allocationTotalUi.toLocaleString()}
                                         </span>
                                         {allocationTotalUi > singleSelectedBillDueUi + EPS ? (
-                                            <span className="text-rose-700"> — exceeds due; reduce amounts.</span>
+                                            <span className="text-ds-danger"> — exceeds due; reduce amounts.</span>
                                         ) : null}
                                         {allocationTotalUi > EPS &&
                                         allocationTotalUi < singleSelectedBillDueUi - EPS ? (
-                                            <span className="text-amber-800"> — partial bill payment.</span>
+                                            <span className="text-ds-warning"> — partial bill payment.</span>
                                         ) : null}
                                     </p>
                                 )
@@ -1083,7 +1113,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 {advanceInputRowsForUi.length > 0 ? (
                                     advanceInputRowsForUi.map((a) => (
                                         <div key={a.id} className="flex flex-col sm:flex-row sm:items-center gap-2 text-sm">
-                                            <span className="flex-1 text-slate-600 text-xs">
+                                            <span className="flex-1 text-app-muted text-xs">
                                                 {a.advanceDate ? formatDate(a.advanceDate) : '—'} — prepaid remaining{' '}
                                                 <span className="font-mono">{CURRENCY} {a.remainingAmount.toLocaleString()}</span>
                                             </span>
@@ -1108,7 +1138,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                 ) : (
                                     manualSettlementSplit &&
                                     !editSettlement && (
-                                        <p className="text-[11px] text-slate-500">
+                                        <p className="text-[11px] text-app-muted">
                                             No separate prepaid advances — pay from bank/cash below (or{' '}
                                             <span className="font-semibold">0</span> there for prepaid-only if you allocate above when
                                             advances appear).
@@ -1116,7 +1146,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                     )
                                 )}
                             </div>
-                            <p className={`text-[11px] font-medium ${allocationTotalUi > EPS ? 'text-emerald-800' : 'text-rose-700'}`}>
+                            <p className={`text-[11px] font-medium ${allocationTotalUi > EPS ? 'text-ds-success' : 'text-ds-danger'}`}>
                                 Allocated — prepaid: {CURRENCY} {appliedFromAdvances.toLocaleString()} | bank/cash:{' '}
                                 {CURRENCY} {cashToPayFromBank.toLocaleString()} | total: {CURRENCY}{' '}
                                 {allocationTotalUi.toLocaleString()}
@@ -1201,7 +1231,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                     </div>
                 </div>
 
-                <div className="p-4 border-t border-slate-200 flex justify-end gap-2 bg-slate-50 rounded-b-lg">
+                <div className="p-4 border-t border-app-border flex justify-end gap-2 bg-app-toolbar/40 rounded-b-lg">
                     <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
                     <LoadingButton
                         onClick={() => void handleSubmit()}

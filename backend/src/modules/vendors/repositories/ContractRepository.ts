@@ -5,6 +5,8 @@ import type { ContractRow } from '../../../services/contractsService.js';
 const CONTRACT_COLUMNS = `id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
   start_date, end_date, status, category_ids, expense_category_items,
   terms_and_conditions, payment_terms, description, document_path, document_id,
+  retention_type, retention_percentage, retention_amount, retention_release_method,
+  retention_release_date, retention_notes, retention_balance, retention_released, retention_release_by,
   user_id, version, deleted_at, created_at, updated_at`;
 
 export type ContractWriteFields = {
@@ -25,6 +27,15 @@ export type ContractWriteFields = {
   description: string | null;
   document_path: string | null;
   document_id: string | null;
+  retention_type?: string;
+  retention_percentage?: number | null;
+  retention_amount?: number | null;
+  retention_release_method?: string | null;
+  retention_release_date?: string | null;
+  retention_notes?: string | null;
+  retention_balance?: number;
+  retention_released?: number;
+  retention_release_by?: string | null;
 };
 
 function contractFieldParams(fields: ContractWriteFields): unknown[] {
@@ -46,6 +57,15 @@ function contractFieldParams(fields: ContractWriteFields): unknown[] {
     fields.description,
     fields.document_path,
     fields.document_id,
+    fields.retention_type ?? 'NONE',
+    fields.retention_percentage ?? null,
+    fields.retention_amount ?? null,
+    fields.retention_release_method ?? null,
+    fields.retention_release_date ?? null,
+    fields.retention_notes ?? null,
+    fields.retention_balance ?? 0,
+    fields.retention_released ?? 0,
+    fields.retention_release_by ?? null,
   ];
 }
 
@@ -120,10 +140,13 @@ export class ContractRepository extends TenantRepository {
          id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
          start_date, end_date, status, category_ids, expense_category_items,
          terms_and_conditions, payment_terms, description, document_path, document_id,
+         retention_type, retention_percentage, retention_amount, retention_release_method,
+         retention_release_date, retention_notes, retention_balance, retention_released, retention_release_by,
          user_id, version, deleted_at, created_at, updated_at
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::date, $11::date, $12, $13, $14, $15, $16, $17, $18, $19,
-         $20, 1, NULL, NOW(), NOW()
+         $20, $21, $22, $23, $24::date, $25, $26, $27, $28,
+         $29, 1, NULL, NOW(), NOW()
        )
        RETURNING ${CONTRACT_COLUMNS}`,
       [id, this.tenantId, ...contractFieldParams(fields), userId]
@@ -140,6 +163,9 @@ export class ContractRepository extends TenantRepository {
          category_ids = $13, expense_category_items = $14,
          terms_and_conditions = $15, payment_terms = $16, description = $17,
          document_path = $18, document_id = $19,
+         retention_type = $20, retention_percentage = $21, retention_amount = $22,
+         retention_release_method = $23, retention_release_date = $24::date, retention_notes = $25,
+         retention_balance = $26, retention_released = $27, retention_release_by = $28,
          deleted_at = NULL, version = version + 1, updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2
        RETURNING ${CONTRACT_COLUMNS}`,

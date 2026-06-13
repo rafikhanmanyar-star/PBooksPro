@@ -19,9 +19,13 @@ import {
   recordLogoutEvent,
 } from '../../../services/enterpriseAuditService.js';
 import { publicIntrospectionLimiter } from '../../../middleware/introspectionGuard.js';
+import type { MatchedUserAccount } from '../../../services/auth/userTenantService.js';
 import {
-  findAccountsByLoginIdentifier,
   findAccountForTenantByLoginIdentifier,
+  findTenantsByOrganizationEmail,
+  authenticateByOrgEmailAndUsername,
+  findAccountByTenantAndUsername,
+  filterAccountsByPassword,
   getUserTenantsForUser,
   userHasTenantAccess,
 } from '../../../services/auth/userTenantService.js';
@@ -71,6 +75,22 @@ const loginSchema = z.object({
   password: z.string().optional().default(''),
   /** @deprecated Demo-only; normal login must not send tenantId. */
   tenantId: z.string().optional(),
+});
+
+const lookupTenantsSchema = z.object({
+  organizationEmail: z.string().email(),
+});
+
+const unifiedLoginSchema = z.object({
+  organizationEmail: z.string().email(),
+  username: z.string().min(1).max(64),
+  password: z.string().min(1).max(256),
+});
+
+const smartLoginSchema = z.object({
+  username: z.string().min(1).max(64),
+  password: z.string().min(1).max(256),
+  tenantId: z.string().min(1),
 });
 
 const forgotPasswordSchema = z.object({
@@ -155,6 +175,108 @@ function sendOrganizationAccessFailure(res: import('express').Response, err: Org
     organizationStatus: err.orgStatus,
     rejectionReason: err.rejectionReason ?? undefined,
   });
+}
+
+async function completeMatchedLoginResponse(
+  pool: ReturnType<typeof getPool>,
+  matched: MatchedUserAccount[],
+  loginIdentifier: string,
+  ctx: ReturnType<typeof auditContextFromRequest>,
+  res: import('express').Response
+): Promise<void> {
+  const orgBlock = organizationLoginBlockError(matched);
+  if (orgBlock) {
+    sendOrganizationAccessFailure(res, orgBlock);
+    return;
+  }
+  const loginEligible = filterLoginEligibleAccounts(matched);
+
+  if (loginEligible.length === 0) {
+    const failTenantId = matched[0]?.tenantId;
+    if (failTenantId) {
+      const failClient = await pool.connect();
+      try {
+        await recordLoginEvent(failClient, {
+          tenantId: failTenantId,
+          email: loginIdentifier,
+          status: 'failed',
+          ctx,
+        });
+      } finally {
+        failClient.release();
+      }
+    }
+    sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
+    return;
+  }
+
+  if (loginEligible.length > 1) {
+    const auditClient = await pool.connect();
+    let loginEventId: string | undefined;
+    try {
+      loginEventId = await recordLoginEvent(auditClient, {
+        tenantId: loginEligible[0]!.tenantId,
+        userId: loginEligible[0]!.userId,
+        email: loginEligible[0]!.email ?? loginIdentifier,
+        status: 'success',
+        ctx,
+      });
+    } finally {
+      auditClient.release();
+    }
+    sendSuccess(res, buildCompanySelectionResponse(loginEligible, loginEventId));
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    assertAccountMayLogin(loginEligible[0]!);
+    const result = await completeLoginForAccount(client, loginEligible[0]!, ctx);
+    const { captureMonitoringEvent } = await import('../../../services/monitoring/monitoringCapture.js');
+    captureMonitoringEvent({
+      category: 'user_activity',
+      severity: 'info',
+      message: `User login: ${loginEligible[0]!.username}`,
+      code: 'LOGIN_SUCCESS',
+      tenantId: loginEligible[0]!.tenantId,
+      userId: loginEligible[0]!.userId,
+      metadata: { loginEventId: result.loginEventId },
+    });
+
+    if (result.kind === 'mfa_required') {
+      sendSuccess(res, {
+        mfaRequired: true,
+        mfaToken: result.mfaToken,
+        loginEventId: result.loginEventId,
+        user: result.user,
+        tenant: result.tenant,
+        company: result.company,
+      });
+      return;
+    }
+    if (result.kind === 'mfa_setup_required') {
+      sendSuccess(res, {
+        mfaSetupRequired: true,
+        mfaSetupToken: result.mfaSetupToken,
+        loginEventId: result.loginEventId,
+        user: result.user,
+        tenant: result.tenant,
+        company: result.company,
+      });
+      return;
+    }
+
+    sendSuccess(res, {
+      requiresCompanySelection: false,
+      token: result.token,
+      loginEventId: result.loginEventId,
+      user: result.user,
+      tenant: result.tenant,
+      company: result.company,
+    });
+  } finally {
+    client.release();
+  }
 }
 
 function clientIpFromRequest(req: import('express').Request): string | undefined {
@@ -317,6 +439,82 @@ authRouter.post('/auth/logout', optionalAuthMiddleware, async (req, res) => {
   sendSuccess(res, { ok: true });
 });
 
+authRouter.post('/auth/lookup-tenants', loginLimiter, async (req, res) => {
+  const parsed = lookupTenantsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'A valid company email is required');
+    return;
+  }
+  try {
+    const pool = getPool();
+    const tenants = await findTenantsByOrganizationEmail(pool, parsed.data.organizationEmail);
+    sendSuccess(res, { tenants });
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+authRouter.post('/auth/unified-login', loginLimiter, async (req, res) => {
+  const parsed = unifiedLoginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Company email, username, and password are required');
+    return;
+  }
+  const { organizationEmail, username, password } = parsed.data;
+  const loginIdentifier = `${organizationEmail.trim()} / ${username.trim()}`;
+
+  try {
+    const pool = getPool();
+    const ctx = auditContextFromRequest(req);
+    const matched = await authenticateByOrgEmailAndUsername(
+      pool,
+      organizationEmail,
+      username,
+      password
+    );
+    await completeMatchedLoginResponse(pool, matched, loginIdentifier, ctx, res);
+  } catch (e) {
+    if (e instanceof OrganizationAccessDeniedError) {
+      sendOrganizationAccessFailure(res, e);
+      return;
+    }
+    handleRouteError(res, e);
+  }
+});
+
+authRouter.post('/auth/smart-login', loginLimiter, async (req, res) => {
+  const parsed = smartLoginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'Username, password, and organization are required');
+    return;
+  }
+  const { username, password, tenantId } = parsed.data;
+  const loginIdentifier = `${tenantId} / ${username.trim()}`;
+
+  if (isInternalDemoTenantId(tenantId)) {
+    sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for login.');
+    return;
+  }
+
+  try {
+    const pool = getPool();
+    const ctx = auditContextFromRequest(req);
+    const account = await findAccountByTenantAndUsername(pool, tenantId, username);
+    if (!account) {
+      sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
+      return;
+    }
+    const matched = await filterAccountsByPassword([account], password);
+    await completeMatchedLoginResponse(pool, matched, loginIdentifier, ctx, res);
+  } catch (e) {
+    if (e instanceof OrganizationAccessDeniedError) {
+      sendOrganizationAccessFailure(res, e);
+      return;
+    }
+    handleRouteError(res, e);
+  }
+});
+
 authRouter.post('/auth/login', loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -420,105 +618,12 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
       return;
     }
 
-    const candidates = await findAccountsByLoginIdentifier(pool, loginIdentifier);
     const matched = await authenticateWithProvider(pool, 'email_password', {
       provider: 'email_password',
       email: loginIdentifier,
       password: password!,
     });
-    const orgBlock = organizationLoginBlockError(matched);
-    if (orgBlock) {
-      sendOrganizationAccessFailure(res, orgBlock);
-      return;
-    }
-    const loginEligible = filterLoginEligibleAccounts(matched);
-
-    if (loginEligible.length === 0) {
-      const failTenantId = candidates[0]?.tenantId;
-      if (failTenantId) {
-        const failClient = await pool.connect();
-        try {
-          await recordLoginEvent(failClient, {
-            tenantId: failTenantId,
-            email: loginIdentifier,
-            status: 'failed',
-            ctx,
-          });
-        } finally {
-          failClient.release();
-        }
-      }
-      sendFailure(res, 401, 'AUTH_FAILED', 'Invalid credentials');
-      return;
-    }
-
-    if (loginEligible.length > 1) {
-      const auditClient = await pool.connect();
-      let loginEventId: string | undefined;
-      try {
-        loginEventId = await recordLoginEvent(auditClient, {
-          tenantId: loginEligible[0]!.tenantId,
-          userId: loginEligible[0]!.userId,
-          email: loginEligible[0]!.email ?? loginIdentifier,
-          status: 'success',
-          ctx,
-        });
-      } finally {
-        auditClient.release();
-      }
-      sendSuccess(res, buildCompanySelectionResponse(loginEligible, loginEventId));
-      return;
-    }
-
-    const client = await pool.connect();
-    try {
-      assertAccountMayLogin(loginEligible[0]!);
-      const result = await completeLoginForAccount(client, loginEligible[0]!, ctx);
-      const { captureMonitoringEvent } = await import('../../../services/monitoring/monitoringCapture.js');
-      captureMonitoringEvent({
-        category: 'user_activity',
-        severity: 'info',
-        message: `User login: ${loginEligible[0]!.username}`,
-        code: 'LOGIN_SUCCESS',
-        tenantId: loginEligible[0]!.tenantId,
-        userId: loginEligible[0]!.userId,
-        metadata: { loginEventId: result.loginEventId },
-      });
-
-      if (result.kind === 'mfa_required') {
-        sendSuccess(res, {
-          mfaRequired: true,
-          mfaToken: result.mfaToken,
-          loginEventId: result.loginEventId,
-          user: result.user,
-          tenant: result.tenant,
-          company: result.company,
-        });
-        return;
-      }
-      if (result.kind === 'mfa_setup_required') {
-        sendSuccess(res, {
-          mfaSetupRequired: true,
-          mfaSetupToken: result.mfaSetupToken,
-          loginEventId: result.loginEventId,
-          user: result.user,
-          tenant: result.tenant,
-          company: result.company,
-        });
-        return;
-      }
-
-      sendSuccess(res, {
-        requiresCompanySelection: false,
-        token: result.token,
-        loginEventId: result.loginEventId,
-        user: result.user,
-        tenant: result.tenant,
-        company: result.company,
-      });
-    } finally {
-      client.release();
-    }
+    await completeMatchedLoginResponse(pool, matched, loginIdentifier, ctx, res);
   } catch (e) {
     if (e instanceof OrganizationAccessDeniedError) {
       sendOrganizationAccessFailure(res, e);

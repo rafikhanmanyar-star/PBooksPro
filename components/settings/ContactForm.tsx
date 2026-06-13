@@ -143,7 +143,207 @@ const ContactForm: React.FC<ContactFormProps> = ({
     }
   };
 
-  const vendorIcon = <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><div className="w-5 h-5">{TruckIcon}</div></div>;
+  const vendorIconWrap = (
+    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400">
+      <div className="h-5 w-5">{TruckIcon}</div>
+    </div>
+  );
+
+  const formFooter = (
+    <div className="flex-shrink-0 mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-app-border flex flex-col-reverse sm:flex-row justify-between items-center gap-3 sm:gap-4">
+      <div className="flex gap-2">
+        {isEditing && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setIsActive(!isActive)}
+            className={`border-2 ${isActive ? 'border-rose-200 text-ds-danger hover:bg-rose-50 dark:hover:bg-rose-950/30' : 'border-emerald-200 text-ds-success hover:bg-emerald-50 dark:hover:bg-emerald-950/30'}`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4">{isActive ? ICONS.x : ICONS.check}</span>
+              {isActive ? 'Deactivate' : 'Reactivate'}
+            </div>
+          </Button>
+        )}
+        {(contactToEdit || vendorToEdit) && onDelete && (
+          <Button type="button" variant="danger" onClick={onDelete} className="text-ds-danger bg-rose-50 hover:bg-rose-100 border-rose-200 dark:bg-rose-950/30 dark:hover:bg-rose-950/50 w-full sm:w-auto">
+            <div className="flex items-center gap-2">
+              <span className="w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
+              Delete Vendor
+            </div>
+          </Button>
+        )}
+      </div>
+      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+        {!hideCancelButton && (
+          <Button type="button" variant="secondary" onClick={onCancel} disabled={isSubmitting} className="flex-1 sm:flex-none justify-center w-full sm:w-auto">
+            Cancel
+          </Button>
+        )}
+        <LoadingButton
+          type="submit"
+          loading={isSubmitting}
+          loadingText={isEditing ? 'Saving...' : 'Creating...'}
+          className="flex-1 sm:flex-none justify-center w-full sm:w-auto bg-ds-primary hover:bg-ds-primary-hover text-white shadow-lg shadow-ds-primary/20 border-0"
+        >
+          {isEditing ? 'Save Changes' : 'Create Vendor'}
+        </LoadingButton>
+      </div>
+    </div>
+  );
+
+  if (isVendorForm) {
+    const displayName = name.trim() || 'Vendor name';
+    const displayCompany = companyName.trim() || 'Add company name (optional)';
+
+    return (
+      <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 p-3 sm:p-4 md:p-6 animate-in fade-in zoom-in-95 duration-300">
+        <div className="flex-shrink-0 mb-5 sm:mb-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3 min-w-0">
+              {vendorIconWrap}
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl font-bold text-app-text tracking-tight">
+                  {isEditing ? 'Edit Vendor' : 'Add New Vendor'}
+                </h2>
+                <p className="text-sm text-app-muted mt-1">
+                  {isEditing
+                    ? 'Update supplier details used on bills, payments, and quotations.'
+                    : 'Set up a supplier profile for bills, payments, and purchase orders.'}
+                </p>
+              </div>
+            </div>
+            {!hideCancelButton && (
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isSubmitting}
+                className="shrink-0 rounded-full p-2 text-app-muted transition-colors hover:bg-app-table-hover hover:text-app-text disabled:opacity-40"
+                aria-label="Close"
+              >
+                <span className="text-2xl leading-none">&times;</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex-grow min-h-0 overflow-y-auto -mx-1 px-1 space-y-5 sm:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4 rounded-xl border border-app-border bg-app-bg p-3 sm:p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ds-primary/15 text-sm font-bold text-ds-primary">
+              {(name.trim()[0] || '?').toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-semibold text-app-text">{displayName}</p>
+              <p className="truncate text-sm text-app-muted">{displayCompany}</p>
+            </div>
+            <span className="hidden sm:inline-flex shrink-0 rounded-full bg-orange-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-400">
+              Supplier
+            </span>
+          </div>
+
+          {isEditing && (
+            <div className={`rounded-xl border p-4 transition-colors ${isActive ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-rose-500/30 bg-rose-500/5'}`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-app-text">Account status</p>
+                  <p className="text-xs text-app-muted mt-0.5">
+                    {isActive
+                      ? 'Visible in vendor lists, bills, and payment forms.'
+                      : 'Hidden from selection menus until reactivated.'}
+                  </p>
+                </div>
+                <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase ${isActive ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'}`}>
+                  {isActive ? 'Active' : 'Inactive'}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-xl sm:rounded-2xl border border-app-border bg-app-card p-4 sm:p-6 shadow-ds-card space-y-6">
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-app-muted">Basic information</h3>
+                <p className="text-xs text-app-muted/80 mt-0.5">Primary name used on bills and reports.</p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                <Input
+                  id="vendor-name"
+                  name="vendor-name"
+                  label="Full Name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="e.g. John Doe"
+                  helperText="Required — must be unique across vendors"
+                />
+                <Input
+                  id="company-name"
+                  name="company-name"
+                  label="Company Name"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. Acme Corp"
+                  helperText="Optional — shown alongside the contact name"
+                  icon={<div className="text-app-muted w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21h18" /><path d="M5 21V7l8-4 8 4v14" /><path d="M17 21v-8.85a3.024 3.024 0 0 0-2.95-3.003L9.05 9.15a3.024 3.024 0 0 0-2.95 3.004V21M9 13v1m0 4v1m6-6v1m0 4v1" /></svg></div>}
+                />
+              </div>
+            </section>
+
+            <div className="border-t border-app-border" />
+
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-app-muted">Contact & location</h3>
+                <p className="text-xs text-app-muted/80 mt-0.5">How you reach this supplier and where they operate.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:gap-5">
+                <Input
+                  id="contact-no"
+                  name="contact-no"
+                  label="Phone Number"
+                  value={contactNo}
+                  onChange={(e) => setContactNo(e.target.value)}
+                  placeholder="+1 (555) 000-0000"
+                  type="tel"
+                  icon={<div className="text-app-muted w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" /></svg></div>}
+                />
+                <Textarea
+                  id="address"
+                  name="address"
+                  label="Business Address"
+                  value={address}
+                  onChange={(e) => setAddress(e.target.value)}
+                  placeholder="123 Main St, Suite 100, City, State"
+                  rows={2}
+                />
+              </div>
+            </section>
+
+            <div className="border-t border-app-border" />
+
+            <section className="space-y-4">
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-app-muted">Notes</h3>
+                <p className="text-xs text-app-muted/80 mt-0.5">Payment terms, preferred contact method, or other context.</p>
+              </div>
+              <Textarea
+                id="description"
+                name="description"
+                label="Notes / Description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Add any additional context about this supplier..."
+                rows={3}
+              />
+            </section>
+          </div>
+        </div>
+
+        {formFooter}
+      </form>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0 animate-in fade-in zoom-in-95 duration-300">
@@ -154,10 +354,10 @@ const ContactForm: React.FC<ContactFormProps> = ({
           {isEditing ? 'Editing Profile' : 'New Entry'}
         </div>
         <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-app-text tracking-tight mb-1 sm:mb-2">
-          {isEditing ? `Edit ${isVendorForm ? 'Vendor' : 'Contact'}` : `Add New ${isVendorForm ? 'Vendor' : 'Contact'}`}
+          {isEditing ? 'Edit Contact' : 'Add New Contact'}
         </h2>
         <p className="text-sm sm:text-base text-app-muted">
-          {isEditing ? `Update ${isVendorForm ? 'vendor' : 'contact'} details and preferences below.` : `Create a new ${isVendorForm ? 'vendor' : 'contact'} profile to manage transactions and communications.`}
+          {isEditing ? 'Update contact details and preferences below.' : 'Create a new contact profile to manage transactions and communications.'}
         </p>
       </div>
 
@@ -173,7 +373,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               </h3>
 
               {/* Type Selector Pilled */}
-              {showTypeSelector && !isVendorForm ? (
+              {showTypeSelector ? (
                 <div className="space-y-3">
                   <label className="text-xs font-semibold text-app-muted uppercase">Contact Type</label>
                   <div className="flex flex-col gap-2">
@@ -213,10 +413,10 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center gap-4 p-4 bg-app-bg rounded-xl border border-app-border">
-                  {isVendorForm ? vendorIcon : getTypeIcon(type)}
-                  <div>
-                    <div className="text-xs text-app-muted uppercase font-bold">{isVendorForm ? 'Vendor' : 'Contact Type'}</div>
-                    <div className="font-bold text-app-text text-lg">{isVendorForm ? 'Vendor/Supplier' : type}</div>
+                  {getTypeIcon(type)}
+                  <div className="min-w-0">
+                    <div className="text-xs text-app-muted uppercase font-bold">Contact Type</div>
+                    <div className="font-bold text-app-text text-lg truncate">{type}</div>
                   </div>
                 </div>
               )}
@@ -232,8 +432,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
                   </div>
                   <p className="text-xs text-app-muted leading-relaxed">
                     {isActive
-                      ? `This ${isVendorForm ? 'vendor' : 'contact'} is visible in all forms and searches.`
-                      : `This ${isVendorForm ? 'vendor' : 'contact'} is hidden from selection menus and inactive.`}
+                      ? 'This contact is visible in all forms and searches.'
+                      : 'This contact is hidden from selection menus and inactive.'}
                   </p>
                 </div>
               )}
@@ -338,7 +538,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <Button type="button" variant="danger" onClick={onDelete} className="text-ds-danger bg-rose-50 hover:bg-rose-100 border-rose-200 w-full sm:w-auto">
               <div className="flex items-center gap-2">
                 <span className="w-4 h-4"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg></span>
-                Delete {isVendorForm ? 'Vendor' : 'Contact'}
+                Delete Contact
               </div>
             </Button>
           )}
@@ -355,7 +555,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             loadingText={isEditing ? 'Saving...' : 'Creating...'}
             className="flex-1 sm:flex-none justify-center w-full sm:w-auto bg-ds-primary hover:bg-ds-primary-hover text-white shadow-lg shadow-ds-primary/20 border-0"
           >
-            {isEditing ? 'Save Changes' : (isVendorForm ? 'Create Vendor' : 'Create Contact')}
+            {isEditing ? 'Save Changes' : 'Create Contact'}
           </LoadingButton>
         </div>
       </div>

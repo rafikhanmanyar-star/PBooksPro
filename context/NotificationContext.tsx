@@ -172,13 +172,23 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   }, []);
 
   /**
-   * Full-screen progress sits above the entire app (z-[10000]). If it stays open after logout
-   * or when the sign-in screen mounts, it blocks all clicks on username/password. Clear it
-   * whenever there is no authenticated session.
+   * Full-screen progress / modal dialogs sit above the entire app (z-[10000]). If they stay open
+   * after logout, they block clicks and keyboard on the sign-in screen. Tear down whenever there
+   * is no authenticated session.
    */
   useEffect(() => {
     if (!isAuthenticated) {
       setProgressMessage(null);
+      setDialogState((prev) => {
+        if (!prev) return null;
+        if (prev.type === 'confirm') {
+          prev.resolve(false);
+        } else {
+          prev.resolve(undefined);
+        }
+        return null;
+      });
+      document.body.style.overflow = 'unset';
     }
   }, [isAuthenticated]);
 

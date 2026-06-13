@@ -4,6 +4,7 @@ import type { RequestWithAuditContext } from '../../../middleware/auditRequestCo
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
   getDocumentById,
+  getDocumentFile,
   listDocuments,
   rowToDocumentApi,
   softDeleteDocument,
@@ -37,6 +38,36 @@ documentsRouter.get('/documents', async (req: RequestWithAuditContext, res) => {
     try {
       const rows = await listDocuments(client, tenantId, { entityType, entityId });
       sendSuccess(res, rows.map((r) => rowToDocumentApi(r)));
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+documentsRouter.get('/documents/:id/file', async (req: RequestWithAuditContext, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { id } = req.params;
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const file = await getDocumentFile(client, tenantId, id);
+      if (!file) {
+        sendFailure(res, 404, 'NOT_FOUND', 'Document not found');
+        return;
+      }
+      res.setHeader('Content-Type', file.mimeType);
+      res.setHeader(
+        'Content-Disposition',
+        `inline; filename="${encodeURIComponent(file.fileName)}"`
+      );
+      res.send(file.buffer);
     } finally {
       client.release();
     }

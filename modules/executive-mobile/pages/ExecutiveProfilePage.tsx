@@ -35,7 +35,6 @@ export default function ExecutiveProfilePage() {
       items: [
         { id: 'org', label: 'Organization', icon: ICONS.building },
         { id: 'my-tx', label: 'My Quick Captures', icon: ICONS.list, view: 'myTransactions' },
-        { id: 'reports', label: 'Reports', icon: ICONS.fileText, view: 'reports' },
       ],
     },
     {

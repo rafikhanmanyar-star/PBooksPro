@@ -24,6 +24,7 @@ import { projectsRouter } from './projectsRoutes.js';
 import { unitsRouter } from './unitsRoutes.js';
 import { vendorsRouter } from './vendorsRoutes.js';
 import { quotationsRouter } from './quotationsRoutes.js';
+import { quotationValidationRouter } from '../modules/vendors/routes/quotationValidationRoutes.js';
 import { documentsRouter } from './documentsRoutes.js';
 import { transactionAuditRouter } from './transactionAuditRoutes.js';
 import { appSettingsRouter } from './appSettingsRoutes.js';
@@ -261,6 +262,13 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     requireActiveSubscription(),
     requireFinancialWriteOnMutations,
     quotationsRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    requireFinancialWriteOnMutations,
+    quotationValidationRouter
   );
   app.use(
     prefix,

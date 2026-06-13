@@ -15,6 +15,22 @@ import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormMo
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { useQuotationRateValidator, resolveBillVendorId } from '../../hooks/useQuotationValidation';
+import {
+  QuotationPriceIndicator,
+  QuotationPriceAlertModal,
+  QuotationReferencePanel,
+} from '../procurement/QuotationValidationUI';
+import { collectQuotationViolations } from '../../utils/quotationValidationFlow';
+import { buildOverridePayload, recordQuotationPriceOverrideApi } from '../../services/quotationValidationApi';
+import type { QuotationValidationResult } from '../../shared/quotation-validation/types';
+import {
+  ContractRetentionControls,
+  retentionPayloadFromState,
+  retentionStateFromContract,
+  type ContractRetentionFormState,
+} from './ContractRetentionUI';
+import ContractActivitySidebar from './ContractActivitySidebar';
 
 interface ProjectContractFormProps {
     onClose: () => void;
@@ -74,6 +90,23 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
     const [documentPath, setDocumentPath] = useState(contractToEdit?.documentPath || '');
     const [documentId, setDocumentId] = useState(contractToEdit?.documentId || '');
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [priceAlert, setPriceAlert] = useState<{
+        open: boolean;
+        result: QuotationValidationResult;
+        itemId: string;
+        pendingSubmit: boolean;
+    } | null>(null);
+    const [reviewItemId, setReviewItemId] = useState<string | null>(null);
+    const [retentionState, setRetentionState] = useState<ContractRetentionFormState>(() =>
+        retentionStateFromContract(contractToEdit)
+    );
+
+    const { validate, getReference } = useQuotationRateValidator(
+        state.quotations ?? [],
+        state.procurementSettings,
+        { vendorId, contactId: undefined, vendors: state.vendors, contacts: state.contacts }
+    );
+    const contractVendorId = resolveBillVendorId(vendorId, undefined, state);
 
     // Expense Category Items - new tracking system
     const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(
@@ -172,23 +205,77 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 setEndDate(toLocalDateString(d));
             }
         }
-    }, [startDate, contractToEdit]);
+    }, [expenseCategoryItems]);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (isSubmitting) return;
-        if (!name || !projectId || !vendorId) {
-            await showAlert("Please fill in all required fields.");
-            return;
+    const selectedReferenceCategoryId = useMemo(() => {
+        if (reviewItemId) {
+            return expenseCategoryItems.find((i) => i.id === reviewItemId)?.categoryId;
         }
+        return expenseCategoryItems[0]?.categoryId;
+    }, [expenseCategoryItems, reviewItemId]);
 
-        if (expenseCategoryItems.length === 0) {
-            await showAlert("Please add at least one expense category item.");
-            return;
+    const quotationReference = useMemo(() => {
+        if (!vendorId || !selectedReferenceCategoryId) return null;
+        const cat = expenseCategories.find((c) => c.id === selectedReferenceCategoryId);
+        const vendor = vendors.find((v) => v.id === vendorId);
+        const item = expenseCategoryItems.find((i) => i.categoryId === selectedReferenceCategoryId);
+        return getReference(
+            {
+                vendorId: contractVendorId,
+                categoryId: selectedReferenceCategoryId,
+                unit: item?.unit,
+            },
+            { vendorName: vendor?.name, categoryName: cat?.name }
+        );
+    }, [contractVendorId, selectedReferenceCategoryId, expenseCategoryItems, expenseCategories, vendors, getReference]);
+
+    const persistContract = async (contractId: string, finalDocumentId?: string) => {
+        const payload: Contract = {
+            id: contractId,
+            contractNumber,
+            name,
+            projectId,
+            vendorId,
+            totalAmount: totalGrossValue,
+            startDate,
+            endDate,
+            status,
+            categoryIds: [],
+            expenseCategoryItems,
+            termsAndConditions,
+            paymentTerms,
+            documentPath: documentPath || undefined,
+            documentId: finalDocumentId,
+            ...retentionPayloadFromState(retentionState, totalGrossValue),
+        };
+
+        if (contractToEdit) {
+            dispatch({ type: 'UPDATE_CONTRACT', payload });
+            showToast('Contract updated successfully.');
+        } else {
+            dispatch({ type: 'ADD_CONTRACT', payload });
+            showToast('Contract created successfully.');
         }
+        onClose();
+    };
 
-        setIsSubmitting(true);
-        try {
+    const recordOverridesForContract = async (contractId: string) => {
+        const violations = collectQuotationViolations(expenseCategoryItems, contractVendorId, validate);
+        for (const { item, result } of violations) {
+            await recordQuotationPriceOverrideApi(
+                buildOverridePayload(result, {
+                    sourceType: 'contract',
+                    sourceId: contractId,
+                    lineItemId: item.id,
+                    vendorId: contractVendorId,
+                    categoryId: item.categoryId,
+                    projectId,
+                })
+            );
+        }
+    };
+
+    const finalizeSubmit = async () => {
         const contractId = contractToEdit?.id || Date.now().toString();
         let finalDocumentId = documentId || undefined;
         if (documentFile) {
@@ -206,32 +293,38 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
             }
         }
 
-        const payload: Contract = {
-            id: contractId,
-            contractNumber,
-            name,
-            projectId,
-            vendorId,
-            totalAmount: totalGrossValue,
-            startDate,
-            endDate,
-            status,
-            categoryIds: [], // Keep for backward compatibility
-            expenseCategoryItems,
-            termsAndConditions,
-            paymentTerms,
-            documentPath: documentPath || undefined,
-            documentId: finalDocumentId
-        };
+        await recordOverridesForContract(contractId);
+        await persistContract(contractId, finalDocumentId);
+    };
 
-        if (contractToEdit) {
-            dispatch({ type: 'UPDATE_CONTRACT', payload });
-            showToast("Contract updated successfully.");
-        } else {
-            dispatch({ type: 'ADD_CONTRACT', payload });
-            showToast("Contract created successfully.");
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (isSubmitting) return;
+        if (!name || !projectId || !vendorId) {
+            await showAlert("Please fill in all required fields.");
+            return;
         }
-        onClose();
+
+        if (expenseCategoryItems.length === 0) {
+            await showAlert("Please add at least one expense category item.");
+            return;
+        }
+
+        const violations = collectQuotationViolations(expenseCategoryItems, contractVendorId, validate);
+        if (violations.length > 0 && state.procurementSettings?.enableQuotationValidationGlobally !== false) {
+            const first = violations[0]!;
+            setPriceAlert({
+                open: true,
+                result: first.result,
+                itemId: first.item.id,
+                pendingSubmit: true,
+            });
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            await finalizeSubmit();
         } finally {
             setIsSubmitting(false);
         }
@@ -251,9 +344,66 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
         return getFormBackgroundColorStyle(projectId, undefined, state);
     }, [projectId, state]);
 
+    const previewContract = useMemo((): Contract | null => {
+        if (!projectId && !contractToEdit) return null;
+        return {
+            id: contractToEdit?.id ?? 'preview',
+            contractNumber,
+            name,
+            projectId,
+            vendorId,
+            totalAmount: totalGrossValue,
+            startDate,
+            endDate,
+            status,
+            categoryIds: [],
+            expenseCategoryItems,
+            termsAndConditions,
+            paymentTerms,
+            retentionReleased: contractToEdit?.retentionReleased,
+            retentionBalance: contractToEdit?.retentionBalance,
+            ...retentionPayloadFromState(retentionState, totalGrossValue),
+        };
+    }, [
+        contractToEdit,
+        contractNumber,
+        name,
+        projectId,
+        vendorId,
+        totalGrossValue,
+        startDate,
+        endDate,
+        status,
+        expenseCategoryItems,
+        termsAndConditions,
+        paymentTerms,
+        retentionState,
+    ]);
+
+    const previewProjectName = state.projects.find((p) => p.id === projectId)?.name;
+    const previewVendorName = vendors.find((v) => v.id === vendorId)?.name;
+
     return (
         <>
-            <form onSubmit={handleSubmit} className="space-y-4" style={formBackgroundStyle}>
+            {priceAlert?.open && (
+                <QuotationPriceAlertModal
+                    isOpen
+                    result={priceAlert.result}
+                    onReview={() => {
+                        setReviewItemId(priceAlert.itemId);
+                        setPriceAlert(null);
+                    }}
+                    onContinue={() => {
+                        setPriceAlert(null);
+                        if (priceAlert.pendingSubmit) {
+                            setIsSubmitting(true);
+                            void finalizeSubmit().finally(() => setIsSubmitting(false));
+                        }
+                    }}
+                />
+            )}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_320px] gap-4 min-h-0">
+            <form onSubmit={handleSubmit} className="space-y-4 min-w-0" style={formBackgroundStyle}>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <Input label="Contract Number" value={contractNumber} onChange={e => setContractNumber(e.target.value)} required />
                     <Input id="project-contract-title-input" label="Contract Title" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Grey Structure" required disabled={false} autoComplete="off" />
@@ -359,17 +509,30 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                                             />
                                                         </td>
                                                         <td className="px-3 py-2">
-                                                            <Input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
-                                                                value={item.pricePerUnit.toString() || ''}
-                                                                onChange={(e) => {
-                                                                    const pricePerUnit = parseFloat(e.target.value) || 0;
-                                                                    updateExpenseCategoryItem(item.id, { pricePerUnit });
-                                                                }}
-                                                                className="text-sm w-32"
-                                                            />
+                                                            <div className="space-y-1">
+                                                                <Input
+                                                                    type="number"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={item.pricePerUnit.toString() || ''}
+                                                                    onChange={(e) => {
+                                                                        const pricePerUnit = parseFloat(e.target.value) || 0;
+                                                                        updateExpenseCategoryItem(item.id, { pricePerUnit });
+                                                                    }}
+                                                                    className="text-sm w-32"
+                                                                />
+                                                                {contractVendorId && item.categoryId && item.pricePerUnit > 0 && (
+                                                                    <QuotationPriceIndicator
+                                                                        compact
+                                                                        result={validate({
+                                                                            vendorId: contractVendorId,
+                                                                            categoryId: item.categoryId,
+                                                                            transactionRate: item.pricePerUnit,
+                                                                            unit: item.unit,
+                                                                        })}
+                                                                    />
+                                                                )}
+                                                            </div>
                                                         </td>
                                                         <td className="px-3 py-2">
                                                             <Input
@@ -419,6 +582,12 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                         </p>
                     )}
                 </div>
+
+                <ContractRetentionControls
+                    contractValue={totalGrossValue}
+                    state={retentionState}
+                    onChange={(patch) => setRetentionState((prev) => ({ ...prev, ...patch }))}
+                />
 
                 <Select label="Status" value={status} onChange={e => setStatus(e.target.value as ContractStatus)}>
                     {Object.values(ContractStatus).map(s => (
@@ -549,6 +718,26 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                     </div>
                 </div>
             </form>
+            <aside className="space-y-4 min-w-0">
+                <ContractActivitySidebar
+                    contract={previewContract}
+                    bills={state.bills || []}
+                    transactions={state.transactions || []}
+                    projectName={previewProjectName}
+                    vendorName={previewVendorName}
+                    mode={contractToEdit ? 'edit' : 'create'}
+                />
+                {quotationReference && (
+                    <QuotationReferencePanel
+                        reference={quotationReference}
+                        onViewHistory={() => {
+                            dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
+                            onClose();
+                        }}
+                    />
+                )}
+            </aside>
+            </div>
             <EntityFormModal
                 isOpen={entityFormModal.isFormOpen}
                 formType={entityFormModal.formType}

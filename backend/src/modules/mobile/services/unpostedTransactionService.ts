@@ -1,9 +1,11 @@
 import { z } from 'zod';
 import type pg from 'pg';
+import { roleHasPermission } from '../../../auth/permissions.js';
 import {
   notifyOnUnpostedTransactionCreated,
   notifyOnUnpostedTransactionStatusChange,
 } from '../../notifications/services/unpostedTransactionNotificationService.js';
+import { logger } from '../../../utils/logger.js';
 import { UnpostedTransactionRepository } from '../repositories/UnpostedTransactionRepository.js';
 import {
   UNPOSTED_TRANSACTION_TYPES,
@@ -46,6 +48,20 @@ export function parseStatusUpdate(body: unknown): { status: UnpostedTransactionS
   };
 }
 
+export function canReviewUnpostedTransactions(role: string | undefined | null): boolean {
+  return roleHasPermission(role, 'financial.write');
+}
+
+async function safeNotify(label: string, fn: () => Promise<void>): Promise<void> {
+  try {
+    await fn();
+  } catch (err) {
+    logger.warn(`[unposted-transactions] ${label} notification failed`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function userNameMap(
   client: pg.PoolClient,
   tenantId: string,
@@ -60,12 +76,37 @@ async function userNameMap(
   return new Map(r.rows.map((row) => [row.id, row.name]));
 }
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseUnpostedListFilters(query: {
+  createdBy?: unknown;
+  dateFrom?: unknown;
+  dateTo?: unknown;
+}): { createdBy?: string; dateFrom?: string; dateTo?: string } {
+  const createdBy =
+    typeof query.createdBy === 'string' && query.createdBy.trim()
+      ? query.createdBy.trim()
+      : undefined;
+  const dateFrom =
+    typeof query.dateFrom === 'string' && ISO_DATE.test(query.dateFrom) ? query.dateFrom : undefined;
+  const dateTo =
+    typeof query.dateTo === 'string' && ISO_DATE.test(query.dateTo) ? query.dateTo : undefined;
+  return { createdBy, dateFrom, dateTo };
+}
+
+export async function listUnpostedTransactionSubmitters(client: pg.PoolClient, tenantId: string) {
+  const repo = new UnpostedTransactionRepository(tenantId, client);
+  return repo.listSubmitters();
+}
+
 export async function listUnpostedTransactions(
   client: pg.PoolClient,
   tenantId: string,
   options: {
     status?: UnpostedTransactionStatus | UnpostedTransactionStatus[];
     createdBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
     limit?: number;
     offset?: number;
   }
@@ -98,7 +139,9 @@ export async function createUnpostedTransaction(
   const row = await repo.create(input, userId);
   const names = await userNameMap(client, tenantId, [userId]);
   const creatorName = names.get(userId) ?? 'Executive';
-  await notifyOnUnpostedTransactionCreated(client, tenantId, row, creatorName);
+  await safeNotify('create', () =>
+    notifyOnUnpostedTransactionCreated(client, tenantId, row, creatorName)
+  );
   return rowToUnpostedTransactionApi(row, creatorName);
 }
 
@@ -114,12 +157,14 @@ export async function updateUnpostedTransactionStatus(
   const existing = await repo.getById(id);
   const row = await repo.updateStatus(id, status, actorId, rejectionReason);
   if (!row) return null;
-  await notifyOnUnpostedTransactionStatusChange(
-    client,
-    tenantId,
-    row,
-    existing?.status ?? null,
-    actorId
+  await safeNotify('status_change', () =>
+    notifyOnUnpostedTransactionStatusChange(
+      client,
+      tenantId,
+      row,
+      existing?.status ?? null,
+      actorId
+    )
   );
   const names = await userNameMap(client, tenantId, [row.created_by]);
   return rowToUnpostedTransactionApi(row, names.get(row.created_by));

@@ -586,11 +586,26 @@ export interface QuotationItem {
   unit?: string; // e.g., 'sq ft', 'numbers', 'meters', 'liters'
 }
 
+export type QuotationValidationScope = 'CATEGORY' | 'ITEM';
+
+export interface ProcurementSettings {
+  enableQuotationValidationGlobally: boolean;
+  showWarningOnly: boolean;
+  /** Future approval workflow threshold (%). Not enforced yet. */
+  varianceApprovalThreshold: number;
+  quotationNumberSettings?: InvoiceSettings;
+}
+
 export interface Quotation {
   id: string;
   vendorId: string;
   name: string; // Vendor name (redundant but useful for display)
+  quotationNumber?: string;
   date: string; // Date of quotation created
+  expiryDate?: string;
+  enablePriceValidation?: boolean;
+  validationScope?: QuotationValidationScope;
+  isActive?: boolean;
   items: QuotationItem[];
   documentId?: string; // Reference to uploaded document
   totalAmount: number; // Calculated from items
@@ -745,9 +760,27 @@ export interface Contract {
   description?: string;
   documentPath?: string; // Path to uploaded document file (legacy/local)
   documentId?: string; // Reference to documents table (local + cloud)
+  /** Contract retention (construction) */
+  retentionType?: ContractRetentionType;
+  retentionPercentage?: number;
+  retentionAmount?: number;
+  retentionReleaseMethod?: ContractRetentionReleaseMethod;
+  retentionReleaseDate?: string;
+  retentionNotes?: string;
+  retentionBalance?: number;
+  retentionReleased?: number;
+  retentionReleaseBy?: string;
   /** API / PostgreSQL optimistic concurrency */
   version?: number;
 }
+
+export type ContractRetentionType = 'NONE' | 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export type ContractRetentionReleaseMethod =
+  | 'MANUAL'
+  | 'ON_COMPLETION'
+  | 'ON_HANDOVER'
+  | 'DEFECT_LIABILITY_PERIOD';
 
 export interface Budget {
   id: string;
@@ -960,6 +993,7 @@ export interface AppState {
   projectAgreementSettings: AgreementSettings;
   rentalInvoiceSettings: InvoiceSettings;
   projectInvoiceSettings: InvoiceSettings;
+  procurementSettings: ProcurementSettings;
   printSettings: PrintSettings;
   whatsAppTemplates: WhatsAppTemplates;
   dashboardConfig: DashboardConfig;
@@ -1073,6 +1107,7 @@ export type AppAction =
   | { type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS'; payload: AgreementSettings }
   | { type: 'UPDATE_RENTAL_INVOICE_SETTINGS'; payload: InvoiceSettings }
   | { type: 'UPDATE_PROJECT_INVOICE_SETTINGS'; payload: InvoiceSettings }
+  | { type: 'UPDATE_PROCUREMENT_SETTINGS'; payload: ProcurementSettings }
   | { type: 'UPDATE_PRINT_SETTINGS'; payload: PrintSettings }
   | { type: 'UPDATE_WHATSAPP_TEMPLATES'; payload: WhatsAppTemplates }
   | { type: 'UPDATE_INVOICE_TEMPLATE'; payload: string }

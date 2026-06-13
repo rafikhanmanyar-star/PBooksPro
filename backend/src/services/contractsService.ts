@@ -7,6 +7,12 @@ import {
   ContractRepository,
   type ContractWriteFields,
 } from '../modules/vendors/repositories/ContractRepository.js';
+import {
+  contractRowToRetentionFields,
+  pickRetentionFromBody,
+  retentionFieldsToApi,
+  retentionWriteParams,
+} from './contractRetentionService.js';
 
 export type ContractRow = {
   id: string;
@@ -28,6 +34,15 @@ export type ContractRow = {
   description: string | null;
   document_path: string | null;
   document_id: string | null;
+  retention_type: string;
+  retention_percentage: string | null;
+  retention_amount: string | null;
+  retention_release_method: string | null;
+  retention_release_date: Date | null;
+  retention_notes: string | null;
+  retention_balance: string;
+  retention_released: string;
+  retention_release_by: string | null;
   user_id: string | null;
   version: number;
   deleted_at: Date | null;
@@ -101,6 +116,7 @@ export function rowToContractApi(row: ContractRow): Record<string, unknown> {
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : row.updated_at,
+    ...retentionFieldsToApi(contractRowToRetentionFields(row)),
   };
   if (row.deleted_at) {
     base.deletedAt = row.deleted_at instanceof Date ? row.deleted_at.toISOString() : row.deleted_at;
@@ -161,7 +177,12 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
-function contractWriteFields(p: ReturnType<typeof pickBody>): ContractWriteFields {
+function contractWriteFields(
+  p: ReturnType<typeof pickBody>,
+  body: Record<string, unknown>
+): ContractWriteFields {
+  const retention = pickRetentionFromBody(body);
+  const retentionDb = retentionWriteParams(p.total_amount, retention);
   return {
     contract_number: p.contract_number!,
     name: p.name!,
@@ -180,6 +201,15 @@ function contractWriteFields(p: ReturnType<typeof pickBody>): ContractWriteField
     description: p.description ?? null,
     document_path: p.document_path ?? null,
     document_id: p.document_id ?? null,
+    retention_type: retentionDb.retention_type,
+    retention_percentage: retentionDb.retention_percentage,
+    retention_amount: retentionDb.retention_amount,
+    retention_release_method: retentionDb.retention_release_method,
+    retention_release_date: retentionDb.retention_release_date,
+    retention_notes: retentionDb.retention_notes,
+    retention_balance: retentionDb.retention_balance,
+    retention_released: retentionDb.retention_released,
+    retention_release_by: retention.retentionReleaseBy ?? null,
   };
 }
 
@@ -255,7 +285,16 @@ export async function upsertContract(
 
   const oldApi = rowToContractApi(existing);
 
-  const row = await new ContractRepository(tenantId).updateUpsert(client, id, contractWriteFields(p));
+  const retentionBody = { ...body };
+  if (
+    retentionBody.retentionReleased === undefined &&
+    retentionBody.retention_released === undefined &&
+    existing.retention_released != null
+  ) {
+    retentionBody.retentionReleased = Number(existing.retention_released) || 0;
+  }
+
+  const row = await new ContractRepository(tenantId).updateUpsert(client, id, contractWriteFields(p, retentionBody));
   if (!row) throw new Error('Upsert failed.');
   await recordDomainMutation(client, {
     tenantId,
@@ -295,7 +334,7 @@ async function insertContract(
   const row = await new ContractRepository(tenantId).insertContract(
     client,
     id,
-    contractWriteFields(p),
+    contractWriteFields(p, body),
     uid
   );
   await recordDomainMutation(client, {

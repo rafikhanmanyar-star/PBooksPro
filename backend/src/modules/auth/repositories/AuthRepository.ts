@@ -200,6 +200,41 @@ export class UserTenantRepository {
     return r.rows[0] ?? null;
   }
 
+  async findTenantsByOrganizationEmail(
+    db: pg.Pool | pg.PoolClient,
+    normalizedEmail: string
+  ): Promise<Array<{ id: string; name: string; email: string | null }>> {
+    const r = await db.query<{ id: string; name: string; email: string | null }>(
+      `SELECT id, name, email
+       FROM tenants
+       WHERE LOWER(TRIM(COALESCE(email, ''))) = $1
+         AND id !~ '^__'
+       ORDER BY LOWER(name) ASC, id ASC`,
+      [normalizedEmail]
+    );
+    return r.rows;
+  }
+
+  async findAccountByTenantAndUsername(
+    db: pg.Pool | pg.PoolClient,
+    tenantId: string,
+    normalizedUsername: string
+  ): Promise<UserTenantAccountRow | null> {
+    const r = await db.query<UserTenantAccountRow>(
+      `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
+              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
+              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+       FROM user_tenants ut
+       JOIN users u ON u.id = ut.user_id
+       JOIN tenants t ON t.id = ut.tenant_id
+       WHERE ut.tenant_id = $1 AND u.is_active = TRUE
+         AND LOWER(TRIM(u.username)) = $2
+       LIMIT 1`,
+      [tenantId, normalizedUsername]
+    );
+    return r.rows[0] ?? null;
+  }
+
   async findAccountForTenantByLoginIdentifier(
     db: pg.Pool | pg.PoolClient,
     tenantId: string,

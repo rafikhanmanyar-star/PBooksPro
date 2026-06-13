@@ -310,6 +310,12 @@ export class AppStateRepository {
             projectAgreementSettings: settings.projectAgreementSettings || { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
             rentalInvoiceSettings: settings.rentalInvoiceSettings || { prefix: 'INV-', nextNumber: 1, padding: 5 },
             projectInvoiceSettings: settings.projectInvoiceSettings || { prefix: 'P-INV-', nextNumber: 1, padding: 5 },
+            procurementSettings: settings.procurementSettings || {
+                enableQuotationValidationGlobally: true,
+                showWarningOnly: true,
+                varianceApprovalThreshold: 10,
+                quotationNumberSettings: { prefix: 'QTN-', nextNumber: 1, padding: 4 },
+            },
             printSettings: settings.printSettings || {
                 companyName: 'My Company',
                 companyAddress: '',
@@ -1705,6 +1711,7 @@ export class AppStateRepository {
                                         projectAgreementSettings: state.projectAgreementSettings,
                                         rentalInvoiceSettings: state.rentalInvoiceSettings,
                                         projectInvoiceSettings: state.projectInvoiceSettings,
+                                        procurementSettings: state.procurementSettings,
                                         printSettings: state.printSettings,
                                         whatsAppTemplates: state.whatsAppTemplates,
                                         dashboardConfig: state.dashboardConfig,

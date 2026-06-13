@@ -11,6 +11,7 @@ import { formatRoundedNumber } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import SubscriptionStatusWidget from '../billing/SubscriptionStatusWidget';
 import ReportDashboardWidgets from './ReportDashboardWidgets';
+import VendorQuotationComplianceWidget from '../procurement/VendorQuotationComplianceWidget';
 import {
   useDashboardActivity,
   useDashboardCharts,
@@ -254,6 +255,12 @@ const DashboardPage: React.FC = () => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6">
+        {isAuthenticated && isAdmin && (
+          <div className="md:col-span-3">
+            <VendorQuotationComplianceWidget />
+          </div>
+        )}
+
         {isAuthenticated && isAdmin && (
           <div className="md:col-span-1">
             <SubscriptionStatusWidget />

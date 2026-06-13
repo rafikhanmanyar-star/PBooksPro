@@ -33,7 +33,22 @@ import {
 import { sumExpenseLinkedToBill } from '../../utils/billLinkedPayments';
 import { getBillLinkedLedgerTransactionIdsForCascadeDelete } from '../../utils/rentalBillPayments';
 import { newBillRowId } from '../../utils/newBillRowId';
-import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
+import { useQuotationRateValidator, resolveBillVendorId } from '../../hooks/useQuotationValidation';
+import { QuotationPriceIndicator, QuotationPriceAlertModal } from '../procurement/QuotationValidationUI';
+import { collectQuotationViolations } from '../../utils/quotationValidationFlow';
+import { buildOverridePayload, recordQuotationPriceOverrideApi } from '../../services/quotationValidationApi';
+import type { QuotationValidationResult } from '../../shared/quotation-validation/types';
+import { backupAlertWarning, backupAlertError } from '../settings/backupThemeClasses';
+
+const billSegmentTabActive = 'bg-primary text-ds-on-primary border-primary';
+const billSegmentTabInactive = 'bg-app-card text-app-muted border-app-border hover:bg-app-table-hover';
+const billBearerTabActive = 'bg-primary border-primary text-ds-on-primary shadow-sm';
+const billBearerTabInactive = 'bg-app-card border-app-border text-app-muted hover:bg-app-table-hover';
+const billReadonlySurface = 'bg-app-toolbar border border-app-border rounded-lg px-3 py-2 text-sm text-app-text';
+const billAmountDisplay = 'bg-app-toolbar border border-app-border rounded-lg shadow-sm px-2 py-2 flex items-center text-sm font-semibold text-app-text';
+const billFormPanel = 'bg-app-card border border-app-border rounded-lg shadow-ds-card';
+const billFormSection = 'bg-app-toolbar/40 border border-app-border rounded-lg';
+const billFormLabelUpper = 'block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1';
 
 interface InvoiceBillFormProps {
   onClose: () => void;
@@ -58,7 +73,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const { isAuthenticated } = useAuth();
   const { showToast, showAlert, showConfirm } = useNotification();
   const { print: triggerPrint } = usePrintContext();
-  const { rentalInvoiceSettings, projectInvoiceSettings } = state;
+  const { rentalInvoiceSettings, projectInvoiceSettings, procurementSettings, quotations } = state;
 
   const recordLock = useRecordLock({
     recordType: type === 'invoice' ? 'invoice' : 'bill',
@@ -458,6 +473,17 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [type, defaults]);
 
   const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(initialExpenseCategoryItems);
+  const { validate: validateQuotationRate } = useQuotationRateValidator(
+    quotations ?? [],
+    procurementSettings,
+    { vendorId, contactId, vendors: state.vendors, contacts: state.contacts }
+  );
+  const [billPriceAlert, setBillPriceAlert] = useState<{
+    open: boolean;
+    result: QuotationValidationResult;
+    pendingAction: () => void;
+  } | null>(null);
+  const billVendorId = resolveBillVendorId(vendorId, contactId, state);
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentPath, setDocumentPath] = useState((defaults as Bill)?.documentPath || '');
   const [documentId, setDocumentId] = useState((defaults as Bill)?.documentId || '');
@@ -1101,6 +1127,27 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       return;
     }
 
+    if (type === 'bill' && billVendorId && procurementSettings?.enableQuotationValidationGlobally !== false) {
+      const violations = collectQuotationViolations(expenseCategoryItems, billVendorId, validateQuotationRate);
+      if (violations.length > 0) {
+        setBillPriceAlert({
+          open: true,
+          result: violations[0]!.result,
+          pendingAction: () => {
+            setBillPriceAlert(null);
+            void continueBillSubmit(e, skipClose);
+          },
+        });
+        return;
+      }
+    }
+
+    await continueBillSubmit(e, skipClose);
+  };
+
+  const continueBillSubmit = async (e: React.FormEvent, skipClose = false) => {
+    if (e) e.preventDefault();
+
     // Project construction / project management bills: require vendor and project before save
     if (type === 'bill' && projectContext) {
       const missing: string[] = [];
@@ -1253,6 +1300,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           updatedBill.contractId = undefined;
         }
         dispatch({ type: 'UPDATE_BILL', payload: updatedBill });
+        if (billVendorId) {
+          const violations = collectQuotationViolations(expenseCategoryItems, billVendorId, validateQuotationRate);
+          for (const { item, result } of violations) {
+            if (result.exceedsQuotation) {
+              await recordQuotationPriceOverrideApi(
+                buildOverridePayload(result, {
+                  sourceType: 'bill',
+                  sourceId: updatedBill.id,
+                  lineItemId: item.id,
+                  vendorId: billVendorId,
+                  categoryId: item.categoryId,
+                  projectId: projectId || undefined,
+                })
+              );
+            }
+          }
+        }
         showToast("Bill updated successfully");
       }
     } else {
@@ -1329,6 +1393,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           newBill.contractId = undefined;
         }
         dispatch({ type: 'ADD_BILL', payload: newBill });
+        if (billVendorId) {
+          const violations = collectQuotationViolations(expenseCategoryItems, billVendorId, validateQuotationRate);
+          for (const { item, result } of violations) {
+            if (result.exceedsQuotation) {
+              await recordQuotationPriceOverrideApi(
+                buildOverridePayload(result, {
+                  sourceType: 'bill',
+                  sourceId: newBill.id,
+                  lineItemId: item.id,
+                  vendorId: billVendorId,
+                  categoryId: item.categoryId,
+                  projectId: projectId || undefined,
+                })
+              );
+            }
+          }
+        }
         showToast("Bill created successfully");
       }
     }
@@ -1495,7 +1576,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           {/* LEFT COLUMN — 3/5 width */}
           <div className="lg:col-span-3 space-y-5">
             {/* Invoice Details Card */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <div className="bg-app-card rounded-xl border border-slate-200 shadow-sm p-5">
               <h3 className="text-sm font-bold text-slate-800 mb-4">Invoice Details</h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
@@ -1545,7 +1626,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
             {/* Financial Particulars Card */}
             {showDetails ? (
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+              <div className="bg-app-card rounded-xl border border-slate-200 shadow-sm p-5">
                 <h3 className="text-sm font-bold text-slate-800 mb-4">Financial Particulars</h3>
 
                 {!itemToEdit && (
@@ -1619,7 +1700,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 {/* Recurring invoice option removed — recurring auto-generation is disabled */}
               </div>
             ) : (
-              <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-xl bg-white">
+              <div className="text-center p-8 text-slate-500 border-2 border-dashed rounded-xl bg-app-card">
                 <p>Select a tenant and an agreement to populate invoice details.</p>
               </div>
             )}
@@ -1739,13 +1820,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         {/* ROW 1: Vendor, Bill #, Issue Date, Due Date — 2x2 grid */}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Vendor / Supplier</label>
+            <label className={billFormLabelUpper}>Vendor / Supplier</label>
             {isPartiallyPaid ? (
               <div>
-                <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800">
+                <div className={billReadonlySurface}>
                   {(state.vendors || []).find(v => v.id === vendorId)?.name || state.contacts.find(c => c.id === contactId)?.name || '—'}
                 </div>
-                <p className="text-[10px] text-amber-600 mt-1">Cannot change vendor while payments exist.</p>
+                <p className="text-[10px] text-ds-warning mt-1">Cannot change vendor while payments exist.</p>
               </div>
             ) : (
               <ComboBox
@@ -1762,18 +1843,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
 
           <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill #</label>
+            <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Bill #</label>
             <Input value={number} onChange={e => setNumber(e.target.value)} required disabled={isAgreementCancelled} />
             {numberError && <p className="text-danger text-[10px] mt-1">{numberError}</p>}
           </div>
 
           <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Issue Date</label>
+            <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Issue Date</label>
             <DatePicker value={issueDate} onChange={handleIssueDateChange} required disabled={isAgreementCancelled} />
           </div>
 
           <div className="flex flex-col">
-            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Due Date</label>
+            <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Due Date</label>
             <DatePicker value={dueDate} onChange={d => setDueDate(fromPickerDateToYyyyMmDd(d))} required disabled={isAgreementCancelled} />
           </div>
         </div>
@@ -1781,15 +1862,15 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         {/* ROW 2: Cost Allocation | Description + Document side-by-side */}
         <div className="grid grid-cols-2 gap-3">
           {/* Cost Allocation Card */}
-          <div className="bg-white border border-gray-200 rounded-xl p-3 shadow-sm">
+          <div className={`${billFormPanel} rounded-xl p-3`}>
             <div className="flex items-center gap-1.5 mb-2">
               <span className="text-xs w-4 h-4">{ICONS.building || '🏢'}</span>
-              <h3 className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
+              <h3 className="text-[10px] font-bold text-app-text uppercase tracking-wider">Cost Allocation</h3>
             </div>
 
             <div className="space-y-2">
               <div>
-                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Building</label>
+                <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Building</label>
                 <ComboBox
                   items={state.buildings}
                   selectedId={buildingId || ''}
@@ -1806,18 +1887,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
               {buildingId && (
                 <div>
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Expense Bearer</label>
+                  <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Expense Bearer</label>
                   <div className="flex gap-1.5">
                     <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'building' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'building' ? billBearerTabActive : billBearerTabInactive}`}>
                       Building
                     </button>
                     <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'owner' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'owner' ? billBearerTabActive : billBearerTabInactive}`}>
                       Owner
                     </button>
                     <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'tenant' ? 'bg-slate-800 border-slate-800 text-white shadow-sm' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`}>
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-[11px] font-semibold border-2 transition-all ${billAllocationType === 'tenant' ? billBearerTabActive : billBearerTabInactive}`}>
                       Tenant
                     </button>
                   </div>
@@ -1843,27 +1924,27 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           <div className="flex flex-col gap-3">
             {/* Description */}
             <div className="flex flex-col">
-              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Description</label>
+              <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Description</label>
               <textarea
                 value={description}
                 onChange={e => setDescription(e.target.value)}
                 disabled={isAgreementCancelled}
                 placeholder="Enter bill description..."
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-xl text-sm text-gray-800 placeholder-gray-400 resize-none focus:outline-none focus:ring-2 focus:ring-slate-300 focus:border-slate-400 transition-colors disabled:opacity-50 disabled:bg-gray-50"
+                className="w-full px-3 py-2 border border-app-border rounded-xl text-sm text-app-text placeholder:text-app-muted resize-none focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-colors disabled:opacity-50 disabled:bg-app-toolbar/40"
               />
             </div>
 
             {/* Bill Document Upload */}
             <div className="flex flex-col flex-1">
-              <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Bill Document</label>
+              <label className="block text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">Bill Document</label>
               {(documentId || (documentPath && !documentFile)) ? (
-                <div className="flex-1 bg-white border border-gray-200 rounded-xl p-3 flex items-center gap-3">
-                  <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                    <div className="w-4 h-4 text-indigo-600">{ICONS.fileText}</div>
+                <div className="flex-1 bg-app-card border border-app-border rounded-xl p-3 flex items-center gap-3">
+                  <div className="w-8 h-8 bg-primary/15 rounded-full flex items-center justify-center flex-shrink-0">
+                    <div className="w-4 h-4 text-primary">{ICONS.fileText}</div>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-medium text-gray-800 truncate">
+                    <p className="text-xs font-medium text-app-text truncate">
                       {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
                     </p>
                   </div>
@@ -1874,30 +1955,30 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                       } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
                         try { const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath }); if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`); } catch (error) { await showAlert(error instanceof Error ? error.message : 'Error opening document'); }
                       } else { await showAlert('File system access not available'); }
-                    }} className="text-[10px] font-medium text-indigo-600 hover:text-indigo-800 transition-colors">Open</button>
+                    }} className="text-[10px] font-medium text-primary hover:text-primary/80 transition-colors">Open</button>
                     <button type="button" onClick={() => { setDocumentPath(''); setDocumentId(''); setDocumentFile(null); }} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
                   </div>
                 </div>
               ) : (
                 <label className="flex-1 cursor-pointer">
                   <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); } }} className="hidden" disabled={isAgreementCancelled} />
-                  <div className={`h-full border-2 border-dashed border-gray-200 rounded-xl flex items-center justify-center gap-2 py-4 hover:border-slate-400 hover:bg-slate-50 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <div className={`h-full border-2 border-dashed border-app-border rounded-xl flex items-center justify-center gap-2 py-4 hover:border-primary hover:bg-primary/5 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     {documentFile ? (
                       <>
-                        <div className="w-8 h-8 bg-emerald-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <svg className="w-4 h-4 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                        <div className="w-8 h-8 bg-ds-success/15 rounded-full flex items-center justify-center flex-shrink-0">
+                          <svg className="w-4 h-4 text-ds-success" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
                         </div>
-                        <p className="text-xs font-medium text-gray-800 truncate max-w-[140px]">{documentFile.name}</p>
+                        <p className="text-xs font-medium text-app-text truncate max-w-[140px]">{documentFile.name}</p>
                         <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDocumentFile(null); }} className="text-[10px] text-rose-500 hover:text-rose-700 font-medium ml-1">Clear</button>
                       </>
                     ) : (
                       <>
-                        <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center flex-shrink-0">
+                        <div className="w-8 h-8 bg-app-toolbar rounded-full flex items-center justify-center flex-shrink-0">
                           <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg>
                         </div>
                         <div>
-                          <p className="text-xs font-medium text-gray-500">Click to upload document</p>
-                          <p className="text-[10px] text-gray-400">PDF, JPG, PNG (Max 5MB)</p>
+                          <p className="text-xs font-medium text-app-muted">Click to upload document</p>
+                          <p className="text-[10px] text-app-muted">PDF, JPG, PNG (Max 5MB)</p>
                         </div>
                       </>
                     )}
@@ -1911,7 +1992,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         {/* ROW 3: Expense Categories Table */}
         <div>
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Expense Categories</h3>
+            <h3 className="text-[10px] font-bold text-app-text uppercase tracking-wider">Expense Categories</h3>
             <div className="w-40">
               <ComboBox
                 items={availableCategories}
@@ -1929,32 +2010,32 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             </div>
           </div>
 
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+          <div className={`${billFormPanel} rounded-xl overflow-hidden`}>
             <table className="w-full text-xs">
               <thead>
-                <tr className="border-b border-gray-200">
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider">Category</th>
-                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Unit</th>
-                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-gray-500 uppercase tracking-wider w-16">Qty</th>
-                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-24">Price</th>
-                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-gray-500 uppercase tracking-wider w-28">Net</th>
+                <tr className="border-b border-app-border">
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider">Category</th>
+                  <th className="px-3 py-2.5 text-left text-[10px] font-bold text-app-muted uppercase tracking-wider w-24">Unit</th>
+                  <th className="px-3 py-2.5 text-center text-[10px] font-bold text-app-muted uppercase tracking-wider w-16">Qty</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider w-24">Price</th>
+                  <th className="px-3 py-2.5 text-right text-[10px] font-bold text-app-muted uppercase tracking-wider w-28">Net</th>
                   <th className="px-1 py-2.5 w-8"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-app-border">
                 {expenseCategoryItems.length > 0 ? (
                   expenseCategoryItems.map((item) => {
                     const category = expenseCategories.find(c => c.id === item.categoryId);
                     return (
-                      <tr key={item.id} className="group hover:bg-slate-50 transition-colors">
+                      <tr key={item.id} className="group hover:bg-app-table-hover transition-colors">
                         <td className="px-3 py-2">
-                          <span className="font-medium text-gray-800 text-xs">{category?.name || 'Unknown'}</span>
+                          <span className="font-medium text-app-text text-xs">{category?.name || 'Unknown'}</span>
                         </td>
                         <td className="px-3 py-2">
                           <Select
                             value={item.unit}
                             onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
-                            className="text-xs border-gray-200 rounded-lg h-8 w-full bg-gray-50"
+                            className="text-xs border-app-border rounded-lg h-8 w-full bg-app-toolbar/40"
                             disabled={isAgreementCancelled}
                             hideIcon={false}
                           >
@@ -1971,20 +2052,35 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                             step="0.01"
                             value={item.quantity?.toString() || ''}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { quantity: parseFloat(e.target.value) || 0 }); }}
-                            className="w-full text-center text-xs h-8 bg-gray-50 rounded-lg"
+                            className="w-full text-center text-xs h-8 bg-app-toolbar/40 rounded-lg"
                             disabled={isAgreementCancelled}
                           />
                         </td>
                         <td className="px-3 py-2 text-right">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.pricePerUnit.toString() || ''}
-                            onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
-                            className="w-full text-right text-xs h-8 bg-gray-50 rounded-lg"
-                            disabled={isAgreementCancelled}
-                          />
+                          <div className="space-y-1">
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={item.pricePerUnit.toString() || ''}
+                              onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
+                              className="w-full text-right text-xs h-8 bg-app-toolbar/40 rounded-lg"
+                              disabled={isAgreementCancelled}
+                            />
+                            {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
+                              <div className="flex justify-end">
+                                <QuotationPriceIndicator
+                                  compact
+                                  result={validateQuotationRate({
+                                    vendorId: billVendorId,
+                                    categoryId: item.categoryId,
+                                    transactionRate: item.pricePerUnit,
+                                    unit: item.unit,
+                                  })}
+                                />
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           <Input
@@ -1993,12 +2089,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                             step="0.01"
                             value={item.netValue?.toString() || '0'}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { netValue: parseFloat(e.target.value) || 0 }, true); }}
-                            className="w-full text-right font-semibold text-xs h-8 bg-gray-50 rounded-lg"
+                            className="w-full text-right font-semibold text-xs h-8 bg-app-toolbar/40 rounded-lg"
                             disabled={isAgreementCancelled}
                           />
                         </td>
                         <td className="px-1 py-2 text-center">
-                          <button type="button" onClick={() => handleRemoveExpenseCategoryItem(item.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-rose-500 transition-all p-1 rounded-md hover:bg-rose-50" title="Remove" disabled={isAgreementCancelled}>
+                          <button type="button" onClick={() => handleRemoveExpenseCategoryItem(item.id)} className="opacity-0 group-hover:opacity-100 text-app-muted hover:text-ds-danger transition-all p-1 rounded-md hover:bg-ds-danger/10" title="Remove" disabled={isAgreementCancelled}>
                             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                           </button>
                         </td>
@@ -2008,8 +2104,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 ) : (
                   <tr>
                     <td colSpan={6} className="px-3 py-6 text-center">
-                      <p className="text-xs text-gray-400">No expense categories added yet.</p>
-                      <p className="text-[10px] text-gray-300 mt-1">Use "Add Row" above to add categories.</p>
+                      <p className="text-xs text-app-muted">No expense categories added yet.</p>
+                      <p className="text-[10px] text-app-muted/70 mt-1">Use "Add Row" above to add categories.</p>
                     </td>
                   </tr>
                 )}
@@ -2017,7 +2113,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             </table>
 
             {/* Total Amount Footer */}
-            <div className="bg-slate-800 text-white px-4 py-3 flex items-center justify-between rounded-b-xl">
+            <div className="bg-app-table-header text-app-text border-t border-app-border px-4 py-3 flex items-center justify-between rounded-b-xl">
               <span className="text-xs font-semibold tracking-wide">Total Amount</span>
               <span className="text-sm font-bold tabular-nums">
                 {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -2037,12 +2133,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     return (
       <div className="space-y-4">
         {agreementForInvoice && (
-          <div className="p-3 bg-gray-50 rounded-lg border border-gray-200 text-xs">
-            <h4 className="font-semibold text-gray-800 mb-2">From Agreement #{agreementForInvoice.agreementNumber}</h4>
+          <div className="p-3 bg-app-toolbar/40 rounded-lg border border-app-border text-xs">
+            <h4 className="font-semibold text-app-text mb-2">From Agreement #{agreementForInvoice.agreementNumber}</h4>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="flex justify-between"><span className="text-gray-600">Selling Price:</span> <span className="font-medium text-gray-800">{CURRENCY} {agreementForInvoice.sellingPrice.toLocaleString()}</span></div>
-              <div className="flex justify-between"><span className="text-gray-600">Already Invoiced:</span> <span className="font-medium text-gray-800">{CURRENCY} {amountAlreadyInvoiced.toLocaleString()}</span></div>
-              <div className="flex justify-between font-bold"><span className="text-gray-600">Remaining:</span> <span className="text-gray-800">{CURRENCY} {agreementBalance.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-app-muted">Selling Price:</span> <span className="font-medium text-app-text">{CURRENCY} {agreementForInvoice.sellingPrice.toLocaleString()}</span></div>
+              <div className="flex justify-between"><span className="text-app-muted">Already Invoiced:</span> <span className="font-medium text-app-text">{CURRENCY} {amountAlreadyInvoiced.toLocaleString()}</span></div>
+              <div className="flex justify-between font-bold"><span className="text-app-muted">Remaining:</span> <span className="text-app-text">{CURRENCY} {agreementBalance.toLocaleString()}</span></div>
             </div>
           </div>
         )}
@@ -2054,7 +2150,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             {isPartiallyPaid && type === 'bill' ? (
               <div>
                 <Input label={contactLabel} value={state.contacts.find(c => c.id === contactId)?.name || ''} disabled />
-                <p className="text-xs text-amber-600 mt-1">Supplier cannot be changed. Please delete all payments first to edit the supplier.</p>
+                <p className="text-xs text-ds-warning mt-1">Supplier cannot be changed. Please delete all payments first to edit the supplier.</p>
               </div>
             ) : (
               <ComboBox
@@ -2131,8 +2227,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             <div className="flex flex-col">
               {expenseCategoryItems.length > 0 ? (
                 <div className="flex flex-col">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
-                  <div className="bg-gray-50 border border-gray-300 rounded-lg shadow-sm px-2 py-2 flex items-center text-sm font-semibold text-gray-800">
+                  <label className="block text-sm font-medium text-app-text mb-1">Total Amount</label>
+                  <div className={billAmountDisplay}>
                     {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </div>
                 </div>
@@ -2182,7 +2278,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   allowAddNew={false}
                 />
                 {availableContracts.length > 0 && (
-                  <p className="text-xs text-indigo-600 mt-1">Tracked against contract budget</p>
+                  <p className="text-xs text-primary mt-1">Tracked against contract budget</p>
                 )}
               </div>
             )}
@@ -2193,26 +2289,26 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         {type === 'bill' && !projectContext && (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
-              <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wider">Cost Allocation</h3>
+              <h3 className="text-xs font-bold text-app-text uppercase tracking-wider">Cost Allocation</h3>
               {/* Root Source Toggle Tabs */}
               <div className="flex gap-1.5 flex-1">
                 {!rentalContext && (
-                  <button type="button" onClick={() => handleRootChange('project')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'project' ? 'bg-indigo-50 text-indigo-700 border-indigo-300' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  <button type="button" onClick={() => handleRootChange('project')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'project' ? billSegmentTabActive : billSegmentTabInactive}`}>
                     Project
                   </button>
                 )}
-                <button type="button" onClick={() => handleRootChange('building')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'building' ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                <button type="button" onClick={() => handleRootChange('building')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'building' ? billSegmentTabActive : billSegmentTabInactive}`}>
                   Building
                 </button>
                 {!rentalContext && (
-                  <button type="button" onClick={() => handleRootChange('staff')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'staff' ? 'bg-gray-100 text-gray-700 border-gray-400' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>
+                  <button type="button" onClick={() => handleRootChange('staff')} className={`flex-1 py-1.5 px-2 text-xs font-medium rounded border transition-all ${rootAllocationType === 'staff' ? billSegmentTabActive : billSegmentTabInactive}`}>
                     Staff
                   </button>
                 )}
               </div>
             </div>
 
-            <div className="bg-white p-2 border border-gray-200 rounded-lg shadow-sm">
+            <div className={`${billFormPanel} p-2`}>
               {/* PROJECT FLOW */}
               {rootAllocationType === 'project' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 animate-fade-in">
@@ -2235,8 +2331,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   <div className="flex flex-col">
                     {type === 'bill' && expenseCategoryItems.length > 0 ? (
                       <div className="flex flex-col">
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Total Amount</label>
-                        <div className="bg-gray-50 border border-gray-300 rounded-lg shadow-sm px-2 py-2 flex items-center text-sm font-semibold text-gray-800">
+                        <label className="block text-sm font-medium text-app-text mb-1">Total Amount</label>
+                        <div className={billAmountDisplay}>
                           {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                       </div>
@@ -2286,7 +2382,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         allowAddNew={false}
                       />
                       {availableContracts.length > 0 && (
-                        <p className="text-xs text-indigo-600 mt-1">Tracked against contract budget</p>
+                        <p className="text-xs text-primary mt-1">Tracked against contract budget</p>
                       )}
                     </div>
                   )}
@@ -2315,11 +2411,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   {buildingId && (
                     <>
                       <div className="flex flex-col">
-                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Expense Bearer</label>
+                        <label className="block text-sm font-medium text-app-text mb-1.5">Expense Bearer</label>
                         <div className="flex gap-2 flex-wrap">
-                          <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? 'bg-emerald-50 border-emerald-500 text-emerald-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from building management funds">Building</button>
-                          <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? 'bg-indigo-50 border-indigo-500 text-indigo-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from owner income">Owner</button>
-                          <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'tenant' ? 'bg-amber-50 border-amber-500 text-amber-700' : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'}`} title="Deduct from tenant security deposit">Tenant</button>
+                          <button type="button" onClick={() => { setBillAllocationType('building'); setPropertyId(''); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'building' ? billBearerTabActive : billBearerTabInactive}`} title="Deduct from building management funds">Building</button>
+                          <button type="button" onClick={() => { setBillAllocationType('owner'); setAgreementId(''); setTenantId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'owner' ? billBearerTabActive : billBearerTabInactive}`} title="Deduct from owner income">Owner</button>
+                          <button type="button" onClick={() => { setBillAllocationType('tenant'); setPropertyId(''); }} className={`flex-1 min-w-[80px] px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${billAllocationType === 'tenant' ? billBearerTabActive : billBearerTabInactive}`} title="Deduct from tenant security deposit">Tenant</button>
                         </div>
                       </div>
 
@@ -2359,7 +2455,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Project Invoice Specifics */}
         {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-gray-50 p-2 rounded-lg border border-gray-200">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 bg-app-toolbar/40 p-2 rounded-lg border border-app-border">
             <ComboBox
               label="Project"
               items={state.projects}
@@ -2395,9 +2491,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Expense Category Items (for Bills) or Category (for Invoices) */}
         {type === 'bill' ? (
-          <div className="border border-gray-200 rounded-lg p-2 bg-gray-50 flex flex-col min-h-0" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '200px' }}>
+          <div className={`${billFormSection} p-2 flex flex-col min-h-0`} style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '200px' }}>
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
-              <label className="block text-sm font-medium text-gray-700">Expense Categories</label>
+              <label className="block text-sm font-medium text-app-text">Expense Categories</label>
               <div className="w-40">
                 <ComboBox
                   items={availableCategories}
@@ -2418,32 +2514,32 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             {expenseCategoryItems.length > 0 ? (
               <>
                 {/* Data Grid */}
-                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex flex-col flex-grow min-h-0">
+                <div className={`${billFormPanel} overflow-hidden flex flex-col flex-grow min-h-0`}>
                   <div className="overflow-y-auto flex-grow" style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '150px' }}>
                     <table className="w-full text-xs">
-                      <thead className="bg-gray-100 border-b border-gray-200 sticky top-0">
+                      <thead className="bg-app-table-header border-b border-app-border sticky top-0">
                         <tr>
-                          <th className="px-2 py-1.5 text-left font-semibold text-gray-700">Category</th>
-                          <th className="px-2 py-1.5 text-left font-semibold text-gray-700 w-24">Unit</th>
-                          <th className="px-2 py-1.5 text-left font-semibold text-gray-700 w-20">Qty</th>
-                          <th className="px-2 py-1.5 text-left font-semibold text-gray-700 w-24">Price</th>
-                          <th className="px-2 py-1.5 text-right font-semibold text-gray-700 w-28">Net</th>
-                          <th className="px-1 py-1.5 text-center font-semibold text-gray-700 w-8">X</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-app-text">Category</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-app-text w-24">Unit</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-app-text w-20">Qty</th>
+                          <th className="px-2 py-1.5 text-left font-semibold text-app-text w-24">Price</th>
+                          <th className="px-2 py-1.5 text-right font-semibold text-app-text w-28">Net</th>
+                          <th className="px-1 py-1.5 text-center font-semibold text-app-text w-8">X</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-gray-200">
+                      <tbody className="divide-y divide-app-border">
                         {expenseCategoryItems.map((item) => {
                           const category = expenseCategories.find(c => c.id === item.categoryId);
                           return (
-                            <tr key={item.id} className="hover:bg-gray-50">
+                            <tr key={item.id} className="hover:bg-app-toolbar/40">
                               <td className="px-2 py-1.5">
-                                <span className="font-medium text-gray-800 truncate block max-w-[120px]">{category?.name || 'Unknown'}</span>
+                                <span className="font-medium text-app-text truncate block max-w-[120px]">{category?.name || 'Unknown'}</span>
                               </td>
                               <td className="px-2 py-1.5">
                                 <Select
                                   value={item.unit}
                                   onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
-                                  className="text-xs border-gray-300 h-8 w-full"
+                                  className="text-xs border-app-border h-8 w-full"
                                   disabled={isAgreementCancelled}
                                   hideIcon={false}
                                 >
@@ -2466,21 +2562,34 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                   className="w-full pr-6 text-xs h-8"
                                   disabled={isAgreementCancelled}
                                 />
-                                <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 pointer-events-none text-xs">▼</span>
+                                <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-app-muted pointer-events-none text-xs">▼</span>
                               </td>
                               <td className="px-2 py-1.5">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={item.pricePerUnit.toString() || ''}
-                                  onChange={(e) => {
-                                    const pricePerUnit = parseFloat(e.target.value) || 0;
-                                    updateExpenseCategoryItem(item.id, { pricePerUnit });
-                                  }}
-                                  className="w-full text-xs h-8"
-                                  disabled={isAgreementCancelled}
-                                />
+                                <div className="space-y-1">
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.pricePerUnit.toString() || ''}
+                                    onChange={(e) => {
+                                      const pricePerUnit = parseFloat(e.target.value) || 0;
+                                      updateExpenseCategoryItem(item.id, { pricePerUnit });
+                                    }}
+                                    className="w-full text-xs h-8"
+                                    disabled={isAgreementCancelled}
+                                  />
+                                  {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
+                                    <QuotationPriceIndicator
+                                      compact
+                                      result={validateQuotationRate({
+                                        vendorId: billVendorId,
+                                        categoryId: item.categoryId,
+                                        transactionRate: item.pricePerUnit,
+                                        unit: item.unit,
+                                      })}
+                                    />
+                                  )}
+                                </div>
                               </td>
                               <td className="px-2 py-1.5">
                                 <Input
@@ -2500,7 +2609,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                 <button
                                   type="button"
                                   onClick={() => handleRemoveExpenseCategoryItem(item.id)}
-                                  className="text-gray-400 hover:text-rose-500 transition-colors"
+                                  className="text-app-muted hover:text-rose-500 transition-colors"
                                   title="Remove"
                                   disabled={isAgreementCancelled}
                                 >
@@ -2511,12 +2620,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                           );
                         })}
                       </tbody>
-                      <tfoot className="bg-gray-100 border-t-2 border-gray-300 sticky bottom-0">
+                      <tfoot className="bg-app-table-header border-t-2 border-app-border sticky bottom-0">
                         <tr>
-                          <td colSpan={4} className="px-2 py-1.5 text-right font-bold text-gray-700 text-xs">
+                          <td colSpan={4} className="px-2 py-1.5 text-right font-bold text-app-text text-xs">
                             Total:
                           </td>
-                          <td className="px-2 py-1.5 text-right font-bold text-gray-800 text-xs">
+                          <td className="px-2 py-1.5 text-right font-bold text-app-text text-xs">
                             {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td></td>
@@ -2527,7 +2636,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 </div>
               </>
             ) : (
-              <p className="text-xs text-gray-400 italic py-2 text-center bg-white border border-gray-200 rounded-lg">
+              <p className="text-xs text-app-muted italic py-2 text-center bg-app-card border border-app-border rounded-lg">
                 No expense categories added. Use the dropdown above to add categories.
               </p>
             )}
@@ -2566,19 +2675,19 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Document Upload Section for Bills */}
         {type === 'bill' && (
-          <div className="border border-gray-200 rounded-lg p-2 bg-gray-50">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Bill Document</label>
-            <p className="text-xs text-gray-500 mb-2">Upload a scanned copy of the bill document.</p>
+          <div className={`${billFormSection} p-2`}>
+            <label className="block text-sm font-medium text-app-text mb-1">Bill Document</label>
+            <p className="text-xs text-app-muted mb-2">Upload a scanned copy of the bill document.</p>
 
             {(documentId || (documentPath && !documentFile)) && (
-              <div className="mb-3 p-3 bg-white border border-gray-200 rounded-lg flex items-center justify-between">
+              <div className={`mb-3 p-3 ${billFormPanel} flex items-center justify-between`}>
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-indigo-100 rounded flex items-center justify-center">
-                    <div className="w-4 h-4 text-indigo-600">{ICONS.fileText}</div>
+                  <div className="w-8 h-8 bg-primary/15 rounded flex items-center justify-center">
+                    <div className="w-4 h-4 text-primary">{ICONS.fileText}</div>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-800">Document attached</p>
-                    <p className="text-xs text-gray-500">
+                    <p className="text-sm font-medium text-app-text">Document attached</p>
+                    <p className="text-xs text-app-muted">
                       {documentId ? (state.documents?.find(d => d.id === documentId)?.fileName || 'Document') : documentPath.split('/').pop()}
                     </p>
                   </div>
@@ -2637,8 +2746,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   className="hidden"
                   disabled={isAgreementCancelled}
                 />
-                <div className={`cursor-pointer border-2 border-dashed border-gray-300 rounded-lg p-4 text-center hover:border-indigo-400 hover:bg-indigo-50 transition-colors ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <div className="text-gray-600 text-sm">
+                <div className={`cursor-pointer border-2 border-dashed border-app-border rounded-lg p-4 text-center hover:border-primary hover:bg-primary/5 transition-colors ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  <div className="text-app-muted text-sm">
                     {documentFile ? documentFile.name : 'Click to upload document'}
                   </div>
                 </div>
@@ -2681,17 +2790,17 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
         )}
         {isPartiallyPaid && type === 'bill' && (
-          <div className="bg-amber-50 text-amber-800 p-1.5 rounded border border-amber-200 text-[10px] font-medium mb-2 flex-shrink-0">
+          <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
             This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
           </div>
         )}
         {isPartiallyPaid && type === 'invoice' && (
-          <div className="bg-amber-50 text-amber-800 p-1.5 rounded border border-amber-200 text-[10px] font-medium mb-2 flex-shrink-0">
+          <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
             This {type} has associated payments recorded. Editing critical details may affect your ledger consistency.
           </div>
         )}
         {isAgreementCancelled && (
-          <div className="bg-red-50 text-red-800 p-1.5 rounded border border-red-200 text-[10px] font-medium mb-2 flex-shrink-0">
+          <div className={`${backupAlertError} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
             This invoice belongs to a cancelled agreement and cannot be updated.
           </div>
         )}
@@ -2708,7 +2817,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Shared footer — hidden for rental layout (buttons are in right column) */}
         {!isRentalLayout && (
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-gray-200 mt-3 flex-shrink-0 pointer-events-auto">
+          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-app-border mt-3 flex-shrink-0 pointer-events-auto">
             <div className="flex flex-wrap gap-2">
               {itemToEdit && (
                 <Button
@@ -2734,7 +2843,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         ? 'View-only mode'
                         : undefined
                   }
-                  className="text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 w-full sm:w-auto text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full sm:w-auto text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
                 </Button>
@@ -2761,6 +2870,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
         )}
       </form>
+      {billPriceAlert?.open && (
+        <QuotationPriceAlertModal
+          isOpen
+          result={billPriceAlert.result}
+          onReview={() => setBillPriceAlert(null)}
+          onContinue={billPriceAlert.pendingAction}
+        />
+      )}
       <Modal isOpen={isContactModalOpen} onClose={() => setIsContactModalOpen(false)} title={`Add New ${contactLabel}`}>
         <ContactForm
           onSubmit={handleContactSubmit}

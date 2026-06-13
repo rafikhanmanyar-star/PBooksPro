@@ -13,7 +13,12 @@ export type QuotationRow = {
   tenant_id: string;
   vendor_id: string;
   name: string;
+  quotation_number: string | null;
   date: Date;
+  expiry_date: Date | null;
+  enable_price_validation: boolean;
+  validation_scope: string;
+  is_active: boolean;
   items: unknown;
   total_amount: string;
   document_id: string | null;
@@ -58,7 +63,12 @@ export function rowToQuotationApi(row: QuotationRow): Record<string, unknown> {
     id: row.id,
     vendorId: row.vendor_id,
     name: row.name,
+    quotationNumber: row.quotation_number ?? undefined,
     date: formatPgDateToYyyyMmDd(row.date) ?? '',
+    expiryDate: formatPgDateToYyyyMmDd(row.expiry_date) ?? undefined,
+    enablePriceValidation: row.enable_price_validation !== false,
+    validationScope: row.validation_scope ?? 'CATEGORY',
+    isActive: row.is_active !== false,
     items,
     totalAmount,
     documentId: row.document_id ?? undefined,
@@ -91,10 +101,33 @@ function pickBody(body: Record<string, unknown>) {
     Number.isFinite(totalFallback) ? totalFallback : 0
   );
 
+  const validationScopeRaw = String(body.validationScope ?? body.validation_scope ?? 'CATEGORY').toUpperCase();
+  const validation_scope = validationScopeRaw === 'ITEM' ? 'ITEM' : 'CATEGORY';
+
+  let expiryStr: string | null = null;
+  const expiryRaw = body.expiryDate ?? body.expiry_date;
+  if (expiryRaw != null && expiryRaw !== '') {
+    try {
+      expiryStr = parseApiDateToYyyyMmDd(expiryRaw);
+    } catch {
+      throw new Error('Invalid expiry date.');
+    }
+  }
+
   return {
     vendor_id: String(body.vendorId ?? body.vendor_id ?? '').trim(),
     name: String(body.name ?? '').trim(),
+    quotation_number:
+      body.quotationNumber === undefined && body.quotation_number === undefined
+        ? null
+        : body.quotationNumber === null || body.quotation_number === null
+          ? null
+          : String(body.quotationNumber ?? body.quotation_number).trim() || null,
     date: dateStr,
+    expiry_date: expiryStr,
+    enable_price_validation: body.enablePriceValidation === false || body.enable_price_validation === false ? false : true,
+    validation_scope,
+    is_active: body.isActive === false || body.is_active === false ? false : true,
     items,
     total_amount,
     document_id:
@@ -140,7 +173,12 @@ function quotationWriteFields(p: ReturnType<typeof pickBody>): QuotationWriteFie
   return {
     vendor_id: p.vendor_id,
     name: p.name,
+    quotation_number: p.quotation_number,
     date: p.date,
+    expiry_date: p.expiry_date,
+    enable_price_validation: p.enable_price_validation,
+    validation_scope: p.validation_scope,
+    is_active: p.is_active,
     items_json: JSON.stringify(p.items),
     total_amount: p.total_amount,
     document_id: p.document_id ?? null,

@@ -248,7 +248,12 @@ const App: React.FC = () => {
   // API mode: closing the custom numpad avoids stray state; pair with login-screen focus recovery after logout
   useEffect(() => {
     if (isLocalOnlyMode() || authInitializing) return;
-    if (!isAuthenticated) closeKeyboard();
+    if (!isAuthenticated) {
+      closeKeyboard();
+      document.body.style.overflow = 'unset';
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+    }
   }, [isAuthenticated, authInitializing, closeKeyboard]);
 
   // Electron window close is handled in CompanyContext (always mounted) so File → Exit and X work on company select screen too.

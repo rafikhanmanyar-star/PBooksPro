@@ -7,7 +7,7 @@ import {
   sortApprovalsByDate,
   type MobileApprovalItem,
 } from './mobileApprovalsHelpers.js';
-import { parseCreateUnpostedTransaction } from './services/unpostedTransactionService.js';
+import { parseCreateUnpostedTransaction, canReviewUnpostedTransactions, parseUnpostedListFilters } from './services/unpostedTransactionService.js';
 
 describe('mobileApprovalsHelpers', () => {
   it('normalizeStatus lowercases and collapses spaces', () => {
@@ -56,5 +56,39 @@ describe('parseCreateUnpostedTransaction', () => {
     assert.throws(() =>
       parseCreateUnpostedTransaction({ amount: 100, transactionType: 'invalid_type' })
     );
+  });
+});
+
+describe('canReviewUnpostedTransactions', () => {
+  it('allows accountant and admin roles', () => {
+    assert.equal(canReviewUnpostedTransactions('Accountant'), true);
+    assert.equal(canReviewUnpostedTransactions('Admin'), true);
+    assert.equal(canReviewUnpostedTransactions('Accounts'), true);
+  });
+
+  it('denies read-only roles', () => {
+    assert.equal(canReviewUnpostedTransactions('Read Only User'), false);
+    assert.equal(canReviewUnpostedTransactions('viewer'), false);
+  });
+});
+
+describe('parseUnpostedListFilters', () => {
+  it('parses valid date and user filters', () => {
+    assert.deepEqual(
+      parseUnpostedListFilters({
+        createdBy: 'user_abc',
+        dateFrom: '2026-06-01',
+        dateTo: '2026-06-30',
+      }),
+      { createdBy: 'user_abc', dateFrom: '2026-06-01', dateTo: '2026-06-30' }
+    );
+  });
+
+  it('ignores invalid dates', () => {
+    assert.deepEqual(parseUnpostedListFilters({ dateFrom: '06/01/2026' }), {
+      createdBy: undefined,
+      dateFrom: undefined,
+      dateTo: undefined,
+    });
   });
 });

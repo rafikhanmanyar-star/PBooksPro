@@ -377,5 +377,21 @@ export async function settleVendorBillsBatchWithAdvances(
     });
   }
 
+  const checkedContracts = new Set<string>();
+  for (const p of prepared) {
+    const cid = p.bill.contract_id?.trim();
+    if (!cid || checkedContracts.has(cid)) continue;
+    checkedContracts.add(cid);
+    const { getContractById } = await import('./contractsService.js');
+    const {
+      notifyRetentionThresholdIfNeeded,
+      validateRetentionThresholdForContract,
+    } = await import('./contractRetentionService.js');
+    const contract = await getContractById(client, tenantId, cid);
+    if (!contract) continue;
+    const validation = await validateRetentionThresholdForContract(client, tenantId, contract);
+    await notifyRetentionThresholdIfNeeded(client, tenantId, contract, validation, actorUserId);
+  }
+
   return { journalEntries, touchedAdvanceIds, cashExpenseTransactions };
 }

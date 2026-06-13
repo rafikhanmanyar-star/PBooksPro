@@ -18,9 +18,12 @@ import {
   createUnpostedTransaction,
   getUnpostedTransaction,
   getUnpostedTransactionCounts,
+  listUnpostedTransactionSubmitters,
   listUnpostedTransactions,
+  canReviewUnpostedTransactions,
   parseCreateUnpostedTransaction,
   parseStatusUpdate,
+  parseUnpostedListFilters,
   updateUnpostedTransactionStatus,
 } from '../services/unpostedTransactionService.js';
 import type { UnpostedTransactionStatus } from '../types/index.js';
@@ -188,6 +191,22 @@ mobileRouter.get('/mobile/unposted-transactions/counts', async (req: AuthedReque
   }
 });
 
+mobileRouter.get('/mobile/unposted-transactions/submitters', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  try {
+    const submitters = await withClient((client) =>
+      listUnpostedTransactionSubmitters(client, tenantId)
+    );
+    sendSuccess(res, submitters);
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
 mobileRouter.get('/mobile/unposted-transactions', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   const userId = req.userId;
@@ -201,6 +220,7 @@ mobileRouter.get('/mobile/unposted-transactions', async (req: AuthedRequest, res
     status = statusParam.split(',').map((s) => s.trim()) as UnpostedTransactionStatus[];
   }
   const mineOnly = req.query.mine === 'true';
+  const { createdBy: createdByFilter, dateFrom, dateTo } = parseUnpostedListFilters(req.query);
   const limit = Math.min(Number(req.query.limit ?? 50), 200);
   const offset = Number(req.query.offset ?? 0);
 
@@ -208,7 +228,9 @@ mobileRouter.get('/mobile/unposted-transactions', async (req: AuthedRequest, res
     const items = await withClient((client) =>
       listUnpostedTransactions(client, tenantId, {
         status,
-        createdBy: mineOnly ? userId : undefined,
+        createdBy: mineOnly ? userId : createdByFilter,
+        dateFrom,
+        dateTo,
         limit,
         offset,
       })
@@ -266,6 +288,10 @@ mobileRouter.patch('/mobile/unposted-transactions/:id/status', async (req: Authe
   const userId = req.userId;
   if (!tenantId || !userId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  if (!canReviewUnpostedTransactions(req.role)) {
+    sendFailure(res, 403, 'FORBIDDEN', 'You do not have permission to review unposted transactions');
     return;
   }
   try {

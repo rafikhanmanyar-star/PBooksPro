@@ -117,6 +117,64 @@ export async function getUserTenantsForUser(
   return toCompanySummaries(accounts);
 }
 
+export type OrganizationTenantSummary = {
+  id: string;
+  name: string;
+  company_name: string;
+  email: string;
+};
+
+export async function findTenantsByOrganizationEmail(
+  db: Queryable,
+  organizationEmail: string
+): Promise<OrganizationTenantSummary[]> {
+  const normalized = normalizeLoginIdentifier(organizationEmail);
+  if (!normalized) return [];
+
+  const rows = await userTenantRepo.findTenantsByOrganizationEmail(db, normalized);
+  return rows
+    .filter((row) => !isInternalDemoTenantId(row.id))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      company_name: row.name,
+      email: row.email?.trim() || organizationEmail.trim(),
+    }));
+}
+
+export async function findAccountByTenantAndUsername(
+  db: Queryable,
+  tenantId: string,
+  username: string
+): Promise<MatchedUserAccount | null> {
+  const normalized = normalizeLoginIdentifier(username);
+  if (!normalized || !tenantId.trim()) return null;
+
+  const account = await userTenantRepo.findAccountByTenantAndUsername(db, tenantId, normalized);
+  if (!account || isInternalDemoTenantId(account.tenant_id)) return null;
+
+  return mapAccountRow(account);
+}
+
+export async function authenticateByOrgEmailAndUsername(
+  db: Queryable,
+  organizationEmail: string,
+  username: string,
+  password: string
+): Promise<MatchedUserAccount[]> {
+  const tenants = await findTenantsByOrganizationEmail(db, organizationEmail);
+  if (tenants.length === 0) return [];
+
+  const matched: MatchedUserAccount[] = [];
+  for (const tenant of tenants) {
+    const account = await findAccountByTenantAndUsername(db, tenant.id, username);
+    if (!account) continue;
+    const [verified] = await filterAccountsByPassword([account], password);
+    if (verified) matched.push(verified);
+  }
+  return matched;
+}
+
 export async function findAccountForTenantByLoginIdentifier(
   db: Queryable,
   tenantId: string,
