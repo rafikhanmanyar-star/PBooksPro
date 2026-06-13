@@ -165,7 +165,7 @@ const BillLinkedPaymentsSidePanel: React.FC<BillLinkedPaymentsSidePanelProps> = 
             : display.status === 'Overdue'
               ? 'text-ds-danger bg-ds-danger/10'
               : display.status === 'Partially Paid'
-                ? 'text-amber-800 bg-amber-500/10'
+                ? 'text-ds-warning bg-[color:var(--badge-partial-bg)]'
                 : 'text-app-muted bg-app-toolbar';
 
     const settlementsLoading = !isLocalOnlyMode() && apiSettlements === null;

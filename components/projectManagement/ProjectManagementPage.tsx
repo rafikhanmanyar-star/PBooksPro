@@ -35,6 +35,7 @@ const ProjectCategoryReport = React.lazy(() => import('../reports/ProjectCategor
 const VendorLedgerReport = React.lazy(() => import('../reports/VendorLedgerReport'));
 const ProjectPMCostReport = React.lazy(() => import('../reports/ProjectPMCostReport'));
 const ProjectContractReport = React.lazy(() => import('../reports/ProjectContractReport'));
+const ContractRetentionRegisterReport = React.lazy(() => import('../reports/ContractRetentionRegisterReport'));
 const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
 const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
 const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
@@ -55,7 +56,7 @@ type ProjectView =
     | 'Visual Layout' | 'Tabular View'
     | 'Project Summary' | 'Revenue Analysis' | 'Owner Ledger' | 'Broker Report'
     | 'Income by Category' | 'Expense by Category' | 'Material Report' | 'Vendor Ledger'
-    | 'PM Cost Report' | 'Contract Report'
+    | 'PM Cost Report' | 'Contract Report' | 'Retention Register'
     | 'Budget vs Actual' | 'Marketing Activity' | 'Custom Reports' | 'Vendor Ledger'
     | 'Petty cash report';
 
@@ -79,6 +80,7 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
     'Budget vs Actual',
     'Contract Report',
+    'Retention Register',
     'PM Cost Report',
     'Material Report',
     'Vendor Ledger',
@@ -125,7 +127,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     const allowedConstructionViews = [
         'Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers', 'PM Payouts',
-        'Project Summary', 'Budget vs Actual', 'Contract Report',
+        'Project Summary', 'Budget vs Actual', 'Contract Report', 'Retention Register',
         'PM Cost Report', 'Material Report', 'Vendor Ledger', 'Custom Reports',
         'Owner Ledger', 'Income by Category', 'Expense by Category', 'Petty cash report',
     ];
@@ -205,6 +207,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                     : <ProjectConstructionCustomReportsPage />;
             case 'PM Cost Report': return <ProjectPMCostReport />;
             case 'Contract Report': return <ProjectContractReport />;
+            case 'Retention Register': return <ContractRetentionRegisterReport />;
             case 'Budget vs Actual': return <ProjectBudgetReport />;
             case 'Marketing Activity': return <MarketingActivityReport />;
             case 'Petty cash report': return <ProjectExpenseVoucherReportsPage />;

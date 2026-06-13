@@ -1460,6 +1460,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             logger.warnCategory('sync', '⚠️ Failed to persist contract to API:', err);
                         });
                 });
+            } else if (a.type === 'ADD_QUOTATION' || a.type === 'UPDATE_QUOTATION') {
+                const quotation = a.payload as import('../types').Quotation;
+                if (!quotation?.id) return;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .saveQuotation(quotation)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to persist quotation to API:', err);
+                            notifyDatabaseError(new Error(formatApiErrorMessage(err)), {
+                                title: 'Could not save quotation',
+                                context: 'The quotation was not written to PostgreSQL.',
+                            });
+                        });
+                });
+            } else if (a.type === 'DELETE_QUOTATION' && typeof a.payload === 'string') {
+                const id = a.payload;
+                void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
+                    getAppStateApiService()
+                        .deleteQuotation(id)
+                        .catch((err) => {
+                            logger.warnCategory('sync', '⚠️ Failed to delete quotation on API:', err);
+                        });
+                });
             } else if (a.type === 'DELETE_CONTRACT' && typeof a.payload === 'string') {
                 const id = a.payload;
                 const version = prev.contracts?.find((x) => x.id === id)?.version;

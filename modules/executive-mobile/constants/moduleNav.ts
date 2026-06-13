@@ -49,7 +49,7 @@ export const EXECUTIVE_MODULE_NAV: ExecutiveNavItem[] = [
   {
     id: 'projects',
     label: 'Projects',
-    icon: ICONS.archive,
+    icon: ICONS.briefcase,
     summaryKey: 'projects',
     enabled: true,
     showInExecutiveApp: true,

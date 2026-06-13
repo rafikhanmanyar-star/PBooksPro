@@ -937,6 +937,8 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, rentalInvoiceSettings: action.payload };
         case 'UPDATE_PROJECT_INVOICE_SETTINGS':
             return { ...state, projectInvoiceSettings: action.payload };
+        case 'UPDATE_PROCUREMENT_SETTINGS':
+            return { ...state, procurementSettings: action.payload };
         case 'UPDATE_PRINT_SETTINGS':
             return { ...state, printSettings: action.payload };
         case 'UPDATE_WHATSAPP_TEMPLATES':

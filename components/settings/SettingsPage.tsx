@@ -32,6 +32,7 @@ import { CompanyManagementSection } from '../company/CompanyManagementSection';
 import DbHealthPanel from '../diagnostics/DbHealthPanel';
 import ManualJournalEntrySection from './ManualJournalEntrySection';
 import InterfaceModeSettingsSection from './InterfaceModeSettingsSection';
+import ProcurementSettingsSection from './ProcurementSettingsSection';
 import AccountingPeriodsSection from './AccountingPeriodsSection';
 import PermissionManagementSection from './PermissionManagementSection';
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
@@ -112,6 +113,7 @@ const SettingsPage: React.FC = () => {
         rentalInvoiceSettings,
         agreementSettings,
         projectAgreementSettings,
+        procurementSettings,
         editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { user: authUser, tenant: authTenant } = useAuth();
@@ -809,7 +811,7 @@ const SettingsPage: React.FC = () => {
         );
     };
 
-    const preferenceTabs = ['General', 'ID Sequences', 'Communication', 'Tools'];
+    const preferenceTabs = ['General', 'Procurement', 'ID Sequences', 'Communication', 'Tools'];
 
     const renderToggle = (label: string, description: string, checked: boolean, onChange: (val: boolean) => void) => (
         <div className="flex items-center justify-between p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card transition-all hover:border-ds-primary/40">
@@ -1070,6 +1072,13 @@ const SettingsPage: React.FC = () => {
             </div>
             <div className="bg-app-card rounded-b-lg -mt-px animate-in fade-in slide-in-from-bottom-2 duration-300 p-6">
                 {activePreferenceTab === 'General' && renderGeneralSettings()}
+                {activePreferenceTab === 'Procurement' && (
+                    <ProcurementSettingsSection settings={procurementSettings ?? {
+                        enableQuotationValidationGlobally: true,
+                        showWarningOnly: true,
+                        varianceApprovalThreshold: 10,
+                    }} />
+                )}
                 {activePreferenceTab === 'ID Sequences' && renderIDSequences()}
                 {activePreferenceTab === 'Communication' && renderCommunicationBranding()}
                 {activePreferenceTab === 'Tools' && renderToolsUtilities()}

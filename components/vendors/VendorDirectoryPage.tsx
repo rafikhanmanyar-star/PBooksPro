@@ -137,7 +137,10 @@ const AddVendorSection: React.FC<{
                 isOpen={isModalOpen}
                 onClose={() => setIsModalOpen(false)}
                 preventCloseWhile={isVendorFormSubmitting}
-                title="Add New Vendor/Supplier"
+                title="Add New Vendor"
+                hideHeader
+                size="lg"
+                disableScroll
             >
                 <ContactForm
                     onSubmit={handleSubmit}
@@ -729,7 +732,7 @@ const VendorDirectoryPage: React.FC = () => {
                                 </div>
                             </div>
 
-                            <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Edit: ${selectedVendor.name}`}>
+                            <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Edit: ${selectedVendor.name}`} hideHeader size="lg" disableScroll>
                                 <ContactForm
                                     key={selectedVendor.id}
                                     vendorToEdit={selectedVendor}
@@ -777,6 +780,7 @@ const VendorDirectoryPage: React.FC = () => {
                                         quotationToEdit={editingQuotation || undefined}
                                         vendorId={selectedVendor.id}
                                         vendorName={selectedVendor.name}
+                                        procurementSettings={state.procurementSettings}
                                         onClose={() => {
                                             setIsQuotationFormModalOpen(false);
                                             setEditingQuotation(null);

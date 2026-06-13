@@ -4,9 +4,10 @@
  * Provides global WhatsApp chat side panel management
  */
 
-import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
 import { Contact, Vendor } from '../types';
 import WhatsAppSidePanel from '../components/whatsapp/WhatsAppSidePanel';
+import { useAuth } from './AuthContext';
 
 interface WhatsAppContextType {
   openChat: (contact?: Contact | Vendor | null, phoneNumber?: string, initialMessage?: string) => void;
@@ -17,6 +18,7 @@ interface WhatsAppContextType {
 const WhatsAppContext = createContext<WhatsAppContextType | undefined>(undefined);
 
 export const WhatsAppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
   const [contact, setContact] = useState<Contact | Vendor | null>(null);
   const [phoneNumber, setPhoneNumber] = useState<string>('');
@@ -38,6 +40,13 @@ export const WhatsAppProvider: React.FC<{ children: ReactNode }> = ({ children }
       setInitialMessage('');
     }, 300);
   }, []);
+
+  /** Side-panel backdrop (z-[9998]) blocks the login form if left open after logout. */
+  useEffect(() => {
+    if (!isAuthenticated && isOpen) {
+      closeChat();
+    }
+  }, [isAuthenticated, isOpen, closeChat]);
 
   return (
     <WhatsAppContext.Provider value={{ openChat, closeChat, isOpen }}>

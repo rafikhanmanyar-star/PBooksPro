@@ -2,20 +2,34 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createUnpostedTransaction,
   getUnpostedTransactionCounts,
+  listUnpostedTransactionSubmitters,
   listUnpostedTransactions,
   updateUnpostedTransactionStatus,
   type CreateUnpostedTransactionPayload,
+  type UnpostedTransactionListOptions,
 } from '../../../services/api/unpostedTransactionsApi';
 import type { UnpostedTransactionStatus } from '../../../types/executiveMobile.types';
 
-export function useUnpostedTransactions(options?: {
-  status?: UnpostedTransactionStatus | UnpostedTransactionStatus[];
-  mine?: boolean;
-}) {
+export function useUnpostedTransactions(options?: UnpostedTransactionListOptions) {
   return useQuery({
-    queryKey: ['unposted-transactions', options?.status, options?.mine],
+    queryKey: [
+      'unposted-transactions',
+      options?.status,
+      options?.mine,
+      options?.createdBy,
+      options?.dateFrom,
+      options?.dateTo,
+    ],
     queryFn: () => listUnpostedTransactions(options),
     staleTime: 15_000,
+  });
+}
+
+export function useUnpostedTransactionSubmitters() {
+  return useQuery({
+    queryKey: ['unposted-transaction-submitters'],
+    queryFn: listUnpostedTransactionSubmitters,
+    staleTime: 60_000,
   });
 }
 

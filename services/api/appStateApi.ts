@@ -339,6 +339,7 @@ const TENANT_SETTING_STATE_KEYS: (keyof AppState)[] = [
   'defaultProjectId',
   'lastServiceChargeRun',
   'enableDatePreservation',
+  'procurementSettings',
 ];
 
 /** Merge slice used after bidirectional SQLite reload so API-backed settings are not wiped. */
@@ -369,6 +370,7 @@ export function tenantSettingsPayloadFromState(state: AppState): Record<string, 
     defaultProjectId: state.defaultProjectId,
     lastServiceChargeRun: state.lastServiceChargeRun,
     enableDatePreservation: state.enableDatePreservation,
+    procurementSettings: state.procurementSettings,
   };
 }
 
@@ -1099,6 +1101,7 @@ export class AppStateApiService {
     if (flat.defaultProjectId !== undefined) out.defaultProjectId = flat.defaultProjectId;
     if (flat.lastServiceChargeRun !== undefined) out.lastServiceChargeRun = flat.lastServiceChargeRun;
     if (flat.enableDatePreservation !== undefined) out.enableDatePreservation = flat.enableDatePreservation;
+    if (flat.procurementSettings != null) out.procurementSettings = flat.procurementSettings;
     return out;
   }
 

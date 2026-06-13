@@ -36,7 +36,6 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
     const { print: triggerPrint } = usePrintContext();
     const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
 
-    // Get all expense categories
     const expenseCategories = useMemo(() => {
         return state.categories.filter(c => c.type === TransactionType.EXPENSE);
     }, [state.categories]);
@@ -45,21 +44,9 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
         return [{ id: 'all', name: 'All Categories' }, ...expenseCategories];
     }, [expenseCategories]);
 
-    // Get all quotations
-    const quotations = useMemo(() => {
-        return state.quotations || [];
-    }, [state.quotations]);
-
-    // Get all vendors
-    const vendors = useMemo(() => {
-        return state.vendors || [];
-    }, [state.vendors]);
-
-    // Build comparison data by category
     const comparisonData = useMemo<CategoryVendorComparison[]>(() => {
         const categoryMap = new Map<string, Map<string, Quotation[]>>();
 
-        // Group quotations by category and vendor
         appQuotations.forEach(quotation => {
             quotation.items.forEach(item => {
                 if (selectedCategoryId !== 'all' && item.categoryId !== selectedCategoryId) {
@@ -79,7 +66,6 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
             });
         });
 
-        // Build the comparison structure
         const result: CategoryVendorComparison[] = [];
 
         categoryMap.forEach((vendorMap, categoryId) => {
@@ -92,7 +78,6 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
                 const vendor = appVendors.find(v => v.id === vendorId);
                 if (!vendor) return;
 
-                // Calculate prices for this category from all quotations
                 const prices: number[] = [];
                 quotationList.forEach(quotation => {
                     quotation.items
@@ -118,7 +103,6 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
             });
 
             if (vendorComparisons.length > 0) {
-                // Sort vendors by best price (ascending)
                 vendorComparisons.sort((a, b) => a.bestPrice - b.bestPrice);
 
                 result.push({
@@ -129,7 +113,6 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
             }
         });
 
-        // Sort categories by name
         result.sort((a, b) => a.categoryName.localeCompare(b.categoryName));
 
         return result;
@@ -137,7 +120,7 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
 
     const handleExport = () => {
         const data: any[] = [];
-        
+
         comparisonData.forEach(category => {
             category.vendors.forEach((vendor, index) => {
                 data.push({
@@ -154,27 +137,30 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
         exportJsonToExcel(data, 'vendor-comparison.xlsx', 'Vendor Comparison Report');
     };
 
-
     return (
-        <div className="flex flex-col h-full space-y-4">
+        <div className="flex flex-col h-full space-y-4 p-4">
             <style>{STANDARD_PRINT_STYLES}</style>
-            
-            {/* Toolbar */}
+
             <div className="flex-shrink-0">
-                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm no-print">
+                <div className="bg-app-card p-3 rounded-lg border border-app-border shadow-ds-card no-print">
                     <div className="flex flex-wrap items-center gap-3">
                         <div className="w-64 flex-shrink-0">
-                            <ComboBox 
-                                items={categoryItems} 
-                                selectedId={selectedCategoryId} 
-                                onSelect={(item) => setSelectedCategoryId(item?.id || 'all')} 
+                            <ComboBox
+                                items={categoryItems}
+                                selectedId={selectedCategoryId}
+                                onSelect={(item) => setSelectedCategoryId(item?.id || 'all')}
                                 allowAddNew={false}
                                 placeholder="Filter by Category"
                             />
                         </div>
 
                         <div className="flex items-center gap-2 ml-auto">
-                            <Button variant="secondary" size="sm" onClick={handleExport} className="whitespace-nowrap bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300">
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={handleExport}
+                                className="whitespace-nowrap bg-app-toolbar hover:bg-app-toolbar/80 text-app-text border-app-border"
+                            >
                                 <div className="w-4 h-4 mr-1">{ICONS.export}</div> Export
                             </Button>
                             <PrintButton
@@ -191,67 +177,71 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
             <div className="flex-grow overflow-y-auto printable-area min-h-0" id="printable-area">
                 <Card className="min-h-full">
                     <ReportHeader />
-                    <h3 className="text-2xl font-bold text-center mb-4">
+                    <h3 className="text-2xl font-bold text-center mb-4 text-app-text">
                         Vendor Comparison Report {context ? `(${context})` : ''}
                     </h3>
-                    <div className="text-center text-sm text-slate-500 mb-6">
+                    <div className="text-center text-sm text-app-muted mb-6">
                         <p>Best vendor comparison based on quotations submitted per category</p>
                         {selectedCategoryId !== 'all' && (
-                            <p className="font-semibold mt-1">
+                            <p className="font-semibold mt-1 text-app-text">
                                 Category: {state.categories.find(c => c.id === selectedCategoryId)?.name}
                             </p>
                         )}
                     </div>
-                    
+
                     <div className="space-y-6">
                         {comparisonData.length > 0 ? comparisonData.map(category => (
-                            <div key={category.categoryId} className="border border-slate-200 rounded-lg overflow-hidden">
-                                <div className="bg-gradient-to-r from-indigo-50 to-blue-50 px-4 py-3 border-b border-slate-200">
-                                    <h4 className="text-lg font-bold text-slate-900">{category.categoryName}</h4>
+                            <div key={category.categoryId} className="border border-app-border rounded-lg overflow-hidden bg-app-card">
+                                <div className="bg-app-toolbar/50 px-4 py-3 border-b border-app-border">
+                                    <h4 className="text-lg font-bold text-app-text">{category.categoryName}</h4>
                                 </div>
                                 <div className="overflow-x-auto">
-                                    <table className="min-w-full divide-y divide-slate-200 text-sm">
-                                        <thead className="bg-slate-50">
+                                    <table className="min-w-full divide-y divide-app-border text-sm">
+                                        <thead className="bg-app-table-header">
                                             <tr>
-                                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Rank</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Vendor</th>
-                                                <th className="px-4 py-3 text-right font-semibold text-slate-600">Best Price</th>
-                                                <th className="px-4 py-3 text-right font-semibold text-slate-600">Average Price</th>
-                                                <th className="px-4 py-3 text-center font-semibold text-slate-600">Quotations</th>
-                                                <th className="px-4 py-3 text-left font-semibold text-slate-600">Quotation Dates</th>
+                                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Rank</th>
+                                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Vendor</th>
+                                                <th className="px-4 py-3 text-right font-semibold text-app-muted">Best Price</th>
+                                                <th className="px-4 py-3 text-right font-semibold text-app-muted">Average Price</th>
+                                                <th className="px-4 py-3 text-center font-semibold text-app-muted">Quotations</th>
+                                                <th className="px-4 py-3 text-left font-semibold text-app-muted">Quotation Dates</th>
                                             </tr>
                                         </thead>
-                                        <tbody className="divide-y divide-slate-200 bg-white">
+                                        <tbody className="divide-y divide-app-border bg-app-card">
                                             {category.vendors.map((vendor, index) => (
-                                                <tr 
-                                                    key={vendor.vendorId} 
-                                                    className={index === 0 ? 'bg-emerald-50' : 'hover:bg-slate-50'}
+                                                <tr
+                                                    key={vendor.vendorId}
+                                                    className={
+                                                        index === 0
+                                                            ? 'bg-[color:var(--badge-paid-bg)]'
+                                                            : 'hover:bg-app-table-hover'
+                                                    }
                                                 >
                                                     <td className="px-4 py-3">
                                                         {index === 0 ? (
-                                                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-bold">
+                                                            <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-ds-success text-ds-on-primary text-xs font-bold">
                                                                 1
                                                             </span>
                                                         ) : (
-                                                            <span className="text-slate-600 font-medium">{index + 1}</span>
+                                                            <span className="text-app-muted font-medium">{index + 1}</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 font-medium text-slate-800">
+                                                    <td className="px-4 py-3 font-medium text-app-text">
                                                         {vendor.vendorName}
                                                         {index === 0 && (
-                                                            <span className="ml-2 text-xs text-emerald-600 font-semibold">(Best Price)</span>
+                                                            <span className="ml-2 text-xs text-ds-success font-semibold">(Best Price)</span>
                                                         )}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right font-bold text-slate-900 tabular-nums">
+                                                    <td className="px-4 py-3 text-right font-bold text-app-text tabular-nums">
                                                         {CURRENCY} {vendor.bestPrice.toLocaleString()}
                                                     </td>
-                                                    <td className="px-4 py-3 text-right text-slate-700 tabular-nums">
+                                                    <td className="px-4 py-3 text-right text-app-text tabular-nums">
                                                         {CURRENCY} {vendor.averagePrice.toFixed(2)}
                                                     </td>
-                                                    <td className="px-4 py-3 text-center text-slate-700">
+                                                    <td className="px-4 py-3 text-center text-app-text">
                                                         {vendor.quotationCount}
                                                     </td>
-                                                    <td className="px-4 py-3 text-xs text-slate-500">
+                                                    <td className="px-4 py-3 text-xs text-app-muted">
                                                         {vendor.quotations
                                                             .map(q => formatDate(q.date))
                                                             .slice(0, 3)
@@ -266,8 +256,8 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
                             </div>
                         )) : (
                             <div className="text-center py-16">
-                                <p className="text-slate-500">
-                                    {selectedCategoryId !== 'all' 
+                                <p className="text-app-muted">
+                                    {selectedCategoryId !== 'all'
                                         ? 'No quotations found for the selected category.'
                                         : 'No quotations found. Create quotations to see vendor comparisons.'}
                                 </p>
@@ -282,4 +272,3 @@ const VendorComparisonReport: React.FC<VendorComparisonReportProps> = ({ context
 };
 
 export default VendorComparisonReport;
-

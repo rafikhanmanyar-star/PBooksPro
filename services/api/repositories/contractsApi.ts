@@ -72,6 +72,35 @@ export function normalizeContractFromApi(raw: Record<string, unknown>): Contract
     description: raw.description === undefined || raw.description === null ? undefined : String(raw.description),
     documentPath: (raw.documentPath ?? raw.document_path) as string | undefined,
     documentId: (raw.documentId ?? raw.document_id) as string | undefined,
+    retentionType: (raw.retentionType ?? raw.retention_type ?? 'NONE') as Contract['retentionType'],
+    retentionPercentage:
+      raw.retentionPercentage !== undefined && raw.retentionPercentage !== null
+        ? Number(raw.retentionPercentage)
+        : raw.retention_percentage !== undefined && raw.retention_percentage !== null
+          ? Number(raw.retention_percentage)
+          : undefined,
+    retentionAmount:
+      raw.retentionAmount !== undefined && raw.retentionAmount !== null
+        ? Number(raw.retentionAmount)
+        : raw.retention_amount !== undefined && raw.retention_amount !== null
+          ? Number(raw.retention_amount)
+          : undefined,
+    retentionReleaseMethod: (raw.retentionReleaseMethod ?? raw.retention_release_method) as Contract['retentionReleaseMethod'],
+    retentionReleaseDate: (raw.retentionReleaseDate ?? raw.retention_release_date) as string | undefined,
+    retentionNotes: (raw.retentionNotes ?? raw.retention_notes) as string | undefined,
+    retentionBalance:
+      raw.retentionBalance !== undefined
+        ? Number(raw.retentionBalance)
+        : raw.retention_balance !== undefined
+          ? Number(raw.retention_balance)
+          : undefined,
+    retentionReleased:
+      raw.retentionReleased !== undefined
+        ? Number(raw.retentionReleased)
+        : raw.retention_released !== undefined
+          ? Number(raw.retention_released)
+          : undefined,
+    retentionReleaseBy: (raw.retentionReleaseBy ?? raw.retention_release_by) as string | undefined,
     version: typeof raw.version === 'number' ? raw.version : undefined,
   };
 }

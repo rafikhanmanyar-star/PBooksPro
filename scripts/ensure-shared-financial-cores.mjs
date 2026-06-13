@@ -77,4 +77,30 @@ syncFile(
       .replace("from './journalLedgerCore'", "from './journalLedgerCore.js'")
 );
 
+syncFile(
+  'shared/quotation-validation/types.ts',
+  'backend/src/quotationValidation/types.ts',
+  (s) => s.replace("from './types.js'", "from './types.js'")
+);
+
+syncFile(
+  'shared/quotation-validation/QuotationValidationService.ts',
+  'backend/src/quotationValidation/QuotationValidationService.ts',
+  (s) =>
+    s
+      .replace("from './types.js'", "from './types.js'")
+      .replace("from './types'", "from './types.js'")
+);
+
+syncFile(
+  'shared/contract-retention/types.ts',
+  'backend/src/contractRetention/types.ts'
+);
+
+syncFile(
+  'shared/contract-retention/contractRetentionCore.ts',
+  'backend/src/contractRetention/contractRetentionCore.ts',
+  (s) => s.replace("from './types.js'", "from './types.js'")
+);
+
 console.log('[ensure-shared-financial-cores] OK');

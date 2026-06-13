@@ -20,6 +20,7 @@ export const TENANT_SETTING_KEYS = [
   'defaultProjectId',
   'lastServiceChargeRun',
   'enableDatePreservation',
+  'procurementSettings',
 ] as const;
 
 export type TenantSettingKey = (typeof TENANT_SETTING_KEYS)[number];

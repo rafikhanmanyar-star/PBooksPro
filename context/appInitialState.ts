@@ -184,6 +184,12 @@ export const initialState: AppState = {
     projectAgreementSettings: { prefix: 'P-AGR-', nextNumber: 1, padding: 4 },
     rentalInvoiceSettings: { prefix: 'INV-', nextNumber: 1, padding: 5, autoSendInvoiceWhatsApp: false },
     projectInvoiceSettings: { prefix: 'P-INV-', nextNumber: 1, padding: 5, autoSendBillPaymentWhatsApp: false },
+    procurementSettings: {
+        enableQuotationValidationGlobally: true,
+        showWarningOnly: true,
+        varianceApprovalThreshold: 10,
+        quotationNumberSettings: { prefix: 'QTN-', nextNumber: 1, padding: 4 },
+    },
     showSystemTransactions: false,
     enableColorCoding: true,
     enableBeepOnSave: false,

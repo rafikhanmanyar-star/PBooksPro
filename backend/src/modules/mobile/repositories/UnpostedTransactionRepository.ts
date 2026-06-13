@@ -10,6 +10,8 @@ export class UnpostedTransactionRepository extends TenantRepository {
   async list(options: {
     status?: UnpostedTransactionStatus | UnpostedTransactionStatus[];
     createdBy?: string;
+    dateFrom?: string;
+    dateTo?: string;
     limit?: number;
     offset?: number;
   } = {}): Promise<UnpostedTransactionRow[]> {
@@ -27,6 +29,16 @@ export class UnpostedTransactionRepository extends TenantRepository {
       idx += 1;
       clauses.push(`created_by = $${idx}`);
       params.push(options.createdBy);
+    }
+    if (options.dateFrom) {
+      idx += 1;
+      clauses.push(`transaction_date >= $${idx}::date`);
+      params.push(options.dateFrom);
+    }
+    if (options.dateTo) {
+      idx += 1;
+      clauses.push(`transaction_date <= $${idx}::date`);
+      params.push(options.dateTo);
     }
 
     const limit = Math.min(options.limit ?? 50, 200);
@@ -116,6 +128,18 @@ export class UnpostedTransactionRepository extends TenantRepository {
       [this.tenantId, id, status, actorId, reviewedAt, processedAt, rejectionReason ?? null]
     );
     return r.rows[0] ?? null;
+  }
+
+  async listSubmitters(): Promise<{ id: string; name: string }[]> {
+    const r = await this.query<{ id: string; name: string }>(
+      `SELECT DISTINCT u.id, u.name
+       FROM unposted_transactions ut
+       INNER JOIN users u ON u.id = ut.created_by AND u.tenant_id = $1
+       WHERE ${this.tenantWhere('ut', this.activeOnly('ut'))}
+       ORDER BY u.name`,
+      [this.tenantId]
+    );
+    return r.rows;
   }
 
   async countByStatus(): Promise<Record<string, number>> {

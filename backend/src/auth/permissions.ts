@@ -36,7 +36,11 @@ export type Permission =
   | 'pev.read'
   | 'pev.create'
   | 'pev.approve'
-  | 'pev.post';
+  | 'pev.post'
+  | 'contracts.retention.view'
+  | 'contracts.retention.edit'
+  | 'contracts.retention.release'
+  | 'contracts.retention.override';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -59,6 +63,10 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'pev.create',
   'pev.approve',
   'pev.post',
+  'contracts.retention.view',
+  'contracts.retention.edit',
+  'contracts.retention.release',
+  'contracts.retention.override',
 ] as const;
 
 export const ENTERPRISE_ROLE_LABELS: Record<EnterpriseRole, string> = {
@@ -91,10 +99,18 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'pev.create': 'Create expense voucher',
   'pev.approve': 'Approve expense voucher',
   'pev.post': 'Post expense voucher',
+  'contracts.retention.view': 'View contract retention',
+  'contracts.retention.edit': 'Edit contract retention',
+  'contracts.retention.release': 'Release contract retention',
+  'contracts.retention.override': 'Override retention alerts',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
 const PEV_PM: Permission[] = ['pev.read', 'pev.create'];
+const RETENTION_VIEW: Permission[] = ['contracts.retention.view'];
+const RETENTION_EDIT: Permission[] = ['contracts.retention.edit'];
+const RETENTION_RELEASE: Permission[] = ['contracts.retention.release'];
+const RETENTION_OVERRIDE: Permission[] = ['contracts.retention.override'];
 
 const REPORTS_READ: Permission[] = [
   'reports.trial_balance.read',
@@ -119,6 +135,10 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'backups.read',
     'backups.manage',
     ...PEV_ALL,
+    ...RETENTION_VIEW,
+    ...RETENTION_EDIT,
+    ...RETENTION_RELEASE,
+    ...RETENTION_OVERRIDE,
   ]),
   accountant: new Set([
     ...REPORTS_READ,
@@ -129,15 +149,21 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'financial.write',
     'permissions.read',
     ...PEV_ALL,
+    ...RETENTION_VIEW,
+    ...RETENTION_EDIT,
+    ...RETENTION_RELEASE,
   ]),
   project_manager: new Set([
     'reports.profit_loss.read',
     'reports.cash_flow.read',
     'financial.write',
     ...PEV_PM,
+    ...RETENTION_VIEW,
+    ...RETENTION_EDIT,
+    ...RETENTION_RELEASE,
   ]),
   sales_user: new Set(['financial.write']),
-  read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read', 'pev.read']),
+  read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read', 'pev.read', ...RETENTION_VIEW]),
 };
 
 /** Maps stored user.role values (legacy + new) to enterprise role slugs. */

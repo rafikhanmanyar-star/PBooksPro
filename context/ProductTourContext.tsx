@@ -10,6 +10,7 @@ import React, {
 } from 'react';
 import { useDispatchOnly, useStateSelector } from '../hooks/useSelectiveState';
 import { useKpis } from './KPIContext';
+import { useAuth } from './AuthContext';
 import {
   getTourDefinition,
   PRODUCT_TOUR_IDS,
@@ -58,6 +59,7 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
   const dispatch = useDispatchOnly();
   const currentPage = useStateSelector((s) => s.currentPage);
   const { isPanelOpen, togglePanel, setActivePanelTab } = useKpis();
+  const { isAuthenticated } = useAuth();
 
   const [activeTourId, setActiveTourId] = useState<ProductTourId | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
@@ -215,6 +217,13 @@ export const ProductTourProvider: React.FC<{ children: ReactNode }> = ({ childre
   const stopTour = useCallback(() => {
     setActiveTourId(null);
   }, []);
+
+  /** Tour overlay (z-[10040]) blocks the login form if still active after logout. */
+  useEffect(() => {
+    if (!isAuthenticated && activeTourId) {
+      stopTour();
+    }
+  }, [isAuthenticated, activeTourId, stopTour]);
 
   const persistStep = useCallback(
     (tourId: ProductTourId, index: number, status: 'in_progress' | 'completed' | 'skipped') => {

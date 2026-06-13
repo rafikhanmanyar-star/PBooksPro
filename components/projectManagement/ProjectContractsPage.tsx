@@ -16,6 +16,8 @@ import { ImportType } from '../../services/importService';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import ContractRetentionMonitoringWidget from './ContractRetentionMonitoringWidget';
+import { retentionStatusBadge } from './ContractRetentionUI';
 
 type SortKey = 'contractNumber' | 'name' | 'totalAmount' | 'paid' | 'balance' | 'status' | 'startDate';
 
@@ -299,6 +301,8 @@ const ProjectContractsPage: React.FC = () => {
                 </div>
             </div>
 
+            <ContractRetentionMonitoringWidget />
+
             {/* Toolbar Area */}
             <div className="bg-app-card p-2 rounded-xl border border-app-border shadow-ds-card flex flex-col sm:flex-row gap-3 items-center flex-shrink-0">
                 <div className="relative flex-grow w-full">
@@ -397,6 +401,7 @@ const ProjectContractsPage: React.FC = () => {
                                     const balance = totalAmount - paid;
                                     const vendor = state.vendors?.find(v => v.id === contract.vendorId);
                                     const project = state.projects.find(p => p.id === contract.projectId);
+                                    const retentionBadge = retentionStatusBadge(contract, paid);
 
                                     return (
                                         <tr
@@ -445,6 +450,11 @@ const ProjectContractsPage: React.FC = () => {
                                                     {contract.status === 'Active' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>}
                                                     {contract.status}
                                                 </span>
+                                                {retentionBadge && (
+                                                    <span className={`ml-1 inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${retentionBadge.className}`}>
+                                                        {retentionBadge.label}
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-2.5 text-center">
                                                 <button
@@ -494,14 +504,14 @@ const ProjectContractsPage: React.FC = () => {
             </div>
 
             {/* Modals */}
-            <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingContract ? "Edit Contract" : "New Contract"} size="xl">
+            <Modal isOpen={isFormOpen} onClose={() => setIsFormOpen(false)} title={editingContract ? "Edit Contract" : "New Contract"} size="full">
                 <ProjectContractForm
                     onClose={() => setIsFormOpen(false)}
                     contractToEdit={editingContract}
                 />
             </Modal>
 
-            <Modal isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} title="Contract Details" size="xl">
+            <Modal isOpen={isDetailOpen} onClose={() => setIsDetailOpen(false)} title="Contract Details" size="full">
                 {selectedContract && (
                     <ProjectContractDetailModal
                         contract={selectedContract}

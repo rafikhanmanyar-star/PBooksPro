@@ -60,6 +60,21 @@ export class DocumentsModuleService {
     return this.metadataToApi(client, meta);
   }
 
+  async getDocumentFile(
+    client: pg.PoolClient,
+    id: string
+  ): Promise<{ buffer: Buffer; mimeType: string; fileName: string } | null> {
+    const meta = await this.storage.repo.getById(client, id);
+    if (!meta) return null;
+    const buffer = await this.storage.readBytes(client, meta);
+    if (!buffer.length) return null;
+    return {
+      buffer,
+      mimeType: meta.mime_type ?? 'application/octet-stream',
+      fileName: meta.file_name,
+    };
+  }
+
   async upsertDocument(
     client: pg.PoolClient,
     body: Record<string, unknown>,
@@ -224,6 +239,14 @@ export async function getDocumentById(
   id: string
 ): Promise<DocumentApiRecord | null> {
   return createDocumentsModuleService(tenantId).getDocumentById(client, id);
+}
+
+export async function getDocumentFile(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string
+): Promise<{ buffer: Buffer; mimeType: string; fileName: string } | null> {
+  return createDocumentsModuleService(tenantId).getDocumentFile(client, id);
 }
 
 export async function upsertDocument(

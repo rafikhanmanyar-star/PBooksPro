@@ -41,29 +41,27 @@ import { ClientVersionFootnote, ClientVersionLabel } from '../ui/ClientVersionLa
 
 const DEMO_TENANT_LABEL = 'Al Noor Properties';
 
-const DEFAULT_TENANT =
-  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_DEFAULT_TENANT_ID) ||
-  (isStagingEnvironment() ? 'test-company' : 'default');
-
 /** Same keys as AuthContext login — survive logout so the next visit can prefill org and username. */
 const LAST_TENANT_STORAGE_KEY = 'last_tenant_id';
+const LAST_USERNAME_STORAGE_KEY = 'last_username';
+const LAST_ORG_EMAIL_STORAGE_KEY = 'last_organization_email';
 const LAST_EMAIL_STORAGE_KEY = 'last_identifier';
 
-function readStoredLastTenant(): string {
-  if (typeof window === 'undefined') return DEFAULT_TENANT;
+function readStoredLastOrgEmail(): string {
+  if (typeof window === 'undefined') return '';
   try {
-    const last = localStorage.getItem(LAST_TENANT_STORAGE_KEY);
-    if (last?.trim()) return last.trim();
+    const v = localStorage.getItem(LAST_ORG_EMAIL_STORAGE_KEY);
+    if (v?.trim()) return v.trim();
   } catch {
     /* ignore */
   }
-  return DEFAULT_TENANT;
+  return '';
 }
 
-function readStoredLastEmail(): string {
+function readStoredLastUsername(): string {
   if (typeof window === 'undefined') return '';
   try {
-    const u = localStorage.getItem(LAST_EMAIL_STORAGE_KEY);
+    const u = localStorage.getItem(LAST_USERNAME_STORAGE_KEY) || localStorage.getItem(LAST_EMAIL_STORAGE_KEY);
     if (u?.trim()) return u.trim();
   } catch {
     /* ignore */
@@ -80,10 +78,20 @@ function persistLastTenant(id: string) {
   }
 }
 
-function persistLastEmail(email: string) {
+function persistLastOrgEmail(email: string) {
   if (typeof window === 'undefined' || !email.trim()) return;
   try {
-    localStorage.setItem(LAST_EMAIL_STORAGE_KEY, email.trim());
+    localStorage.setItem(LAST_ORG_EMAIL_STORAGE_KEY, email.trim());
+  } catch {
+    /* ignore */
+  }
+}
+
+function persistLastUsername(username: string) {
+  if (typeof window === 'undefined' || !username.trim()) return;
+  try {
+    localStorage.setItem(LAST_USERNAME_STORAGE_KEY, username.trim());
+    localStorage.setItem(LAST_EMAIL_STORAGE_KEY, username.trim());
   } catch {
     /* ignore */
   }
@@ -91,26 +99,35 @@ function persistLastEmail(email: string) {
 
 const API_SAVED_LOGIN_KEY = 'pbookspro_api_saved_login';
 
-function readSavedApiPassword(email: string): string {
+function readSavedApiPassword(organizationEmail: string, username: string): string {
   if (typeof window === 'undefined') return '';
   try {
     const raw = localStorage.getItem(API_SAVED_LOGIN_KEY);
     if (!raw) return '';
-    const o = JSON.parse(raw) as { email?: string; username?: string; password?: string };
-    const stored = (o.email || o.username || '').trim().toLowerCase();
-    if (stored !== (email || '').trim().toLowerCase()) return '';
+    const o = JSON.parse(raw) as {
+      organizationEmail?: string;
+      companyEmail?: string;
+      email?: string;
+      username?: string;
+      password?: string;
+    };
+    const storedOrg = (o.organizationEmail || o.companyEmail || o.email || '').trim().toLowerCase();
+    const storedUser = (o.username || '').trim().toLowerCase();
+    if (storedOrg !== organizationEmail.trim().toLowerCase()) return '';
+    if (storedUser !== username.trim().toLowerCase()) return '';
     return typeof o.password === 'string' ? o.password : '';
   } catch {
     return '';
   }
 }
 
-function persistSavedApiLogin(email: string, password: string) {
+function persistSavedApiLogin(organizationEmail: string, username: string, password: string) {
   try {
     localStorage.setItem(
       API_SAVED_LOGIN_KEY,
       JSON.stringify({
-        email: email.trim(),
+        organizationEmail: organizationEmail.trim(),
+        username: username.trim(),
         password,
       })
     );
@@ -318,14 +335,17 @@ function AuthCardHeader({
 }
 
 const ApiLoginScreen: React.FC = () => {
-  const { login, registerTenant, enterDemoSession, error: authError, isLoading, clearAuthError } = useAuth();
+  const { unifiedLogin, registerTenant, enterDemoSession, error: authError, isLoading, clearAuthError } = useAuth();
   const [demoEntering, setDemoEntering] = useState(false);
   const { hideProgress, showAlert } = useNotification();
   const [serverUrl, setServerUrl] = useState('');
-  const [email, setEmail] = useState(() => readStoredLastEmail());
-  const [password, setPassword] = useState(() => readSavedApiPassword(readStoredLastEmail()));
+  const [companyEmail, setCompanyEmail] = useState(() => readStoredLastOrgEmail());
+  const [username, setUsername] = useState(() => readStoredLastUsername());
+  const [password, setPassword] = useState(() =>
+    readSavedApiPassword(readStoredLastOrgEmail(), readStoredLastUsername())
+  );
   const [savePassword, setSavePassword] = useState(() => {
-    const p = readSavedApiPassword(readStoredLastEmail());
+    const p = readSavedApiPassword(readStoredLastOrgEmail(), readStoredLastUsername());
     return p.length > 0;
   });
   const [showPassword, setShowPassword] = useState(false);
@@ -351,6 +371,7 @@ const ApiLoginScreen: React.FC = () => {
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [mfaSetupToken, setMfaSetupToken] = useState<string | null>(null);
   const passwordInputRef = useRef<HTMLInputElement>(null);
+  const initialFocusDoneRef = useRef(false);
   const demoAutoEnterAttempted = useRef(false);
   const websiteDemoEntry = isWebsiteDemoEntry();
   const isDemoTenantLogin = websiteDemoEntry;
@@ -466,38 +487,71 @@ const ApiLoginScreen: React.FC = () => {
     };
   }, [view]);
 
+  useEffect(() => {
+    if (view !== 'login') {
+      initialFocusDoneRef.current = false;
+    }
+  }, [view]);
+
   /**
-   * After webContents focus repair, focus password when username was prefilled from storage
-   * (e.g. after logout). Do not depend on `username` state — that re-ran on every keystroke and
-   * stole focus from the username field after the first character.
-   * If the user already focused another field in this form (e.g. API URL or username), do not steal focus.
+   * After logout, credentials are often prefilled (including saved password). Focus the best field
+   * once so the keyboard works immediately — especially on Electron/Windows where webContents focus
+   * can be lost when the app shell unmounts. Do not depend on username/password state or every
+   * keystroke would re-run this effect.
    */
   useEffect(() => {
-    if (view !== 'login' || isDemoTenantLogin) return;
-    const prefilled = readStoredLastEmail().trim();
-    if (!prefilled || password) return;
+    if (view !== 'login' || isDemoTenantLogin || initialFocusDoneRef.current) return;
+
     const id = window.setTimeout(() => {
       const form = document.getElementById('api-login-form');
       const active = document.activeElement;
-      if (form && active && form.contains(active) && active instanceof HTMLInputElement) {
+      if (
+        form &&
+        active &&
+        form.contains(active) &&
+        (active instanceof HTMLInputElement || active instanceof HTMLSelectElement)
+      ) {
+        initialFocusDoneRef.current = true;
         return;
       }
-      if (form && active && form.contains(active) && active instanceof HTMLSelectElement) {
-        return;
+
+      initialFocusDoneRef.current = true;
+      requestElectronWebContentsFocus('api-login-initial-focus');
+
+      const orgEmailPrefilled = readStoredLastOrgEmail().trim();
+      const usernamePrefilled = readStoredLastUsername().trim();
+      const passwordPrefilled = readSavedApiPassword(orgEmailPrefilled, usernamePrefilled).length > 0;
+
+      let target: HTMLInputElement | null = null;
+      if (usernamePrefilled && passwordPrefilled) {
+        target = passwordInputRef.current;
+      } else if (!orgEmailPrefilled) {
+        target = document.getElementById('api-company-email') as HTMLInputElement | null;
+      } else if (!usernamePrefilled) {
+        target = document.getElementById('api-username') as HTMLInputElement | null;
+      } else {
+        target = passwordInputRef.current;
       }
-      passwordInputRef.current?.focus({ preventScroll: true });
+
+      target?.focus({ preventScroll: true });
     }, 150);
+
     return () => clearTimeout(id);
-  }, [view, password, isDemoTenantLogin]);
+  }, [view, isDemoTenantLogin]);
 
   const rootUrl = () => (serverUrl.trim() || getDefaultApiRootUrl()).replace(/\/+$/, '');
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    const emailVal = email.trim();
-    if (!isDemoTenantLogin && !emailVal) {
-      setError('Email address is required.');
+    const companyEmailVal = companyEmail.trim();
+    const usernameVal = username.trim();
+    if (!isDemoTenantLogin && !companyEmailVal) {
+      setError('Company email is required.');
+      return;
+    }
+    if (!isDemoTenantLogin && !usernameVal) {
+      setError('Username is required.');
       return;
     }
     if (!isDemoTenantLogin && !password) {
@@ -511,7 +565,7 @@ const ApiLoginScreen: React.FC = () => {
         persistLastTenant(DEMO_PUBLIC_TENANT_ID);
         return;
       }
-      const result = await login(emailVal, password);
+      const result = await unifiedLogin(companyEmailVal, usernameVal, password);
       if (result.status === 'mfa_required') {
         setError(null);
         setMfaPhase('challenge');
@@ -530,9 +584,10 @@ const ApiLoginScreen: React.FC = () => {
         return;
       }
       if (result.status === 'authenticated') {
-        persistLastEmail(emailVal);
+        persistLastOrgEmail(companyEmailVal);
+        persistLastUsername(usernameVal);
         if (savePassword) {
-          persistSavedApiLogin(emailVal, password);
+          persistSavedApiLogin(companyEmailVal, usernameVal, password);
         } else {
           clearSavedApiLogin();
         }
@@ -549,7 +604,7 @@ const ApiLoginScreen: React.FC = () => {
       };
       let msg = formatApiErrorMessage(err);
       if (apiErr.code === 'AUTH_FAILED' || msg === 'Invalid credentials') {
-        msg = 'Invalid email or password. Please try again.';
+        msg = 'Invalid company email, username, or password. Please try again.';
       } else if (apiErr.code === 'ORG_PENDING_APPROVAL') {
         msg = 'Account Pending Approval\n\nYour organization has not yet been approved. Please contact support if approval is delayed.';
       } else if (apiErr.code === 'ORG_REGISTRATION_REJECTED') {
@@ -644,9 +699,10 @@ const ApiLoginScreen: React.FC = () => {
   };
 
   const finishMfaLogin = () => {
-    const emailVal = email.trim();
+    const companyEmailVal = companyEmail.trim();
+    const usernameVal = username.trim();
     if (savePassword) {
-      persistSavedApiLogin(emailVal, password);
+      persistSavedApiLogin(companyEmailVal, usernameVal, password);
     } else {
       clearSavedApiLogin();
     }
@@ -722,7 +778,7 @@ const ApiLoginScreen: React.FC = () => {
                       <p className="font-semibold">Your organization ID</p>
                       <p className="mt-1 break-all font-mono text-base">{registeredTenantId}</p>
                       <p className="mt-2">
-                        Sign in with your email and password. The API server URL is unchanged.
+                        Sign in with your company email, username, and password. The API server URL is unchanged.
                       </p>
                     </>
                   )}
@@ -740,7 +796,7 @@ const ApiLoginScreen: React.FC = () => {
                 mode={mfaPhase}
                 mfaToken={mfaToken ?? undefined}
                 mfaSetupToken={mfaSetupToken ?? undefined}
-                usernameForStorage={email.trim()}
+                usernameForStorage={username.trim()}
                 onBack={() => {
                   setMfaPhase(null);
                   setMfaToken(null);
@@ -759,7 +815,7 @@ const ApiLoginScreen: React.FC = () => {
                 subtitle={
                   websiteDemoEntry
                     ? 'Opening the Al Noor Properties sandbox — no login required.'
-                    : 'Sign in with your email and password'
+                    : 'Sign in with your company email, username, and password'
                 }
               />
 
@@ -813,26 +869,48 @@ const ApiLoginScreen: React.FC = () => {
                 ) : null}
 
                 {!isDemoTenantLogin && (
-                  <div>
-                    <FieldLabel htmlFor="api-email" required>
-                      Email address
-                    </FieldLabel>
-                    <IconField icon={User}>
-                      <input
-                        id="api-email"
-                        type="email"
-                        value={email}
-                        onChange={e => setEmail(e.target.value)}
-                        onBlur={() => persistLastEmail(email)}
-                        className={FIELD_INPUT}
-                        autoFocus={!email.trim()}
-                        disabled={isLoading}
-                        autoComplete="email"
-                        aria-required
-                      />
-                    </IconField>
-                    <FieldHelper>Your globally unique sign-in email for this organization.</FieldHelper>
-                  </div>
+                  <>
+                    <div>
+                      <FieldLabel htmlFor="api-company-email" required>
+                        Company email
+                      </FieldLabel>
+                      <IconField icon={Building2}>
+                        <input
+                          id="api-company-email"
+                          type="email"
+                          value={companyEmail}
+                          onChange={e => setCompanyEmail(e.target.value)}
+                          onBlur={() => persistLastOrgEmail(companyEmail)}
+                          className={FIELD_INPUT}
+                          autoFocus={!companyEmail.trim()}
+                          disabled={isLoading}
+                          autoComplete="organization"
+                          aria-required
+                        />
+                      </IconField>
+                      <FieldHelper>The email address registered for your organization.</FieldHelper>
+                    </div>
+
+                    <div>
+                      <FieldLabel htmlFor="api-username" required>
+                        Username
+                      </FieldLabel>
+                      <IconField icon={User}>
+                        <input
+                          id="api-username"
+                          type="text"
+                          value={username}
+                          onChange={e => setUsername(e.target.value)}
+                          onBlur={() => persistLastUsername(username)}
+                          className={FIELD_INPUT}
+                          disabled={isLoading}
+                          autoComplete="username"
+                          aria-required
+                        />
+                      </IconField>
+                      <FieldHelper>Your username within the organization.</FieldHelper>
+                    </div>
+                  </>
                 )}
 
                 {isDemoTenantLogin ? (
@@ -887,7 +965,7 @@ const ApiLoginScreen: React.FC = () => {
                     <span className="min-w-0 text-ds-body text-app-text">
                       Save password on this device
                       <span className="mt-0.5 block text-ds-small font-normal text-app-muted">
-                        Stored locally with your email. Uncheck and sign in to remove it.
+                        Stored locally with your company email and username. Uncheck and sign in to remove it.
                       </span>
                     </span>
                   </label>
@@ -921,7 +999,7 @@ const ApiLoginScreen: React.FC = () => {
                       onClick={() => {
                         setError(null);
                         void showAlert(
-                          'Enter your account email on the sign-in form and we will send reset instructions when email delivery is enabled on your server. Contact your administrator if you need help immediately.'
+                          'Enter your company email and username on the sign-in form and we will send reset instructions when email delivery is enabled on your server. Contact your administrator if you need help immediately.'
                         );
                       }}
                       disabled={isLoading}

@@ -270,7 +270,8 @@ export class ApiClient {
     const shouldSkipConflictModal = skipConflictNotification === true;
     // Determine if this is a login or transaction operation
     const isLoginOperation = endpoint.includes('/auth/login') || 
-                             endpoint.includes('/auth/smart-login') || 
+                             endpoint.includes('/auth/smart-login') ||
+                             endpoint.includes('/auth/unified-login') ||
                              endpoint.includes('/auth/register');
     const isTransactionOperation = endpoint.includes('/transactions');
     
@@ -292,6 +293,9 @@ export class ApiClient {
     // Guard: reject data endpoint requests when there is no token.
     // Auth endpoints (login, register, lookup) don't require a token.
     const isPublicEndpoint = endpoint.includes('/auth/login') ||
+                             endpoint.includes('/auth/unified-login') ||
+                             endpoint.includes('/auth/smart-login') ||
+                             endpoint.includes('/auth/lookup-tenants') ||
                              endpoint.includes('/auth/register') ||
                              endpoint.includes('/auth/register-tenant') ||
                              endpoint.includes('/auth/select-company') ||
