@@ -85,6 +85,7 @@ import {
   requirePayrollAccessForPayrollPaths,
   requirePermissionWhenPathStartsWith,
   requireRoleWhenPathStartsWith,
+  requireWriteOnMutations,
 } from '../middleware/rbacMiddleware.js';
 import { permissionsRouter } from './permissionsRoutes.js';
 import { auditTrailRouter } from './auditTrailRoutes.js';
@@ -218,7 +219,10 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'project_selling.marketing_plans.write',
+      'project_selling.agreements.write'
+    ),
     contactsRouter
   );
   app.use(
@@ -246,7 +250,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.agreements.write'),
     unitsRouter
   );
   app.use(
@@ -274,7 +278,11 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'project_selling.marketing_plans.write',
+      'project_selling.invoices.write',
+      'project_selling.agreements.write'
+    ),
     documentsRouter
   );
   app.use(prefix, authMiddleware, requireActiveSubscription(), transactionAuditRouter);
@@ -297,21 +305,21 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.agreements.write'),
     projectAgreementsRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.payments.receive'),
     projectReceivedAssetsRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.agreements.write'),
     salesReturnsRouter
   );
   app.use(
@@ -332,7 +340,10 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'project_selling.invoices.write',
+      'project_selling.payments.receive'
+    ),
     invoicesRouter
   );
   app.use(
@@ -360,7 +371,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.payments.receive'),
     transactionsRouter
   );
   app.use(prefix, authMiddleware, requireActiveSubscription(), usersRouter);
@@ -398,14 +409,14 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.marketing_plans.write'),
     planAmenitiesRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations('project_selling.marketing_plans.write'),
     installmentPlansRouter
   );
   app.use(

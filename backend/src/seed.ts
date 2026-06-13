@@ -6,7 +6,6 @@ import { logger } from './utils/logger.js';
 import { validatePassword } from './utils/passwordPolicy.js';
 import { isDemoEnvironmentEnabled } from './constants/demoEnvironment.js';
 import { provisionDemoEnvironment } from './services/demo/demoResetService.js';
-import { seedPresentationDemoOrg } from './services/demo/demoPresentationService.js';
 
 export const STAGING_TENANT_ID = 'test-company';
 export const STAGING_TENANT_NAME = 'test company';
@@ -78,19 +77,6 @@ export async function seedStagingDefaults(): Promise<void> {
      ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role, is_default = TRUE`,
     [`ut_${userId}`, userId, tenantId]
   );
-
-  try {
-    const presentation = await seedPresentationDemoOrg({ reseed: false, pool });
-    logger.info(
-      `Presentation demo org ready — ${presentation.email} / ${presentation.username} (tenant ${presentation.tenantId})`
-    );
-  } catch (e) {
-    logger.warn(
-      `Presentation demo org not seeded (billing plans may be missing): ${
-        e instanceof Error ? e.message : String(e)
-      }`
-    );
-  }
 
   logger.info(`Staging seed complete — org "${tenantName}" (${tenantId}) | user "${username}"`);
   if (process.env.NODE_ENV !== 'production') {

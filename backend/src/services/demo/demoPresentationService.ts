@@ -98,9 +98,21 @@ async function upsertPresentationTenantAndUser(
 
   if (existingUser.rows[0]) {
     const row = existingUser.rows[0];
+    const usernameConflict = await client.query<{ id: string }>(
+      `SELECT id FROM users
+       WHERE tenant_id = $1 AND LOWER(TRIM(username)) = LOWER(TRIM($2)) AND id <> $3
+       LIMIT 1`,
+      [row.tenant_id, DEMO_DEFAULT_USERNAME, row.id]
+    );
+    const loginUsername =
+      usernameConflict.rows[0] || row.username === DEMO_DEFAULT_USERNAME
+        ? row.username
+        : DEMO_DEFAULT_USERNAME;
     await client.query(
-      `UPDATE users SET password_hash = $2, is_active = TRUE, updated_at = NOW() WHERE id = $1`,
-      [row.id, passwordHash]
+      `UPDATE users
+       SET username = $2, password_hash = $3, is_active = TRUE, updated_at = NOW()
+       WHERE id = $1`,
+      [row.id, loginUsername, passwordHash]
     );
     await client.query(
       `INSERT INTO user_tenants (id, user_id, tenant_id, role, is_default)
@@ -108,7 +120,7 @@ async function upsertPresentationTenantAndUser(
        ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role, is_default = TRUE`,
       [`ut_${row.id}`, row.id, row.tenant_id]
     );
-    return { tenantId: row.tenant_id, username: row.username };
+    return { tenantId: row.tenant_id, username: loginUsername };
   }
 
   await demoRepo.upsertDemoUser(client, {

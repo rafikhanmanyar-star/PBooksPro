@@ -85,11 +85,26 @@ try {
     ORDER BY id
   `);
 
+  const wrongPresentation = await pool.query(`
+    SELECT id, name, COALESCE(email, '') AS email
+    FROM tenants
+    WHERE (id = 'demo-company' OR id LIKE 'demo-company-%')
+      AND LOWER(TRIM(email)) <> 'demo@company.com'
+    ORDER BY id
+  `);
+
   const emailsAdded = [];
   const shouldApply = !dryRun && !listOnly;
   for (const t of missing.rows) {
     const email = defaultCompanyEmail(t.name, t.id);
-    emailsAdded.push({ tenantId: t.id, companyName: t.name, companyEmail: email });
+    emailsAdded.push({ tenantId: t.id, companyName: t.name, companyEmail: email, reason: 'missing' });
+    if (shouldApply) {
+      await pool.query('UPDATE tenants SET email = $1, updated_at = NOW() WHERE id = $2', [email, t.id]);
+    }
+  }
+  for (const t of wrongPresentation.rows) {
+    const email = 'demo@company.com';
+    emailsAdded.push({ tenantId: t.id, companyName: t.name, companyEmail: email, reason: 'presentation-repair' });
     if (shouldApply) {
       await pool.query('UPDATE tenants SET email = $1, updated_at = NOW() WHERE id = $2', [email, t.id]);
     }
@@ -141,9 +156,10 @@ try {
   if (listOnly) console.log('(list-only — tenant emails were NOT updated)');
   if (emailsAdded.length) {
     console.log('');
-    console.log(`Company emails ${shouldApply ? 'added' : 'missing / to add'} (${emailsAdded.length}):`);
+    console.log(`Company emails ${shouldApply ? 'added/repaired' : 'missing / to add'} (${emailsAdded.length}):`);
     for (const e of emailsAdded) {
-      console.log(`  ${e.companyName} (${e.tenantId}) → ${e.companyEmail}`);
+      const note = e.reason === 'presentation-repair' ? ' [presentation demo]' : '';
+      console.log(`  ${e.companyName} (${e.tenantId}) → ${e.companyEmail}${note}`);
     }
   }
   console.log('');
