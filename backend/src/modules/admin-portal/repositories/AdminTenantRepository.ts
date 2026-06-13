@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { getPool } from '../../../db/pool.js';
+import { deleteTenantCompletely } from '../../../services/admin/adminTenantDeleteService.js';
 
 export class AdminTenantRepository {
   private pool = () => getPool();
@@ -107,7 +108,7 @@ export class AdminTenantRepository {
   }
 
   async deleteTenant(tenantId: string): Promise<void> {
-    await this.pool().query(`DELETE FROM tenants WHERE id = $1`, [tenantId]);
+    await deleteTenantCompletely(tenantId);
   }
 
   async listTenantUsers(tenantId: string): Promise<unknown[]> {

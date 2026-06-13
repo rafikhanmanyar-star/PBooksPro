@@ -83,9 +83,9 @@ async function upsertPresentationTenantAndUser(
 
   await client.query(
     `UPDATE tenants
-     SET company_name = $2, status = 'ACTIVE', is_active = TRUE, updated_at = NOW()
+     SET company_name = $2, status = 'ACTIVE', is_active = TRUE, email = $3, updated_at = NOW()
      WHERE id = $1`,
-    [tenantId, 'Al Noor Properties']
+    [tenantId, 'Al Noor Properties', DEMO_PRESENTATION_EMAIL]
   );
 
   const passwordHash = await bcrypt.hash(password, 10);

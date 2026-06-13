@@ -41,6 +41,7 @@ import {
 import { ensureUserTenantMembership } from '../../../services/auth/userTenantService.js';
 import {
   assertUserIdentityAvailable,
+  assertOrganizationEmailAvailable,
   identityConflictApiDetails,
   UserIdentityConflictError,
 } from '../../../services/auth/userIdentityService.js';
@@ -845,9 +846,10 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
 
   try {
     await withTransaction(async (client) => {
+      await assertOrganizationEmailAvailable(client, emailVal);
       await assertUserIdentityAvailable(client, {
-        email: emailVal,
         username: adminUsername.trim(),
+        tenantId,
       });
 
       const reg = await registerPendingOrganization(client, {

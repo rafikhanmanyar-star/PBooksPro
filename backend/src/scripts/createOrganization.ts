@@ -29,7 +29,7 @@ await import('../loadEnv.js');
 
 import { withTransaction } from '../db/pool.js';
 import { ensureUserTenantMembership } from '../services/auth/userTenantService.js';
-import { assertUserIdentityAvailable } from '../services/auth/userIdentityService.js';
+import { assertOrganizationEmailAvailable, assertUserIdentityAvailable } from '../services/auth/userIdentityService.js';
 import { requireLegalAcceptances } from '../services/legal/legalAcceptanceService.js';
 import { validatePassword } from '../utils/passwordPolicy.js';
 import {
@@ -106,9 +106,10 @@ async function main() {
       throw new Error(`Organization id "${row.id}" already exists (status: ${row.status}).`);
     }
 
+    await assertOrganizationEmailAvailable(client, emailVal);
     await assertUserIdentityAvailable(client, {
-      email: emailVal,
       username: adminUsername.trim(),
+      tenantId,
     });
 
     const reg = await registerPendingOrganization(client, {

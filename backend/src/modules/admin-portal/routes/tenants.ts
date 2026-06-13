@@ -151,7 +151,12 @@ router.delete('/:id', async (req: AdminRequest, res) => {
     res.json({ success: true, message: 'Tenant deleted successfully' });
   } catch (error: any) {
     console.error('Error deleting tenant:', error);
-    res.status(500).json({ error: 'Failed to delete tenant' });
+    const message = error?.message || 'Failed to delete tenant';
+    const statusCode =
+      message.includes('Protected system tenants') || message.includes('cannot be deleted')
+        ? 400
+        : 500;
+    res.status(statusCode).json({ error: message });
   }
 });
 

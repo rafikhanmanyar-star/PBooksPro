@@ -14,7 +14,7 @@ import { validatePassword } from '../../utils/passwordPolicy.js';
 import { getRequiredDocuments } from '../../constants/legalDocuments.js';
 import { isEnvFlagEnabled } from '../../utils/envFlag.js';
 import { ensureUserTenantMembership } from '../auth/userTenantService.js';
-import { assertUserIdentityAvailable } from '../auth/userIdentityService.js';
+import { assertOrganizationEmailAvailable } from '../auth/userIdentityService.js';
 import { TrialSignupRepository } from '../../modules/trial/repositories/TrialSignupRepository.js';
 
 const trialSignupRepo = new TrialSignupRepository();
@@ -90,13 +90,13 @@ function defaultLegalAcceptances() {
 
 async function allocateUniqueUsername(
   client: pg.PoolClient,
-  _tenantId: string,
+  tenantId: string,
   email: string
 ): Promise<string> {
   let base = usernameFromEmail(email);
   for (let i = 0; i < 20; i++) {
     const candidate = i === 0 ? base : `${base.slice(0, 28)}_${i}`;
-    const exists = await trialSignupRepo.usernameExistsGlobally(client, candidate);
+    const exists = await trialSignupRepo.usernameExistsInTenant(client, tenantId, candidate);
     if (!exists) return candidate;
   }
   return `admin_${randomBytes(3).toString('hex')}`;
@@ -152,7 +152,7 @@ export async function createTrialSignup(
   );
 
   return withTransaction(async (client) => {
-    await assertUserIdentityAvailable(client, { email });
+    await assertOrganizationEmailAvailable(client, email);
 
     const tenantId = await allocateTenantId(client, company);
     const username = await allocateUniqueUsername(client, tenantId, email);

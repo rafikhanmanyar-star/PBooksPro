@@ -42,6 +42,18 @@ describe('userIdentityService', () => {
         existingTenantName: 'Org A',
       },
     ]);
-    assert.match(err.message, /username is already in use/i);
+    assert.match(err.message, /username is already in use in this organization/i);
+  });
+
+  it('UserIdentityConflictError uses company email message', () => {
+    const err = new UserIdentityConflictError([
+      {
+        field: 'organizationEmail',
+        value: 'admin@acme.com',
+        existingTenantId: 'org-a',
+        existingTenantName: 'Org A',
+      },
+    ]);
+    assert.match(err.message, /company email is already registered/i);
   });
 });

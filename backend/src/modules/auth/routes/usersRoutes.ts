@@ -167,6 +167,7 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
       await assertUserIdentityAvailable(client, {
         email: emailVal,
         username,
+        tenantId,
       });
       const r = await client.query<{ id: string; username: string; name: string; role: string; email: string | null; is_active: boolean }>(
         `INSERT INTO users (id, tenant_id, username, name, role, password_hash, email, is_active, email_verified)
@@ -239,6 +240,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
       await assertUserIdentityAvailable(client, {
         email: emailVal,
         username,
+        tenantId,
         excludeUserId: id,
       });
 

@@ -1,10 +1,14 @@
 import type pg from 'pg';
 
 export class TrialSignupRepository {
-  async usernameExistsGlobally(client: pg.PoolClient, username: string): Promise<boolean> {
+  async usernameExistsInTenant(
+    client: pg.PoolClient,
+    tenantId: string,
+    username: string
+  ): Promise<boolean> {
     const r = await client.query(
-      `SELECT 1 FROM users WHERE LOWER(TRIM(username)) = LOWER(TRIM($1))`,
-      [username]
+      `SELECT 1 FROM users WHERE tenant_id = $1 AND LOWER(TRIM(username)) = LOWER(TRIM($2))`,
+      [tenantId, username]
     );
     return r.rows.length > 0;
   }

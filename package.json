@@ -96,6 +96,7 @@
     "db:migrate:lan": "dotenv -e .env -- npm run migrate --prefix backend",
     "db:migrate:staging": "dotenv -e .env.staging -- npm run migrate --prefix backend",
     "db:seed:staging": "dotenv -e .env.staging -- tsx backend/src/scripts/seedStagingDefaults.ts",
+    "list:production-cloud-credentials": "node scripts/list-production-cloud-credentials.mjs",
     "db:migrate:production": "dotenv -e .env.production -- npm run migrate --prefix backend",
     "start:backend:staging": "dotenv -e .env.staging -- npm run start --prefix backend",
     "start:backend:production": "dotenv -e .env.production -- npm run start --prefix backend",
