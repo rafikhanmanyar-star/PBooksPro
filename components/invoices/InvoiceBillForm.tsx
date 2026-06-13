@@ -718,6 +718,22 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     return validation?.remaining ?? null;
   }, [type, linkedContract, state.bills, itemToEdit?.id]);
 
+  const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
+  const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
+
+  // Get available categories (not already used in items) - for Bills only
+  const usedCategoryIds = useMemo(() => new Set(expenseCategoryItems.map(item => item.categoryId)), [expenseCategoryItems]);
+  const availableCategories = useMemo(() => {
+    if (type !== 'bill') return [];
+    return expenseCategories.filter(c => !usedCategoryIds.has(c.id));
+  }, [expenseCategories, usedCategoryIds, type]);
+
+  // Calculate total amount from expense category items - for Bills only
+  const totalAmountFromItems = useMemo(() => {
+    if (type !== 'bill') return 0;
+    return expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
+  }, [expenseCategoryItems, type]);
+
   const billSidebarPreview = useMemo((): BillSidebarPreview | null => {
     if (type !== 'bill') return null;
 
@@ -789,33 +805,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     contractRemainingBillable,
   ]);
 
-  // Auto-link contract when exactly one active contract matches vendor + project
-  useEffect(() => {
-    if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
-    if (availableContracts.length === 1) {
-      const contractIdToSet = availableContracts[0].id;
-      setContractId(contractIdToSet);
-      const contract = state.contracts.find(c => c.id === contractIdToSet);
-      if (contract) applyContractExpenseCategoriesToBill(contract);
-    }
-  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit, state.contracts]);
-
-  const incomeCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.INCOME), [state.categories]);
-  const expenseCategories = useMemo(() => state.categories.filter(c => c.type === TransactionType.EXPENSE), [state.categories]);
-
-  // Get available categories (not already used in items) - for Bills only
-  const usedCategoryIds = useMemo(() => new Set(expenseCategoryItems.map(item => item.categoryId)), [expenseCategoryItems]);
-  const availableCategories = useMemo(() => {
-    if (type !== 'bill') return [];
-    return expenseCategories.filter(c => !usedCategoryIds.has(c.id));
-  }, [expenseCategories, usedCategoryIds, type]);
-
-  // Calculate total amount from expense category items - for Bills only
-  const totalAmountFromItems = useMemo(() => {
-    if (type !== 'bill') return 0;
-    return expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
-  }, [expenseCategoryItems, type]);
-
   /** When creating a new bill and user links a contract, pre-fill expense categories and total from contract. */
   const applyContractExpenseCategoriesToBill = (contract: Contract) => {
     // Project construction bills: contract may still be linked for budget tracking, but line items are entered manually.
@@ -829,6 +818,17 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     const total = cloned.reduce((s, i) => s + (i.netValue ?? 0), 0);
     setAmount(total.toString());
   };
+
+  // Auto-link contract when exactly one active contract matches vendor + project
+  useEffect(() => {
+    if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
+    if (availableContracts.length === 1) {
+      const contractIdToSet = availableContracts[0].id;
+      setContractId(contractIdToSet);
+      const contract = state.contracts.find(c => c.id === contractIdToSet);
+      if (contract) applyContractExpenseCategoriesToBill(contract);
+    }
+  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit, state.contracts]);
 
   // Add new expense category item
   const handleAddExpenseCategory = (category: { id: string; name: string } | null) => {

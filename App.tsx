@@ -72,6 +72,7 @@ import DemoExploreBanner from './components/billing/DemoExploreBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
 import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/demoAuthBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
+import { resolveEnterpriseRole } from './shared/rbac/permissions';
 import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
 
 
@@ -119,6 +120,14 @@ const PAGE_GROUPS = {
   ACCOUNTING: ['accounting'],
 };
 
+/** Pages a Sales User role may open (matches sidebar + project selling workflow). */
+const SALES_USER_ALLOWED_PAGES: Page[] = [
+  'dashboard',
+  'projectSelling',
+  'projectInvoices',
+  'settings',
+];
+
 const App: React.FC = () => {
   const currentPage = useStateSelector(s => s.currentPage);
   const currentUserRole = useStateSelector(s => s.currentUser?.role);
@@ -164,6 +173,13 @@ const App: React.FC = () => {
     if (!isAdminRole(effectiveRole)) {
       dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
     }
+  }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
+
+  useEffect(() => {
+    const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
+    if (resolveEnterpriseRole(effectiveRole) !== 'sales_user') return;
+    if (SALES_USER_ALLOWED_PAGES.includes(currentPage)) return;
+    dispatch({ type: 'SET_PAGE', payload: 'projectSelling' });
   }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
 
   useEffect(() => {
