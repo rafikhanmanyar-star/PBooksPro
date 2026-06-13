@@ -13,6 +13,7 @@ const {
   requireEnvFile,
   checkoutBranchPreservingChanges,
 } = require('./git-release-utils.cjs');
+const { requireGitHubTokenForPublish } = require('./resolve-gh-token.cjs');
 
 console.log('');
 console.log('========================================');
@@ -26,6 +27,7 @@ if (!isGitRepo()) {
 }
 
 requireEnvFile('.env.staging');
+requireGitHubTokenForPublish('.env.staging');
 
 run('git fetch origin');
 
