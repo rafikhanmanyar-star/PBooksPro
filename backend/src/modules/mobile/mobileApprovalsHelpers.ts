@@ -13,6 +13,8 @@ export type MobileApprovalItem = {
   requestedByName?: string;
   canApprove: boolean;
   requiresFullErp?: boolean;
+  reviewedAt?: string;
+  reviewedByName?: string;
 };
 
 export function normalizeStatus(s: string): string {
@@ -27,6 +29,33 @@ export function isPendingInstallmentPlan(
   if (normalizeStatus(status) !== 'pending approval') return false;
   if (!approvalRequestedTo) return false;
   return approvalRequestedTo === userId;
+}
+
+export function isMarketingPlanApprovalHistory(status: string): boolean {
+  const norm = normalizeStatus(status);
+  return norm === 'approved' || norm === 'rejected';
+}
+
+export function marketingPlanVisibleToMobileUser(
+  row: {
+    status: string;
+    approval_requested_to: string | null;
+    approval_reviewed_by: string | null;
+    approval_requested_at: Date | null;
+  },
+  userId: string,
+  canReviewPlans: boolean
+): boolean {
+  if (isPendingInstallmentPlan(row.status, row.approval_requested_to, userId)) {
+    return canReviewPlans || row.approval_requested_to === userId;
+  }
+  if (!row.approval_requested_at) return false;
+  if (!isMarketingPlanApprovalHistory(row.status)) return false;
+  return (
+    canReviewPlans ||
+    row.approval_requested_to === userId ||
+    row.approval_reviewed_by === userId
+  );
 }
 
 export function filterApprovalsForUser(

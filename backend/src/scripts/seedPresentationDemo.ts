@@ -1,9 +1,11 @@
 /**
- * Seed the in-person presentation org (demo@company.com / demo-company).
- * Persistent sample data — not reset on login/logout or public sandbox cron.
+ * Seed the in-person presentation org (demo@company.com).
+ * Cloud production may use tenant id demo-company-7dcf84 (not demo-company).
+ * Does not touch the website auto-login sandbox (pbooks-demo).
  *
  *   npm run demo:seed-presentation --prefix backend
  *   npm run demo:seed-presentation --prefix backend -- --production
+ *   npm run demo:seed-presentation --prefix backend -- --production --skip-reseed
  */
 import fs from 'fs';
 import path from 'path';
@@ -39,9 +41,9 @@ async function main() {
   const result = await seedPresentationDemoOrg({ reseed: !skipReseed });
   logger.info('Presentation demo seed complete', result);
   console.log('');
-  console.log('In-person demo org ready:');
+  console.log('In-person demo org ready (not the website pbooks-demo sandbox):');
   console.log(`  Organization: ${result.tenantId} (${result.email})`);
-  console.log(`  Login email:  ${result.email}`);
+  console.log(`  Company email: ${result.email}`);
   console.log(`  Username:     ${result.username}`);
   console.log(`  Password:     (DEMO_PRESENTATION_PASSWORD or DEMO_USER_PASSWORD or Demo@2024!)`);
   console.log(`  Reseeded:     ${result.reseeded}`);

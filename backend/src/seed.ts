@@ -71,6 +71,13 @@ export async function seedStagingDefaults(): Promise<void> {
     client.release();
   }
 
+  await pool.query(
+    `INSERT INTO user_tenants (id, user_id, tenant_id, role, is_default)
+     VALUES ($1, $2, $3, 'Admin', TRUE)
+     ON CONFLICT (user_id, tenant_id) DO UPDATE SET role = EXCLUDED.role, is_default = TRUE`,
+    [`ut_${userId}`, userId, tenantId]
+  );
+
   logger.info(`Staging seed complete — org "${tenantName}" (${tenantId}) | user "${username}"`);
   if (process.env.NODE_ENV !== 'production') {
     logger.debug('Staging admin credentials applied from environment');

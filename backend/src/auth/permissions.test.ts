@@ -5,6 +5,7 @@ import {
   roleHasPermission,
   permissionsForRole,
   buildPermissionMatrix,
+  roleCanWriteProjectSelling,
 } from './permissions.js';
 
 describe('permissions matrix', () => {
@@ -17,11 +18,17 @@ describe('permissions matrix', () => {
     assert.equal(roleHasPermission('SUPER_ADMIN', 'reports.trial_balance.read'), true);
   });
 
-  it('sales user cannot read financial reports', () => {
+  it('sales user has project selling permissions but not full financial write', () => {
     assert.equal(roleHasPermission('Sales User', 'reports.trial_balance.read'), false);
     assert.equal(roleHasPermission('Sales User', 'reports.balance_sheet.read'), false);
     assert.equal(roleHasPermission('Sales User', 'reports.profit_loss.read'), false);
-    assert.equal(roleHasPermission('Sales User', 'financial.write'), true);
+    assert.equal(roleHasPermission('Sales User', 'financial.write'), false);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.read'), true);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.marketing_plans.write'), true);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.agreements.write'), true);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.invoices.write'), true);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.payments.receive'), true);
+    assert.equal(roleCanWriteProjectSelling('Sales User'), true);
   });
 
   it('read only user can read reports but not write', () => {

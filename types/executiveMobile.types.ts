@@ -100,6 +100,40 @@ export type MobileApprovalItem = {
   requestedByName?: string;
   canApprove: boolean;
   requiresFullErp?: boolean;
+  reviewedAt?: string;
+  reviewedByName?: string;
+};
+
+export type MobileInstallmentPlanDetail = {
+  id: string;
+  status: string;
+  projectId?: string;
+  projectName?: string;
+  unitId?: string;
+  unitLabel?: string;
+  leadId?: string;
+  leadName?: string;
+  description?: string;
+  introText?: string;
+  listPrice?: number;
+  netValue?: number;
+  downPaymentAmount?: number;
+  downPaymentPercentage?: number;
+  installmentAmount?: number;
+  totalInstallments?: number;
+  durationYears?: number;
+  frequency?: string;
+  amenitiesTotal?: number;
+  customerDiscount?: number;
+  floorDiscount?: number;
+  lumpSumDiscount?: number;
+  miscDiscount?: number;
+  selectedAmenities?: Array<{ amenityName?: string; calculatedAmount?: number }>;
+  requestedByName?: string;
+  reviewedByName?: string;
+  approvalRequestedAt?: string;
+  approvalReviewedAt?: string;
+  canApprove: boolean;
 };
 
 export type MobileNotificationItem = {

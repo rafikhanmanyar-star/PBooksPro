@@ -25,6 +25,7 @@ import Card from '../ui/Card';
 import { ICONS } from '../../constants';
 import { devLogger } from '../../utils/devLogger';
 import { useNotification } from '../../context/NotificationContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -260,6 +261,7 @@ const MarketingPage: React.FC = () => {
     const { contacts, categories, projects, units: appUnits, invoices, documents, projectAgreements, agreementSettings, projectAgreementSettings, projectInvoiceSettings, installmentPlans, planAmenities, currentUser, users, editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
+    const { canWriteProjectSellingMarketingPlans, canWriteProjectSellingAgreements } = usePermissions();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();
     
@@ -1635,6 +1637,7 @@ const MarketingPage: React.FC = () => {
                     <Button 
                         variant="secondary" 
                         onClick={() => setShowConfigModal(true)}
+                        disabled={!canWriteProjectSellingMarketingPlans}
                         className="flex items-center gap-2"
                     >
                         <div className="w-4 h-4">{ICONS.settings}</div>
@@ -1643,6 +1646,7 @@ const MarketingPage: React.FC = () => {
                     <Button 
                         variant="primary" 
                         onClick={() => { resetForm(); setShowForm(true); }}
+                        disabled={!canWriteProjectSellingMarketingPlans}
                         className="flex items-center gap-2"
                     >
                         <div className="w-4 h-4">{ICONS.plus}</div>
@@ -1935,7 +1939,7 @@ const MarketingPage: React.FC = () => {
                                     <Button 
                                         className="w-full justify-center py-2 text-xs" 
                                         onClick={() => handleSave('draft')}
-                                        disabled={isReadOnly}
+                                        disabled={isReadOnly || !canWriteProjectSellingMarketingPlans}
                                     >
                                         {selectedPlanId ? 'Save New Version' : 'Save Plan'}
                                     </Button>
@@ -1948,6 +1952,7 @@ const MarketingPage: React.FC = () => {
                                                     <Button 
                                                         variant="secondary" 
                                                         className="w-full justify-center py-2 text-xs border-green-200 text-green-700 hover:bg-green-50" 
+                                                        disabled={!canWriteProjectSellingMarketingPlans}
                                                         onClick={() => {
                                                             setApprovalModalApproverId('');
                                                             setShowApprovalModal(true);
@@ -2583,7 +2588,7 @@ const MarketingPage: React.FC = () => {
                                                         </Button>
                                                     )}
 
-                                                    {isConvertible && (
+                                                    {isConvertible && canWriteProjectSellingAgreements && (
                                                         <Button 
                                                             variant="primary" 
                                                             size="sm" 

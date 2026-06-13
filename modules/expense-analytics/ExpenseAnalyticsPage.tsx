@@ -25,6 +25,12 @@ const KPI_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   topVendor: Receipt,
 };
 
+const EXPENSE_TREND_SERIES = [{ key: 'amount', label: 'Expenses', color: CHART_COLORS.expense }] as const;
+
+const ChartSkeleton: React.FC = () => (
+  <div className="h-[280px] w-full rounded-xl bg-app-toolbar/50 animate-pulse" />
+);
+
 export interface ExpenseAnalyticsPageProps {
   defaultScope?: ExpenseScope;
   showScopeFilter?: boolean;
@@ -40,6 +46,7 @@ const ExpenseAnalyticsPage: React.FC<ExpenseAnalyticsPageProps> = ({
   const filters = useExpenseAnalyticsFiltersStore((s) => s.filters);
   const setFilter = useExpenseAnalyticsFiltersStore((s) => s.setFilter);
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear());
+  const [layoutReady, setLayoutReady] = useState(false);
 
   useEffect(() => {
     if (defaultScope !== 'all' && filters.scope !== defaultScope) {
@@ -47,7 +54,13 @@ const ExpenseAnalyticsPage: React.FC<ExpenseAnalyticsPageProps> = ({
     }
   }, [defaultScope, filters.scope, setFilter]);
 
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setLayoutReady(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
   const { data, isLoading, isFetching, isError, refetch } = useExpenseAnalytics(isAuthenticated);
+  const chartsReady = layoutReady && !isLoading;
 
   const yearSelector = (
     <select
@@ -179,23 +192,39 @@ const ExpenseAnalyticsPage: React.FC<ExpenseAnalyticsPageProps> = ({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <ChartCard title="Expense Trend" subtitle={`Monthly expenses · ${chartYear}`} headerRight={yearSelector}>
-          <AreaTrendChart
-            data={trendData}
-            series={[{ key: 'amount', label: 'Expenses', color: CHART_COLORS.expense }]}
-            emptyLabel="No expense transactions for this year."
-          />
+          {chartsReady ? (
+            <AreaTrendChart
+              data={trendData}
+              series={EXPENSE_TREND_SERIES}
+              emptyLabel="No expense transactions for this year."
+            />
+          ) : (
+            <ChartSkeleton />
+          )}
         </ChartCard>
 
         <ChartCard title="Category Breakdown" subtitle="Top expense categories">
-          <DonutChart data={categoryDonut} emptyLabel="No categorized expenses in this period." />
+          {chartsReady ? (
+            <DonutChart data={categoryDonut} emptyLabel="No categorized expenses in this period." />
+          ) : (
+            <ChartSkeleton />
+          )}
         </ChartCard>
 
         <ChartCard title="Bill Status" subtitle="Bills issued in filter period">
-          <DonutChart data={billStatusDonut} emptyLabel="No bills in this period." />
+          {chartsReady ? (
+            <DonutChart data={billStatusDonut} emptyLabel="No bills in this period." />
+          ) : (
+            <ChartSkeleton />
+          )}
         </ChartCard>
 
         <ChartCard title="Vendor Spend" subtitle="Top vendors by bill amount">
-          <HorizontalBarChart data={vendorBarData} emptyLabel="No vendor bills in this period." />
+          {chartsReady ? (
+            <HorizontalBarChart data={vendorBarData} emptyLabel="No vendor bills in this period." />
+          ) : (
+            <ChartSkeleton />
+          )}
         </ChartCard>
       </div>
     </div>

@@ -97,6 +97,21 @@ export const requireFinancialWriteOnMutations: RequestHandler = (req, res, next)
   return requirePermission('financial.write')(req, res, next);
 };
 
+/**
+ * Block mutations unless role has financial.write or any listed permission.
+ * GET/HEAD/OPTIONS pass through.
+ */
+export function requireWriteOnMutations(...permissions: Permission[]): RequestHandler {
+  return (req, res, next) => {
+    const method = (req.method ?? 'GET').toUpperCase();
+    if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+      next();
+      return;
+    }
+    return requireAnyPermission('financial.write', ...permissions)(req, res, next);
+  };
+}
+
 /** Payroll: GET requires payroll.read; mutations require payroll.write. */
 export const requirePayrollAccess: RequestHandler = (req, res, next) => {
   const method = (req.method ?? 'GET').toUpperCase();

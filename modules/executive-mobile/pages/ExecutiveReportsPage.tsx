@@ -1,10 +1,10 @@
-import React from 'react';
-import { EXECUTIVE_REPORT_LINKS } from '../constants/moduleNav';
+import React, { useState } from 'react';
+import {
+  EXECUTIVE_REPORT_LINKS,
+  type ExecutiveReportId,
+} from '../constants/moduleNav';
+import ExecutiveReportViewer from '../components/ExecutiveReportViewer';
 import { ICONS } from '../../../constants';
-
-type Props = {
-  onOpenFullErpReport?: (page: string, tab?: string) => void;
-};
 
 const REPORT_GROUPS = [
   {
@@ -13,7 +13,7 @@ const REPORT_GROUPS = [
     description: 'Core accounting and performance reports',
     icon: ICONS.fileText,
     iconWrap: 'executive-metric-icon executive-metric-icon--teal',
-    reportIds: ['pl', 'bs', 'cf'],
+    reportIds: ['pl', 'bs', 'cf'] as const,
   },
   {
     id: 'operations',
@@ -21,12 +21,24 @@ const REPORT_GROUPS = [
     description: 'Collections and project reporting',
     icon: ICONS.barChart,
     iconWrap: 'executive-metric-icon executive-metric-icon--violet',
-    reportIds: ['collections', 'projects'],
+    reportIds: ['collections', 'projects'] as const,
   },
 ] as const;
 
-export default function ExecutiveReportsPage({ onOpenFullErpReport }: Props) {
+export default function ExecutiveReportsPage() {
+  const [activeReportId, setActiveReportId] = useState<ExecutiveReportId | null>(null);
   const linkById = Object.fromEntries(EXECUTIVE_REPORT_LINKS.map((link) => [link.id, link]));
+
+  if (activeReportId) {
+    const link = linkById[activeReportId];
+    return (
+      <ExecutiveReportViewer
+        reportId={activeReportId}
+        title={link?.label ?? 'Report'}
+        onBack={() => setActiveReportId(null)}
+      />
+    );
+  }
 
   return (
     <div className="executive-home-page min-h-full pb-28">
@@ -34,7 +46,7 @@ export default function ExecutiveReportsPage({ onOpenFullErpReport }: Props) {
         <div>
           <h1 className="text-xl font-bold text-app-text">Reports</h1>
           <p className="text-sm text-app-muted mt-1">
-            View and export read-only reports. Switch to Full ERP for advanced designer tools.
+            View and export read-only reports without leaving the executive dashboard.
           </p>
         </div>
 
@@ -63,7 +75,7 @@ export default function ExecutiveReportsPage({ onOpenFullErpReport }: Props) {
                   <button
                     key={link.id}
                     type="button"
-                    onClick={() => onOpenFullErpReport?.(link.page, link.tab)}
+                    onClick={() => setActiveReportId(link.id)}
                     className="w-full flex items-center justify-between gap-3 px-4 py-3.5 text-left touch-manipulation min-h-[44px] active:bg-app-highlight/50 transition-colors"
                   >
                     <div className="flex items-center gap-3 min-w-0">

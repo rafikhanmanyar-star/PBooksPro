@@ -1,10 +1,9 @@
-import React, { useMemo } from 'react';
+import React, { memo, useMemo } from 'react';
 import {
   Area,
   AreaChart,
   CartesianGrid,
   Legend,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -12,6 +11,7 @@ import {
 import { CURRENCY } from '../../../constants';
 import { formatRoundedNumber } from '../../../utils/numberUtils';
 import { CHART_COLORS, useChartTheme } from '../chartTheme';
+import { FixedSizeChartContainer } from './FixedSizeChartContainer';
 
 export interface TrendSeriesPoint {
   name: string;
@@ -25,13 +25,23 @@ export interface AreaTrendChartProps {
   emptyLabel?: string;
 }
 
-export const AreaTrendChart: React.FC<AreaTrendChartProps> = ({
+export const AreaTrendChart: React.FC<AreaTrendChartProps> = memo(function AreaTrendChart({
   data,
   series,
   height = 280,
   emptyLabel = 'No data for this period.',
-}) => {
+}) {
   const theme = useChartTheme();
+
+  const tooltipStyle = useMemo(
+    () => ({
+      borderRadius: 12,
+      border: `1px solid ${theme.tooltipBorder}`,
+      backgroundColor: theme.tooltipBg,
+      color: theme.tooltipText,
+    }),
+    [theme.tooltipBorder, theme.tooltipBg, theme.tooltipText],
+  );
 
   const gradients = useMemo(
     () =>
@@ -51,52 +61,45 @@ export const AreaTrendChart: React.FC<AreaTrendChartProps> = ({
   }
 
   return (
-    <div className="w-full min-w-0">
-      <ResponsiveContainer width="100%" height={height} minWidth={0} debounce={32}>
-        <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-          <defs>
-            {gradients.map((g) => (
-              <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={g.color} stopOpacity={0.3} />
-                <stop offset="95%" stopColor={g.color} stopOpacity={0} />
-              </linearGradient>
-            ))}
-          </defs>
-          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.grid} />
-          <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme.tick, fontSize: 11 }} />
-          <YAxis
-            axisLine={false}
-            tickLine={false}
-            tick={{ fill: theme.tick, fontSize: 11 }}
-            tickFormatter={(v) => formatRoundedNumber(Number(v))}
-            width={64}
-          />
-          <Tooltip
-            contentStyle={{
-              borderRadius: 12,
-              border: `1px solid ${theme.tooltipBorder}`,
-              backgroundColor: theme.tooltipBg,
-              color: theme.tooltipText,
-            }}
-            formatter={(value: number, name: string) => [`${CURRENCY} ${formatRoundedNumber(value)}`, name]}
-          />
-          <Legend />
-          {series.map((s, i) => (
-            <Area
-              key={s.key}
-              type="monotone"
-              dataKey={s.key}
-              name={s.label}
-              stroke={s.color ?? CHART_COLORS.donut[i % CHART_COLORS.donut.length]}
-              fill={`url(#${gradients[i].id})`}
-              strokeWidth={2}
-              isAnimationActive={false}
-            />
+    <FixedSizeChartContainer height={height}>
+      <AreaChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+        <defs>
+          {gradients.map((g) => (
+            <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%" stopColor={g.color} stopOpacity={0.3} />
+              <stop offset="95%" stopColor={g.color} stopOpacity={0} />
+            </linearGradient>
           ))}
-        </AreaChart>
-      </ResponsiveContainer>
-    </div>
+        </defs>
+        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.grid} />
+        <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: theme.tick, fontSize: 11 }} />
+        <YAxis
+          axisLine={false}
+          tickLine={false}
+          tick={{ fill: theme.tick, fontSize: 11 }}
+          tickFormatter={(v) => formatRoundedNumber(Number(v))}
+          width={64}
+        />
+        <Tooltip
+          contentStyle={tooltipStyle}
+          formatter={(value: number, name: string) => [`${CURRENCY} ${formatRoundedNumber(value)}`, name]}
+        />
+        <Legend />
+        {series.map((s, i) => (
+          <Area
+            key={s.key}
+            type="monotone"
+            dataKey={s.key}
+            name={s.label}
+            stroke={s.color ?? CHART_COLORS.donut[i % CHART_COLORS.donut.length]}
+            fill={`url(#${gradients[i].id})`}
+            strokeWidth={2}
+            isAnimationActive={false}
+          />
+        ))}
+      </AreaChart>
+    </FixedSizeChartContainer>
   );
-};
+});
 
 export default AreaTrendChart;

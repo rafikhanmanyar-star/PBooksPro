@@ -15,6 +15,7 @@ import {
 import {
   type MobileApprovalItem,
   isPendingInstallmentPlan,
+  marketingPlanVisibleToMobileUser,
   sortApprovalsByDate,
 } from '../mobileApprovalsHelpers.js';
 
@@ -89,17 +90,25 @@ export async function listMobileApprovals(
   }
 
   const allUserIds = planRows
-    .flatMap((p) => [p.approval_requested_by, p.user_id])
+    .flatMap((p) => [p.approval_requested_by, p.user_id, p.approval_reviewed_by])
     .filter(Boolean) as string[];
   const planNames = await userNameMap(client, tenantId, allUserIds);
 
   for (const row of planRows) {
-    if (!isPendingInstallmentPlan(row.status, row.approval_requested_to, userId)) continue;
+    if (!marketingPlanVisibleToMobileUser(row, userId, canApprovePlans)) continue;
+
+    const pending = isPendingInstallmentPlan(row.status, row.approval_requested_to, userId);
+    const planLabel = row.description?.trim() || `Unit ${row.unit_id}`;
+    const reviewedAt =
+      row.approval_reviewed_at instanceof Date
+        ? row.approval_reviewed_at.toISOString()
+        : row.approval_reviewed_at ?? undefined;
+
     items.push({
       id: row.id,
       type: 'installment_plan',
-      title: 'Installment plan approval',
-      subtitle: row.description ?? `Unit plan · ${row.unit_id}`,
+      title: 'Marketing plan approval',
+      subtitle: planLabel,
       amount: Number(row.net_value),
       currency: 'PKR',
       status: row.status,
@@ -109,7 +118,11 @@ export async function listMobileApprovals(
           : row.approval_requested_at ?? undefined,
       requestedById: row.approval_requested_by ?? row.user_id ?? undefined,
       requestedByName: planNames.get(row.approval_requested_by ?? row.user_id ?? '') ?? undefined,
-      canApprove: canApprovePlans,
+      reviewedAt,
+      reviewedByName: row.approval_reviewed_by
+        ? planNames.get(row.approval_reviewed_by)
+        : undefined,
+      canApprove: pending && canApprovePlans,
     });
   }
 
@@ -210,4 +223,70 @@ export async function rejectMobileApproval(
     return rowToInstallmentPlanApi(result.row);
   }
   throw new Error('Unsupported approval type');
+}
+
+export type MobileInstallmentPlanDetail = Record<string, unknown> & {
+  id: string;
+  status: string;
+  projectName?: string;
+  unitLabel?: string;
+  leadName?: string;
+  requestedByName?: string;
+  reviewedByName?: string;
+  canApprove: boolean;
+};
+
+export async function getMobileInstallmentPlanDetail(
+  client: pg.PoolClient,
+  tenantId: string,
+  userId: string,
+  role: string | undefined,
+  planId: string
+): Promise<MobileInstallmentPlanDetail | null> {
+  const canReviewPlans = roleHasPermission(role, 'financial.write');
+  const row = await getInstallmentPlanById(client, tenantId, planId);
+  if (!row) return null;
+  if (!marketingPlanVisibleToMobileUser(row, userId, canReviewPlans)) return null;
+
+  const [projectR, unitR, leadR] = await Promise.all([
+    client.query<{ name: string }>(
+      `SELECT name FROM projects WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, row.project_id]
+    ),
+    client.query<{ unit_number: string | null; name: string | null }>(
+      `SELECT unit_number, name FROM units WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [tenantId, row.unit_id]
+    ),
+    row.lead_id
+      ? client.query<{ name: string }>(
+          `SELECT name FROM contacts WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+          [tenantId, row.lead_id]
+        )
+      : Promise.resolve({ rows: [] as { name: string }[] }),
+  ]);
+
+  const userIds = [row.approval_requested_by, row.approval_reviewed_by, row.user_id].filter(
+    Boolean
+  ) as string[];
+  const names = await userNameMap(client, tenantId, userIds);
+
+  const unit = unitR.rows[0];
+  const unitLabel = unit?.name?.trim() || unit?.unit_number?.trim() || row.unit_id;
+
+  const pending = isPendingInstallmentPlan(row.status, row.approval_requested_to, userId);
+  const api = rowToInstallmentPlanApi(row);
+
+  return {
+    ...api,
+    id: row.id,
+    status: row.status,
+    projectName: projectR.rows[0]?.name,
+    unitLabel,
+    leadName: leadR.rows[0]?.name,
+    requestedByName: names.get(row.approval_requested_by ?? row.user_id ?? '') ?? undefined,
+    reviewedByName: row.approval_reviewed_by
+      ? names.get(row.approval_reviewed_by)
+      : undefined,
+    canApprove: pending && canReviewPlans,
+  };
 }

@@ -110,7 +110,7 @@ export const EXECUTIVE_MODULE_NAV: ExecutiveNavItem[] = [
     icon: ICONS.package,
     summaryKey: 'inventory',
     enabled: false,
-    showInExecutiveApp: true,
+    showInExecutiveApp: false,
     phase: 'Coming soon',
     accordionGroup: 'inventory',
   },
@@ -155,14 +155,15 @@ export const EXECUTIVE_ACCORDION_SECTIONS = [
   { id: 'crm' as const, label: 'CRM', moduleId: 'crm' as ExecutiveModuleId },
   { id: 'projects' as const, label: 'Projects', moduleId: 'projects' as ExecutiveModuleId },
   { id: 'accounts' as const, label: 'Accounts', moduleId: 'finance' as ExecutiveModuleId },
-  { id: 'inventory' as const, label: 'Inventory', moduleId: 'inventory' as ExecutiveModuleId },
   { id: 'hr' as const, label: 'HR', moduleId: 'hr' as ExecutiveModuleId },
 ];
 
 export const EXECUTIVE_REPORT_LINKS = [
-  { id: 'pl', label: 'Profit & Loss', page: 'accounting' as const, tab: 'Profit & Loss' },
-  { id: 'bs', label: 'Balance Sheet', page: 'accounting' as const, tab: 'Balance Sheet' },
-  { id: 'cf', label: 'Cash Flow', page: 'accounting' as const, tab: 'Cash Flow' },
-  { id: 'collections', label: 'Collections', page: 'rentalManagement' as const, tab: 'Analytics' },
-  { id: 'projects', label: 'Project Reports', page: 'projectManagement' as const, tab: 'Reports' },
+  { id: 'pl' as const, label: 'Profit & Loss', page: 'accounting' as const, tab: 'Profit & Loss' },
+  { id: 'bs' as const, label: 'Balance Sheet', page: 'accounting' as const, tab: 'Balance Sheet' },
+  { id: 'cf' as const, label: 'Cash Flow', page: 'accounting' as const, tab: 'Cash Flows' },
+  { id: 'collections' as const, label: 'Collections', page: 'rentalManagement' as const, tab: 'Analytics' },
+  { id: 'projects' as const, label: 'Project Reports', page: 'projectManagement' as const, tab: 'Reports' },
 ];
+
+export type ExecutiveReportId = (typeof EXECUTIVE_REPORT_LINKS)[number]['id'];

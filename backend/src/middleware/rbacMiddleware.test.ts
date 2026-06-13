@@ -11,6 +11,7 @@ import {
   requirePermissionWhenPathStartsWith,
   requireRole,
   requireRoleWhenPathStartsWith,
+  requireWriteOnMutations,
 } from './rbacMiddleware.js';
 import type { AuthedRequest } from './authMiddleware.js';
 
@@ -49,6 +50,27 @@ describe('rbacMiddleware', () => {
 
   it('blocks POST for Read Only User (no financial.write)', () => {
     const req = mockReq('POST', 'Read Only User');
+    const res = mockRes();
+    let called = false;
+    requireFinancialWriteOnMutations(req, res, () => {
+      called = true;
+    });
+    assert.equal(called, false);
+    assert.equal(res.statusCode, 403);
+  });
+
+  it('allows Sales User POST for project selling marketing plans', () => {
+    const req = mockReq('POST', 'Sales User');
+    const res = mockRes();
+    let called = false;
+    requireWriteOnMutations('project_selling.marketing_plans.write')(req, res, () => {
+      called = true;
+    });
+    assert.equal(called, true);
+  });
+
+  it('blocks Sales User POST for unrelated financial routes', () => {
+    const req = mockReq('POST', 'Sales User');
     const res = mockRes();
     let called = false;
     requireFinancialWriteOnMutations(req, res, () => {

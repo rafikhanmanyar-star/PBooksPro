@@ -40,7 +40,12 @@ export type Permission =
   | 'contracts.retention.view'
   | 'contracts.retention.edit'
   | 'contracts.retention.release'
-  | 'contracts.retention.override';
+  | 'contracts.retention.override'
+  | 'project_selling.read'
+  | 'project_selling.marketing_plans.write'
+  | 'project_selling.agreements.write'
+  | 'project_selling.invoices.write'
+  | 'project_selling.payments.receive';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -67,6 +72,24 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'contracts.retention.edit',
   'contracts.retention.release',
   'contracts.retention.override',
+  'project_selling.read',
+  'project_selling.marketing_plans.write',
+  'project_selling.agreements.write',
+  'project_selling.invoices.write',
+  'project_selling.payments.receive',
+] as const;
+
+/** Project selling write keys (sales user bundle — not full financial.write). */
+export const PROJECT_SELLING_WRITE_PERMISSIONS: readonly Permission[] = [
+  'project_selling.marketing_plans.write',
+  'project_selling.agreements.write',
+  'project_selling.invoices.write',
+  'project_selling.payments.receive',
+] as const;
+
+export const PROJECT_SELLING_SALES_USER_PERMISSIONS: readonly Permission[] = [
+  'project_selling.read',
+  ...PROJECT_SELLING_WRITE_PERMISSIONS,
 ] as const;
 
 export const ENTERPRISE_ROLE_LABELS: Record<EnterpriseRole, string> = {
@@ -103,6 +126,11 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'contracts.retention.edit': 'Edit contract retention',
   'contracts.retention.release': 'Release contract retention',
   'contracts.retention.override': 'Override retention alerts',
+  'project_selling.read': 'Project selling (read)',
+  'project_selling.marketing_plans.write': 'Marketing plans (create & submit)',
+  'project_selling.agreements.write': 'Project agreements (create & convert)',
+  'project_selling.invoices.write': 'Project selling invoices (create)',
+  'project_selling.payments.receive': 'Project selling payments (receive)',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
@@ -162,7 +190,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
   ]),
-  sales_user: new Set(['financial.write']),
+  sales_user: new Set([...PROJECT_SELLING_SALES_USER_PERMISSIONS]),
   read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read', 'pev.read', ...RETENTION_VIEW]),
 };
 
@@ -211,6 +239,14 @@ export function roleHasAnyPermission(role: string | undefined | null, permission
 
 export function roleHasAllPermissions(role: string | undefined | null, permissions: Permission[]): boolean {
   return permissions.every((p) => roleHasPermission(role, p));
+}
+
+/** Full financial.write or any project-selling write permission. */
+export function roleCanWriteProjectSelling(role: string | undefined | null): boolean {
+  return (
+    roleHasPermission(role, 'financial.write') ||
+    roleHasAnyPermission(role, [...PROJECT_SELLING_WRITE_PERMISSIONS])
+  );
 }
 
 export type PermissionMatrixRow = {

@@ -14,6 +14,7 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import { ImportType } from '../../services/importService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
+import { usePermissions } from '../../hooks/usePermissions';
 
 type SortKey = 'agreementNumber' | 'owner' | 'project' | 'units' | 'price' | 'paid' | 'balance' | 'date' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -125,6 +126,7 @@ const ProjectAgreementsPage: React.FC = () => {
     const state = useProjectReportAppState();
     const { units: appUnits } = state;
     const dispatch = useDispatchOnly();
+    const { canWriteProjectSellingAgreements } = usePermissions();
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [agreementToEdit, setAgreementToEdit] = useState<ProjectAgreement | null>(null);
@@ -562,6 +564,7 @@ const ProjectAgreementsPage: React.FC = () => {
                         </Button>
                         <Button
                             onClick={() => { setAgreementToEdit(null); setIsCreateModalOpen(true); }}
+                            disabled={!canWriteProjectSellingAgreements}
                             className="flex-1 md:flex-none justify-center !px-4 !py-2 !rounded-xl !bg-primary hover:!bg-ds-primary-hover !text-ds-on-primary shadow-ds-card text-xs sm:text-sm transition-all duration-ds"
                         >
                             <div className="w-4 h-4 mr-2">{ICONS.plus}</div>

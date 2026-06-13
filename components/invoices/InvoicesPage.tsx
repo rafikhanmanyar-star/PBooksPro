@@ -25,6 +25,7 @@ import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../u
 import { isActiveInvoice } from '../../utils/invoiceActive';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface InvoicesPageProps {
     invoiceTypeFilter?: InvoiceType;
@@ -221,6 +222,14 @@ const InvoiceTreeSidebar = memo<{
 InvoiceTreeSidebar.displayName = 'InvoiceTreeSidebar';
 
 const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitleAndGoBack, showCreateButton = true, onTreeSelectionChange }) => {
+    const {
+        canWriteProjectSellingInvoices,
+        canReceiveProjectSellingPayments,
+    } = usePermissions();
+    const isProjectSellingContext = invoiceTypeFilter === InvoiceType.INSTALLMENT;
+    const canCreateInThisContext = !isProjectSellingContext || canWriteProjectSellingInvoices;
+    const canReceivePaymentInThisContext = !isProjectSellingContext || canReceiveProjectSellingPayments;
+    const effectiveShowCreateButton = showCreateButton && canCreateInThisContext;
     const dispatch = useDispatchOnly();
     const invoices = useStateSelector(s => s.invoices);
     /** Exclude soft-deleted (PostgreSQL) so tree / totals match server after delete. */
@@ -1403,12 +1412,16 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                             dispatch({ type: 'SET_INITIAL_IMPORT_TYPE', payload: ImportType.INVOICES });
                             dispatch({ type: 'SET_PAGE', payload: 'import' });
                         }}
-                        showButtons={showCreateButton}
-                        onBulkPaymentClick={() => setIsBulkPayModalOpen(true)}
+                        showButtons={effectiveShowCreateButton}
+                        onBulkPaymentClick={
+                            canReceivePaymentInThisContext ? () => setIsBulkPayModalOpen(true) : undefined
+                        }
                         selectedCount={selectedInvoiceIds.size}
                         onEditInvoice={handleEditInvoiceFromDetail}
                         onDeleteInvoice={handleDeleteInvoice}
-                        onReceivePayment={handleRecordPayment}
+                        onReceivePayment={
+                            canReceivePaymentInThisContext ? handleRecordPayment : undefined
+                        }
                         onEditPayment={(tx) => setTransactionToEdit(tx)}
                         onDeletePayment={handleShowDeleteWarning}
                     />
@@ -1532,7 +1545,11 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
                 {viewInvoice && (
                     <ProjectInvoiceDetailView
                         invoice={viewInvoice}
-                        onRecordPayment={(inv) => handleRecordPayment(inv)}
+                        onRecordPayment={
+                            canReceivePaymentInThisContext
+                                ? (inv) => handleRecordPayment(inv)
+                                : undefined
+                        }
                         onEdit={(inv) => handleEditInvoiceFromDetail(inv)}
                         onDelete={(inv) => handleDeleteInvoice(inv)}
                         onEditPayment={(tx) => { setViewInvoice(null); setTransactionToEdit(tx); }}
