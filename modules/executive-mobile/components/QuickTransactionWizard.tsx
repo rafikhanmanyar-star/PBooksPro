@@ -108,6 +108,12 @@ export default function QuickTransactionWizard() {
     setStep(2);
   };
 
+  const selectQuickAmount = (preset: number) => {
+    setError(null);
+    setAmount(String(preset));
+    setStep(3);
+  };
+
   const handleSubmit = async () => {
     setError(null);
     const parsedAmount = Number(amount);
@@ -332,7 +338,7 @@ export default function QuickTransactionWizard() {
                   <button
                     key={preset}
                     type="button"
-                    onClick={() => setAmount(String(preset))}
+                    onClick={() => selectQuickAmount(preset)}
                     className={`px-3 py-2 rounded-lg text-sm border touch-manipulation ${
                       amount === String(preset)
                         ? 'border-ds-primary bg-ds-primary/10 text-green-800 dark:bg-green-950/30'
