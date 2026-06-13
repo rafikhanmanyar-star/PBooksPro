@@ -103,4 +103,10 @@ syncFile(
   (s) => s.replace("from './types.js'", "from './types.js'")
 );
 
+syncFile(
+  'shared/contract-billing/contractBillingCore.ts',
+  'backend/src/contractBilling/contractBillingCore.ts',
+  (s) => s.replace("from '../contract-retention/contractRetentionCore.js'", "from '../contractRetention/contractRetentionCore.js'")
+);
+
 console.log('[ensure-shared-financial-cores] OK');

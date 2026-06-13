@@ -6,6 +6,8 @@ import { syncBillJournalMirror, reverseBillJournalMirror } from './billJournalPo
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../core/entityMutation.js';
 import { BillRepository, type BillWriteFields } from '../modules/vendors/repositories/BillRepository.js';
+import { ContractRepository } from '../modules/vendors/repositories/ContractRepository.js';
+import { validateContractBillAmount } from '../contractBilling/contractBillingCore.js';
 
 export type BillRow = {
   id: string;
@@ -282,6 +284,35 @@ function isDuplicateBillNumberConstraint(e: unknown): boolean {
   );
 }
 
+async function assertContractBillWithinLimit(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractId: string | null | undefined,
+  billAmount: number,
+  excludeBillId?: string
+): Promise<void> {
+  const cid = contractId?.trim();
+  if (!cid) return;
+
+  const contract = await new ContractRepository(tenantId).getById(client, cid);
+  if (!contract) throw new Error('Linked contract not found.');
+
+  const alreadyBilled = await new BillRepository(tenantId).sumBilledForContract(
+    client,
+    cid,
+    excludeBillId
+  );
+  const validation = validateContractBillAmount({
+    contractValue: Number(contract.total_amount),
+    alreadyBilled,
+    billAmount,
+    contractNumber: contract.contract_number,
+  });
+  if (validation.exceeds) {
+    throw new Error(validation.message ?? 'Bill amount exceeds remaining contract value.');
+  }
+}
+
 export async function createBill(
   client: pg.PoolClient,
   tenantId: string,
@@ -292,6 +323,8 @@ export async function createBill(
   if (!p.bill_number) throw new Error('billNumber is required.');
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
+
+  await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, id);
 
   return new BillRepository(tenantId).insertBill(
     client,
@@ -312,6 +345,8 @@ export async function updateBill(
   const expectedVersion = p.version;
   const fields = billWriteFieldsFromPick(p);
   const billRepo = new BillRepository(tenantId);
+
+  await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, id);
 
   if (expectedVersion !== undefined) {
     const u = await billRepo.updateActiveWithExpectedVersion(client, id, fields, expectedVersion);
@@ -401,6 +436,8 @@ export async function upsertBill(
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
   const existingById = await getBillByIdIncludingDeleted(client, tenantId, id);
+
+  await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, existingById?.id ?? id);
 
   /**
    * Legacy clients used `Date.now()` for new bill ids. That can match an unrelated existing row PK,

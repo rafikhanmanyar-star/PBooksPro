@@ -400,7 +400,15 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
             </div>
         </div>
 
-        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title={`Edit ${type}`}><InvoiceBillForm key={item.id} onClose={() => setIsEditModalOpen(false)} type={type} itemToEdit={item} /></Modal>
+        <Modal
+          isOpen={isEditModalOpen}
+          onClose={() => setIsEditModalOpen(false)}
+          title={`Edit ${type}`}
+          size={type === 'bill' ? 'xl' : 'lg'}
+          className={type === 'bill' ? 'sm:!max-w-7xl' : undefined}
+        >
+          <InvoiceBillForm key={item.id} onClose={() => setIsEditModalOpen(false)} type={type} itemToEdit={item} />
+        </Modal>
     </>
   );
 };

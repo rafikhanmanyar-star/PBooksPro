@@ -7,6 +7,7 @@ import {
   getContractPaidFromTransactions,
 } from '../../utils/contractRetention';
 import { retentionStatusBadge } from './ContractRetentionUI';
+import { ContractDocumentAttachmentPanel } from './ContractDocumentUI';
 
 export type ContractActivityType =
   | 'bill_created'
@@ -211,6 +212,10 @@ export const ContractActivitySidebar: React.FC<ContractActivitySidebarProps> = (
               </span>
             </div>
           </div>
+
+          {!isPreview && (
+            <ContractDocumentAttachmentPanel contract={contract} compact className="no-print" />
+          )}
 
           {!isPreview && (
             <div className="grid grid-cols-2 gap-2 pt-2 border-t border-app-border text-xs">

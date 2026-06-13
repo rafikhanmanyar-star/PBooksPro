@@ -47,6 +47,7 @@ const DashboardPage: React.FC = () => {
   const currentUser = useStateSelector((s) => s.currentUser);
   const currentPage = useStateSelector((s) => s.currentPage);
   const projects = useStateSelector((s) => s.projects);
+  const buildings = useStateSelector((s) => s.buildings);
   const { isAuthenticated } = useAuth();
   const { allKpis, openDrilldown } = useKpis();
   const isAdmin = currentUser?.role === 'Admin';
@@ -76,6 +77,11 @@ const DashboardPage: React.FC = () => {
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),
     [projects]
+  );
+
+  const buildingOptions = useMemo(
+    () => buildings.map((b) => ({ id: b.id, name: b.name })),
+    [buildings]
   );
 
   const recentActivity = activityQuery.data?.items ?? [];
@@ -182,7 +188,7 @@ const DashboardPage: React.FC = () => {
 
       {isAdmin && isAuthenticated && (
         <div className="no-print">
-          <DashboardFilterBar projectOptions={projectOptions} />
+          <DashboardFilterBar projectOptions={projectOptions} buildingOptions={buildingOptions} />
         </div>
       )}
 

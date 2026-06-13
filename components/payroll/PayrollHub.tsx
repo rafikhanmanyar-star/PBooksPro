@@ -305,6 +305,11 @@ const PayrollHub: React.FC = () => {
     const allSelected = payableIdsInView.length > 0 && payableIdsInView.every((id) => selectedPayslipIds.includes(id));
     setSelectedPayslipIds(allSelected ? [] : [...payableIdsInView]);
   };
+  const handlePaySelectedEmployeeUnpaid = useCallback(() => {
+    if (!selectedCycleEmployeeId || payableIdsInView.length === 0) return;
+    setSelectedPayslipIds([...payableIdsInView]);
+    setBulkPayModalOpen(true);
+  }, [selectedCycleEmployeeId, payableIdsInView]);
 
   const [ledgerRowFilter, setLedgerRowFilter] = useState<LedgerRowFilter>('all');
   type RemoteLedgerPack = {
@@ -1475,6 +1480,16 @@ const PayrollHub: React.FC = () => {
                       </label>
                     </div>
                     <div className="flex items-center gap-1.5">
+                      {selectedCycleEmployeeId && payableIdsInView.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={handlePaySelectedEmployeeUnpaid}
+                          className="bg-ds-success text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2"
+                          title="Pay all unpaid payslips for selected employee"
+                        >
+                          <Banknote size={16} /> Pay ({payableIdsInView.length})
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={handleExportCycleTableCsv}

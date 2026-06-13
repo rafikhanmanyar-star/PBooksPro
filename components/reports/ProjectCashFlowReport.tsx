@@ -4,6 +4,7 @@ import {
     useFinancialReportAppState,
     useInvoices,
     useProjects,
+    useBuildings,
     useStateSelector,
     useTransactions,
 } from '../../hooks/useSelectiveState';
@@ -14,7 +15,13 @@ import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import ComboBox from '../ui/ComboBox';
+import FinancialEntityFilterCombo from './FinancialEntityFilterCombo';
+import {
+    entityScopeFromFilterId,
+    financialEntityFilterLabel,
+    FINANCIAL_ENTITY_FILTER_ALL,
+    scopeTargetsProject,
+} from './financialEntityScope';
 import {
     endOfMonthYyyyMmDd,
     formatDate,
@@ -195,6 +202,7 @@ const SECTION_SHORT: Record<string, string> = {
 
 const ProjectCashFlowReport: React.FC = () => {
     const projects = useProjects();
+    const buildings = useBuildings();
     const transactions = useTransactions();
     const invoices = useInvoices();
     const bills = useBills();
@@ -207,8 +215,13 @@ const ProjectCashFlowReport: React.FC = () => {
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState(() => todayLocalYyyyMmDd());
 
-    const [selectedProjectId, setSelectedProjectId] = useState<string>(
-        () => _getAppState().defaultProjectId || 'all'
+    const [entityFilterId, setEntityFilterId] = useState<string>(
+        () => _getAppState().defaultProjectId ? `project:${_getAppState().defaultProjectId}` : FINANCIAL_ENTITY_FILTER_ALL
+    );
+    const entityScope = useMemo(() => entityScopeFromFilterId(entityFilterId), [entityFilterId]);
+    const entityLabel = useMemo(
+        () => financialEntityFilterLabel(entityFilterId, projects, buildings),
+        [entityFilterId, projects, buildings]
     );
     const [interestPaidAsOperating, setInterestPaidAsOperating] = useState(true);
 
@@ -225,8 +238,6 @@ const ProjectCashFlowReport: React.FC = () => {
 
     const [auditOpen, setAuditOpen] = useState(false);
 
-    const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
-
     const localOnly = isLocalOnlyMode();
     const tenantId = useReportTenantId();
     const [serverReport, setServerReport] = useState<CashFlowReportResult | null>(null);
@@ -242,7 +253,12 @@ const ProjectCashFlowReport: React.FC = () => {
         setServerReport(null);
         setLoading(true);
         setFetchError(null);
-        void fetchCashFlowReport({ from: startDate, to: endDate, projectId: selectedProjectId })
+        void fetchCashFlowReport({
+            from: startDate,
+            to: endDate,
+            projectId: entityScope.projectId,
+            buildingId: entityScope.buildingId,
+        })
             .then((r) => {
                 if (!cancelled) setServerReport(r);
             })
@@ -255,7 +271,7 @@ const ProjectCashFlowReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, tenantId, startDate, endDate, selectedProjectId]);
+    }, [localOnly, tenantId, startDate, endDate, entityScope]);
 
     const transactionsById = useMemo(
         () => new Map(transactions.map((t) => [t.id, t])),
@@ -292,11 +308,12 @@ const ProjectCashFlowReport: React.FC = () => {
             computeCashFlowReport(reportState, {
                 fromDate: startDate,
                 toDate: endDate,
-                selectedProjectId,
+                selectedProjectId: entityScope.projectId,
+                selectedBuildingId: entityScope.buildingId,
                 interestPaidAsOperating,
                 cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(cashFlowCategoryMappings),
             }),
-        [reportState, cashFlowCategoryMappings, startDate, endDate, selectedProjectId, interestPaidAsOperating]
+        [reportState, cashFlowCategoryMappings, startDate, endDate, entityScope, interestPaidAsOperating]
     );
     const report = !localOnly ? serverReport : clientReport;
 
@@ -570,12 +587,10 @@ const ProjectCashFlowReport: React.FC = () => {
                         activeDateRange={dateRange}
                         onRangeChange={handleRangeChange}
                     >
-                        <ComboBox
-                            label="Filter by Project"
-                            items={projectItems}
-                            selectedId={selectedProjectId}
-                            onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
-                            allowAddNew={false}
+                        <FinancialEntityFilterCombo
+                            className="w-44 sm:w-52 flex-shrink-0"
+                            selectedId={entityFilterId}
+                            onSelect={setEntityFilterId}
                         />
                         <label className="flex items-center gap-2 text-sm text-app-muted ml-2 whitespace-nowrap">
                             <input
@@ -604,9 +619,7 @@ const ProjectCashFlowReport: React.FC = () => {
                                 Cash Flow Statement
                             </h3>
                             <p className="text-sm text-app-muted font-medium mt-1">
-                                {selectedProjectId === 'all'
-                                    ? 'All Projects'
-                                    : projects.find((p) => p.id === selectedProjectId)?.name}
+                                {entityLabel}
                             </p>
                             <p className="text-xs text-app-muted">
                                 Direct method — For the period from {formatDate(startDate)} to {formatDate(endDate)}
@@ -726,7 +739,7 @@ const ProjectCashFlowReport: React.FC = () => {
                     bills,
                     projectAgreements,
                 }}
-                selectedProjectId={selectedProjectId}
+                selectedProjectId={scopeTargetsProject(entityScope) ? entityScope.projectId : 'all'}
             />
 
             <CashFlowAuditModal

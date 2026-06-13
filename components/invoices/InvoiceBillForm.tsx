@@ -40,6 +40,8 @@ import { buildOverridePayload, recordQuotationPriceOverrideApi } from '../../ser
 import type { QuotationValidationResult } from '../../shared/quotation-validation/types';
 import { backupAlertWarning, backupAlertError } from '../settings/backupThemeClasses';
 import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
+import { validateBillAgainstContract } from '../../utils/contractBilling';
+import BillSummarySidePanel, { type BillSidebarPreview } from '../bills/BillSummarySidePanel';
 
 const billSegmentTabActive = 'bg-primary text-ds-on-primary border-primary';
 const billSegmentTabInactive = 'bg-app-card text-app-muted border-app-border hover:bg-app-table-hover';
@@ -699,6 +701,94 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     });
   }, [state.contracts, state.projects, type, billAllocationType, projectId, vendorId, contractId, contractPaidTotals]);
 
+  const linkedContract = useMemo(
+    () => (contractId ? state.contracts.find((c) => c.id === contractId) : undefined),
+    [contractId, state.contracts]
+  );
+
+  const contractRemainingBillable = useMemo(() => {
+    if (type !== 'bill' || !linkedContract) return null;
+    const validation = validateBillAgainstContract({
+      contract: linkedContract,
+      bills: state.bills || [],
+      billAmount: 0,
+      excludeBillId: itemToEdit?.id,
+      currencyLabel: CURRENCY,
+    });
+    return validation?.remaining ?? null;
+  }, [type, linkedContract, state.bills, itemToEdit?.id]);
+
+  const billSidebarPreview = useMemo((): BillSidebarPreview | null => {
+    if (type !== 'bill') return null;
+
+    const finalAmount =
+      expenseCategoryItems.length > 0 ? totalAmountFromItems : parseFloat(amount) || 0;
+    const vid = vendorId || contactId;
+    const vendor =
+      state.vendors?.find((v) => v.id === vid) ?? state.contacts?.find((c) => c.id === vid);
+    const project = projectId ? state.projects.find((p) => p.id === projectId) : undefined;
+    const building = buildingId ? state.buildings.find((b) => b.id === buildingId) : undefined;
+    const property = propertyId ? state.properties.find((p) => p.id === propertyId) : undefined;
+    const contract = contractId ? state.contracts.find((c) => c.id === contractId) : undefined;
+
+    let allocationLabel = '';
+    if (projectContext || rootAllocationType === 'project') allocationLabel = 'Project';
+    else if (rootAllocationType === 'staff') allocationLabel = 'Staff';
+    else if (billAllocationType === 'tenant') allocationLabel = 'Tenant';
+    else if (billAllocationType === 'owner') allocationLabel = 'Owner';
+    else if (billAllocationType === 'building') allocationLabel = 'Building';
+
+    return {
+      billNumber: number,
+      amount: finalAmount,
+      issueDate,
+      dueDate: dueDate || undefined,
+      description,
+      status: itemToEdit?.status ?? 'Unpaid',
+      vendorName: vendor?.name,
+      projectName: project?.name,
+      buildingName: building?.name,
+      propertyName: property?.name,
+      contractNumber: contract?.contractNumber,
+      contractName: contract?.name,
+      contractRemaining: contractRemainingBillable,
+      allocationLabel: allocationLabel || undefined,
+      expenseLineItems: expenseCategoryItems.map((item) => ({
+        name: state.categories.find((c) => c.id === item.categoryId)?.name ?? 'Category',
+        amount: item.netValue ?? 0,
+      })),
+      paidAmount: itemToEdit?.paidAmount ?? 0,
+      isDraft: !itemToEdit?.id,
+    };
+  }, [
+    type,
+    expenseCategoryItems,
+    totalAmountFromItems,
+    amount,
+    vendorId,
+    contactId,
+    state.vendors,
+    state.contacts,
+    state.projects,
+    state.buildings,
+    state.properties,
+    state.contracts,
+    state.categories,
+    projectId,
+    buildingId,
+    propertyId,
+    contractId,
+    projectContext,
+    rootAllocationType,
+    billAllocationType,
+    number,
+    issueDate,
+    dueDate,
+    description,
+    itemToEdit,
+    contractRemainingBillable,
+  ]);
+
   // Auto-link contract when exactly one active contract matches vendor + project
   useEffect(() => {
     if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
@@ -1217,6 +1307,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (isPartiallyPaid && finalAmount < itemToEdit!.paidAmount) {
       await showAlert(`Cannot reduce amount below the already paid amount of ${CURRENCY} ${itemToEdit!.paidAmount.toLocaleString()}.`, { title: 'Invalid Amount' });
       return;
+    }
+
+    if (type === 'bill' && contractId) {
+      const contract = state.contracts.find((c) => c.id === contractId);
+      const contractValidation = validateBillAgainstContract({
+        contract,
+        bills: state.bills || [],
+        billAmount: finalAmount,
+        excludeBillId: itemToEdit?.id,
+        currencyLabel: CURRENCY,
+      });
+      if (contractValidation?.exceeds) {
+        await showAlert(contractValidation.message ?? 'Bill amount exceeds remaining contract value.', {
+          title: 'Contract Limit Exceeded',
+        });
+        return;
+      }
     }
 
     if (isSubmitting) return;
@@ -2279,7 +2386,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   allowAddNew={false}
                 />
                 {availableContracts.length > 0 && (
-                  <p className="text-xs text-primary mt-1">Tracked against contract budget</p>
+                  <p className="text-xs text-primary mt-1">
+                    {contractRemainingBillable != null
+                      ? `Remaining contract value: ${CURRENCY} ${contractRemainingBillable.toLocaleString()}`
+                      : 'Tracked against contract budget'}
+                  </p>
                 )}
               </div>
             )}
@@ -2383,7 +2494,11 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         allowAddNew={false}
                       />
                       {availableContracts.length > 0 && (
-                        <p className="text-xs text-primary mt-1">Tracked against contract budget</p>
+                        <p className="text-xs text-primary mt-1">
+                          {contractRemainingBillable != null
+                            ? `Remaining contract value: ${CURRENCY} ${contractRemainingBillable.toLocaleString()}`
+                            : 'Tracked against contract budget'}
+                        </p>
                       )}
                     </div>
                   )}
@@ -2773,6 +2888,96 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     )
   };
 
+  const billFormBody = (
+    <>
+      {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
+        <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
+      )}
+      {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+        <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
+      )}
+      {isPartiallyPaid && type === 'bill' && (
+        <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
+          This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
+        </div>
+      )}
+      {isPartiallyPaid && type === 'invoice' && (
+        <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
+          This {type} has associated payments recorded. Editing critical details may affect your ledger consistency.
+        </div>
+      )}
+      {isAgreementCancelled && (
+        <div className={`${backupAlertError} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
+          This invoice belongs to a cancelled agreement and cannot be updated.
+        </div>
+      )}
+      <div
+        className={`flex-grow min-h-0 overflow-y-auto pr-1 -mr-1 ${
+          itemToEdit && recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
+        }`}
+      >
+        <div className="space-y-3">
+          {(invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) ? renderRentalInvoiceForm()
+            : renderStandardForm()}
+        </div>
+      </div>
+
+      {!isRentalLayout && (
+        <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-app-border mt-3 flex-shrink-0 pointer-events-auto">
+          <div className="flex flex-wrap gap-2">
+            {itemToEdit && (
+              <Button
+                type="button"
+                variant="danger"
+                onClick={handleDelete}
+                disabled={isAgreementCancelled || recordLock.viewOnly}
+                className="w-full sm:w-auto text-sm py-2"
+              >
+                Delete
+              </Button>
+            )}
+            {itemToEdit && onDuplicate && (
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleDuplicateClick}
+                disabled={!canDuplicateRentalInvoice || recordLock.viewOnly}
+                title={
+                  !canDuplicateRentalInvoice
+                    ? 'Duplication requires an active rental agreement for this property.'
+                    : recordLock.viewOnly
+                      ? 'View-only mode'
+                      : undefined
+                }
+                className="w-full sm:w-auto text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
+              </Button>
+            )}
+            {type === 'bill' && billPrintData && (
+              <Button type="button" variant="secondary" onClick={() => triggerPrint('BILL', billPrintData)} className="w-full sm:w-auto text-sm py-2 flex items-center gap-1">
+                {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
+                Print
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
+            <LoadingButton
+              type="submit"
+              loading={isSubmitting}
+              loadingText="Saving..."
+              disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
+              className="w-full sm:w-auto text-sm py-2"
+            >
+              {itemToEdit ? 'Update' : 'Save'}
+            </LoadingButton>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   return (
     <>
       <RecordLockConflictModal
@@ -2783,92 +2988,19 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         onForceEdit={handleForceRecordLock}
         onDismiss={recordLock.dismissModal}
       />
-      <form onSubmit={handleSubmit} className="flex flex-col h-full" style={formStyle}>
-        {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
-          <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
-        )}
-        {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
-          <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
-        )}
-        {isPartiallyPaid && type === 'bill' && (
-          <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
-            This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
+      <form onSubmit={handleSubmit} className="flex flex-col h-full min-h-0" style={formStyle}>
+        {type === 'bill' ? (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] xl:grid-cols-[1fr_320px] gap-0 lg:gap-4 flex-1 min-h-0 lg:min-h-[min(680px,calc(100vh-12rem))]">
+            <div className="flex flex-col min-h-0 min-w-0">{billFormBody}</div>
+            <BillSummarySidePanel
+              billId={itemToEdit?.id}
+              preview={billSidebarPreview}
+              includeRentalOrphanPayments={rentalContext}
+              className="lg:sticky lg:top-0 lg:self-start lg:max-h-[min(85vh,calc(100vh-8rem))] lg:overflow-y-auto"
+            />
           </div>
-        )}
-        {isPartiallyPaid && type === 'invoice' && (
-          <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
-            This {type} has associated payments recorded. Editing critical details may affect your ledger consistency.
-          </div>
-        )}
-        {isAgreementCancelled && (
-          <div className={`${backupAlertError} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
-            This invoice belongs to a cancelled agreement and cannot be updated.
-          </div>
-        )}
-        <div
-          className={`flex-grow min-h-0 overflow-y-auto pr-1 -mr-1 ${
-            itemToEdit && recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''
-          }`}
-        >
-          <div className="space-y-3">
-            {(invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) ? renderRentalInvoiceForm()
-              : renderStandardForm()}
-          </div>
-        </div>
-
-        {/* Shared footer — hidden for rental layout (buttons are in right column) */}
-        {!isRentalLayout && (
-          <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 pt-3 border-t border-app-border mt-3 flex-shrink-0 pointer-events-auto">
-            <div className="flex flex-wrap gap-2">
-              {itemToEdit && (
-                <Button
-                  type="button"
-                  variant="danger"
-                  onClick={handleDelete}
-                  disabled={isAgreementCancelled || recordLock.viewOnly}
-                  className="w-full sm:w-auto text-sm py-2"
-                >
-                  Delete
-                </Button>
-              )}
-              {itemToEdit && onDuplicate && (
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={handleDuplicateClick}
-                  disabled={!canDuplicateRentalInvoice || recordLock.viewOnly}
-                  title={
-                    !canDuplicateRentalInvoice
-                      ? 'Duplication requires an active rental agreement for this property.'
-                      : recordLock.viewOnly
-                        ? 'View-only mode'
-                        : undefined
-                  }
-                  className="w-full sm:w-auto text-sm py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {type === 'invoice' ? 'Duplicate Invoice' : 'Duplicate Bill'}
-                </Button>
-              )}
-              {type === 'bill' && billPrintData && (
-                <Button type="button" variant="secondary" onClick={() => triggerPrint('BILL', billPrintData)} className="w-full sm:w-auto text-sm py-2 flex items-center gap-1">
-                  {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
-                  Print
-                </Button>
-              )}
-            </div>
-            <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">
-              <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting} className="w-full sm:w-auto text-sm py-2">Cancel</Button>
-              <LoadingButton
-                type="submit"
-                loading={isSubmitting}
-                loadingText="Saving..."
-                disabled={!!numberError || isAgreementCancelled || (Boolean(itemToEdit) && recordLock.viewOnly)}
-                className="w-full sm:w-auto text-sm py-2"
-              >
-                {itemToEdit ? 'Update' : 'Save'}
-              </LoadingButton>
-            </div>
-          </div>
+        ) : (
+          billFormBody
         )}
       </form>
       {billPriceAlert?.open && (

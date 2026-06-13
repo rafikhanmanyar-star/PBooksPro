@@ -1,8 +1,15 @@
-import { useProjects, useAccounts, useTransactions, useInvoices, useBills, useProjectAgreements } from '../../hooks/useSelectiveState';
+import { useProjects, useBuildings, useAccounts, useTransactions, useInvoices, useBills, useProjectAgreements } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
+import FinancialEntityFilterCombo from './FinancialEntityFilterCombo';
+import {
+  entityScopeFromFilterId,
+  financialEntityFilterLabel,
+  FINANCIAL_ENTITY_FILTER_ALL,
+  scopeIsConsolidated,
+} from './financialEntityScope';
 import { CURRENCY } from '../../constants';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
@@ -26,6 +33,7 @@ function money(n: number): string {
 
 const TrialBalanceReport: React.FC = () => {
   const projects = useProjects();
+  const buildings = useBuildings();
   const accounts = useAccounts();
   const transactions = useTransactions();
   const invoices = useInvoices();
@@ -39,7 +47,8 @@ const TrialBalanceReport: React.FC = () => {
   const [basis, setBasis] = useState<TrialBalanceBasis>('period');
   const [hideZeros, setHideZeros] = useState(false);
   const [collapsedTypes, setCollapsedTypes] = useState<Set<string>>(new Set());
-  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [entityFilterId, setEntityFilterId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
+  const entityScope = useMemo(() => entityScopeFromFilterId(entityFilterId), [entityFilterId]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [ledgerAccount, setLedgerAccount] = useState<{ id: string; name: string } | null>(null);
 
@@ -49,10 +58,9 @@ const TrialBalanceReport: React.FC = () => {
 
   const tenantId = user?.tenantId?.trim() || (typeof window !== 'undefined' ? localStorage.getItem('tenant_id')?.trim() : null) || 'local';
 
-  const projectItems = useMemo(() => [{ id: 'all', name: 'All Projects' }, ...projects], [projects]);
-  const accountItems = useMemo(
-    () => [{ id: 'all', name: 'All accounts' }, ...accounts.map((a) => ({ id: a.id, name: a.name }))],
-    [accounts]
+  const entityLabel = useMemo(
+    () => financialEntityFilterLabel(entityFilterId, projects, buildings),
+    [entityFilterId, projects, buildings]
   );
 
   const projectScopeState = useMemo(
@@ -64,6 +72,13 @@ const TrialBalanceReport: React.FC = () => {
     [invoices, bills, projectAgreements]
   );
 
+  const accountItems = useMemo(
+    () => [{ id: 'all', name: 'All accounts' }, ...accounts.map((a) => ({ id: a.id, name: a.name }))],
+    [accounts]
+  );
+
+  const hasEntityScope = !scopeIsConsolidated(entityScope);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -74,7 +89,7 @@ const TrialBalanceReport: React.FC = () => {
           from: startDate,
           to: endDate,
           basis,
-          projectScopeId: selectedProjectId,
+          entityScopeId: entityFilterId,
           projectScopeState,
           ledgerFallback: {
             transactions,
@@ -94,7 +109,7 @@ const TrialBalanceReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [tenantId, startDate, endDate, basis, selectedProjectId, projectScopeState, transactions, accounts]);
+  }, [tenantId, startDate, endDate, basis, entityFilterId, projectScopeState, transactions, accounts]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -216,8 +231,7 @@ const TrialBalanceReport: React.FC = () => {
     exportJsonToExcel(flat as never, `TrialBalance_${startDate}_${endDate}.xlsx`);
   };
 
-  const projectLabel =
-    selectedProjectId === 'all' ? 'All projects' : projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
+  const projectLabel = entityLabel;
   const subtitle =
     basis === 'cumulative'
       ? `${projectLabel} · Cumulative through ${formatDate(endDate)} (activity on or before end date)`
@@ -250,15 +264,11 @@ const TrialBalanceReport: React.FC = () => {
             hideSearch={true}
           >
             <div className="flex flex-wrap items-center gap-2">
-              <div className="w-40 sm:w-48 flex-shrink-0">
-                <ComboBox
-                  items={projectItems}
-                  selectedId={selectedProjectId}
-                  onSelect={(item) => setSelectedProjectId(item?.id || 'all')}
-                  allowAddNew={false}
-                  placeholder="Project scope"
-                />
-              </div>
+              <FinancialEntityFilterCombo
+                className="w-44 sm:w-52 flex-shrink-0"
+                selectedId={entityFilterId}
+                onSelect={setEntityFilterId}
+              />
               <div className="w-44 sm:w-52 flex-shrink-0">
                 <ComboBox
                   items={accountItems}
@@ -306,14 +316,14 @@ const TrialBalanceReport: React.FC = () => {
             </div>
           )}
 
-          {data?.dataSource === 'transactions_fallback' && selectedProjectId === 'all' && (
+          {data?.dataSource === 'transactions_fallback' && !hasEntityScope && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               No posted <strong>journal</strong> lines in this range — amounts are reconstructed from your{' '}
               <strong>transaction ledger</strong> (Income, Expense, Transfer, Loan) with a balancing clearing line.
               Post journals from Settings → Journal entry (GL) for immutable double-entry in the database.
             </div>
           )}
-          {selectedProjectId !== 'all' && (
+          {hasEntityScope && (
             <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
               Project scope matches <strong>Profit &amp; Loss</strong> / <strong>Balance Sheet</strong> (operational
               transactions; journal lines are not split by project).

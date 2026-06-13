@@ -66,10 +66,12 @@ function normalizeProfitLossValidation(raw: unknown): ProfitLossReportResult['va
 export async function fetchBalanceSheetReport(options: {
   asOfDate: string;
   projectId?: string;
+  buildingId?: string;
   debug?: boolean;
 }): Promise<BalanceSheetReportResult> {
   const q = new URLSearchParams({ date: options.asOfDate });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
   if (options.debug) q.set('debug', '1');
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/balance-sheet?${q.toString()}`);
   return {
@@ -92,9 +94,11 @@ export async function fetchProfitLossReport(options: {
   from: string;
   to: string;
   projectId?: string;
+  buildingId?: string;
 }): Promise<ProfitLossReportResult> {
   const q = new URLSearchParams({ from: options.from, to: options.to });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/profit-loss?${q.toString()}`);
   return {
     period: { from: String(raw.from ?? options.from), to: String(raw.to ?? options.to) },
@@ -142,9 +146,11 @@ export async function fetchCashFlowReport(options: {
   from: string;
   to: string;
   projectId?: string;
+  buildingId?: string;
 }): Promise<CashFlowReportResult> {
   const q = new URLSearchParams({ from: options.from, to: options.to });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
+  if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/cash-flow?${q.toString()}`);
   const summary =
     raw.summary && typeof raw.summary === 'object' ? (raw.summary as Record<string, unknown>) : {};

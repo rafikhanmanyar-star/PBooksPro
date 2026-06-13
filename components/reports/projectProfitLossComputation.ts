@@ -12,12 +12,38 @@ import {
 } from '../../utils/supplierPrepaidPl';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { getProfitLossExcludedCategoryIds } from '../../services/accounting/plExclusions';
-import { resolveProjectIdForTransaction, isTransactionFromVoidedOrCancelledInvoice } from './reportUtils';
+import {
+    resolveProjectIdForTransaction,
+    resolveBuildingIdForTransaction,
+    isTransactionFromVoidedOrCancelledInvoice,
+    type ReportStateSlice,
+} from './reportUtils';
+import {
+    scopeIsConsolidated,
+    scopeTargetsBuilding,
+    scopeTargetsProject,
+    transactionMatchesFinancialEntityScope,
+    billMatchesFinancialEntityScope,
+    type FinancialEntityScope,
+} from './financialEntityScope';
+
+function resolveBillBuildingId(bill: Bill, state: AppState): string | undefined {
+    if (bill.buildingId) return bill.buildingId;
+    if (bill.propertyId && state.properties?.length) {
+        return state.properties.find((p) => p.id === bill.propertyId)?.buildingId;
+    }
+    return undefined;
+}
+
+function plEntityScope(selectedProjectId: string, selectedBuildingId: string): FinancialEntityScope {
+    return { projectId: selectedProjectId, buildingId: selectedBuildingId };
+}
 
 /** Bill accrual section of P&L (must match computeProjectProfitLossTotals). */
 function runPlBillAccrual(
     state: AppState,
     selectedProjectId: string,
+    selectedBuildingId: string,
     startDate: string,
     endDate: string,
     categoryAmounts: Record<string, number>,
@@ -38,10 +64,15 @@ function runPlBillAccrual(
     const categoryMap = new Map(state.categories.map((c) => [c.id, c]));
 
     const processedBills = new Set<string>();
+    const scope = plEntityScope(selectedProjectId, selectedBuildingId);
 
     state.bills.forEach((bill) => {
-        if (!bill.projectId) return;
-        if (selectedProjectId !== 'all' && bill.projectId !== selectedProjectId) return;
+        if (!billMatchesFinancialEntityScope(bill, state as ReportStateSlice, scope)) return;
+        const isProjectBill = !!bill.projectId;
+        const buildingId = resolveBillBuildingId(bill, state);
+        const isBuildingBill = !!buildingId && !bill.projectId;
+        if (!isProjectBill && !isBuildingBill) return;
+        const excludeRentalCats = isProjectBill || scopeTargetsProject(scope);
 
         const billDate = new Date(bill.issueDate);
         if (billDate < start || billDate > end) return;
@@ -49,7 +80,7 @@ function runPlBillAccrual(
         if (!bill.expenseCategoryItems || bill.expenseCategoryItems.length === 0) {
             if (!bill.categoryId) return;
             const categoryId = bill.categoryId;
-            if (excludedCats.has(categoryId) || rentalCats.has(categoryId)) return;
+            if (excludedCats.has(categoryId) || (excludeRentalCats && rentalCats.has(categoryId))) return;
 
             const category = categoryMap.get(categoryId);
             if (category && category.type === TransactionType.EXPENSE) {
@@ -66,7 +97,7 @@ function runPlBillAccrual(
                 if (!item.categoryId) return;
                 const itemCategoryId = item.categoryId;
 
-                if (excludedCats.has(itemCategoryId) || rentalCats.has(itemCategoryId)) return;
+                if (excludedCats.has(itemCategoryId) || (excludeRentalCats && rentalCats.has(itemCategoryId))) return;
 
                 const allocatedAmount = item.netValue || 0;
 
@@ -99,7 +130,7 @@ export function computeProjectBillAccruedExpenseTotal(
     const categoryAmounts: Record<string, number> = {};
     const incomeRef = { value: 0 };
     const expenseRef = { value: 0 };
-    runPlBillAccrual(state, selectedProjectId, startDate, endDate, categoryAmounts, incomeRef, expenseRef);
+    runPlBillAccrual(state, selectedProjectId, 'all', startDate, endDate, categoryAmounts, incomeRef, expenseRef);
     return expenseRef.value;
 }
 
@@ -111,7 +142,7 @@ export function computePlProcessedBills(
     endDate: string
 ): Set<string> {
     const categoryAmounts: Record<string, number> = {};
-    return runPlBillAccrual(state, selectedProjectId, startDate, endDate, categoryAmounts, { value: 0 }, { value: 0 });
+    return runPlBillAccrual(state, selectedProjectId, 'all', startDate, endDate, categoryAmounts, { value: 0 }, { value: 0 });
 }
 
 /** Lines from vendor bills accrued into P&L (payment txs are suppressed for processed bills — modal needs these). */
@@ -435,7 +466,8 @@ export function computeProjectProfitLossTotals(
     selectedProjectId: string,
     startDate: string,
     endDate: string,
-    options?: { mirroredTransactionIds?: Set<string>; requireJournalMirror?: boolean }
+    options?: { mirroredTransactionIds?: Set<string>; requireJournalMirror?: boolean },
+    selectedBuildingId: string = 'all'
 ): ProjectProfitLossTotals {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
@@ -461,10 +493,20 @@ export function computeProjectProfitLossTotals(
 
     const incomeRef = { value: 0 };
     const expenseRef = { value: 0 };
-    const processedBills = runPlBillAccrual(state, selectedProjectId, startDate, endDate, categoryAmounts, incomeRef, expenseRef);
+    const processedBills = runPlBillAccrual(
+        state,
+        selectedProjectId,
+        selectedBuildingId,
+        startDate,
+        endDate,
+        categoryAmounts,
+        incomeRef,
+        expenseRef
+    );
     totalIncome += incomeRef.value;
     totalExpense += expenseRef.value;
 
+    const scope = plEntityScope(selectedProjectId, selectedBuildingId);
     const clearingAccountId = state.accounts.find((a) => a.name === 'Internal Clearing')?.id;
     state.transactions.forEach((tx) => {
         if (options?.requireJournalMirror && options.mirroredTransactionIds && !options.mirroredTransactionIds.has(tx.id)) {
@@ -476,18 +518,27 @@ export function computeProjectProfitLossTotals(
 
         if (isTransactionFromVoidedOrCancelledInvoice(tx, state)) return;
 
-        const projectId = resolveProjectIdForTransaction(tx, state);
-        if (!projectId) return;
+        if (!transactionMatchesFinancialEntityScope(tx, state as ReportStateSlice, scope)) return;
 
-        if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
+        const projectId = resolveProjectIdForTransaction(tx, state);
+        const buildingId = resolveBuildingIdForTransaction(tx, state as ReportStateSlice);
+        if (scopeTargetsBuilding(scope)) {
+            if (!buildingId) return;
+        } else if (scopeTargetsProject(scope)) {
+            if (!projectId) return;
+        } else if (!projectId && !buildingId) {
+            return;
+        }
 
         if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {
             return;
         }
 
         const categoryId = resolvePlCategoryIdForTransaction(tx, state, processedBills);
+        const excludeRentalCats =
+            scopeTargetsProject(scope) || (scopeIsConsolidated(scope) && !!projectId && !buildingId);
 
-        if (categoryId && (excludedCats.has(categoryId) || rentalCats.has(categoryId))) return;
+        if (categoryId && (excludedCats.has(categoryId) || (excludeRentalCats && rentalCats.has(categoryId)))) return;
 
         if (clearingAccountId && tx.accountId === clearingAccountId) {
             return;

@@ -25,6 +25,9 @@ balanceSheetRouter.get('/reports/balance-sheet', async (req: AuthedRequest, res)
   const projectRaw = req.query.projectId ?? req.query.project;
   const selectedProjectId =
     typeof projectRaw === 'string' && projectRaw.trim() ? projectRaw.trim() : 'all';
+  const buildingRaw = req.query.buildingId ?? req.query.building;
+  const selectedBuildingId =
+    typeof buildingRaw === 'string' && buildingRaw.trim() ? buildingRaw.trim() : 'all';
 
   try {
     const pool = getPool();
@@ -33,6 +36,7 @@ balanceSheetRouter.get('/reports/balance-sheet', async (req: AuthedRequest, res)
       const debug = req.query.debug === '1' || req.query.debug === 'true';
       const data = await getBalanceSheetReportJson(client, tenantId, dateStr, selectedProjectId, {
         includeDebug: debug,
+        selectedBuildingId,
       });
       sendSuccess(res, data);
     } finally {

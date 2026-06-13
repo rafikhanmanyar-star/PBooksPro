@@ -13,7 +13,8 @@ import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY, ICONS } from '../../constants';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
-import { uploadEntityDocument, openDocumentById } from '../../services/documentUploadService';
+import { uploadEntityDocument } from '../../services/documentUploadService';
+import { openContractDocument } from './ContractDocumentUI';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { useQuotationRateValidator, resolveBillVendorId } from '../../hooks/useQuotationValidation';
 import {
@@ -637,18 +638,11 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                     variant="secondary"
                                     size="sm"
                                     onClick={async () => {
-                                        if (documentId) {
-                                            await openDocumentById(documentId, state.documents, url => window.open(url, '_blank'), showAlert);
-                                        } else if (documentPath && (window as any).electronAPI?.openDocumentFile) {
-                                            try {
-                                                const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath });
-                                                if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`);
-                                            } catch (error) {
-                                                await showAlert(error instanceof Error ? error.message : 'Error opening document');
-                                            }
-                                        } else {
-                                            await showAlert('File system access not available');
-                                        }
+                                        await openContractDocument(
+                                            { documentId, documentPath },
+                                            state.documents,
+                                            showAlert
+                                        );
                                     }}
                                 >
                                     Open

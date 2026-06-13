@@ -37,6 +37,7 @@ export interface LedgerTransaction {
   categoryId?: string;
   accountId?: string;
   projectId?: string;
+  buildingId?: string;
   billId?: string;
   invoiceId?: string;
   deletedAt?: string;
@@ -125,15 +126,61 @@ export function journalEntryMap(entries: JournalEntryRow[]): Map<string, Journal
   return new Map(entries.map((e) => [e.id, e]));
 }
 
+export interface JournalEntityScopeOptions {
+  projectId?: string | null;
+  buildingId?: string | null;
+}
+
+function buildTxScopeMetaMap(
+  transactions?: LedgerTransaction[]
+): Map<string, { projectId?: string; buildingId?: string }> {
+  const map = new Map<string, { projectId?: string; buildingId?: string }>();
+  for (const tx of transactions ?? []) {
+    map.set(tx.id, { projectId: tx.projectId, buildingId: tx.buildingId });
+  }
+  return map;
+}
+
+function journalLineMatchesEntityScope(
+  line: JournalLineRow,
+  entry: JournalEntryRow,
+  options: JournalEntityScopeOptions | undefined,
+  txMetaById: Map<string, { projectId?: string; buildingId?: string }>
+): boolean {
+  if (!options) return true;
+  const projectFilter = options.projectId && options.projectId !== 'all';
+  const buildingFilter = options.buildingId && options.buildingId !== 'all';
+  if (!projectFilter && !buildingFilter) return true;
+
+  let projectId = line.projectId ?? entry.projectId ?? undefined;
+  let buildingId: string | undefined;
+  if (entry.sourceModule === 'transaction' && entry.sourceId) {
+    const meta = txMetaById.get(entry.sourceId);
+    if (meta) {
+      if (!projectId) projectId = meta.projectId;
+      buildingId = meta.buildingId;
+    }
+  }
+
+  if (buildingFilter) return buildingId === options.buildingId;
+  if (projectFilter) return projectId === options.projectId && !buildingId;
+  return true;
+}
+
 /** Aggregate signed balance per account from journal lines through asOfDate. */
 export function computeAccountBalancesFromJournal(
   input: JournalLedgerInput,
   asOfDate: string,
-  options?: { projectId?: string | null; fromDate?: string }
+  options?: { projectId?: string | null; buildingId?: string | null; fromDate?: string }
 ): Map<string, JournalAccountBalance> {
   const entryById = journalEntryMap(activeJournalEntries(input.journalEntries));
   const accountType = new Map(input.accounts.map((a) => [a.id, a.type]));
   const agg = new Map<string, { gd: number; gc: number }>();
+  const txMetaById = buildTxScopeMetaMap(input.transactions);
+  const scope: JournalEntityScopeOptions | undefined =
+    options?.projectId || options?.buildingId
+      ? { projectId: options.projectId, buildingId: options.buildingId }
+      : undefined;
 
   for (const line of input.journalLines) {
     const entry = entryById.get(line.journalEntryId);
@@ -141,10 +188,7 @@ export function computeAccountBalancesFromJournal(
     if (ymd(entry.entryDate) > asOfDate) continue;
     if (options?.fromDate && priorTo(entry.entryDate, options.fromDate)) continue;
 
-    if (options?.projectId && options.projectId !== 'all') {
-      const pid = line.projectId ?? entry.projectId;
-      if (pid !== options.projectId) continue;
-    }
+    if (!journalLineMatchesEntityScope(line, entry, scope, txMetaById)) continue;
 
     const cur = agg.get(line.accountId) ?? { gd: 0, gc: 0 };
     cur.gd = roundMoney(cur.gd + roundMoney(line.debitAmount));
@@ -206,11 +250,16 @@ export function filterTransactionsForJournalLedger(
 /** Build trial balance raw rows from journal aggregates (+ opening equity offset). */
 export function buildTrialBalanceFromJournal(
   input: JournalLedgerInput,
-  options: { from: string; to: string; basis: TrialBalanceBasis; projectId?: string }
+  options: { from: string; to: string; basis: TrialBalanceBasis; projectId?: string; buildingId?: string }
 ): TrialBalanceReportPayload {
   const entryById = journalEntryMap(activeJournalEntries(input.journalEntries));
   const activityRows: TrialBalanceRawRow[] = [];
   const agg = new Map<string, { gd: number; gc: number }>();
+  const txMetaById = buildTxScopeMetaMap(input.transactions);
+  const scope: JournalEntityScopeOptions | undefined =
+    options.projectId || options.buildingId
+      ? { projectId: options.projectId, buildingId: options.buildingId }
+      : undefined;
 
   for (const line of input.journalLines) {
     const entry = entryById.get(line.journalEntryId);
@@ -224,10 +273,7 @@ export function buildTrialBalanceFromJournal(
     if (options.basis === 'period' && !inPeriod && !inPrior) continue;
     if (options.basis === 'cumulative' && !inCumulative) continue;
 
-    if (options.projectId && options.projectId !== 'all') {
-      const pid = line.projectId ?? entry.projectId;
-      if (pid !== options.projectId) continue;
-    }
+    if (!journalLineMatchesEntityScope(line, entry, scope, txMetaById)) continue;
 
     const cur = agg.get(line.accountId) ?? { gd: 0, gc: 0 };
     cur.gd = roundMoney(cur.gd + roundMoney(line.debitAmount));

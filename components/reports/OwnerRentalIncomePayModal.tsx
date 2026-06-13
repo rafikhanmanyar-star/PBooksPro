@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { flushSync } from 'react-dom';
 import {
     useAccounts,
     useBuildings,
@@ -16,6 +17,8 @@ import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { getAppStateApiService } from '../../services/api/appStateApi';
 
 export interface OwnerRentalIncomePayModalProps {
     isOpen: boolean;
@@ -27,6 +30,8 @@ export interface OwnerRentalIncomePayModalProps {
     reportPayableBalance: number;
     /** When `property` is set, used as default building */
     preSelectedBuildingId?: string;
+    onLedgerMutationStart?: () => void;
+    onLedgerMutationComplete?: () => void;
 }
 
 const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
@@ -36,6 +41,8 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
     property,
     reportPayableBalance,
     preSelectedBuildingId,
+    onLedgerMutationStart,
+    onLedgerMutationComplete,
 }) => {
     const accounts = useAccounts();
     const properties = useProperties();
@@ -126,6 +133,7 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
         }
 
         setIsSubmitting(true);
+        onLedgerMutationStart?.();
         try {
 
         const tx: Transaction = {
@@ -142,9 +150,22 @@ const OwnerRentalIncomePayModal: React.FC<OwnerRentalIncomePayModalProps> = ({
             ownerId: owner.id,
         };
 
-        dispatch({ type: 'ADD_TRANSACTION', payload: tx });
+        if (isAccountingBackedByRemoteApi()) {
+            const api = getAppStateApiService();
+            const saved = await api.saveTransaction(tx);
+            flushSync(() => {
+                dispatch({ type: 'ADD_TRANSACTION', payload: saved as Transaction, _isRemote: true } as never);
+            });
+        } else {
+            dispatch({ type: 'ADD_TRANSACTION', payload: tx });
+        }
+
         showToast('Rental income payment recorded. Ledger and accounts are updated.', 'success');
+        onLedgerMutationComplete?.();
         onClose();
+        } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            await showAlert(`Failed to record payment: ${msg}`);
         } finally {
             setIsSubmitting(false);
         }

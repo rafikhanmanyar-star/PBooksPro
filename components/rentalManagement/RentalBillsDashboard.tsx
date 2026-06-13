@@ -20,7 +20,6 @@ import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import TransactionForm from '../transactions/TransactionForm';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
 import BillBulkPaymentModal from '../bills/BillBulkPaymentModal';
-import BillLinkedPaymentsSidePanel from '../bills/BillLinkedPaymentsSidePanel';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
@@ -1038,31 +1037,18 @@ const RentalBillsDashboard: React.FC = () => {
         isOpen={isCreateModalOpen}
         onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
         title={billToEdit ? 'Edit Bill' : duplicateBillData ? 'Duplicate Bill' : 'Record New Bill'}
-        size={billToEdit?.id ? 'xl' : 'lg'}
-        className={billToEdit?.id ? 'sm:!max-w-7xl' : undefined}
+        size="xl"
+        className="sm:!max-w-7xl"
       >
-        <div
-          className={`flex flex-col lg:flex-row lg:items-stretch -m-3 sm:-m-4 md:-m-6 lg:-m-8 ${billToEdit?.id ? 'lg:min-h-[min(720px,calc(100vh-10rem))]' : ''}`}
-        >
-          <div className="flex-1 min-w-0 min-h-0">
-            <InvoiceBillForm
-              key={billToEdit?.id ?? (duplicateBillData ? 'duplicate-bill' : 'new-bill')}
-              onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
-              type="bill"
-              rentalContext={true}
-              itemToEdit={billToEdit || undefined}
-              initialData={duplicateBillData || undefined}
-              onDuplicate={handleDuplicateBill}
-            />
-          </div>
-          {billToEdit?.id ? (
-            <BillLinkedPaymentsSidePanel
-              billId={billToEdit.id}
-              includeRentalOrphanPayments
-              className="lg:w-[min(100%,380px)] lg:flex-shrink-0 lg:max-w-full lg:sticky lg:top-0 lg:self-start lg:max-h-[min(85vh,calc(100vh-8rem))] lg:overflow-y-auto"
-            />
-          ) : null}
-        </div>
+        <InvoiceBillForm
+          key={billToEdit?.id ?? (duplicateBillData ? 'duplicate-bill' : 'new-bill')}
+          onClose={() => { setIsCreateModalOpen(false); setBillToEdit(null); setDuplicateBillData(null); }}
+          type="bill"
+          rentalContext={true}
+          itemToEdit={billToEdit || undefined}
+          initialData={duplicateBillData || undefined}
+          onDuplicate={handleDuplicateBill}
+        />
       </Modal>
 
       <Modal isOpen={isPaymentModalOpen} onClose={() => setIsPaymentModalOpen(false)} title={paymentBill ? `Pay Bill #${paymentBill.billNumber}` : 'Pay Bill'}>

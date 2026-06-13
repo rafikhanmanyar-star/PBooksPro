@@ -18,6 +18,7 @@ import { getContractPaidFromTransactions } from '../../utils/contractRetention';
 import { useAuth } from '../../context/AuthContext';
 import { roleHasPermission } from '../../shared/rbac/permissions';
 import ContractActivitySidebar from './ContractActivitySidebar';
+import { ContractDocumentAttachmentPanel } from './ContractDocumentUI';
 
 interface ProjectContractDetailModalProps {
     contract: Contract;
@@ -217,6 +218,8 @@ const ProjectContractDetailModal: React.FC<ProjectContractDetailModalProps> = ({
                             ></div>
                         </div>
                     </div>
+
+                    <ContractDocumentAttachmentPanel contract={contract} />
 
                     <div className="mb-6">
                         <h4 className="font-bold text-app-text mb-2 border-b border-app-border pb-1">Terms & Conditions</h4>

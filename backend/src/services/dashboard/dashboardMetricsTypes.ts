@@ -13,6 +13,7 @@ export interface DashboardFilters {
   to: string;
   comparisonPeriod: DashboardComparisonPeriod;
   projectId?: string;
+  buildingId?: string;
   propertyId?: string;
   vendorId?: string;
   customerId?: string;

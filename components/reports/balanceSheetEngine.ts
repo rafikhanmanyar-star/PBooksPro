@@ -21,9 +21,21 @@ export type BalanceSheetStateInput = Pick<
   | 'projectAgreements'
   | 'projectReceivedAssets'
   | 'units'
+  | 'properties'
 > & { journalLedger?: JournalLedgerInput };
 import { TransactionType, InvoiceType, AccountType, LoanSubtype } from '../../types';
-import { resolveProjectIdForTransaction } from './reportUtils';
+import {
+  type ReportStateSlice,
+} from './reportUtils';
+import {
+  billMatchesFinancialEntityScope,
+  FINANCIAL_ENTITY_FILTER_ALL,
+  invoiceMatchesFinancialEntityScope,
+  scopeTargetsBuilding,
+  scopeTargetsProject,
+  transactionMatchesFinancialEntityScope,
+  type FinancialEntityScope,
+} from './financialEntityScope';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { computeProfitLossReport } from './profitLossEngine';
@@ -269,13 +281,24 @@ function statementDisplayAmount(balance: number, position: BsPosition, useJourna
 }
 
 /**
- * Compute balance sheet as of date for optional single project filter ('all' = consolidated).
+ * Compute balance sheet as of date for optional project or building filter ('all' = consolidated).
  */
 export function computeBalanceSheetReport(
   state: BalanceSheetStateInput,
-  options: { asOfDate: string; selectedProjectId: string; useJournalLedger?: boolean }
+  options: {
+    asOfDate: string;
+    selectedProjectId: string;
+    selectedBuildingId?: string;
+    useJournalLedger?: boolean;
+  }
 ): BalanceSheetReportResult {
   const { asOfDate, selectedProjectId } = options;
+  const selectedBuildingId = options.selectedBuildingId ?? FINANCIAL_ENTITY_FILTER_ALL;
+  const entityScope: FinancialEntityScope = {
+    projectId: selectedProjectId,
+    buildingId: selectedBuildingId,
+  };
+  const reportSlice = state as ReportStateSlice;
   const useJournal = options.useJournalLedger !== false && !!state.journalLedger?.journalLines?.length;
   const dateLimit = new Date(asOfDate);
   dateLimit.setHours(23, 59, 59, 999);
@@ -299,7 +322,10 @@ export function computeBalanceSheetReport(
     const balMap = computeAccountBalancesFromJournal(
       { ...jl, accounts: journalAccounts },
       asOfDate,
-      { projectId: selectedProjectId === 'all' ? undefined : selectedProjectId }
+      {
+        projectId: selectedProjectId === FINANCIAL_ENTITY_FILTER_ALL ? undefined : selectedProjectId,
+        buildingId: selectedBuildingId === FINANCIAL_ENTITY_FILTER_ALL ? undefined : selectedBuildingId,
+      }
     );
     for (const [accountId, bal] of balMap) {
       accountBalances[accountId] = bal.signedBalance;
@@ -329,11 +355,7 @@ export function computeBalanceSheetReport(
     const txDate = new Date(tx.date);
     if (txDate > dateLimit) return;
 
-    const projectId = resolveProjectIdForTransaction(tx, state);
-    if (selectedProjectId !== 'all') {
-      if (projectId !== selectedProjectId) return;
-      if (!projectId) return;
-    }
+    if (!transactionMatchesFinancialEntityScope(tx, reportSlice, entityScope)) return;
 
     if (tx.type === TransactionType.INCOME) {
       if (tx.accountId) accountsWithTransactions.add(tx.accountId);
@@ -410,9 +432,7 @@ export function computeBalanceSheetReport(
   if (!useJournal) {
     const installmentInvoices = (state.invoices || []).filter((inv) => inv.invoiceType === InvoiceType.INSTALLMENT);
     installmentInvoices.forEach((inv) => {
-      if (selectedProjectId !== 'all') {
-        if (inv.projectId !== selectedProjectId) return;
-      }
+      if (!invoiceMatchesFinancialEntityScope(inv, reportSlice, entityScope)) return;
       if (inv.agreementId) {
         const agreement = state.projectAgreements.find((pa) => pa.id === inv.agreementId);
         if (agreement && agreement.status === 'Cancelled') return;
@@ -425,9 +445,7 @@ export function computeBalanceSheetReport(
 
     (state.bills || []).forEach((bill) => {
       if (bill.propertyId) return;
-      if (selectedProjectId !== 'all') {
-        if (bill.projectId !== selectedProjectId) return;
-      }
+      if (!billMatchesFinancialEntityScope(bill, reportSlice, entityScope)) return;
       if (new Date(bill.issueDate) <= dateLimit) {
         const paidAmount = bill.paidAmount || 0;
         const due = Math.max(0, bill.amount - paidAmount);
@@ -441,10 +459,15 @@ export function computeBalanceSheetReport(
 
   const receivedAssetsAccountId =
     resolveSystemAccountId(state.accounts, 'sys-acc-received-assets') ?? 'sys-acc-received-assets';
-  const receivedAssetsHeldBalance = (state.projectReceivedAssets || [])
-    .filter((a) => !a.soldDate)
-    .filter((a) => selectedProjectId === 'all' || a.projectId === selectedProjectId)
-    .reduce((sum, a) => sum + (a.recordedValue || 0), 0);
+  const receivedAssetsHeldBalance = scopeTargetsBuilding(entityScope)
+    ? 0
+    : (state.projectReceivedAssets || [])
+        .filter((a) => !a.soldDate)
+        .filter(
+          (a) =>
+            !scopeTargetsProject(entityScope) || a.projectId === entityScope.projectId
+        )
+        .reduce((sum, a) => sum + (a.recordedValue || 0), 0);
   if (state.accounts?.some((a) => a.id === receivedAssetsAccountId)) {
     accountBalances[receivedAssetsAccountId] = receivedAssetsHeldBalance;
     if (receivedAssetsHeldBalance > 0.01) accountsWithTransactions.add(receivedAssetsAccountId);
@@ -455,6 +478,7 @@ export function computeBalanceSheetReport(
     startDate: BS_PL_CUMULATIVE_START,
     endDate: asOfDate,
     selectedProjectId,
+    selectedBuildingId,
   });
   const retainedEarningsFromPL = pl.net_profit;
 
@@ -719,9 +743,15 @@ export function computeBalanceSheetReport(
       (pa.unitIds || []).forEach((uid) => soldUnitIds.add(uid));
     }
   });
-  const marketInventory = (state.units || [])
-    .filter((u) => (selectedProjectId === 'all' || u.projectId === selectedProjectId) && !soldUnitIds.has(u.id))
-    .reduce((sum, u) => sum + (u.salePrice || 0), 0);
+  const marketInventory = scopeTargetsBuilding(entityScope)
+    ? 0
+    : (state.units || [])
+        .filter(
+          (u) =>
+            (!scopeTargetsProject(entityScope) || u.projectId === entityScope.projectId) &&
+            !soldUnitIds.has(u.id)
+        )
+        .reduce((sum, u) => sum + (u.salePrice || 0), 0);
 
   const supplementalMarketMemo = Math.abs(marketInventory) > 0.01 ? marketInventory : 0;
   if (supplementalMarketMemo > 0) {

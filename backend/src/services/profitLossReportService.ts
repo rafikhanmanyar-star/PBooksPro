@@ -6,7 +6,7 @@ import { GLOBAL_SYSTEM_TENANT_ID } from '../constants/globalSystemChart.js';
 type ProfitLossEngineModule = {
   computeProfitLossReport: (
     state: Record<string, unknown>,
-    opts: { startDate: string; endDate: string; selectedProjectId: string }
+    opts: { startDate: string; endDate: string; selectedProjectId: string; selectedBuildingId?: string }
   ) => Record<string, unknown>;
 };
 
@@ -101,13 +101,15 @@ export async function computeProfitLossFromPrepared(
   prepared: PreparedProfitLossState,
   from: string,
   to: string,
-  selectedProjectId: string
+  selectedProjectId: string,
+  selectedBuildingId: string = 'all'
 ): Promise<ProfitLossReportJson> {
   const { computeProfitLossReport } = await loadProfitLossEngine();
   const r = computeProfitLossReport(prepared.state, {
     startDate: from,
     endDate: to,
     selectedProjectId,
+    selectedBuildingId,
   }) as Record<string, unknown>;
   return formatProfitLossResult(r, from, to, selectedProjectId);
 }
@@ -134,8 +136,9 @@ export async function getProfitLossReportJson(
   tenantId: string,
   from: string,
   to: string,
-  selectedProjectId: string
+  selectedProjectId: string,
+  selectedBuildingId: string = 'all'
 ) {
   const prepared = await prepareProfitLossState(client, tenantId, to);
-  return computeProfitLossFromPrepared(prepared, from, to, selectedProjectId);
+  return computeProfitLossFromPrepared(prepared, from, to, selectedProjectId, selectedBuildingId);
 }
