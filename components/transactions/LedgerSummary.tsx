@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Transaction, TransactionType } from '../../types';
 import { CURRENCY } from '../../constants';
+import { coerceAmount } from '../../utils/numberFormatting';
 
 interface LedgerSummaryProps {
     transactions: Array<Transaction & { balance?: number }>;
@@ -16,24 +17,29 @@ const LedgerSummary: React.FC<LedgerSummaryProps> = ({ transactions }) => {
 
         transactions.forEach(tx => {
             count++;
+            const amount = coerceAmount(tx.amount);
             switch (tx.type) {
                 case TransactionType.INCOME:
-                    totalIncome += tx.amount;
+                    totalIncome += amount;
                     break;
                 case TransactionType.EXPENSE:
-                    totalExpense += tx.amount;
+                    totalExpense += amount;
                     break;
                 case TransactionType.TRANSFER:
-                    totalTransfer += tx.amount;
+                    totalTransfer += amount;
                     break;
                 case TransactionType.LOAN:
-                    totalLoan += tx.amount;
+                    totalLoan += amount;
                     break;
             }
         });
 
         const netBalance = totalIncome - totalExpense;
-        const lastBalance = transactions.length > 0 ? transactions[transactions.length - 1].balance || 0 : 0;
+        const chronologicallyLatest = transactions.reduce(
+            (latest, tx) => (!latest || tx.date > latest.date ? tx : latest),
+            null as (Transaction & { balance?: number }) | null
+        );
+        const lastBalance = chronologicallyLatest ? coerceAmount(chronologicallyLatest.balance) : 0;
 
         return {
             totalIncome,

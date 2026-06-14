@@ -7,6 +7,7 @@
 
 import { apiClient } from '../client';
 import { Transaction } from '../../../types';
+import { normalizeTransactionFromApi } from '../normalizeTransactionFromApi';
 
 export interface TransactionFilters {
   projectId?: string | null;
@@ -47,7 +48,8 @@ export class TransactionsApiRepository {
     const queryString = params.toString();
     const endpoint = queryString ? `/transactions?${queryString}` : '/transactions';
     
-    return apiClient.get<Transaction[]>(endpoint);
+    const rows = await apiClient.get<Record<string, unknown>[]>(endpoint);
+    return rows.map((row) => normalizeTransactionFromApi(row));
   }
 
   /**
@@ -55,7 +57,8 @@ export class TransactionsApiRepository {
    */
   async findById(id: string): Promise<Transaction | null> {
     try {
-      return await apiClient.get<Transaction>(`/transactions/${id}`);
+      const row = await apiClient.get<Record<string, unknown>>(`/transactions/${id}`);
+      return normalizeTransactionFromApi(row);
     } catch (error: any) {
       if (error.status === 404) {
         return null;
@@ -68,14 +71,16 @@ export class TransactionsApiRepository {
    * Create a new transaction
    */
   async create(transaction: Partial<Transaction>): Promise<Transaction> {
-    return apiClient.post<Transaction>('/transactions', transaction);
+    const saved = await apiClient.post<Record<string, unknown>>('/transactions', transaction);
+    return normalizeTransactionFromApi(saved);
   }
 
   /**
    * Update an existing transaction
    */
   async update(id: string, transaction: Partial<Transaction>): Promise<Transaction> {
-    return apiClient.put<Transaction>(`/transactions/${id}`, transaction);
+    const saved = await apiClient.put<Record<string, unknown>>(`/transactions/${id}`, transaction);
+    return normalizeTransactionFromApi(saved);
   }
 
   /**

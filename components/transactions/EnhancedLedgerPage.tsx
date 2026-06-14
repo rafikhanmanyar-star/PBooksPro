@@ -8,6 +8,7 @@ import Button from '../ui/Button';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
+import { coerceAmount } from '../../utils/numberFormatting';
 import { useProgress } from '../../context/ProgressContext';
 import { exportJsonToExcel } from '../../services/exportService';
 // ImportType moved to types.ts
@@ -26,6 +27,14 @@ import { usePrintContext } from '../../context/PrintContext';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 
+
+/** YYYY-MM-DD for ledger filters/sort; empty string when date is missing or invalid. */
+function transactionDateYmd(value: string | undefined | null): string {
+    if (value == null || value === '') return '';
+    const trimmed = String(value).trim();
+    const match = trimmed.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+}
 
 const initialFilters: FilterCriteria = {
     searchQuery: '',
@@ -156,7 +165,7 @@ const EnhancedLedgerPage: React.FC = () => {
             });
 
             if (isRental) {
-                const totalAmount = batchTxs.reduce((sum, t) => sum + t.amount, 0);
+                const totalAmount = batchTxs.reduce((sum, t) => sum + coerceAmount(t.amount), 0);
                 const template = batchTxs[0];
                 const uniqueContacts = new Set(batchTxs.map(t => t.contactId).filter(Boolean));
                 const commonContactId = uniqueContacts.size === 1 ? Array.from(uniqueContacts)[0] : undefined;
@@ -254,17 +263,26 @@ const EnhancedLedgerPage: React.FC = () => {
 
         // Apply date range filter
         if (filters.startDate && filters.endDate) {
-            filtered = filtered.filter(t => t.date >= filters.startDate && t.date <= filters.endDate);
+            filtered = filtered.filter(t => {
+                const txDate = transactionDateYmd(t.date);
+                return txDate !== '' && txDate >= filters.startDate && txDate <= filters.endDate;
+            });
         } else if (filters.startDate) {
-            filtered = filtered.filter(t => t.date >= filters.startDate);
+            filtered = filtered.filter(t => {
+                const txDate = transactionDateYmd(t.date);
+                return txDate !== '' && txDate >= filters.startDate;
+            });
         } else if (filters.endDate) {
-            filtered = filtered.filter(t => t.date <= filters.endDate);
+            filtered = filtered.filter(t => {
+                const txDate = transactionDateYmd(t.date);
+                return txDate !== '' && txDate <= filters.endDate;
+            });
         } else if (viewMode === 'month') {
             // Apply monthly filter when no custom date range
             const year = currentDate.getFullYear();
             const month = String(currentDate.getMonth() + 1).padStart(2, '0');
             const monthPrefix = `${year}-${month}`;
-            filtered = filtered.filter(t => t.date.startsWith(monthPrefix));
+            filtered = filtered.filter(t => transactionDateYmd(t.date).startsWith(monthPrefix));
         }
 
         // Apply search query (optimized with lookup maps, using debounced value)
@@ -298,8 +316,8 @@ const EnhancedLedgerPage: React.FC = () => {
 
             switch (sortConfig.key) {
                 case 'date':
-                    valA = new Date(a.date).getTime();
-                    valB = new Date(b.date).getTime();
+                    valA = transactionDateYmd(a.date) ? new Date(transactionDateYmd(a.date)).getTime() : 0;
+                    valB = transactionDateYmd(b.date) ? new Date(transactionDateYmd(b.date)).getTime() : 0;
                     break;
                 case 'amount':
                     valA = a.amount;
@@ -326,8 +344,8 @@ const EnhancedLedgerPage: React.FC = () => {
                     valB = (lookupMaps.contacts.get(b.contactId ?? '')?.name || '').toLowerCase();
                     break;
                 default:
-                    valA = a.date;
-                    valB = b.date;
+                    valA = transactionDateYmd(a.date);
+                    valB = transactionDateYmd(b.date);
             }
 
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -338,15 +356,20 @@ const EnhancedLedgerPage: React.FC = () => {
 
     // Calculate running balance in chronological order, then map to the current sort order
     const balanceMap = useMemo(() => {
-        const ordered = [...filteredTransactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        const ordered = [...filteredTransactions].sort((a, b) => {
+            const aMs = transactionDateYmd(a.date) ? new Date(transactionDateYmd(a.date)).getTime() : 0;
+            const bMs = transactionDateYmd(b.date) ? new Date(transactionDateYmd(b.date)).getTime() : 0;
+            return aMs - bMs;
+        });
         let balance = 0;
         const map = new Map<string, number>();
 
         ordered.forEach(tx => {
+            const amount = coerceAmount(tx.amount);
             if (tx.type === TransactionType.INCOME) {
-                balance += tx.amount;
+                balance += amount;
             } else if (tx.type === TransactionType.EXPENSE) {
-                balance -= tx.amount;
+                balance -= amount;
             }
             map.set(tx.id, balance);
         });
@@ -374,10 +397,13 @@ const EnhancedLedgerPage: React.FC = () => {
             let title = '';
 
             switch (filters.groupBy) {
-                case 'date':
-                    key = tx.date.substring(0, 7); // YYYY-MM
-                    title = new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+                case 'date': {
+                    key = transactionDateYmd(tx.date).substring(0, 7) || 'unknown-date'; // YYYY-MM
+                    title = key !== 'unknown-date'
+                        ? new Date(key + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })
+                        : 'Unknown Date';
                     break;
+                }
                 case 'type':
                     key = tx.type;
                     title = tx.type;
@@ -412,9 +438,13 @@ const EnhancedLedgerPage: React.FC = () => {
 
             if (firstTx) {
                 switch (filters.groupBy) {
-                    case 'date':
-                        title = new Date(firstTx.date.substring(0, 7) + '-01').toLocaleString('default', { month: 'long', year: 'numeric' });
+                    case 'date': {
+                        const monthKey = transactionDateYmd(firstTx.date).substring(0, 7);
+                        title = monthKey
+                            ? new Date(monthKey + '-01').toLocaleString('default', { month: 'long', year: 'numeric' })
+                            : 'Unknown Date';
                         break;
+                    }
                     case 'type':
                         title = firstTx.type;
                         break;

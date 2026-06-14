@@ -51,6 +51,13 @@ export function parseAmount(raw: string): number | null {
   return Number.isFinite(num) ? num : null;
 }
 
+/** Coerce API/SQLite amounts to a finite number for arithmetic (never string concat). */
+export function coerceAmount(value: number | string | null | undefined): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
+  const parsed = parseAmount(String(value ?? ''));
+  return parsed ?? 0;
+}
+
 /**
  * Format a numeric amount for display (not mid-typing).
  */

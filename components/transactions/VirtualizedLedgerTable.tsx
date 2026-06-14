@@ -4,6 +4,7 @@ import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType, LedgerSortKey as SortKey, SortDirection } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { coerceAmount } from '../../utils/numberFormatting';
 
 interface VirtualizedLedgerTableProps {
     groups: {
@@ -240,8 +241,9 @@ const VirtualizedLedgerTable: React.FC<VirtualizedLedgerTableProps> = ({
             if (showGrouping) {
                 const groupSummary = group.transactions.reduce(
                     (acc, tx) => {
-                        if (tx.type === TransactionType.INCOME) acc.in += tx.amount;
-                        else if (tx.type === TransactionType.EXPENSE) acc.out += tx.amount;
+                        const amount = coerceAmount(tx.amount);
+                        if (tx.type === TransactionType.INCOME) acc.in += amount;
+                        else if (tx.type === TransactionType.EXPENSE) acc.out += amount;
                         return acc;
                     },
                     { in: 0, out: 0 }

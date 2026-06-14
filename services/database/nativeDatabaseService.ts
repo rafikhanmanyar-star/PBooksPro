@@ -7,6 +7,7 @@
 
 import { NativeDbApi, NativeListTransactionsParams, NativeTransaction, NativeTotalsResult } from '../../types/ipc';
 import { Transaction } from '../../types';
+import { toDateOnly } from '../../utils/dateUtils';
 
 // Check if we're in Electron and native APIs are available
 function isNativeAvailable(): boolean {
@@ -44,7 +45,7 @@ function nativeToTransaction(native: NativeTransaction): Transaction {
     type: native.type as any,
     subtype: native.subtype as any,
     amount: typeof native.amount === 'number' ? native.amount : parseFloat(String(native.amount)) || 0,
-    date: native.date,
+    date: native.date ? toDateOnly(native.date) : toDateOnly(new Date()),
     description: native.description || '',
     accountId: native.account_id,
     fromAccountId: native.from_account_id || undefined,

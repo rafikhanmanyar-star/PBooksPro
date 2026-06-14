@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useFinancialReportAppState, useProjects, useAccounts } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
 import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
@@ -33,6 +33,7 @@ import {
   exportComparativeBalanceSheetExcel,
 } from './exportBalanceSheet';
 import { priorFiscalYearEnd, priorMonthEnd } from '../../utils/fiscalYear';
+import { FINANCIAL_ENTITY_FILTER_ALL } from './financialEntityScope';
 
 function formatMoney(n: number, hideZero: boolean): string | null {
   if (hideZero && Math.abs(n) < 0.01) return null;
@@ -66,17 +67,15 @@ const FISCAL_START_MONTH = 1;
 
 const ProjectBalanceSheetReport: React.FC = () => {
   const projects = useProjects();
-  const accounts = useAccounts();
   const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
   const [asOfDate, setAsOfDate] = useState(toLocalDateString(new Date()));
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
   const [hideZeros, setHideZeros] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [ledger, setLedger] = useState<{ id: string; name: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
-  const [accountGroupKey, setAccountGroupKey] = useState<string>('all');
-  const [accountId, setAccountId] = useState<string>('all');
   const [compareMode, setCompareMode] = useState<BalanceSheetCompareMode>('none');
   const [includeProjectAnalysis, setIncludeProjectAnalysis] = useState(false);
   const localOnly = isLocalOnlyMode();
@@ -86,29 +85,27 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [serverPreviousDate, setServerPreviousDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const accountGroupItems = useMemo(
+  const projectItems = useMemo(
     () => [
-      { id: 'all', name: 'All account groups' },
-      ...(Object.entries(BS_GROUP_LABELS) as [BsGroupKey, string][]).map(([id, name]) => ({ id, name })),
+      { id: FINANCIAL_ENTITY_FILTER_ALL, name: 'All projects' },
+      ...projects.map((p) => ({ id: p.id, name: p.name })),
     ],
-    []
+    [projects]
   );
 
-  const accountItems = useMemo(
-    () => [{ id: 'all', name: 'All accounts' }, ...accounts.map((a) => ({ id: a.id, name: a.name }))],
-    [accounts]
-  );
+  const projectLabel = useMemo(() => {
+    if (selectedProjectId === FINANCIAL_ENTITY_FILTER_ALL) return 'Consolidated';
+    return projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
+  }, [selectedProjectId, projects]);
 
   const engineOptions = useMemo(
     () => ({
       asOfDate,
-      selectedProjectId: 'all' as const,
-      selectedBuildingId: 'all' as const,
+      selectedProjectId,
+      selectedBuildingId: FINANCIAL_ENTITY_FILTER_ALL,
       fiscalStartMonth: FISCAL_START_MONTH,
-      accountGroupKey: (accountGroupKey === 'all' ? 'all' : accountGroupKey) as BsGroupKey | 'all',
-      accountId: accountId === 'all' ? 'all' : accountId,
     }),
-    [asOfDate, accountGroupKey, accountId]
+    [asOfDate, selectedProjectId]
   );
 
   useEffect(() => {
@@ -125,7 +122,10 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
     const load = async () => {
       try {
-        const current = await fetchBalanceSheetReport({ asOfDate, projectId: 'all' });
+        const current = await fetchBalanceSheetReport({
+          asOfDate,
+          projectId: selectedProjectId,
+        });
         if (cancelled) return;
         setServerReport(current);
 
@@ -134,7 +134,10 @@ const ProjectBalanceSheetReport: React.FC = () => {
             compareMode === 'prior_year'
               ? priorFiscalYearEnd(FISCAL_START_MONTH, asOfDate)
               : priorMonthEnd(asOfDate);
-          const previous = await fetchBalanceSheetReport({ asOfDate: prevDate, projectId: 'all' });
+          const previous = await fetchBalanceSheetReport({
+            asOfDate: prevDate,
+            projectId: selectedProjectId,
+          });
           if (!cancelled) {
             setServerPreviousReport(previous);
             setServerPreviousDate(prevDate);
@@ -154,7 +157,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, asOfDate, compareMode]);
+  }, [localOnly, tenantId, asOfDate, compareMode, selectedProjectId]);
 
   const clientResult = useMemo(() => {
     if (compareMode === 'none') {
@@ -383,18 +386,11 @@ const ProjectBalanceSheetReport: React.FC = () => {
           compact
         >
           <ComboBox
-            items={accountGroupItems}
-            selectedId={accountGroupKey}
-            onSelect={setAccountGroupKey}
-            placeholder="Account group"
-            className="w-36 sm:w-44 flex-shrink-0"
-          />
-          <ComboBox
-            items={accountItems}
-            selectedId={accountId}
-            onSelect={setAccountId}
-            placeholder="Account"
-            className="w-36 sm:w-44 flex-shrink-0"
+            items={projectItems}
+            selectedId={selectedProjectId}
+            onSelect={(item) => setSelectedProjectId(item?.id ?? FINANCIAL_ENTITY_FILTER_ALL)}
+            placeholder="Project"
+            className="w-40 sm:w-52 flex-shrink-0"
           />
         </ReportToolbar>
       </div>
@@ -451,7 +447,9 @@ const ProjectBalanceSheetReport: React.FC = () => {
           <ReportHeader />
           <div className="text-center mb-2">
             <h3 className="text-lg font-bold text-app-text uppercase tracking-wide leading-tight">Balance Sheet</h3>
-            <p className="text-[11px] text-app-muted/90 leading-tight">Consolidated · As of {formatDate(asOfDate)}</p>
+            <p className="text-[11px] text-app-muted/90 leading-tight">
+              {projectLabel} · As of {formatDate(asOfDate)}
+            </p>
             {previousAsOfDate && (
               <p className="text-[10px] text-app-muted leading-tight">
                 Compared with {formatDate(previousAsOfDate)}
