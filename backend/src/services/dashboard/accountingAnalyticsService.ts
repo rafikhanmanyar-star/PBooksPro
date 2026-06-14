@@ -97,14 +97,21 @@ export async function getAccountingAnalyticsJson(
     })
   );
 
+  type BsAssetLine = {
+    groupKey?: string;
+    accountId?: string;
+    id?: string;
+    name?: string;
+    amount?: number;
+  };
+
   const cashPosition =
     projectId && bs.assets
-      ? [...(bs.assets.current ?? []), ...(bs.assets.non_current ?? [])]
+      ? ([...(bs.assets.current ?? []), ...(bs.assets.non_current ?? [])] as BsAssetLine[])
           .filter(
-            (line: { groupKey?: string; accountId?: string; id?: string; name?: string; amount?: number }) =>
-              line.groupKey === 'bank_accounts' || line.groupKey === 'cash_equivalents'
+            (line) => line.groupKey === 'bank_accounts' || line.groupKey === 'cash_equivalents'
           )
-          .map((line: { accountId?: string; id?: string; name?: string; amount?: number }) => ({
+          .map((line) => ({
             id: line.accountId ?? String(line.id ?? ''),
             name: String(line.name ?? ''),
             balance: Number(line.amount ?? 0),
