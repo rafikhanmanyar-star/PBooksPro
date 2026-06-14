@@ -391,4 +391,54 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   assert.ok(r.validation.reconciled, `expected CF reconciled to BS cash, discrepancy=${r.validation.discrepancy}`);
 }
 
+{
+  // Project filter must include transactions tagged with both projectId and buildingId (construction).
+  const state = minimalState({
+    projects: [
+      { id: 'proj-1', name: 'Project A' },
+      { id: 'proj-2', name: 'Project B' },
+    ],
+    buildings: [
+      { id: 'bld-a', name: 'Building A', projectId: 'proj-1' },
+      { id: 'bld-b', name: 'Building B', projectId: 'proj-2' },
+    ],
+    transactions: [
+      {
+        id: 'e1',
+        type: TransactionType.EXPENSE,
+        amount: 500,
+        date: '2025-06-01',
+        accountId: 'bank1',
+        categoryId: 'cat_opex',
+        projectId: 'proj-1',
+        buildingId: 'bld-a',
+      } as AppState['transactions'][0],
+      {
+        id: 'e2',
+        type: TransactionType.EXPENSE,
+        amount: 200,
+        date: '2025-06-02',
+        accountId: 'bank1',
+        categoryId: 'cat_opex',
+        projectId: 'proj-2',
+        buildingId: 'bld-b',
+      } as AppState['transactions'][0],
+    ],
+  });
+
+  const p1 = computeCashFlowReport(state, {
+    fromDate: '2025-01-01',
+    toDate: '2025-12-31',
+    selectedProjectId: 'proj-1',
+  });
+  const p2 = computeCashFlowReport(state, {
+    fromDate: '2025-01-01',
+    toDate: '2025-12-31',
+    selectedProjectId: 'proj-2',
+  });
+
+  assert.strictEqual(p1.operating.total, -500, 'proj-1 operating cash only');
+  assert.strictEqual(p2.operating.total, -200, 'proj-2 operating cash only');
+}
+
 console.log('cashFlowEngine.test.ts: OK');

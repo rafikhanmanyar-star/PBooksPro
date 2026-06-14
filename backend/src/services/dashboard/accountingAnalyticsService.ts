@@ -97,11 +97,32 @@ export async function getAccountingAnalyticsJson(
     })
   );
 
-  const cashPosition = accounts
-    .filter((a) => !a.deleted_at && String(a.type).toLowerCase() === 'bank')
-    .map((a) => ({ id: a.id, name: a.name, balance: Number(a.balance) }))
-    .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
-    .slice(0, 12);
+  type BsAssetLine = {
+    groupKey?: string;
+    accountId?: string;
+    id?: string;
+    name?: string;
+    amount?: number;
+  };
+
+  const cashPosition =
+    projectId && bs.assets
+      ? ([...(bs.assets.current ?? []), ...(bs.assets.non_current ?? [])] as BsAssetLine[])
+          .filter(
+            (line) => line.groupKey === 'bank_accounts' || line.groupKey === 'cash_equivalents'
+          )
+          .map((line) => ({
+            id: line.accountId ?? String(line.id ?? ''),
+            name: String(line.name ?? ''),
+            balance: Number(line.amount ?? 0),
+          }))
+          .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+          .slice(0, 12)
+      : accounts
+          .filter((a) => !a.deleted_at && String(a.type).toLowerCase() === 'bank')
+          .map((a) => ({ id: a.id, name: a.name, balance: Number(a.balance) }))
+          .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+          .slice(0, 12);
 
   const expenseParams: unknown[] = [tenantId, from, to];
   const expenseClauses = [
@@ -118,12 +139,16 @@ export async function getAccountingAnalyticsJson(
   }
   if (projectId) {
     expenseParams.push(projectId);
-    expenseClauses.push(`t.project_id = $${expenseParams.length}`);
+    expenseClauses.push(
+      `COALESCE(t.project_id, b.project_id, i.project_id) = $${expenseParams.length}`
+    );
   }
   const catR = await client.query<{ name: string; total: string }>(
     `SELECT COALESCE(c.name, 'Uncategorized') AS name, SUM(t.amount)::text AS total
      FROM transactions t
      LEFT JOIN categories c ON c.id = t.category_id
+     LEFT JOIN bills b ON b.id = t.bill_id AND b.tenant_id = t.tenant_id
+     LEFT JOIN invoices i ON i.id = t.invoice_id AND i.tenant_id = t.tenant_id
      WHERE ${expenseClauses.join(' AND ')}
      GROUP BY c.name
      ORDER BY SUM(t.amount) DESC

@@ -14,6 +14,11 @@ import ReportToolbar, { ReportDateRange } from './ReportToolbar';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
+import {
+    FINANCIAL_ENTITY_FILTER_ALL,
+    transactionMatchesFinancialEntityScope,
+    type FinancialEntityScope,
+} from './financialEntityScope';
 
 interface CategorySummary {
     categoryId: string;
@@ -138,9 +143,15 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
 
         // Optimization: Pre-calculate set of rental category IDs
         const rentalCategoryIds = new Set(state.categories.filter(c => c.isRental).map(c => c.id));
+        const scope: FinancialEntityScope = {
+            projectId: selectedProjectId,
+            buildingId: FINANCIAL_ENTITY_FILTER_ALL,
+        };
 
         // 1. Sum Transactions
         state.transactions.forEach(tx => {
+            if (!transactionMatchesFinancialEntityScope(tx, state, scope)) return;
+
             let projectId = tx.projectId;
             let categoryId = tx.categoryId;
 
@@ -149,10 +160,6 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                 const bill = state.bills.find(b => b.id === tx.billId);
                 if (bill) {
                     if (!projectId) projectId = bill.projectId;
-                    
-                    // Filter by project before processing
-                    if (!projectId) return;
-                    if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
                     
                     // Handle expenseCategoryItems: if bill has multiple categories, distribute transaction amount proportionally
                     if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
@@ -196,10 +203,16 @@ const ProjectCategoryReport: React.FC<ProjectCategoryReportProps> = ({ type }) =
                  }
             }
 
-            // Strictly exclude non-project transactions
+            // Strictly exclude non-project transactions on consolidated view
+            if (!projectId) projectId = tx.projectId;
+            if (!projectId && tx.invoiceId) {
+                projectId = state.invoices.find((i) => i.id === tx.invoiceId)?.projectId;
+            }
+            if (!projectId && tx.billId) {
+                projectId = state.bills.find((b) => b.id === tx.billId)?.projectId;
+            }
             if (!projectId) return;
 
-            if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return;
             if (tx.type !== type) return;
             
             // Exclude Rental Categories

@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.381",
+  "version": "1.2.383",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -49,6 +49,7 @@
     "repair:profit-distribution-categories": "node scripts/repair-profit-distribution-categories.cjs",
     "repair:profit-distribution-categories:pg": "dotenv -e .env -- node scripts/repair-profit-distribution-categories.cjs --pg",
     "seed:rk-builders-rafi": "node scripts/seed-rk-builders-rafi.cjs",
+    "set:rk-builders-company-email": "node scripts/set-rk-builders-company-email.cjs",
     "migrate-pbookspro-to-rkbuilders": "node scripts/migrate-pbookspro-to-rkbuilders.cjs",
     "copy-tenant-from-production": "node scripts/copy-tenant-from-production.cjs",
     "copy-tenant:postgres": "node scripts/copy-tenant-postgres-to-postgres.cjs",
@@ -182,6 +183,7 @@
       "electron/schemaVersion.json",
       "electron/migrations/**/*.cjs",
       "electron/companyManager.cjs",
+      "electron/emailAuthMigration.cjs",
       "electron/spellChecker.cjs",
       "electron/updaterErrorUtils.cjs",
       "electron/githubReleaseUtils.cjs",

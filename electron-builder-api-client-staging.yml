@@ -24,6 +24,7 @@ files:
   - "electron/schemaVersion.json"
   - "electron/migrations/**/*.cjs"
   - "electron/companyManager.cjs"
+  - "electron/emailAuthMigration.cjs"
   - "electron/spellChecker.cjs"
   - "electron/updaterErrorUtils.cjs"
   - "electron/githubReleaseUtils.cjs"

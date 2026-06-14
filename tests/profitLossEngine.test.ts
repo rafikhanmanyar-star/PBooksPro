@@ -304,4 +304,42 @@ function assertClose(a: number, b: number, label: string) {
   assertClose(pl.netProfit, 1_000_000, 'distribution expense excluded from P&L');
 }
 
+{
+  const proj2: Project = { id: 'proj-2', name: 'P2', description: '', color: '#111', status: 'Active' };
+  const s = baseState({
+    projects: [
+      { id: 'proj-1', name: 'P1', description: '', color: '#000', status: 'Active' },
+      proj2,
+    ],
+    transactions: [
+      tx({
+        id: 'e1',
+        amount: 500,
+        date: '2025-06-01',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+        projectId: 'proj-1',
+        buildingId: 'bld-a',
+      }),
+      tx({
+        id: 'e2',
+        amount: 200,
+        date: '2025-06-02',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+        projectId: 'proj-2',
+        buildingId: 'bld-b',
+      }),
+    ],
+  });
+  const p1 = computeProjectProfitLossTotals(s, 'proj-1', '2025-01-01', '2025-12-31');
+  const p2 = computeProjectProfitLossTotals(s, 'proj-2', '2025-01-01', '2025-12-31');
+  const all = computeProjectProfitLossTotals(s, 'all', '2025-01-01', '2025-12-31');
+  assertClose(p1.totalExpense, 500, 'proj-1 expense');
+  assertClose(p2.totalExpense, 200, 'proj-2 expense');
+  assertClose(all.totalExpense, 700, 'consolidated expense');
+}
+
 console.log('profitLossEngine.test.ts: OK');

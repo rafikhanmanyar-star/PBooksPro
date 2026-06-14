@@ -7,6 +7,12 @@
 import type { AppState, Transaction } from '../../types';
 import { TransactionType } from '../../types';
 import { isResolvedPlCategoryInDrilldownRow } from './projectProfitLossComputation';
+import {
+  FINANCIAL_ENTITY_FILTER_ALL,
+  transactionMatchesFinancialEntityScope,
+  type FinancialEntityScope,
+} from './financialEntityScope';
+import { resolveProjectIdForTransaction } from './reportUtils';
 
 export function transactionMatchesProjectCategoryDrilldown(
   tx: Transaction,
@@ -20,6 +26,12 @@ export function transactionMatchesProjectCategoryDrilldown(
   }
 ): boolean {
   const { type, selectedProjectId, start, end, drilldownCategoryId } = params;
+  const scope: FinancialEntityScope = {
+    projectId: selectedProjectId,
+    buildingId: FINANCIAL_ENTITY_FILTER_ALL,
+  };
+  if (!transactionMatchesFinancialEntityScope(tx, state, scope)) return false;
+
   const rentalCategoryIds = new Set(state.categories.filter((c) => c.isRental).map((c) => c.id));
   const uncategorizedRow = drilldownCategoryId === 'uncategorized';
 
@@ -30,8 +42,6 @@ export function transactionMatchesProjectCategoryDrilldown(
     const bill = state.bills.find((b) => b.id === tx.billId);
     if (bill) {
       if (!projectId) projectId = bill.projectId;
-      if (!projectId) return false;
-      if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return false;
 
       if (bill.expenseCategoryItems && bill.expenseCategoryItems.length > 0) {
         const totalBillAmount = bill.expenseCategoryItems.reduce((sum, item) => sum + (item.netValue || 0), 0);
@@ -65,8 +75,7 @@ export function transactionMatchesProjectCategoryDrilldown(
     }
   }
 
-  if (!projectId) return false;
-  if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return false;
+  if (!resolveProjectIdForTransaction(tx, state)) return false;
   if (tx.type !== type) return false;
   if (categoryId && rentalCategoryIds.has(categoryId)) return false;
 

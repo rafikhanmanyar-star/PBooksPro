@@ -74,7 +74,7 @@ export function matchesFinancialEntityScope(
   const projectActive = scope.projectId !== FINANCIAL_ENTITY_FILTER_ALL;
   if (!buildingActive && !projectActive) return true;
   if (buildingActive) return buildingId === scope.buildingId;
-  if (projectActive) return projectId === scope.projectId && !buildingId;
+  if (projectActive) return projectId === scope.projectId;
   return true;
 }
 

@@ -183,4 +183,96 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   );
 }
 
+/** Project scope: tenant opening balances and Opening Balance Equity are excluded. */
+{
+  const journalEntries = [
+    { id: 'je-p1', entryDate: '2024-06-01', sourceModule: 'transaction', sourceId: 'tx-p1', isReversed: false },
+    { id: 'je-p2', entryDate: '2024-06-02', sourceModule: 'transaction', sourceId: 'tx-p2', isReversed: false },
+  ];
+  const journalLines = [
+    {
+      journalEntryId: 'je-p1',
+      accountId: 'bank1',
+      debitAmount: 0,
+      creditAmount: 500000,
+      lineNumber: 1,
+      projectId: 'p1',
+    },
+    {
+      journalEntryId: 'je-p1',
+      accountId: 'sys-acc-expense-summary',
+      debitAmount: 500000,
+      creditAmount: 0,
+      lineNumber: 2,
+      projectId: 'p1',
+    },
+    {
+      journalEntryId: 'je-p2',
+      accountId: 'bank1',
+      debitAmount: 0,
+      creditAmount: 200000,
+      lineNumber: 1,
+      projectId: 'p2',
+    },
+    {
+      journalEntryId: 'je-p2',
+      accountId: 'sys-acc-expense-summary',
+      debitAmount: 200000,
+      creditAmount: 0,
+      lineNumber: 2,
+      projectId: 'p2',
+    },
+  ];
+  const baseAccounts = [
+    { id: 'bank1', name: 'Main Bank', type: AccountType.BANK, balance: 0, openingBalance: 1000000 },
+    { id: 'sys-acc-expense-summary', name: 'Expense Summary', type: AccountType.EQUITY, balance: 0 },
+    { id: 'sys-acc-income-summary', name: 'Income Summary', type: AccountType.EQUITY, balance: 0 },
+    { id: 'sys-acc-ar', name: 'AR', type: AccountType.ASSET, balance: 0 },
+    { id: 'sys-acc-ap', name: 'AP', type: AccountType.LIABILITY, balance: 0 },
+  ];
+  const journalLedger = {
+    journalEntries,
+    journalLines,
+    accounts: baseAccounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      openingBalance: a.openingBalance ?? 0,
+    })),
+  };
+  const state = minimalState({
+    accounts: baseAccounts,
+    projects: [{ id: 'p1', name: 'P1' }, { id: 'p2', name: 'P2' }],
+    journalLedger,
+  });
+
+  const consolidated = computeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'all',
+    useJournalLedger: true,
+  });
+  const p1 = computeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'p1',
+    useJournalLedger: true,
+  });
+  const p2 = computeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'p2',
+    useJournalLedger: true,
+  });
+
+  assert.ok(
+    Math.abs(consolidated.totals.assets - 300000) < 1,
+    `consolidated assets expected ~300k got ${consolidated.totals.assets}`
+  );
+  assert.ok(Math.abs(p1.totals.assets + 500000) < 1, `p1 assets expected -500k got ${p1.totals.assets}`);
+  assert.ok(Math.abs(p2.totals.assets + 200000) < 1, `p2 assets expected -200k got ${p2.totals.assets}`);
+  assert.ok(Math.abs(p1.totals.assets - p2.totals.assets) > 1, 'project asset totals should differ');
+  assert.ok(
+    !p1.equity.items.some((l) => l.id === '__opening_balance_equity__'),
+    'no Opening Balance Equity on project-scoped BS'
+  );
+}
+
 console.log('balanceSheetEngine.test.ts: OK');

@@ -3,7 +3,7 @@ import { getCashFlowReportFromJournal } from './cashFlowJournalReportService.js'
 
 /**
  * LAN/API cash flow: derived ONLY from journal_lines on Bank/Cash accounts (same source as Trial Balance).
- * Requires migration `041_journal_lines_project_id.sql` for per-line project_id; lines without project_id are excluded from project-scoped reports.
+ * Project scope resolves project from journal line, journal entry, or source transaction (same as Trial Balance / P&L).
  */
 export async function getCashFlowReportJson(
   client: pg.PoolClient,
