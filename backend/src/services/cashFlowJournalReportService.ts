@@ -104,6 +104,7 @@ function cashLineNetEffect(debit: number, credit: number): number {
   return roundMoney(debit - credit);
 }
 
+/** Mirrors journalLineMatchesEntityScope in journalLedgerCore (line → entry → transaction project). */
 function entityScopeJournalSql(
   selectedProjectId: string,
   selectedBuildingId: string,
@@ -125,14 +126,18 @@ function entityScopeJournalSql(
   if (selectedProjectId !== 'all') {
     params.push(selectedProjectId);
     const n = params.length;
-    return ` AND ${lineAlias}.project_id = $${n} AND NOT EXISTS (
+    return ` AND EXISTS (
       SELECT 1 FROM journal_entries je_scope
-      INNER JOIN transactions t_scope ON t_scope.id = je_scope.source_id
+      LEFT JOIN transactions t_scope ON t_scope.id = je_scope.source_id
         AND je_scope.source_module = 'transaction'
         AND t_scope.tenant_id = je.tenant_id
         AND t_scope.deleted_at IS NULL
       WHERE je_scope.id = ${lineAlias}.journal_entry_id
-        AND t_scope.building_id IS NOT NULL AND t_scope.building_id <> ''
+        AND COALESCE(
+          NULLIF(TRIM(${lineAlias}.project_id), ''),
+          NULLIF(TRIM(je_scope.project_id), ''),
+          CASE WHEN je_scope.source_module = 'transaction' THEN NULLIF(TRIM(t_scope.project_id), '') END
+        ) = $${n}
     )`;
   }
   return '';
@@ -361,9 +366,13 @@ export async function getCashFlowReportFromJournal(
       `Cash flow reconciliation (journal): computed closing ${computed_closing_cash.toFixed(2)} vs GL cash ${balance_sheet_cash.toFixed(2)} (discrepancy ${discrepancy.toFixed(2)}).`
     );
   }
-  if (projectFilter !== 'all' && buildingFilter === 'all' && cashLines.rows.some((r) => r.project_id == null)) {
+  if (
+    projectFilter !== 'all' &&
+    buildingFilter === 'all' &&
+    cashLines.rows.length === 0
+  ) {
     messages.push(
-      'Some journal lines have no project_id; run migration 041 and repost or backfill project on lines for accurate project cash flow.'
+      'No bank/cash journal lines matched this project scope — verify transactions are posted and tagged with the project.'
     );
   }
 

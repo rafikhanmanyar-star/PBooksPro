@@ -65,12 +65,23 @@ async function main() {
   await client.connect();
 
   try {
-    const t = await client.query('SELECT id, name FROM tenants WHERE id = $1', [tenantId]);
+    const t = await client.query('SELECT id, name, email FROM tenants WHERE id = $1', [tenantId]);
     if (!t.rows.length) {
       console.error(`ERROR: No tenant with id "${tenantId}". Create the organization first.`);
       process.exit(1);
     }
     console.log(`Tenant: ${t.rows[0].name} (${tenantId})`);
+
+    const companyEmail = 'rkbuilders@pbookspro.com';
+    await client.query(
+      `UPDATE tenants
+       SET email = $1,
+           company_name = COALESCE(NULLIF(TRIM(company_name), ''), 'RK Builders'),
+           updated_at = NOW()
+       WHERE id = $2`,
+      [companyEmail, tenantId]
+    );
+    console.log(`OK: organization email set to ${companyEmail}`);
 
     const r = await client.query(
       `INSERT INTO users (id, tenant_id, username, name, role, password_hash, is_active)
@@ -87,6 +98,16 @@ async function main() {
 
     const row = r.rows[0];
     console.log(`OK: user "${row.username}" (id ${row.id})`);
+
+    await client.query(
+      `INSERT INTO user_tenants (id, user_id, tenant_id, role, is_default, created_at)
+       VALUES ($1, $2, $3, $4, TRUE, NOW())
+       ON CONFLICT (user_id, tenant_id) DO UPDATE SET
+         role = EXCLUDED.role,
+         is_default = TRUE`,
+      [`ut_${row.id}`, row.id, tenantId, role]
+    );
+    console.log('OK: user_tenants membership ensured');
 
     const activeSub = await client.query(
       `SELECT id FROM subscriptions
@@ -119,7 +140,8 @@ async function main() {
     }
 
     console.log(`Login: username ${username} / password ${password}`);
-    console.log(`Select this organization (tenant id ${tenantId}) in the app when signing in.`);
+    console.log(`Company email: ${companyEmail}`);
+    console.log(`Sign in at app.pbookspro.com with company email, username, and password.`);
   } finally {
     await client.end();
   }

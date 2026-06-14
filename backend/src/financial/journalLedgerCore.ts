@@ -146,6 +146,18 @@ function buildTxScopeMetaMap(
   return map;
 }
 
+/** True when report scope is a single project or building (not consolidated). */
+export function isJournalEntityScopeActive(
+  options?: { projectId?: string | null; buildingId?: string | null } | null
+): boolean {
+  const pid = options?.projectId;
+  const bid = options?.buildingId;
+  return (
+    (typeof pid === 'string' && pid.trim() !== '' && pid !== 'all') ||
+    (typeof bid === 'string' && bid.trim() !== '' && bid !== 'all')
+  );
+}
+
 function journalLineMatchesEntityScope(
   line: JournalLineRow,
   entry: JournalEntryRow,
@@ -168,7 +180,7 @@ function journalLineMatchesEntityScope(
   }
 
   if (buildingFilter) return buildingId === options.buildingId;
-  if (projectFilter) return projectId === options.projectId && !buildingId;
+  if (projectFilter) return projectId === options.projectId;
   return true;
 }
 
@@ -209,25 +221,27 @@ export function computeAccountBalancesFromJournal(
     result.set(accountId, { accountId, signedBalance: signed, grossDebit: gd, grossCredit: gc });
   }
 
-  // Opening balances
-  for (const acc of input.accounts) {
-    const ob = roundMoney(Number(acc.openingBalance ?? 0));
-    if (Math.abs(ob) < MONEY_EPSILON) continue;
-    const { grossDebit, grossCredit } = openingAmountToGross(ob, acc.type);
-    const dir = normalBalanceDirection(acc.type);
-    const obSigned = roundMoney(dir * (grossDebit - grossCredit));
-    const ex = result.get(acc.id);
-    if (ex) {
-      ex.grossDebit = roundMoney(ex.grossDebit + grossDebit);
-      ex.grossCredit = roundMoney(ex.grossCredit + grossCredit);
-      ex.signedBalance = roundMoney(ex.signedBalance + obSigned);
-    } else {
-      result.set(acc.id, {
-        accountId: acc.id,
-        signedBalance: obSigned,
-        grossDebit,
-        grossCredit,
-      });
+  /** Opening balances are tenant-wide; exclude on project/building-scoped reports. */
+  if (!isJournalEntityScopeActive(options)) {
+    for (const acc of input.accounts) {
+      const ob = roundMoney(Number(acc.openingBalance ?? 0));
+      if (Math.abs(ob) < MONEY_EPSILON) continue;
+      const { grossDebit, grossCredit } = openingAmountToGross(ob, acc.type);
+      const dir = normalBalanceDirection(acc.type);
+      const obSigned = roundMoney(dir * (grossDebit - grossCredit));
+      const ex = result.get(acc.id);
+      if (ex) {
+        ex.grossDebit = roundMoney(ex.grossDebit + grossDebit);
+        ex.grossCredit = roundMoney(ex.grossCredit + grossCredit);
+        ex.signedBalance = roundMoney(ex.signedBalance + obSigned);
+      } else {
+        result.set(acc.id, {
+          accountId: acc.id,
+          signedBalance: obSigned,
+          grossDebit,
+          grossCredit,
+        });
+      }
     }
   }
 
@@ -302,6 +316,11 @@ export function buildTrialBalanceFromJournal(
     });
   }
 
+  const mergedActivity = mergeRawRowsByAccount(activityRows);
+  if (isJournalEntityScopeActive(options)) {
+    return buildTrialBalanceReport(mergedActivity);
+  }
+
   const openings: AccountOpeningInput[] = input.accounts
     .filter((a) => Math.abs(Number(a.openingBalance ?? 0)) >= MONEY_EPSILON)
     .map((a) => ({
@@ -315,7 +334,7 @@ export function buildTrialBalanceFromJournal(
       openingBalance: roundMoney(Number(a.openingBalance ?? 0)),
     }));
 
-  const merged = applyOpeningBalances(mergeRawRowsByAccount(activityRows), openings);
+  const merged = applyOpeningBalances(mergedActivity, openings);
   return buildTrialBalanceReport(merged);
 }
 

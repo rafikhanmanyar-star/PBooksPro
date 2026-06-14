@@ -326,7 +326,7 @@ const TrialBalanceReport: React.FC = () => {
           {hasEntityScope && (
             <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
               Project scope matches <strong>Profit &amp; Loss</strong> / <strong>Balance Sheet</strong> (operational
-              transactions; journal lines are not split by project).
+              transactions and journal lines tagged to the selected project; tenant opening balances are excluded).
             </div>
           )}
 

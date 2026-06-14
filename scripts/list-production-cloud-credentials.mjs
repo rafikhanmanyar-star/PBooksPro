@@ -75,9 +75,25 @@ function passwordHint(tenantId, username) {
 const ssl =
   /render\.com|amazonaws\.com|rds\./i.test(url) ? { rejectUnauthorized: false } : undefined;
 
-const pool = new pg.Pool({ connectionString: url, ssl });
+function redactDbTarget(connectionString) {
+  try {
+    const u = new URL(connectionString.replace(/^postgresql:\/\//, 'http://'));
+    return `${u.hostname}:${u.port || '5432'}${u.pathname}`;
+  } catch {
+    return '(invalid DATABASE_URL/PG_URL)';
+  }
+}
+
+const pool = new pg.Pool({
+  connectionString: url,
+  ssl,
+  connectionTimeoutMillis: 20_000,
+  max: 1,
+});
 
 try {
+  await pool.query('SELECT 1 AS ok');
+
   const missing = await pool.query(`
     SELECT id, name, COALESCE(email, '') AS email
     FROM tenants
@@ -186,6 +202,27 @@ try {
 
   console.log('Note: Customer-chosen passwords are not stored in plain text.');
   console.log('      Demo/seed passwords above apply only when those seeds were run.');
+} catch (err) {
+  const target = redactDbTarget(url);
+  const fromRender = /render\.com/i.test(url);
+  console.error('');
+  console.error(`Could not connect to PostgreSQL at ${target}.`);
+  console.error(`Error: ${err instanceof Error ? err.message : String(err)}`);
+  console.error('');
+  console.error('This script uses PG_URL first, then DATABASE_URL (from .env.production.render, then .env).');
+  if (fromRender) {
+    console.error('Render Postgres tips:');
+    console.error('  1. Open Render Dashboard → your PostgreSQL service → confirm it is Running (not suspended).');
+    console.error('  2. Copy the current External Database URL and update PG_URL in .env (or DATABASE_URL in .env.production.render).');
+    console.error('  3. Free-tier databases sleep; the first connection may take 30–60s after wake.');
+  } else {
+    console.error('  - Confirm PostgreSQL is running and the URL in your env file is correct.');
+  }
+  console.error('');
+  console.error('Local fallback (LAN production copy on this PC):');
+  console.error('  node scripts/list-production-cloud-credentials.mjs --list-only --env-file .env.production');
+  console.error('  (Ensure .env.production points at database pbookspro, not staging.)');
+  process.exit(1);
 } finally {
   await pool.end();
 }

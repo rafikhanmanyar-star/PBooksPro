@@ -763,8 +763,8 @@ export function computeBalanceSheetReport(
     });
   }
 
-  /** Journal: offset bank/cash opening_balance with synthetic equity (matches trial balance). */
-  if (useJournal) {
+  /** Journal: offset bank/cash opening_balance with synthetic equity (consolidated only). */
+  if (useJournal && !scopeTargetsProject(entityScope) && !scopeTargetsBuilding(entityScope)) {
     let openingNetDebit = 0;
     for (const acc of state.accounts || []) {
       const ob = roundMoney(Number(acc.openingBalance ?? 0));

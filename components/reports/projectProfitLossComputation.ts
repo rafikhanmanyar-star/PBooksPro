@@ -279,7 +279,8 @@ export function computePlBillDrilldownEntries(
     params: {
         drillCategoryId?: string;
         drillType: TransactionType.INCOME | TransactionType.EXPENSE;
-    }
+    },
+    selectedBuildingId: string = 'all'
 ): PlBillDrilldownEntry[] {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
@@ -301,14 +302,14 @@ export function computePlBillDrilldownEntries(
 
     const categoryMap = new Map(state.categories.map((c) => [c.id, c]));
     const out: PlBillDrilldownEntry[] = [];
+    const scope = plEntityScope(selectedProjectId, selectedBuildingId);
 
     const categoryMatchesDrillRow = (lineCategoryId: string | undefined) =>
         !!lineCategoryId &&
         isResolvedPlCategoryInDrilldownRow(lineCategoryId, cid!, state.categories);
 
     state.bills.forEach((bill) => {
-        if (!bill.projectId) return;
-        if (selectedProjectId !== 'all' && bill.projectId !== selectedProjectId) return;
+        if (!billMatchesFinancialEntityScope(bill, state as ReportStateSlice, scope)) return;
 
         const billDate = new Date(bill.issueDate);
         if (billDate < start || billDate > end) return;
@@ -384,7 +385,8 @@ export function transactionIncludedInPlLoop(
     processedBills: Set<string>,
     selectedProjectId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    selectedBuildingId: string = 'all'
 ): boolean {
     const start = new Date(startDate);
     start.setHours(0, 0, 0, 0);
@@ -402,16 +404,29 @@ export function transactionIncludedInPlLoop(
 
     if (isTransactionFromVoidedOrCancelledInvoice(tx, state)) return false;
 
+    const scope = plEntityScope(selectedProjectId, selectedBuildingId);
+    if (!transactionMatchesFinancialEntityScope(tx, state as ReportStateSlice, scope)) return false;
+
     const projectId = resolveProjectIdForTransaction(tx, state);
-    if (!projectId) return false;
-    if (selectedProjectId !== 'all' && projectId !== selectedProjectId) return false;
+    const buildingId = resolveBuildingIdForTransaction(tx, state as ReportStateSlice);
+    if (scopeTargetsBuilding(scope)) {
+        if (!buildingId) return false;
+    } else if (scopeTargetsProject(scope)) {
+        if (!projectId) return false;
+    } else if (!projectId && !buildingId) {
+        return false;
+    }
 
     if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {
         return false;
     }
 
     const categoryId = resolvePlCategoryIdForTransaction(tx, state, processedBills);
-    if (categoryId && (excludedCats.has(categoryId) || rentalCats.has(categoryId))) return false;
+    const excludeRentalCats =
+        scopeTargetsProject(scope) || (scopeIsConsolidated(scope) && !!projectId && !buildingId);
+    if (categoryId && (excludedCats.has(categoryId) || (excludeRentalCats && rentalCats.has(categoryId)))) {
+        return false;
+    }
 
     const clearingAccountId = state.accounts.find((a) => a.name === 'Internal Clearing')?.id;
     if (clearingAccountId && tx.accountId === clearingAccountId) return false;
