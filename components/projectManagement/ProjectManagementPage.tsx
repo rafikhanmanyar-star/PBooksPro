@@ -184,7 +184,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Agreements': return <ProjectAgreementsPage />;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
             case 'Selling Analytics': return <SellingAnalyticsPage />;
-            case 'Collections Analytics': return <CollectionsAnalyticsPage />;
+            case 'Collections Analytics': return <CollectionsAnalyticsPage defaultScope="project" showScopeFilter={false} />;
             case 'Assets': return <ProjectReceivedAssetsPage />;
             case 'Contracts': return <ProjectContractsPage />;
             case 'Bills': return <BillsPage projectContext={true} />;

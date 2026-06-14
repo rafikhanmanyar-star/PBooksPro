@@ -12,6 +12,8 @@ import {
   fetchInvestorEquityLedger,
 } from '../../../services/investorJournalPostingService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { rowToTransactionApi } from '../../../services/transactionsService.js';
+import type { TransactionRow } from '../../../services/transactionsService.js';
 
 export const investorJournalRouter = Router();
 
@@ -52,12 +54,24 @@ const transferSchema = z.object({
   description: z.string().optional(),
 });
 
-function emitJournalCreated(tenantId: string, journalEntryId: string, userId: string | undefined) {
+function emitJournalCreated(
+  tenantId: string,
+  journalEntryId: string,
+  userId: string | undefined,
+  mirroredTransaction?: TransactionRow
+) {
   emitEntityEvent(tenantId, 'created', 'payment', {
     data: { journalEntryId },
     id: journalEntryId,
     sourceUserId: userId,
   });
+  if (mirroredTransaction) {
+    emitEntityEvent(tenantId, 'created', 'transaction', {
+      data: rowToTransactionApi(mirroredTransaction),
+      id: mirroredTransaction.id,
+      sourceUserId: userId,
+    });
+  }
 }
 
 investorJournalRouter.post('/investor/journal/contribution', requireLedgerRole, async (req: AuthedRequest, res) => {
@@ -76,7 +90,7 @@ investorJournalRouter.post('/investor/journal/contribution', requireLedgerRole, 
     const result = await withTransaction((client) =>
       postInvestorContribution(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.journalEntryId, req.userId);
+    emitJournalCreated(tenantId, result.journalEntryId, req.userId, result.mirroredTransaction);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -100,7 +114,7 @@ investorJournalRouter.post('/investor/journal/withdrawal', requireLedgerRole, as
     const result = await withTransaction((client) =>
       postInvestorWithdrawal(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.journalEntryId, req.userId);
+    emitJournalCreated(tenantId, result.journalEntryId, req.userId, result.mirroredTransaction);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

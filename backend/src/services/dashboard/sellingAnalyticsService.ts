@@ -33,6 +33,18 @@ function projectFilterSql(
   return { sql: ` AND ${column} = $${baseParamCount + 1}`, params: [projectId] };
 }
 
+/** Sold = unit status sold OR linked to a non-cancelled project agreement (matches Project Unit Report). */
+const UNIT_ON_ACTIVE_AGREEMENT_SQL = `
+  EXISTS (
+    SELECT 1 FROM project_agreement_units pau
+    INNER JOIN project_agreements pa ON pa.id = pau.agreement_id AND pa.tenant_id = u.tenant_id
+    WHERE pau.unit_id = u.id AND pa.deleted_at IS NULL AND pa.status <> 'Cancelled'
+  )`;
+
+const UNIT_SOLD_CONDITION = `(u.status = 'sold' OR ${UNIT_ON_ACTIVE_AGREEMENT_SQL})`;
+
+const UNIT_AVAILABLE_CONDITION = `(u.status = 'available' AND NOT ${UNIT_ON_ACTIVE_AGREEMENT_SQL})`;
+
 async function buildUnitPipeline(
   client: pg.PoolClient,
   tenantId: string,
@@ -45,25 +57,20 @@ async function buildUnitPipeline(
   const [available, sold, reserved] = await Promise.all([
     client.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'available'${projectSql.sql}`,
+       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND ${UNIT_AVAILABLE_CONDITION}${projectSql.sql}`,
       params
     ),
     client.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'sold'${projectSql.sql}`,
+       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND ${UNIT_SOLD_CONDITION}${projectSql.sql}`,
       params
     ),
     client.query<{ c: string }>(
-      `SELECT COUNT(DISTINCT pau.unit_id)::text AS c
-       FROM project_agreement_units pau
-       INNER JOIN project_agreements pa ON pa.id = pau.agreement_id AND pa.tenant_id = $1
-       INNER JOIN units u ON u.id = pau.unit_id AND u.tenant_id = pa.tenant_id
-       WHERE pa.deleted_at IS NULL
-         AND pa.status NOT IN ('Cancelled', 'Completed')
-         AND u.deleted_at IS NULL
-         AND u.status <> 'sold'
-         ${projectId ? ' AND pa.project_id = $2' : ''}`,
-      projectId ? [tenantId, projectId] : [tenantId]
+      `SELECT COUNT(*)::text AS c FROM units u
+       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
+         AND u.status IN ('blocked', 'rented')
+         AND NOT ${UNIT_SOLD_CONDITION}${projectSql.sql}`,
+      params
     ),
   ]);
 
@@ -139,13 +146,13 @@ export async function getSellingAnalyticsJson(
     ),
     client.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'sold'
+       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND ${UNIT_SOLD_CONDITION}
          ${unitProjectSql.sql}`,
       unitParams
     ),
     client.query<{ c: string }>(
       `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'available'
+       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND ${UNIT_AVAILABLE_CONDITION}
          ${unitProjectSql.sql}`,
       unitParams
     ),

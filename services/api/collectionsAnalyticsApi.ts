@@ -5,6 +5,7 @@ function buildQuery(filters: CollectionsAnalyticsFilters): string {
   const q = new URLSearchParams();
   q.set('from', filters.from);
   q.set('to', filters.to);
+  if (filters.scope) q.set('scope', filters.scope);
   if (filters.projectId) q.set('projectId', filters.projectId);
   if (filters.propertyId) q.set('propertyId', filters.propertyId);
   return `?${q.toString()}`;

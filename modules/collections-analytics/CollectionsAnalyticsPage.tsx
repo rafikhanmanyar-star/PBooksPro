@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useState } from 'react';
+import React, { memo, useEffect, useMemo, useState } from 'react';
 import { HandCoins, Percent, RefreshCw, Timer, Wallet } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useStateSelector } from '../../hooks/useSelectiveState';
@@ -12,6 +12,7 @@ import {
   MetricCardGridSkeleton,
 } from '../../components/analytics';
 import { CHART_COLORS } from '../../components/analytics/chartTheme';
+import type { CollectionsScope } from '../../types/collectionsAnalytics.types';
 import { useCollectionsAnalytics } from './hooks/useCollectionsAnalytics';
 import { useCollectionsAnalyticsFiltersStore } from './store/collectionsAnalyticsFiltersStore';
 
@@ -24,13 +25,35 @@ const KPI_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   periodDue: Wallet,
 };
 
-const CollectionsAnalyticsPage: React.FC = () => {
+export interface CollectionsAnalyticsPageProps {
+  defaultScope?: CollectionsScope;
+  showScopeFilter?: boolean;
+}
+
+const CollectionsAnalyticsPage: React.FC<CollectionsAnalyticsPageProps> = ({
+  defaultScope = 'all',
+  showScopeFilter = true,
+}) => {
   const { isAuthenticated } = useAuth();
   const projects = useStateSelector((s) => s.projects);
   const properties = useStateSelector((s) => s.properties);
   const filters = useCollectionsAnalyticsFiltersStore((s) => s.filters);
   const setFilter = useCollectionsAnalyticsFiltersStore((s) => s.setFilter);
   const [chartYear, setChartYear] = useState(() => new Date().getFullYear());
+
+  useEffect(() => {
+    if (defaultScope !== 'all' && filters.scope !== defaultScope) {
+      setFilter('scope', defaultScope);
+    }
+    if (defaultScope === 'project' && filters.propertyId) {
+      setFilter('propertyId', undefined);
+    }
+    if (defaultScope === 'rental' && filters.projectId) {
+      setFilter('projectId', undefined);
+    }
+  }, [defaultScope, filters.scope, filters.propertyId, filters.projectId, setFilter]);
+
+  const effectiveScope = filters.scope ?? defaultScope;
 
   const { data, isLoading, isFetching, isError, refetch } = useCollectionsAnalytics(isAuthenticated);
 
@@ -86,7 +109,11 @@ const CollectionsAnalyticsPage: React.FC = () => {
             Collections Analytics
           </h2>
           <p className="text-sm text-app-muted mt-1 max-w-2xl">
-            Receivables, collection performance, aging buckets, and top debtors from PostgreSQL.
+            {effectiveScope === 'project'
+              ? 'Project installment receivables, collection performance, aging buckets, and top debtors.'
+              : effectiveScope === 'rental'
+                ? 'Rental receivables, collection performance, aging buckets, and top debtors.'
+                : 'Receivables, collection performance, aging buckets, and top debtors from PostgreSQL.'}
           </p>
         </div>
         <Button variant="secondary" onClick={() => refetch()} className="text-xs gap-1" disabled={isFetching}>
@@ -109,7 +136,18 @@ const CollectionsAnalyticsPage: React.FC = () => {
           onChange={(e) => setFilter('to', e.target.value)}
           className="text-xs rounded-lg border border-app-border bg-app-toolbar px-2 py-1.5"
         />
-        {projects.length > 0 && (
+        {showScopeFilter && (
+          <select
+            value={filters.scope ?? 'all'}
+            onChange={(e) => setFilter('scope', e.target.value as CollectionsScope)}
+            className="text-xs rounded-lg border border-app-border bg-app-toolbar px-2 py-1.5"
+          >
+            <option value="all">All collections</option>
+            <option value="project">Project installments</option>
+            <option value="rental">Rental invoices</option>
+          </select>
+        )}
+        {projects.length > 0 && (effectiveScope === 'project' || effectiveScope === 'all') && (
           <select
             value={filters.projectId ?? 'all'}
             onChange={(e) => setFilter('projectId', e.target.value === 'all' ? undefined : e.target.value)}
@@ -121,7 +159,7 @@ const CollectionsAnalyticsPage: React.FC = () => {
             ))}
           </select>
         )}
-        {properties.length > 0 && (
+        {properties.length > 0 && (effectiveScope === 'rental' || effectiveScope === 'all') && (
           <select
             value={filters.propertyId ?? 'all'}
             onChange={(e) => setFilter('propertyId', e.target.value === 'all' ? undefined : e.target.value)}

@@ -75,7 +75,7 @@ export async function getMobileSalesSummary(
   tenantId: string
 ): Promise<MobileDashboardResponse> {
   const { from, to } = monthRange();
-  const collections = await getCollectionsAnalyticsJson(client, tenantId, { from, to });
+  const collections = await getCollectionsAnalyticsJson(client, tenantId, { from, to, scope: 'project' });
 
   const kpis = collections.kpis ?? [];
   const find = (id: string) => kpis.find((k) => k.id === id)?.value ?? 0;

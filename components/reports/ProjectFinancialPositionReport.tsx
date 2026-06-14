@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { useFinancialReportAppState, useProjects, useBuildings } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState, useProjects, useBuildings, useTransactions } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
 import { CURRENCY } from '../../constants';
 import { exportJsonToExcel } from '../../services/exportService';
@@ -112,6 +112,7 @@ function SectionTable({
 const ProjectFinancialPositionReport: React.FC = () => {
   const projects = useProjects();
   const buildings = useBuildings();
+  const transactions = useTransactions();
   const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
@@ -132,7 +133,7 @@ const ProjectFinancialPositionReport: React.FC = () => {
         selectedProjectId: entityScope.projectId,
         selectedBuildingId: entityScope.buildingId,
       }),
-    [reportState, asOfDate, entityScope]
+    [reportState, asOfDate, entityScope, transactions]
   );
 
   const handleRangeChange = (type: ReportDateRange) => {

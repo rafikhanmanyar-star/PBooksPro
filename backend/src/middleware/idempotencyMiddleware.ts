@@ -15,6 +15,24 @@ export type IdempotentRequest = AuthedRequest &
 
 const MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH']);
 
+/**
+ * True only for spec envelopes `{ requestId, data }` (optional header key).
+ * Flat mutation bodies that also carry a `data` field (e.g. transaction audit logs)
+ * must not unwrap — only strip requestId.
+ */
+function isMutationEnvelope(record: Record<string, unknown>, headerId: string): boolean {
+  const hasRequestId =
+    headerId ||
+    (typeof record[MUTATION_REQUEST_ID_FIELD] === 'string' &&
+      String(record[MUTATION_REQUEST_ID_FIELD]).trim() !== '');
+  if (!hasRequestId) return false;
+  if (record.data == null || typeof record.data !== 'object' || Array.isArray(record.data)) {
+    return false;
+  }
+  const allowed = new Set([MUTATION_REQUEST_ID_FIELD, 'data']);
+  return Object.keys(record).every((key) => allowed.has(key));
+}
+
 /** Paths that must not use idempotency (bulk sync, webhooks, auth). */
 function skipIdempotency(path: string): boolean {
   const p = path.split('?')[0];
@@ -46,13 +64,13 @@ export function idempotencyBodyMiddleware(req: IdempotentRequest, _res: Response
   const headerKey = req.headers[IDEMPOTENCY_KEY_HEADER];
   const headerId = typeof headerKey === 'string' ? headerKey.trim() : '';
 
-  if (record.data != null && typeof record.data === 'object' && !Array.isArray(record.data)) {
+  if (isMutationEnvelope(record, headerId)) {
     const requestId =
       headerId ||
-      (typeof record[MUTATION_REQUEST_ID_FIELD] === 'string' ? record[MUTATION_REQUEST_ID_FIELD].trim() : '');
-    if (requestId) {
-      req.idempotencyKey = requestId;
-    }
+      (typeof record[MUTATION_REQUEST_ID_FIELD] === 'string'
+        ? String(record[MUTATION_REQUEST_ID_FIELD]).trim()
+        : '');
+    req.idempotencyKey = requestId;
     req.body = { ...(record.data as Record<string, unknown>) };
     next();
     return;

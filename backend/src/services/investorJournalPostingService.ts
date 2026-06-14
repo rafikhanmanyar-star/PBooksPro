@@ -77,9 +77,9 @@ async function mirrorContributionToTransactionsRow(
     reference: string | null | undefined;
     createdBy: string | null | undefined;
   }
-): Promise<void> {
+) {
   const refBase = input.reference?.trim() ? input.reference.trim() : `JE:${input.journalEntryId}`;
-  await createTransaction(
+  return createTransaction(
     client,
     tenantId,
     {
@@ -115,9 +115,9 @@ async function mirrorWithdrawalToTransactionsRow(
     reference: string | null | undefined;
     createdBy: string | null | undefined;
   }
-): Promise<void> {
+) {
   const refBase = input.reference?.trim() ? input.reference.trim() : `JE:${input.journalEntryId}`;
-  await createTransaction(
+  return createTransaction(
     client,
     tenantId,
     {
@@ -175,7 +175,7 @@ export async function postInvestorContribution(
     reference?: string;
     createdBy?: string | null;
   }
-): Promise<{ journalEntryId: string }> {
+): Promise<{ journalEntryId: string; mirroredTransaction: Awaited<ReturnType<typeof mirrorContributionToTransactionsRow>> }> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Amount must be positive.');
   const dims = resolveJournalDimensions({ projectId: input.projectId });
@@ -201,7 +201,7 @@ export async function postInvestorContribution(
     ],
   };
   const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
-  await mirrorContributionToTransactionsRow(client, tenantId, {
+  const mirroredTx = await mirrorContributionToTransactionsRow(client, tenantId, {
     journalEntryId,
     entryDate: input.entryDate,
     amount: amt,
@@ -212,7 +212,7 @@ export async function postInvestorContribution(
     reference: input.reference ?? body.reference,
     createdBy: input.createdBy ?? null,
   });
-  return { journalEntryId };
+  return { journalEntryId, mirroredTransaction: mirroredTx };
 }
 
 /** Dr Investor equity / Cr Cash — cash outflow */
@@ -231,7 +231,7 @@ export async function postInvestorWithdrawal(
     createdBy?: string | null;
     skipBalanceCheck?: boolean;
   }
-): Promise<{ journalEntryId: string }> {
+): Promise<{ journalEntryId: string; mirroredTransaction: Awaited<ReturnType<typeof mirrorWithdrawalToTransactionsRow>> }> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Amount must be positive.');
   if (!input.skipBalanceCheck) {
@@ -270,7 +270,7 @@ export async function postInvestorWithdrawal(
     ],
   };
   const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
-  await mirrorWithdrawalToTransactionsRow(client, tenantId, {
+  const mirroredTx = await mirrorWithdrawalToTransactionsRow(client, tenantId, {
     journalEntryId,
     entryDate: input.entryDate,
     amount: amt,
@@ -281,7 +281,7 @@ export async function postInvestorWithdrawal(
     reference: input.reference ?? body.reference,
     createdBy: input.createdBy ?? null,
   });
-  return { journalEntryId };
+  return { journalEntryId, mirroredTransaction: mirroredTx };
 }
 
 /** Non-cash: Dr Retained earnings / Cr Investor equity */

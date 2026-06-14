@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { sellingAnalyticsApi } from '../../../services/api/sellingAnalyticsApi';
 import { useSellingAnalyticsFiltersStore } from '../store/sellingAnalyticsFiltersStore';
 
-const STALE_MS = 60_000;
+const STALE_MS = 30_000;
 
 export const sellingAnalyticsQueryKeys = {
   root: ['sellingAnalytics'] as const,

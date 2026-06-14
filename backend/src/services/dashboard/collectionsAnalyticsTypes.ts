@@ -1,6 +1,9 @@
+export type CollectionsScope = 'all' | 'project' | 'rental';
+
 export interface CollectionsAnalyticsFilters {
   from: string;
   to: string;
+  scope?: CollectionsScope;
   projectId?: string;
   propertyId?: string;
 }

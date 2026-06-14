@@ -678,6 +678,36 @@ export class AppStateApiService {
       merged.planAmenities = merged.planAmenities.map((a: any) => normalizePlanAmenityFromApiRow(a));
     }
 
+    if (merged.units && Array.isArray(merged.units)) {
+      merged.units = merged.units.map((u: any) => {
+        const label = String(u.unitNumber ?? u.unit_number ?? u.name ?? '').trim() || u.id;
+        return {
+          id: u.id,
+          name: label,
+          unitNumber: (u.unitNumber ?? u.unit_number ?? label) || undefined,
+          projectId: u.project_id || u.projectId || '',
+          contactId: (u.contact_id ?? u.contactId ?? u.owner_contact_id ?? u.ownerContactId) || undefined,
+          ownerContactId: (u.ownerContactId ?? u.owner_contact_id) || undefined,
+          salePrice: (() => {
+            const price = u.sale_price || u.salePrice;
+            if (price == null) return undefined;
+            return typeof price === 'number' ? price : parseFloat(String(price));
+          })(),
+          description: u.description || undefined,
+          type: u.unit_type ?? u.type ?? u.unitType ?? undefined,
+          size: u.size != null && u.size !== '' ? String(u.size) : undefined,
+          area: (() => {
+            const areaValue = u.area;
+            if (areaValue == null) return undefined;
+            return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
+          })(),
+          floor: u.floor || undefined,
+          status: (u.status as AppState['units'][0]['status']) || 'available',
+          version: typeof u.version === 'number' ? u.version : undefined,
+        };
+      });
+    }
+
     try {
       const { isLocalOnlyMode } = await import('../../config/apiUrl');
       const { getCurrentTenantId } = await import('../database/tenantUtils');

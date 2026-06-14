@@ -28,6 +28,12 @@ function invoiceFilterSql(
   const parts: string[] = [];
   const params: unknown[] = [];
   let idx = baseParamCount;
+  const scope = filters.scope ?? 'all';
+  if (scope === 'project') {
+    parts.push(`i.invoice_type = 'Installment'`);
+  } else if (scope === 'rental') {
+    parts.push(`i.invoice_type IN ('Rental', 'Security Deposit', 'Service Charge')`);
+  }
   if (filters.projectId) {
     params.push(filters.projectId);
     idx += 1;

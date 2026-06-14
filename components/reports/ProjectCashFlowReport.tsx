@@ -241,6 +241,12 @@ const ProjectCashFlowReport: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
+    /** Refetch when another user posts equity / journal-backed cash movements (API cash flow is journal-sourced). */
+    const journalRefreshKey = useMemo(
+        () => `${transactions.length}:${transactions[transactions.length - 1]?.id ?? ''}`,
+        [transactions]
+    );
+
     useEffect(() => {
         if (!tenantId) {
             setReport(null);
@@ -269,7 +275,7 @@ const ProjectCashFlowReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [tenantId, startDate, endDate, entityScope]);
+    }, [tenantId, startDate, endDate, entityScope, journalRefreshKey]);
 
     const transactionsById = useMemo(
         () => new Map(transactions.map((t) => [t.id, t])),
