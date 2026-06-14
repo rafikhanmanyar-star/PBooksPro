@@ -16,7 +16,7 @@ export type { AccountingView } from './accountingReportTypes';
 export { ACCOUNTING_FINANCIAL_REPORTS, ACCOUNTING_PORTFOLIO_REPORTS } from './accountingReportTypes';
 
 const ProjectProfitLossReport = React.lazy(() => import('../reports/ProjectProfitLossReport'));
-const ProjectBalanceSheetReport = React.lazy(() => import('../reports/ProjectBalanceSheetReport'));
+const ProjectFinancialPositionReport = React.lazy(() => import('../reports/ProjectFinancialPositionReport'));
 const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
 const ReconciliationDashboard = React.lazy(() => import('../reports/ReconciliationDashboard'));
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
@@ -54,7 +54,7 @@ const AccountingPage: React.FC = () => {
         return perms.canReadProfitLoss || perms.canReadBalanceSheet;
       case 'Profit & Loss':
         return perms.canReadProfitLoss;
-      case 'Balance Sheet':
+      case 'Project Financial Position':
         return perms.canReadBalanceSheet;
       case 'Trial Balance':
         return perms.canReadTrialBalance;
@@ -78,12 +78,21 @@ const AccountingPage: React.FC = () => {
   const visibleReports = [...visibleFinancialReports, ...visiblePortfolioReports];
 
   useEffect(() => {
+    if ((activeView as string) === 'Balance Sheet') {
+      setActiveView('Project Financial Position');
+    }
+  }, [activeView, setActiveView]);
+
+  useEffect(() => {
     if (initialTabs && initialTabs.length > 0) {
       const [mainTab, subTab] = initialTabs;
-      if (mainTab === 'Reports' && subTab && visibleReports.includes(subTab as AccountingView)) {
-        setActiveView(subTab as AccountingView);
-      } else if (visibleReports.includes(mainTab as AccountingView)) {
-        setActiveView(mainTab as AccountingView);
+      const normalizeTab = (t: string) => (t === 'Balance Sheet' ? 'Project Financial Position' : t);
+      const main = normalizeTab(mainTab);
+      const sub = subTab ? normalizeTab(subTab) : subTab;
+      if (mainTab === 'Reports' && sub && visibleReports.includes(sub as AccountingView)) {
+        setActiveView(sub as AccountingView);
+      } else if (visibleReports.includes(main as AccountingView)) {
+        setActiveView(main as AccountingView);
       }
       dispatch({ type: 'CLEAR_INITIAL_TABS' });
       return;
@@ -102,8 +111,8 @@ const AccountingPage: React.FC = () => {
         return <UnpostedTransactionsQueuePage />;
       case 'Profit & Loss':
         return perms.canReadProfitLoss ? <ProjectProfitLossReport /> : null;
-      case 'Balance Sheet':
-        return perms.canReadBalanceSheet ? <ProjectBalanceSheetReport /> : null;
+      case 'Project Financial Position':
+        return perms.canReadBalanceSheet ? <ProjectFinancialPositionReport /> : null;
       case 'Trial Balance':
         return perms.canReadTrialBalance ? <TrialBalanceReport /> : null;
       case 'Reconciliation':

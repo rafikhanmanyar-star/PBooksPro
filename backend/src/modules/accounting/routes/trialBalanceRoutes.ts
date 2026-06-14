@@ -2,13 +2,17 @@ import { Router } from 'express';
 import { getPool } from '../../../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
-import { getTrialBalanceReportPayload } from '../../../services/trialBalanceReportService.js';
+import {
+  getTrialBalanceReportPayload,
+  parseTrialBalanceDimensionParam,
+} from '../../../services/trialBalanceReportService.js';
+import { scopeFromReportFilters } from '../../../financial/trialBalanceCore.js';
 import type { TrialBalanceBasis } from '../../../financial/trialBalanceCore.js';
 
 export const trialBalanceRouter = Router();
 
 /**
- * GET /api/reports/trial-balance?from=YYYY-MM-DD&to=YYYY-MM-DD&basis=period|cumulative
+ * GET /api/reports/trial-balance?from=&to=&basis=&projectId=&buildingId=&costCenterId=
  * Canonical trial balance for double-entry journal (journal_lines + journal_entries).
  */
 trialBalanceRouter.get('/reports/trial-balance', async (req: AuthedRequest, res) => {
@@ -30,15 +34,26 @@ trialBalanceRouter.get('/reports/trial-balance', async (req: AuthedRequest, res)
   const basisRaw = typeof req.query.basis === 'string' ? req.query.basis.trim().toLowerCase() : 'period';
   const basis: TrialBalanceBasis = basisRaw === 'cumulative' ? 'cumulative' : 'period';
 
+  const scope = scopeFromReportFilters(
+    parseTrialBalanceDimensionParam(req.query.projectId),
+    parseTrialBalanceDimensionParam(req.query.buildingId),
+    parseTrialBalanceDimensionParam(req.query.costCenterId)
+  );
+
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getTrialBalanceReportPayload(client, tenantId, { from, to, basis });
+      const data = await getTrialBalanceReportPayload(client, tenantId, { from, to, basis, scope });
       sendSuccess(res, {
         from: data.from,
         to: data.to,
         basis: data.basis,
+        scope: {
+          project_id: data.scope.projectId ?? 'all',
+          building_id: data.scope.buildingId ?? 'all',
+          cost_center_id: data.scope.costCenterId ?? 'all',
+        },
         accounts: data.accounts.map((a) => ({
           id: a.accountId,
           name: a.accountName,
@@ -60,6 +75,18 @@ trialBalanceRouter.get('/reports/trial-balance', async (req: AuthedRequest, res)
           gross_credit: data.totals.grossCredit,
         },
         is_balanced: data.isBalanced,
+        difference: data.difference,
+        diagnostics: {
+          missing_project_ids: data.diagnostics.missingProjectIds,
+          missing_building_ids: data.diagnostics.missingBuildingIds,
+          missing_cost_centers: data.diagnostics.missingCostCenters,
+          unbalanced_projects: data.diagnostics.unbalancedProjects.map((p) => ({
+            project_id: p.projectId,
+            gross_debit: p.grossDebit,
+            gross_credit: p.grossCredit,
+            difference: p.difference,
+          })),
+        },
       });
     } finally {
       client.release();

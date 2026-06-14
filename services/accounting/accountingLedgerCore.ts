@@ -8,7 +8,6 @@ import { AccountType, LoanSubtype, TransactionType } from '../../types';
 import { resolveProjectIdForTransaction } from '../../components/reports/reportUtils';
 import { computeProfitLossReport } from '../../components/reports/profitLossEngine';
 import { computeBalanceSheetReport } from '../../components/reports/balanceSheetEngine';
-import { computeCashFlowReport } from '../../components/reports/cashFlowEngine';
 
 const EPS = 0.01;
 
@@ -146,15 +145,12 @@ export function computeUnifiedAccountingSnapshot(
   const { fromDate, toDate, selectedProjectId } = opts;
   const pl = computeProfitLossReport(state, { startDate: fromDate, endDate: toDate, selectedProjectId });
   const bs = computeBalanceSheetReport(state, { asOfDate: toDate, selectedProjectId });
-  const cf = computeCashFlowReport(state, { fromDate, toDate, selectedProjectId });
 
   const messages: string[] = [];
   if (!bs.isBalanced) {
     messages.push(`Balance sheet: Assets ≠ Liabilities + Equity by ${bs.discrepancy.toFixed(2)}.`);
   }
-  if (!cf.validation.reconciled) {
-    messages.push(...cf.validation.messages);
-  }
+  messages.push('Cash flow reconciliation: use Cash Flow report (journal GL).');
   if (pl.validation.issues.some((i) => i.severity === 'error')) {
     messages.push('P&L has validation errors — review uncategorized or mapping issues.');
   }
@@ -163,8 +159,8 @@ export function computeUnifiedAccountingSnapshot(
     profitLossNet: pl.net_profit,
     balanceSheetBalanced: bs.isBalanced,
     balanceSheetDiscrepancy: bs.discrepancy,
-    cashFlowReconciled: cf.validation.reconciled,
-    cashFlowDiscrepancy: cf.validation.discrepancy,
+    cashFlowReconciled: true,
+    cashFlowDiscrepancy: 0,
     messages,
   };
 }

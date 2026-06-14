@@ -20,6 +20,13 @@ import {
   type TrialBalanceRawRow,
   type TrialBalanceReportPayload,
 } from './trialBalanceCore.js';
+import {
+  isDimensionScopeActive,
+  isJournalEntityScopeActive,
+  journalLineMatchesDimensionScope,
+  scopeFromReportFilters,
+  type FinancialDimensionScope,
+} from './dimensionScope.js';
 
 /** Minimal account shape for GL engines (avoids coupling to full AppState types). */
 export interface LedgerAccount {
@@ -33,7 +40,7 @@ export interface LedgerAccount {
   isActive?: boolean;
 }
 
-/** Minimal transaction shape for journal-linked P&L classification. */
+/** Minimal transaction shape for journal-linked P&L category lookup via source_id. */
 export interface LedgerTransaction {
   id: string;
   type: string;
@@ -56,6 +63,8 @@ export interface JournalLineRow {
   creditAmount: number;
   lineNumber: number;
   projectId?: string | null;
+  buildingId?: string | null;
+  costCenterId?: string | null;
 }
 
 /** Minimal journal entry header. */
@@ -67,6 +76,8 @@ export interface JournalEntryRow {
   sourceModule?: string | null;
   sourceId?: string | null;
   projectId?: string | null;
+  buildingId?: string | null;
+  costCenterId?: string | null;
   /** True when entry has been reversed (original leg). */
   isReversed?: boolean;
 }
@@ -75,7 +86,7 @@ export interface JournalLedgerInput {
   journalLines: JournalLineRow[];
   journalEntries: JournalEntryRow[];
   accounts: LedgerAccount[];
-  /** Operational transactions — used for P&L category lookup via journal source_id. */
+  /** Operational transactions — P&L category lookup via journal source_id only (not dimension scope). */
   transactions?: LedgerTransaction[];
 }
 
@@ -131,73 +142,25 @@ export function journalEntryMap(entries: JournalEntryRow[]): Map<string, Journal
   return new Map(entries.map((e) => [e.id, e]));
 }
 
-export interface JournalEntityScopeOptions {
-  projectId?: string | null;
-  buildingId?: string | null;
-}
+export type JournalEntityScopeOptions = FinancialDimensionScope;
 
-function buildTxScopeMetaMap(
-  transactions?: LedgerTransaction[]
-): Map<string, { projectId?: string; buildingId?: string }> {
-  const map = new Map<string, { projectId?: string; buildingId?: string }>();
-  for (const tx of transactions ?? []) {
-    map.set(tx.id, { projectId: tx.projectId, buildingId: tx.buildingId });
-  }
-  return map;
-}
+export { isDimensionScopeActive, isJournalEntityScopeActive };
 
-/** True when report scope is a single project or building (not consolidated). */
-export function isJournalEntityScopeActive(
-  options?: { projectId?: string | null; buildingId?: string | null } | null
-): boolean {
-  const pid = options?.projectId;
-  const bid = options?.buildingId;
-  return (
-    (typeof pid === 'string' && pid.trim() !== '' && pid !== 'all') ||
-    (typeof bid === 'string' && bid.trim() !== '' && bid !== 'all')
-  );
-}
-
-function journalLineMatchesEntityScope(
-  line: JournalLineRow,
-  entry: JournalEntryRow,
-  options: JournalEntityScopeOptions | undefined,
-  txMetaById: Map<string, { projectId?: string; buildingId?: string }>
-): boolean {
-  if (!options) return true;
-  const projectFilter = options.projectId && options.projectId !== 'all';
-  const buildingFilter = options.buildingId && options.buildingId !== 'all';
-  if (!projectFilter && !buildingFilter) return true;
-
-  let projectId = line.projectId ?? entry.projectId ?? undefined;
-  let buildingId: string | undefined;
-  if (entry.sourceModule === 'transaction' && entry.sourceId) {
-    const meta = txMetaById.get(entry.sourceId);
-    if (meta) {
-      if (!projectId) projectId = meta.projectId;
-      buildingId = meta.buildingId;
-    }
-  }
-
-  if (buildingFilter) return buildingId === options.buildingId;
-  if (projectFilter) return projectId === options.projectId;
-  return true;
+function scopeFromOptions(options?: FinancialDimensionScope | null): FinancialDimensionScope | undefined {
+  if (!options || !isDimensionScopeActive(options)) return undefined;
+  return scopeFromReportFilters(options.projectId, options.buildingId, options.costCenterId);
 }
 
 /** Aggregate signed balance per account from journal lines through asOfDate. */
 export function computeAccountBalancesFromJournal(
   input: JournalLedgerInput,
   asOfDate: string,
-  options?: { projectId?: string | null; buildingId?: string | null; fromDate?: string }
+  options?: { projectId?: string | null; buildingId?: string | null; costCenterId?: string | null; fromDate?: string }
 ): Map<string, JournalAccountBalance> {
   const entryById = journalEntryMap(activeJournalEntries(input.journalEntries));
   const accountType = new Map(input.accounts.map((a) => [a.id, a.type]));
   const agg = new Map<string, { gd: number; gc: number }>();
-  const txMetaById = buildTxScopeMetaMap(input.transactions);
-  const scope: JournalEntityScopeOptions | undefined =
-    options?.projectId || options?.buildingId
-      ? { projectId: options.projectId, buildingId: options.buildingId }
-      : undefined;
+  const scope = scopeFromOptions(options);
 
   for (const line of input.journalLines) {
     const entry = entryById.get(line.journalEntryId);
@@ -205,7 +168,7 @@ export function computeAccountBalancesFromJournal(
     if (ymd(entry.entryDate) > asOfDate) continue;
     if (options?.fromDate && priorTo(entry.entryDate, options.fromDate)) continue;
 
-    if (!journalLineMatchesEntityScope(line, entry, scope, txMetaById)) continue;
+    if (!journalLineMatchesDimensionScope(line, entry, scope)) continue;
 
     const cur = agg.get(line.accountId) ?? { gd: 0, gc: 0 };
     cur.gd = roundMoney(cur.gd + roundMoney(line.debitAmount));
@@ -221,8 +184,8 @@ export function computeAccountBalancesFromJournal(
     result.set(accountId, { accountId, signedBalance: signed, grossDebit: gd, grossCredit: gc });
   }
 
-  /** Opening balances are tenant-wide; exclude on project/building-scoped reports. */
-  if (!isJournalEntityScopeActive(options)) {
+  /** Opening balances are tenant-wide; exclude on scoped reports. */
+  if (!isDimensionScopeActive(options)) {
     for (const acc of input.accounts) {
       const ob = roundMoney(Number(acc.openingBalance ?? 0));
       if (Math.abs(ob) < MONEY_EPSILON) continue;
@@ -269,16 +232,19 @@ export function filterTransactionsForJournalLedger(
 /** Build trial balance raw rows from journal aggregates (+ opening equity offset). */
 export function buildTrialBalanceFromJournal(
   input: JournalLedgerInput,
-  options: { from: string; to: string; basis: TrialBalanceBasis; projectId?: string; buildingId?: string }
+  options: {
+    from: string;
+    to: string;
+    basis: TrialBalanceBasis;
+    projectId?: string;
+    buildingId?: string;
+    costCenterId?: string;
+  }
 ): TrialBalanceReportPayload {
   const entryById = journalEntryMap(activeJournalEntries(input.journalEntries));
   const activityRows: TrialBalanceRawRow[] = [];
   const agg = new Map<string, { gd: number; gc: number }>();
-  const txMetaById = buildTxScopeMetaMap(input.transactions);
-  const scope: JournalEntityScopeOptions | undefined =
-    options.projectId || options.buildingId
-      ? { projectId: options.projectId, buildingId: options.buildingId }
-      : undefined;
+  const scope = scopeFromOptions(options);
 
   for (const line of input.journalLines) {
     const entry = entryById.get(line.journalEntryId);
@@ -286,13 +252,12 @@ export function buildTrialBalanceFromJournal(
 
     const inPeriod = inDateRange(entry.entryDate, options.from, options.to, 'period');
     const inCumulative = inDateRange(entry.entryDate, options.from, options.to, 'cumulative');
-    const inPrior =
-      options.basis === 'period' && priorTo(entry.entryDate, options.from);
+    const inPrior = options.basis === 'period' && priorTo(entry.entryDate, options.from);
 
     if (options.basis === 'period' && !inPeriod && !inPrior) continue;
     if (options.basis === 'cumulative' && !inCumulative) continue;
 
-    if (!journalLineMatchesEntityScope(line, entry, scope, txMetaById)) continue;
+    if (!journalLineMatchesDimensionScope(line, entry, scope)) continue;
 
     const cur = agg.get(line.accountId) ?? { gd: 0, gc: 0 };
     cur.gd = roundMoney(cur.gd + roundMoney(line.debitAmount));
@@ -317,7 +282,7 @@ export function buildTrialBalanceFromJournal(
   }
 
   const mergedActivity = mergeRawRowsByAccount(activityRows);
-  if (isJournalEntityScopeActive(options)) {
+  if (isDimensionScopeActive(options)) {
     return buildTrialBalanceReport(mergedActivity);
   }
 
@@ -359,7 +324,6 @@ export function sumBalanceSheetSectionsFromJournal(
     const acc = accountById.get(accountId);
     if (!acc) continue;
     const pos = classifyAccountPosition(acc.type);
-    // Display convention: assets debit-normal positive; liability/equity credit-normal positive
     const display =
       pos === 'asset' ? bal.signedBalance : pos === 'liability' ? -bal.signedBalance : -bal.signedBalance;
 
@@ -378,14 +342,9 @@ function resolveClearingAccountId(accounts: LedgerAccount[]): string {
 }
 
 export interface JournalCertificationBsOptions {
-  /** Cumulative net profit through as-of date (matches BS engine retainedEarningsFromPL). */
   cumulativeNetProfit?: number;
 }
 
-/**
- * Journal-mode balance sheet section totals aligned with balanceSheetEngine (useJournalLedger).
- * Excludes Internal Clearing; closes to cumulative P&L when income/expense summary lines are absent.
- */
 export function sumBalanceSheetSectionsForJournalCertification(
   balances: Map<string, JournalAccountBalance>,
   accounts: LedgerAccount[],
@@ -443,17 +402,10 @@ export function sumBalanceSheetSectionsForJournalCertification(
 }
 
 export interface ReconcileFinancialStatementsOptions {
-  /** When set, used for A=L+E (authoritative BS engine totals). */
   balanceSheetSections?: { assets: number; liabilities: number; equity: number };
-  /** Cumulative P&L net through as-of date for journal certification rollup. */
   cumulativeNetProfit?: number;
 }
 
-/**
- * Reconcile trial balance, balance sheet totals, and net P&L.
- * @param netProfit — period net profit from journal-backed P&L
- * @param priorEquity — equity balance at start of period (for change comparison)
- */
 export function reconcileFinancialStatements(
   trialBalance: TrialBalanceReportPayload,
   balances: Map<string, JournalAccountBalance>,

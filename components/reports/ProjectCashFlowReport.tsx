@@ -1,7 +1,6 @@
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import {
     useBills,
-    useFinancialReportAppState,
     useInvoices,
     useProjects,
     useBuildings,
@@ -31,8 +30,6 @@ import {
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import {
-    computeCashFlowReport,
-    cashFlowCategoryMapFromEntries,
     partitionFinancingEquityTransferPayout,
     type CashFlowLine,
     type CashFlowSectionResult,
@@ -44,8 +41,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import type { ReportStateSlice } from './reportUtils';
 import { resolveProjectIdForTransaction } from './reportUtils';
-import { isLocalOnlyMode } from '../../config/apiUrl';
-import { fetchCashFlowReport } from '../../services/api/financialReportsApi';
+import { fetchCashFlowReportUnified } from '../../services/financialEngine/cashFlowJournalReports';
 import { useReportTenantId } from '../../hooks/useReportTenantId';
 
 /**
@@ -207,8 +203,10 @@ const ProjectCashFlowReport: React.FC = () => {
     const invoices = useInvoices();
     const bills = useBills();
     const projectAgreements = useStateSelector((s) => s.projectAgreements);
-    const cashFlowCategoryMappings = useStateSelector((s) => s.cashFlowCategoryMappings);
-    const reportState = useFinancialReportAppState();
+    const reportState = useMemo<ReportStateSlice>(
+        () => ({ invoices, bills, projectAgreements }),
+        [invoices, bills, projectAgreements]
+    );
     const { print: triggerPrint } = usePrintContext();
 
     const [dateRange, setDateRange] = useState<ReportDateRange>('all');
@@ -238,29 +236,29 @@ const ProjectCashFlowReport: React.FC = () => {
 
     const [auditOpen, setAuditOpen] = useState(false);
 
-    const localOnly = isLocalOnlyMode();
     const tenantId = useReportTenantId();
-    const [serverReport, setServerReport] = useState<CashFlowReportResult | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [report, setReport] = useState<CashFlowReportResult | null>(null);
+    const [loading, setLoading] = useState(true);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly || !tenantId) {
-            setServerReport(null);
+        if (!tenantId) {
+            setReport(null);
+            setLoading(false);
             return;
         }
         let cancelled = false;
-        setServerReport(null);
         setLoading(true);
         setFetchError(null);
-        void fetchCashFlowReport({
+        void fetchCashFlowReportUnified({
+            tenantId,
             from: startDate,
             to: endDate,
             projectId: entityScope.projectId,
             buildingId: entityScope.buildingId,
         })
             .then((r) => {
-                if (!cancelled) setServerReport(r);
+                if (!cancelled) setReport(r);
             })
             .catch((e) => {
                 if (!cancelled) setFetchError(e instanceof Error ? e.message : String(e));
@@ -271,7 +269,7 @@ const ProjectCashFlowReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, tenantId, startDate, endDate, entityScope]);
+    }, [tenantId, startDate, endDate, entityScope]);
 
     const transactionsById = useMemo(
         () => new Map(transactions.map((t) => [t.id, t])),
@@ -302,20 +300,6 @@ const ProjectCashFlowReport: React.FC = () => {
             setDateRange('custom');
         }
     };
-
-    const clientReport = useMemo(
-        () =>
-            computeCashFlowReport(reportState, {
-                fromDate: startDate,
-                toDate: endDate,
-                selectedProjectId: entityScope.projectId,
-                selectedBuildingId: entityScope.buildingId,
-                interestPaidAsOperating,
-                cashFlowCategoryByAccountId: cashFlowCategoryMapFromEntries(cashFlowCategoryMappings),
-            }),
-        [reportState, cashFlowCategoryMappings, startDate, endDate, entityScope, interestPaidAsOperating]
-    );
-    const report = !localOnly ? serverReport : clientReport;
 
     const sections: { title: string; data: CashFlowSectionResult }[] = useMemo(
         () =>
@@ -592,13 +576,14 @@ const ProjectCashFlowReport: React.FC = () => {
                             selectedId={entityFilterId}
                             onSelect={setEntityFilterId}
                         />
-                        <label className="flex items-center gap-2 text-sm text-app-muted ml-2 whitespace-nowrap">
+                        <label className="flex items-center gap-2 text-sm text-app-muted ml-2 whitespace-nowrap opacity-60" title="Journal-based cash flow classifies interest from GL account types">
                             <input
                                 type="checkbox"
                                 checked={interestPaidAsOperating}
-                                onChange={(e) => setInterestPaidAsOperating(e.target.checked)}
+                                disabled
+                                readOnly
                             />
-                            Interest paid as operating (IAS 7 default)
+                            Interest as operating (journal GL)
                         </label>
                         <Button
                             type="button"
@@ -622,25 +607,25 @@ const ProjectCashFlowReport: React.FC = () => {
                                 {entityLabel}
                             </p>
                             <p className="text-xs text-app-muted">
-                                Direct method — For the period from {formatDate(startDate)} to {formatDate(endDate)}
+                                Direct method (journal GL) — For the period from {formatDate(startDate)} to {formatDate(endDate)}
                             </p>
-                            {!localOnly && loading && (
-                                <p className="text-xs text-app-muted mt-1">Loading from server…</p>
+                            {loading && (
+                                <p className="text-xs text-app-muted mt-1">Loading cash flow from journal…</p>
                             )}
-                            {!localOnly && fetchError && (
+                            {fetchError && (
                                 <p className="text-xs text-rose-600 mt-1">{fetchError}</p>
                             )}
                         </div>
 
-                        {!localOnly && !report ? (
+                        {!report ? (
                             <p className="text-center text-sm text-app-muted py-8">
                                 {loading
-                                    ? 'Loading cash flow statement for this organization…'
-                                    : fetchError ?? 'Could not load cash flow statement from the server.'}
+                                    ? 'Loading cash flow statement…'
+                                    : fetchError ?? 'Could not load cash flow statement.'}
                             </p>
                         ) : (
                         <div className="max-w-4xl mx-auto bg-app-card p-4 md:p-8 rounded-xl border border-app-border shadow-ds-card">
-                            {report!.flags.negative_opening_cash && (
+                            {report.flags.negative_opening_cash && (
                                 <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                                     Opening cash is negative — verify bank and cash ledger balances.
                                 </div>

@@ -30,12 +30,23 @@ cashFlowRouter.get('/reports/cash-flow', async (req: AuthedRequest, res) => {
   const buildingRaw = req.query.buildingId ?? req.query.building;
   const selectedBuildingId =
     typeof buildingRaw === 'string' && buildingRaw.trim() ? buildingRaw.trim() : 'all';
+  const costCenterRaw = req.query.costCenterId ?? req.query.costCenter;
+  const selectedCostCenterId =
+    typeof costCenterRaw === 'string' && costCenterRaw.trim() ? costCenterRaw.trim() : 'all';
 
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getCashFlowReportJson(client, tenantId, from, to, selectedProjectId, selectedBuildingId);
+      const data = await getCashFlowReportJson(
+        client,
+        tenantId,
+        from,
+        to,
+        selectedProjectId,
+        selectedBuildingId,
+        selectedCostCenterId
+      );
       sendSuccess(res, data);
     } finally {
       client.release();

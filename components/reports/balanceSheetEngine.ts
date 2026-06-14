@@ -36,6 +36,7 @@ import {
   transactionMatchesFinancialEntityScope,
   type FinancialEntityScope,
 } from './financialEntityScope';
+import { isDimensionScopeActive } from '../../shared/financial-core/dimensionScope';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { computeProfitLossReport } from './profitLossEngine';
@@ -764,7 +765,7 @@ export function computeBalanceSheetReport(
   }
 
   /** Journal: offset bank/cash opening_balance with synthetic equity (consolidated only). */
-  if (useJournal && !scopeTargetsProject(entityScope) && !scopeTargetsBuilding(entityScope)) {
+  if (useJournal && !isDimensionScopeActive(entityScope)) {
     let openingNetDebit = 0;
     for (const acc of state.accounts || []) {
       const ob = roundMoney(Number(acc.openingBalance ?? 0));

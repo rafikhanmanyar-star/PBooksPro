@@ -160,7 +160,7 @@ export const EXECUTIVE_ACCORDION_SECTIONS = [
 
 export const EXECUTIVE_REPORT_LINKS = [
   { id: 'pl' as const, label: 'Profit & Loss', page: 'accounting' as const, tab: 'Profit & Loss' },
-  { id: 'bs' as const, label: 'Balance Sheet', page: 'accounting' as const, tab: 'Balance Sheet' },
+  { id: 'pfp' as const, label: 'Project Financial Position', page: 'accounting' as const, tab: 'Project Financial Position' },
   { id: 'cf' as const, label: 'Cash Flow', page: 'accounting' as const, tab: 'Cash Flows' },
   { id: 'collections' as const, label: 'Collections', page: 'rentalManagement' as const, tab: 'Analytics' },
   { id: 'projects' as const, label: 'Project Reports', page: 'projectManagement' as const, tab: 'Reports' },

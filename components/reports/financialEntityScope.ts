@@ -1,15 +1,37 @@
 /**
  * Unified project / building scope for Accounting financial statements.
+ * UI filter helpers + thin adapter over shared/financial-core/dimensionScope.
  */
 
 import type { Transaction } from '../../types';
 import { resolveBuildingIdForTransaction, resolveProjectIdForTransaction, type ReportStateSlice } from './reportUtils';
+import {
+  DIMENSION_FILTER_ALL,
+  applyDimensionFilter,
+  isDimensionScopeActive,
+  matchesDimensionScope,
+  scopeIsConsolidated,
+  scopeTargetsBuilding,
+  scopeTargetsProject,
+  type FinancialDimensionScope,
+} from '../../shared/financial-core/dimensionScope';
 
-export const FINANCIAL_ENTITY_FILTER_ALL = 'all';
+export {
+  applyDimensionFilter,
+  isDimensionScopeActive,
+  matchesDimensionScope,
+  scopeIsConsolidated,
+  scopeTargetsBuilding,
+  scopeTargetsProject,
+  type FinancialDimensionScope,
+};
+
+export const FINANCIAL_ENTITY_FILTER_ALL = DIMENSION_FILTER_ALL;
 export const FINANCIAL_ENTITY_PROJECT_PREFIX = 'project:';
 export const FINANCIAL_ENTITY_BUILDING_PREFIX = 'building:';
 
-export interface FinancialEntityScope {
+/** @deprecated Use FinancialDimensionScope */
+export interface FinancialEntityScope extends FinancialDimensionScope {
   projectId: string;
   buildingId: string;
 }
@@ -70,12 +92,7 @@ export function matchesFinancialEntityScope(
   projectId: string | undefined,
   buildingId: string | undefined
 ): boolean {
-  const buildingActive = scope.buildingId !== FINANCIAL_ENTITY_FILTER_ALL;
-  const projectActive = scope.projectId !== FINANCIAL_ENTITY_FILTER_ALL;
-  if (!buildingActive && !projectActive) return true;
-  if (buildingActive) return buildingId === scope.buildingId;
-  if (projectActive) return projectId === scope.projectId;
-  return true;
+  return matchesDimensionScope(scope, { projectId, buildingId });
 }
 
 export function transactionMatchesFinancialEntityScope(
@@ -83,9 +100,10 @@ export function transactionMatchesFinancialEntityScope(
   state: ReportStateSlice,
   scope: FinancialEntityScope
 ): boolean {
-  const projectId = resolveProjectIdForTransaction(tx, state);
-  const buildingId = resolveBuildingIdForTransaction(tx, state);
-  return matchesFinancialEntityScope(scope, projectId, buildingId);
+  return matchesDimensionScope(scope, {
+    projectId: resolveProjectIdForTransaction(tx, state),
+    buildingId: resolveBuildingIdForTransaction(tx, state),
+  });
 }
 
 export function billMatchesFinancialEntityScope(
@@ -98,7 +116,7 @@ export function billMatchesFinancialEntityScope(
   if (!buildingId && bill.propertyId && state.properties?.length) {
     buildingId = state.properties.find((p) => p.id === bill.propertyId)?.buildingId;
   }
-  return matchesFinancialEntityScope(scope, projectId, buildingId);
+  return matchesDimensionScope(scope, { projectId, buildingId });
 }
 
 export function invoiceMatchesFinancialEntityScope(
@@ -111,17 +129,5 @@ export function invoiceMatchesFinancialEntityScope(
   if (!buildingId && invoice.propertyId && state.properties?.length) {
     buildingId = state.properties.find((p) => p.id === invoice.propertyId)?.buildingId;
   }
-  return matchesFinancialEntityScope(scope, projectId, buildingId);
-}
-
-export function scopeTargetsBuilding(scope: FinancialEntityScope): boolean {
-  return scope.buildingId !== FINANCIAL_ENTITY_FILTER_ALL;
-}
-
-export function scopeTargetsProject(scope: FinancialEntityScope): boolean {
-  return scope.projectId !== FINANCIAL_ENTITY_FILTER_ALL;
-}
-
-export function scopeIsConsolidated(scope: FinancialEntityScope): boolean {
-  return !scopeTargetsBuilding(scope) && !scopeTargetsProject(scope);
+  return matchesDimensionScope(scope, { projectId, buildingId });
 }

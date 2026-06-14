@@ -5,6 +5,11 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { type CreateJournalBody } from './journalService.js';
 import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { TransactionRow } from './transactionsService.js';
@@ -24,11 +29,6 @@ const EQ_SUB_WITHDRAWAL = 'equity_withdrawal';
 
 function txDateYmd(row: TransactionRow): string {
   return formatPgDateToYyyyMmDd(row.date as Date | string);
-}
-
-function txProjectId(row: TransactionRow): string | null {
-  const p = row.project_id;
-  return p != null && String(p).trim() !== '' ? String(p).trim() : null;
 }
 
 export function shouldSkipTransactionJournalMirror(row: Pick<TransactionRow, 'id' | 'reference' | 'is_system' | 'subtype'>): boolean {
@@ -62,22 +62,22 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   const M = roundMoney(Math.abs(Number(row.amount)));
   if (M < 0.005) return null;
 
-  const projectId = txProjectId(row);
+  const dims = resolveJournalDimensions(row);
   const type = String(row.type ?? '').trim();
 
   if (type.toLowerCase() === 'income') {
     const creditAccount = row.invoice_id ? SYS_AR : SYS_INCOME_SUMMARY;
     return [
-      { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
-      { accountId: creditAccount, debitAmount: 0, creditAmount: M, projectId },
+      journalLineWithDimensions({ accountId: row.account_id, debitAmount: M, creditAmount: 0 }, dims),
+      journalLineWithDimensions({ accountId: creditAccount, debitAmount: 0, creditAmount: M }, dims),
     ];
   }
 
   if (type.toLowerCase() === 'expense') {
     const debitAccount = row.bill_id ? SYS_AP : SYS_EXPENSE_SUMMARY;
     return [
-      { accountId: debitAccount, debitAmount: M, creditAmount: 0, projectId },
-      { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },
+      journalLineWithDimensions({ accountId: debitAccount, debitAmount: M, creditAmount: 0 }, dims),
+      journalLineWithDimensions({ accountId: row.account_id, debitAmount: 0, creditAmount: M }, dims),
     ];
   }
 
@@ -86,8 +86,8 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
     const toId = row.to_account_id && String(row.to_account_id).trim();
     if (!fromId || !toId) return null;
     return [
-      { accountId: toId, debitAmount: M, creditAmount: 0, projectId },
-      { accountId: fromId, debitAmount: 0, creditAmount: M, projectId },
+      journalLineWithDimensions({ accountId: toId, debitAmount: M, creditAmount: 0 }, dims),
+      journalLineWithDimensions({ accountId: fromId, debitAmount: 0, creditAmount: M }, dims),
     ];
   }
 
@@ -105,14 +105,14 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
       st.toLowerCase() === 'repay';
     if (isIn) {
       return [
-        { accountId: row.account_id, debitAmount: M, creditAmount: 0, projectId },
-        { accountId: SYS_CLEARING, debitAmount: 0, creditAmount: M, projectId },
+        journalLineWithDimensions({ accountId: row.account_id, debitAmount: M, creditAmount: 0 }, dims),
+        journalLineWithDimensions({ accountId: SYS_CLEARING, debitAmount: 0, creditAmount: M }, dims),
       ];
     }
     if (isOut) {
       return [
-        { accountId: SYS_CLEARING, debitAmount: M, creditAmount: 0, projectId },
-        { accountId: row.account_id, debitAmount: 0, creditAmount: M, projectId },
+        journalLineWithDimensions({ accountId: SYS_CLEARING, debitAmount: M, creditAmount: 0 }, dims),
+        journalLineWithDimensions({ accountId: row.account_id, debitAmount: 0, creditAmount: M }, dims),
       ];
     }
   }
@@ -124,6 +124,7 @@ export function buildJournalBodyFromTransaction(row: TransactionRow, lines: Jour
   const desc =
     (row.description && String(row.description).trim()) ||
     `${row.type} ${Number(row.amount)}`;
+  const dims = resolveJournalDimensions(row);
   return {
     entryDate: txDateYmd(row),
     reference: row.reference?.trim() ? String(row.reference).trim() : `TX:${row.id}`,
@@ -131,7 +132,7 @@ export function buildJournalBodyFromTransaction(row: TransactionRow, lines: Jour
     sourceModule: TRANSACTION_JOURNAL_SOURCE_MODULE,
     sourceId: row.id,
     createdBy: row.user_id,
-    projectId: txProjectId(row),
+    ...entryDimensionsFrom(dims),
     lines,
   };
 }

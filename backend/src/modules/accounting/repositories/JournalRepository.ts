@@ -11,6 +11,7 @@ import {
   swapLinesForReversal,
   type JournalLineInput,
 } from '../../../financial/validation.js';
+import { buildDimensionSql, type FinancialDimensionScope } from '../../../financial/dimensionScope.js';
 
 export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
 
@@ -22,6 +23,8 @@ export type CreateJournalBody = {
   sourceId?: string | null;
   createdBy?: string | null;
   projectId?: string | null;
+  buildingId?: string | null;
+  costCenterId?: string | null;
   investorId?: string | null;
   investorTransactionType?: InvestorTransactionType | null;
   lines: JournalLineInput[];
@@ -82,13 +85,19 @@ export class JournalRepository extends TenantRepository {
   ): Promise<void> {
     const entryProjectId =
       input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+    const entryBuildingId =
+      input.buildingId != null && String(input.buildingId).trim() !== '' ? String(input.buildingId).trim() : null;
+    const entryCostCenterId =
+      input.costCenterId != null && String(input.costCenterId).trim() !== ''
+        ? String(input.costCenterId).trim()
+        : null;
     const entryInvestorId =
       input.investorId != null && String(input.investorId).trim() !== '' ? String(input.investorId).trim() : null;
     const entryInvType = input.investorTransactionType ?? null;
 
     await client.query(
-      `INSERT INTO journal_entries (id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, project_id, investor_id, investor_transaction_type, created_at)
-       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, NOW())`,
+      `INSERT INTO journal_entries (id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, project_id, building_id, investor_id, investor_transaction_type, created_at)
+       VALUES ($1, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
       [
         journalEntryId,
         this.tenantId,
@@ -99,6 +108,7 @@ export class JournalRepository extends TenantRepository {
         input.sourceId ?? null,
         input.createdBy ?? null,
         entryProjectId,
+        entryBuildingId,
         entryInvestorId,
         entryInvType,
       ]
@@ -116,10 +126,16 @@ export class JournalRepository extends TenantRepository {
       const d = roundMoney(line.debitAmount);
       const c = roundMoney(line.creditAmount);
       const pid = line.projectId != null && String(line.projectId).trim() !== '' ? String(line.projectId).trim() : null;
+      const bid =
+        line.buildingId != null && String(line.buildingId).trim() !== '' ? String(line.buildingId).trim() : null;
+      const ccid =
+        line.costCenterId != null && String(line.costCenterId).trim() !== ''
+          ? String(line.costCenterId).trim()
+          : null;
       await client.query(
-        `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [lineId, journalEntryId, line.accountId, d, c, idx, pid]
+        `INSERT INTO journal_lines (id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id, building_id, cost_center_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [lineId, journalEntryId, line.accountId, d, c, idx, pid, bid, ccid]
       );
     }
   }
@@ -140,6 +156,8 @@ export class JournalRepository extends TenantRepository {
         debitAmount: roundMoney(l.debitAmount),
         creditAmount: roundMoney(l.creditAmount),
         projectId: l.projectId ?? null,
+        buildingId: l.buildingId ?? null,
+        costCenterId: l.costCenterId ?? null,
       })),
     });
     await client.query(
@@ -193,13 +211,13 @@ export class JournalRepository extends TenantRepository {
   ): Promise<{ entry: Record<string, unknown>; lines: Record<string, unknown>[] } | null> {
     const e = await client.query(
       `SELECT id, tenant_id, entry_date, reference, description, source_module, source_id, created_by, created_at,
-              project_id, investor_id, investor_transaction_type
+              project_id, building_id, investor_id, investor_transaction_type
        FROM journal_entries WHERE id = $1 AND tenant_id = $2`,
       [journalEntryId, this.tenantId]
     );
     if (e.rows.length === 0) return null;
     const l = await client.query(
-      `SELECT id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id
+      `SELECT id, journal_entry_id, account_id, debit_amount, credit_amount, line_number, project_id, building_id, cost_center_id
        FROM journal_lines WHERE journal_entry_id = $1 ORDER BY line_number ASC`,
       [journalEntryId]
     );
@@ -261,6 +279,9 @@ export class JournalRepository extends TenantRepository {
       debitAmount: Number(row.debit_amount),
       creditAmount: Number(row.credit_amount),
       projectId: row.project_id != null && String(row.project_id) !== '' ? String(row.project_id) : null,
+      buildingId: row.building_id != null && String(row.building_id) !== '' ? String(row.building_id) : null,
+      costCenterId:
+        row.cost_center_id != null && String(row.cost_center_id) !== '' ? String(row.cost_center_id) : null,
     }));
     const swapped = swapLinesForReversal(lineInputs);
     const verr = validateBalanced(swapped);
@@ -281,6 +302,8 @@ export class JournalRepository extends TenantRepository {
       sourceId: originalJournalEntryId,
       createdBy,
       projectId: origEntry.project_id != null ? String(origEntry.project_id) : null,
+      buildingId: origEntry.building_id != null ? String(origEntry.building_id) : null,
+      costCenterId: null,
       investorId: origEntry.investor_id != null ? String(origEntry.investor_id) : null,
       investorTransactionType: null,
       lines: swapped,
@@ -563,13 +586,15 @@ export class JournalRepository extends TenantRepository {
     client: pg.PoolClient,
     options?: { asOfDate?: string }
   ): Promise<{
-    journalLines: Array<{
+      journalLines: Array<{
       journalEntryId: string;
       accountId: string;
       debitAmount: number;
       creditAmount: number;
       lineNumber: number;
       projectId: string | null;
+      buildingId: string | null;
+      costCenterId: string | null;
     }>;
     journalEntries: Array<{
       id: string;
@@ -579,6 +604,7 @@ export class JournalRepository extends TenantRepository {
       sourceModule: string | null;
       sourceId: string | null;
       projectId: string | null;
+      buildingId: string | null;
       isReversed: boolean;
     }>;
   }> {
@@ -603,7 +629,9 @@ export class JournalRepository extends TenantRepository {
         jl.debit_amount::float AS debit_amount,
         jl.credit_amount::float AS credit_amount,
         jl.line_number AS line_number,
-        jl.project_id AS project_id
+        jl.project_id AS project_id,
+        jl.building_id AS building_id,
+        jl.cost_center_id AS cost_center_id
       FROM journal_lines jl
       INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
       INNER JOIN accounts a ON a.id = jl.account_id
@@ -623,6 +651,7 @@ export class JournalRepository extends TenantRepository {
         je.source_module AS source_module,
         je.source_id AS source_id,
         je.project_id AS project_id,
+        je.building_id AS building_id,
         EXISTS (
           SELECT 1 FROM journal_reversals jr
           WHERE jr.original_journal_entry_id = je.id AND jr.tenant_id = je.tenant_id
@@ -640,6 +669,8 @@ export class JournalRepository extends TenantRepository {
         creditAmount: Number(r.credit_amount),
         lineNumber: Number(r.line_number),
         projectId: r.project_id != null ? String(r.project_id) : null,
+        buildingId: r.building_id != null ? String(r.building_id) : null,
+        costCenterId: r.cost_center_id != null ? String(r.cost_center_id) : null,
       })),
       journalEntries: (entriesR.rows as Record<string, unknown>[]).map((r) => ({
         id: String(r.id),
@@ -649,6 +680,7 @@ export class JournalRepository extends TenantRepository {
         sourceModule: r.source_module != null ? String(r.source_module) : null,
         sourceId: r.source_id != null ? String(r.source_id) : null,
         projectId: r.project_id != null ? String(r.project_id) : null,
+        buildingId: r.building_id != null ? String(r.building_id) : null,
         isReversed: Boolean(r.is_reversed),
       })),
     };
@@ -662,6 +694,7 @@ export class JournalRepository extends TenantRepository {
       basis: 'period' | 'cumulative';
       priorOnly?: boolean;
       priorBefore?: string;
+      scope?: FinancialDimensionScope;
     }
   ): Promise<
     Array<{
@@ -689,6 +722,8 @@ export class JournalRepository extends TenantRepository {
       params.push(options.from, options.to);
     }
 
+    const dimensionSql = options.scope ? buildDimensionSql(options.scope, params) : '';
+
     const r = await client.query(
       `SELECT
         jl.account_id AS account_id,
@@ -706,7 +741,7 @@ export class JournalRepository extends TenantRepository {
         AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2)
       WHERE je.tenant_id = $1
         AND a.deleted_at IS NULL
-        ${dateCond}
+        ${dateCond}${dimensionSql}
       GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active`,
       params
     );
@@ -721,6 +756,74 @@ export class JournalRepository extends TenantRepository {
       gross_debit: number;
       gross_credit: number;
     }>;
+  }
+
+  /** Count journal lines missing resolved GL dimensions + projects with gross imbalance in range. */
+  async fetchTrialBalanceDimensionDiagnostics(
+    client: pg.PoolClient,
+    options: { from: string; to: string }
+  ): Promise<{
+    missingProjectIds: number;
+    missingBuildingIds: number;
+    missingCostCenters: number;
+    unbalancedProjects: Array<{
+      projectId: string;
+      grossDebit: number;
+      grossCredit: number;
+      difference: number;
+    }>;
+  }> {
+    const params: unknown[] = [this.tenantId, options.from, options.to];
+    const resolvedProject = `COALESCE(NULLIF(TRIM(jl.project_id), ''), NULLIF(TRIM(je.project_id), ''))`;
+    const resolvedBuilding = `COALESCE(NULLIF(TRIM(jl.building_id), ''), NULLIF(TRIM(je.building_id), ''))`;
+    const resolvedCostCenter = `COALESCE(NULLIF(TRIM(jl.cost_center_id), ''), NULLIF(TRIM(je.cost_center_id), ''))`;
+    const dateJoin = `FROM journal_lines jl
+      INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+      WHERE je.tenant_id = $1
+        AND je.entry_date >= $2::date AND je.entry_date <= $3::date`;
+
+    const countMissing = async (expr: string): Promise<number> => {
+      const r = await client.query<{ cnt: string }>(
+        `SELECT COUNT(*)::text AS cnt ${dateJoin} AND ${expr} IS NULL`,
+        params
+      );
+      return Number(r.rows[0]?.cnt ?? 0);
+    };
+
+    const [missingProjectIds, missingBuildingIds, missingCostCenters] = await Promise.all([
+      countMissing(resolvedProject),
+      countMissing(resolvedBuilding),
+      countMissing(resolvedCostCenter),
+    ]);
+
+    const unbalR = await client.query<{
+      project_id: string;
+      gross_debit: number;
+      gross_credit: number;
+    }>(
+      `SELECT
+        ${resolvedProject} AS project_id,
+        COALESCE(SUM(jl.debit_amount), 0)::float AS gross_debit,
+        COALESCE(SUM(jl.credit_amount), 0)::float AS gross_credit
+      ${dateJoin}
+        AND ${resolvedProject} IS NOT NULL
+      GROUP BY ${resolvedProject}
+      HAVING ABS(COALESCE(SUM(jl.debit_amount), 0) - COALESCE(SUM(jl.credit_amount), 0)) > 0.005`,
+      params
+    );
+
+    const unbalancedProjects = unbalR.rows.map((row) => {
+      const grossDebit = roundMoney(Number(row.gross_debit));
+      const grossCredit = roundMoney(Number(row.gross_credit));
+      return {
+        projectId: String(row.project_id),
+        grossDebit,
+        grossCredit,
+        difference: roundMoney(grossDebit - grossCredit),
+      };
+    });
+
+    return { missingProjectIds, missingBuildingIds, missingCostCenters, unbalancedProjects };
   }
 
   async deleteByTransactionSourceIds(

@@ -12,8 +12,13 @@ import { TransactionType } from '../../types';
 import { computeProjectProfitLossTotals } from './projectProfitLossComputation';
 import {
   mirroredTransactionIds,
+  computeAccountBalancesFromJournal,
+  sumBalanceSheetSectionsForJournalCertification,
   type JournalLedgerInput,
 } from '../../services/financialEngine/journalLedgerCore';
+import { addDaysYmd } from '../../shared/financial-core/cashFlowJournalCore';
+import { roundMoney } from '../../services/financialEngine/validation';
+export { isDimensionScopeActive, matchesDimensionScope } from '../../shared/financial-core/dimensionScope';
 
 /** Extended state with optional unified GL input. */
 export type ProfitLossStateInput = AppState & { journalLedger?: JournalLedgerInput };
@@ -66,6 +71,12 @@ export interface ProfitLossReportResult {
     legacyNetProfit: number;
     structuredNetProfit: number;
     ledgerMatch: boolean;
+    equityReconciliation?: {
+      passed: boolean;
+      netProfit: number;
+      equityChange: number;
+      difference: number;
+    };
   };
 }
 
@@ -277,6 +288,36 @@ export function computeProfitLossReport(
     });
   }
 
+  let equityReconciliation: ProfitLossReportResult['validation']['equityReconciliation'];
+  if (state.journalLedger?.journalLines?.length) {
+    const scopeOpts = {
+      projectId: selectedProjectId !== 'all' ? selectedProjectId : undefined,
+      buildingId: selectedBuildingId !== 'all' ? selectedBuildingId : undefined,
+    };
+    const priorDate = addDaysYmd(startDate, -1);
+    const balancesEnd = computeAccountBalancesFromJournal(state.journalLedger, endDate, scopeOpts);
+    const balancesPrior = computeAccountBalancesFromJournal(state.journalLedger, priorDate, scopeOpts);
+    const endEquity = sumBalanceSheetSectionsForJournalCertification(
+      balancesEnd,
+      state.journalLedger.accounts
+    ).equity;
+    const priorEquity = sumBalanceSheetSectionsForJournalCertification(
+      balancesPrior,
+      state.journalLedger.accounts
+    ).equity;
+    const equityChange = roundMoney(endEquity - priorEquity);
+    const difference = roundMoney(Math.abs(net_profit - equityChange));
+    const passed = difference < 1;
+    equityReconciliation = { passed, netProfit: net_profit, equityChange, difference };
+    if (!passed) {
+      issues.push({
+        code: 'NET_PROFIT_EQUITY_MISMATCH',
+        message: `Net profit (${net_profit.toFixed(2)}) does not equal change in equity (${equityChange.toFixed(2)}) for ${startDate} – ${endDate}.`,
+        severity: 'warning',
+      });
+    }
+  }
+
   const denom = Math.abs(totalRevenue) > 1e-9 ? totalRevenue : 1;
 
   const revenueRows = buildRowsForBucket(state, 'revenue', categoryAmounts, denom, true);
@@ -344,6 +385,7 @@ export function computeProfitLossReport(
       legacyNetProfit: legacyNet,
       structuredNetProfit: structuredNet,
       ledgerMatch,
+      equityReconciliation,
     },
   };
 }

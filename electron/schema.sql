@@ -374,6 +374,22 @@ CREATE TABLE IF NOT EXISTS quotations (
     enable_price_validation INTEGER NOT NULL DEFAULT 1,
     validation_scope TEXT NOT NULL DEFAULT 'CATEGORY',
     is_active INTEGER NOT NULL DEFAULT 1,
+    contact_person TEXT,
+    contact_phone TEXT,
+    contact_email TEXT,
+    currency TEXT DEFAULT 'PKR',
+    project_id TEXT,
+    building_id TEXT,
+    package_name TEXT,
+    quotation_type TEXT,
+    status TEXT DEFAULT 'Draft',
+    is_approved_rate INTEGER NOT NULL DEFAULT 0,
+    payment_terms TEXT,
+    delivery_period TEXT,
+    warranty_period TEXT,
+    retention_percent REAL DEFAULT 0,
+    advance_percent REAL DEFAULT 0,
+    remarks TEXT,
     items TEXT NOT NULL,
     total_amount REAL NOT NULL,
     document_id TEXT,
@@ -382,6 +398,77 @@ CREATE TABLE IF NOT EXISTS quotations (
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL,
+    FOREIGN KEY (building_id) REFERENCES buildings(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS quotation_items (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    quotation_id TEXT NOT NULL,
+    category_id TEXT,
+    item_id TEXT,
+    item_name TEXT,
+    brand TEXT,
+    specification TEXT,
+    unit TEXT,
+    quantity REAL NOT NULL DEFAULT 0,
+    unit_rate REAL NOT NULL DEFAULT 0,
+    total_amount REAL NOT NULL DEFAULT 0,
+    market_rate REAL,
+    previous_rate REAL,
+    variance_percent REAL,
+    approval_threshold_percent REAL DEFAULT 5,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS vendor_price_history (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    vendor_id TEXT NOT NULL,
+    category_id TEXT,
+    item_id TEXT,
+    item_name TEXT,
+    quotation_id TEXT,
+    quoted_rate REAL NOT NULL,
+    quotation_date TEXT NOT NULL,
+    project_id TEXT,
+    building_id TEXT,
+    is_approved_rate INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+    FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS quotation_attachments (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    quotation_id TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_path TEXT,
+    document_id TEXT,
+    document_type TEXT NOT NULL DEFAULT 'Quotation',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS vendor_performance_ratings (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL DEFAULT '',
+    vendor_id TEXT NOT NULL,
+    project_id TEXT,
+    price_rating REAL,
+    delivery_rating REAL,
+    quality_rating REAL,
+    service_rating REAL,
+    overall_rating REAL,
+    notes TEXT,
+    rated_by TEXT,
+    rated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE
 );
 

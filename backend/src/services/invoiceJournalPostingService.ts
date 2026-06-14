@@ -4,6 +4,11 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { type CreateJournalBody } from './journalService.js';
 import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { InvoiceRow } from './invoicesService.js';
@@ -16,11 +21,6 @@ const SYS_SEC_LIABILITY = 'sys-acc-sec-liability';
 
 function invoiceDateYmd(row: InvoiceRow): string {
   return formatPgDateToYyyyMmDd(row.issue_date as Date | string);
-}
-
-function invoiceProjectId(row: InvoiceRow): string | null {
-  const p = row.project_id;
-  return p != null && String(p).trim() !== '' ? String(p).trim() : null;
 }
 
 export function shouldSkipInvoiceJournalMirror(row: Pick<InvoiceRow, 'status' | 'description' | 'amount' | 'deleted_at'>): boolean {
@@ -44,12 +44,12 @@ export function buildJournalLinesFromInvoice(row: InvoiceRow): JournalLineInput[
   const M = roundMoney(Math.abs(Number(row.amount)));
   if (M < 0.005) return null;
 
-  const projectId = invoiceProjectId(row);
+  const dims = resolveJournalDimensions(row);
   const creditAccount = isSecurityDepositInvoice(row) ? SYS_SEC_LIABILITY : SYS_INCOME_SUMMARY;
 
   return [
-    { accountId: SYS_AR, debitAmount: M, creditAmount: 0, projectId },
-    { accountId: creditAccount, debitAmount: 0, creditAmount: M, projectId },
+    journalLineWithDimensions({ accountId: SYS_AR, debitAmount: M, creditAmount: 0 }, dims),
+    journalLineWithDimensions({ accountId: creditAccount, debitAmount: 0, creditAmount: M }, dims),
   ];
 }
 
@@ -57,6 +57,7 @@ export function buildJournalBodyFromInvoice(row: InvoiceRow, lines: JournalLineI
   const desc =
     (row.description && String(row.description).trim()) ||
     `Invoice ${row.invoice_number} (${row.invoice_type})`;
+  const dims = resolveJournalDimensions(row);
   return {
     entryDate: invoiceDateYmd(row),
     reference: `INV:${row.invoice_number}`,
@@ -64,7 +65,7 @@ export function buildJournalBodyFromInvoice(row: InvoiceRow, lines: JournalLineI
     sourceModule: INVOICE_JOURNAL_SOURCE_MODULE,
     sourceId: row.id,
     createdBy: row.user_id,
-    projectId: invoiceProjectId(row),
+    ...entryDimensionsFrom(dims),
     lines,
   };
 }

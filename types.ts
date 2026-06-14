@@ -578,12 +578,102 @@ export interface ProjectExpenseVoucher {
   version?: number;
 }
 
+export type QuotationStatus = 'Draft' | 'Active' | 'Approved' | 'Expired' | 'Superseded';
+
+export type QuotationType =
+  | 'Material Supply'
+  | 'Labour Only'
+  | 'Material + Labour'
+  | 'Equipment Rental'
+  | 'Subcontractor';
+
+export type QuotationAttachmentType =
+  | 'Quotation'
+  | 'Technical Proposal'
+  | 'BOQ'
+  | 'Drawing'
+  | 'Catalogue'
+  | 'Other';
+
 export interface QuotationItem {
   id: string;
   categoryId: string;
+  itemId?: string;
+  itemName?: string;
+  brand?: string;
+  specification?: string;
   quantity: number;
   pricePerQuantity: number;
-  unit?: string; // e.g., 'sq ft', 'numbers', 'meters', 'liters'
+  unit?: string;
+  marketRate?: number;
+  previousRate?: number;
+  variancePercent?: number;
+  approvalThresholdPercent?: number;
+  totalAmount?: number;
+}
+
+export interface QuotationAttachment {
+  id: string;
+  quotationId: string;
+  fileName: string;
+  filePath?: string;
+  documentId?: string;
+  documentType: QuotationAttachmentType;
+  createdAt?: string;
+}
+
+export interface VendorPriceHistoryEntry {
+  id: string;
+  vendorId: string;
+  categoryId?: string;
+  itemId?: string;
+  itemName?: string;
+  quotationId?: string;
+  quotedRate: number;
+  quotationDate: string;
+  projectId?: string;
+  buildingId?: string;
+  isApprovedRate?: boolean;
+  vendorName?: string;
+  projectName?: string;
+}
+
+export interface QuotationItemRateLookup {
+  lastPurchaseRate?: number;
+  lastContractRate?: number;
+  lastBillRate?: number;
+  averageMarketRate?: number;
+  previousRate?: number;
+}
+
+export interface VendorQuotationComparisonRow {
+  vendorId: string;
+  vendorName: string;
+  quotationId: string;
+  quotationNumber?: string;
+  rate: number;
+  deliveryPeriod?: string;
+  warrantyPeriod?: string;
+  paymentTerms?: string;
+  quotationDate: string;
+  isLowestRate?: boolean;
+  isBestDelivery?: boolean;
+  isBestWarranty?: boolean;
+  vendorRating?: number;
+}
+
+export interface VendorPerformanceRating {
+  id: string;
+  vendorId: string;
+  projectId?: string;
+  priceRating?: number;
+  deliveryRating?: number;
+  qualityRating?: number;
+  serviceRating?: number;
+  overallRating?: number;
+  notes?: string;
+  ratedBy?: string;
+  ratedAt: string;
 }
 
 export type QuotationValidationScope = 'CATEGORY' | 'ITEM';
@@ -599,18 +689,36 @@ export interface ProcurementSettings {
 export interface Quotation {
   id: string;
   vendorId: string;
-  name: string; // Vendor name (redundant but useful for display)
+  name: string;
   quotationNumber?: string;
-  date: string; // Date of quotation created
+  date: string;
   expiryDate?: string;
   enablePriceValidation?: boolean;
   validationScope?: QuotationValidationScope;
   isActive?: boolean;
+  contactPerson?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  currency?: string;
+  projectId?: string;
+  buildingId?: string;
+  packageName?: string;
+  quotationType?: QuotationType;
+  status?: QuotationStatus;
+  isApprovedRate?: boolean;
+  paymentTerms?: string;
+  deliveryPeriod?: string;
+  warrantyPeriod?: string;
+  retentionPercent?: number;
+  advancePercent?: number;
+  remarks?: string;
   items: QuotationItem[];
-  documentId?: string; // Reference to uploaded document
-  totalAmount: number; // Calculated from items
+  attachments?: QuotationAttachment[];
+  documentId?: string;
+  totalAmount: number;
   createdAt: string;
   updatedAt: string;
+  version?: number;
 }
 
 export interface Document {

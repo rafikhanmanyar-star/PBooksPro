@@ -147,10 +147,12 @@ export async function fetchCashFlowReport(options: {
   to: string;
   projectId?: string;
   buildingId?: string;
+  costCenterId?: string;
 }): Promise<CashFlowReportResult> {
   const q = new URLSearchParams({ from: options.from, to: options.to });
   if (options.projectId && options.projectId !== 'all') q.set('projectId', options.projectId);
   if (options.buildingId && options.buildingId !== 'all') q.set('buildingId', options.buildingId);
+  if (options.costCenterId && options.costCenterId !== 'all') q.set('costCenterId', options.costCenterId);
   const raw = await apiClient.get<Record<string, unknown>>(`/reports/cash-flow?${q.toString()}`);
   const summary =
     raw.summary && typeof raw.summary === 'object' ? (raw.summary as Record<string, unknown>) : {};

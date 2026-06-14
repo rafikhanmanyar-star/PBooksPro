@@ -9,11 +9,16 @@ import { journalApi } from '../api/journalApi';
 import {
   applyOpeningBalances,
   buildTrialBalanceReport,
+  buildDimensionSql,
   compareTrialBalanceType,
+  isDimensionScopeActive,
   ledgerTenantIdsForLocalQuery,
   mergeRawRowsByAccount,
   normalBalanceDirection,
+  scopeFromReportFilters,
+  shouldApplyOpeningBalancesForScope,
   type AccountOpeningInput,
+  type FinancialDimensionScope,
   type TrialBalanceBasis,
   type TrialBalanceRawRow,
   type TrialBalanceReportPayload,
@@ -24,6 +29,7 @@ import {
   filterTransactionsForTrialBalanceEntityScope,
   type ReportStateSlice,
 } from '../../components/reports/reportUtils';
+import { entityScopeFromFilterId } from '../../components/reports/financialEntityScope';
 
 function getBridge() {
   if (typeof window === 'undefined' || !window.sqliteBridge?.query) {
@@ -54,13 +60,25 @@ export type FetchTrialBalanceOptions = {
     accounts: Account[];
   };
   /**
-   * When not `all`, trial balance is built from operational transactions for that project/building only
-   * (same scope as Project P&amp;L). Journal aggregates are not used because lines are not fully entity-tagged.
+   * When not `all`, filter journal lines by project/building (GL dimensions).
    */
   entityScopeId?: string;
   /** @deprecated Use entityScopeId (`project:…` / `building:…` / `all`) */
   projectScopeId?: string;
   projectScopeState?: ReportStateSlice;
+  costCenterId?: string;
+};
+
+export type TrialBalanceDimensionDiagnostics = {
+  missingProjectIds: number;
+  missingBuildingIds: number;
+  missingCostCenters: number;
+  unbalancedProjects: Array<{
+    projectId: string;
+    grossDebit: number;
+    grossCredit: number;
+    difference: number;
+  }>;
 };
 
 export type TrialBalanceReportResult = TrialBalanceReportPayload & {
@@ -69,6 +87,7 @@ export type TrialBalanceReportResult = TrialBalanceReportPayload & {
   basis: TrialBalanceBasis;
   /** `transactions_fallback` = derived from operational transactions; `journal` = journal_lines only. */
   dataSource?: 'journal' | 'transactions_fallback';
+  diagnostics?: TrialBalanceDimensionDiagnostics;
 };
 
 function mapApiToTrialBalanceResult(raw: {
@@ -96,6 +115,18 @@ function mapApiToTrialBalanceResult(raw: {
     gross_credit: number;
   };
   is_balanced: boolean;
+  difference?: number;
+  diagnostics?: {
+    missing_project_ids: number;
+    missing_building_ids: number;
+    missing_cost_centers: number;
+    unbalanced_projects: Array<{
+      project_id: string;
+      gross_debit: number;
+      gross_credit: number;
+      difference: number;
+    }>;
+  };
 }): TrialBalanceReportResult {
   const basis: TrialBalanceBasis = raw.basis === 'cumulative' ? 'cumulative' : 'period';
   const accounts = raw.accounts.map((a) => ({
@@ -112,18 +143,111 @@ function mapApiToTrialBalanceResult(raw: {
     debit: roundMoney(Number(a.debit)),
     credit: roundMoney(Number(a.credit)),
   }));
+  const totals = {
+    totalDebit: roundMoney(Number(raw.totals.total_debit)),
+    totalCredit: roundMoney(Number(raw.totals.total_credit)),
+    grossDebit: roundMoney(Number(raw.totals.gross_debit)),
+    grossCredit: roundMoney(Number(raw.totals.gross_credit)),
+  };
+  const difference =
+    raw.difference != null
+      ? roundMoney(Number(raw.difference))
+      : roundMoney(totals.totalDebit - totals.totalCredit);
+  const diagnostics = raw.diagnostics
+    ? {
+        missingProjectIds: raw.diagnostics.missing_project_ids,
+        missingBuildingIds: raw.diagnostics.missing_building_ids,
+        missingCostCenters: raw.diagnostics.missing_cost_centers,
+        unbalancedProjects: raw.diagnostics.unbalanced_projects.map((p) => ({
+          projectId: p.project_id,
+          grossDebit: roundMoney(Number(p.gross_debit)),
+          grossCredit: roundMoney(Number(p.gross_credit)),
+          difference: roundMoney(Number(p.difference)),
+        })),
+      }
+    : undefined;
   return {
     from: raw.from,
     to: raw.to,
     basis,
     accounts,
-    totals: {
-      totalDebit: roundMoney(Number(raw.totals.total_debit)),
-      totalCredit: roundMoney(Number(raw.totals.total_credit)),
-      grossDebit: roundMoney(Number(raw.totals.gross_debit)),
-      grossCredit: roundMoney(Number(raw.totals.gross_credit)),
-    },
+    totals,
     isBalanced: raw.is_balanced,
+    difference,
+    diagnostics,
+    dataSource: 'journal',
+  };
+}
+
+function dimensionScopeFromFetchOptions(
+  scopeFilterId: string,
+  costCenterId?: string
+): FinancialDimensionScope {
+  const entity = entityScopeFromFilterId(scopeFilterId);
+  return scopeFromReportFilters(
+    entity.projectId !== 'all' ? entity.projectId : undefined,
+    entity.buildingId !== 'all' ? entity.buildingId : undefined,
+    costCenterId
+  );
+}
+
+async function fetchScopedTrialBalanceFromJournalLocal(
+  tenantId: string,
+  from: string,
+  to: string,
+  basis: TrialBalanceBasis,
+  scope: FinancialDimensionScope
+): Promise<TrialBalanceReportResult> {
+  const bridge = getBridge();
+  const tenantIds = ledgerTenantIdsForLocalQuery(tenantId);
+  const tenantPlaceholders = tenantIds.map(() => '?').join(', ');
+
+  const periodRows = await queryLocalJournalAggregates(
+    bridge,
+    tenantPlaceholders,
+    tenantIds,
+    from,
+    to,
+    basis,
+    false,
+    scope
+  );
+
+  let activityRows = periodRows;
+  if (basis === 'period') {
+    const priorRows = await queryLocalJournalAggregates(
+      bridge,
+      tenantPlaceholders,
+      tenantIds,
+      from,
+      to,
+      basis,
+      true,
+      scope
+    );
+    activityRows = mergeRawRowsByAccount([...priorRows, ...periodRows]);
+  }
+
+  let rawRows = activityRows;
+  if (shouldApplyOpeningBalancesForScope(scope)) {
+    const openings = await queryLocalAccountOpenings(bridge, tenantPlaceholders, tenantIds);
+    rawRows = applyOpeningBalances(activityRows, openings);
+  }
+
+  rawRows.sort((x, y) => {
+    const c = compareTrialBalanceType(x.accountType, y.accountType);
+    if (c !== 0) return c;
+    const cx = (x.accountCode || '').localeCompare(y.accountCode || '');
+    if (cx !== 0) return cx;
+    return x.accountName.localeCompare(y.accountName);
+  });
+
+  const report = buildTrialBalanceReport(rawRows);
+  return {
+    ...report,
+    from,
+    to,
+    basis,
     dataSource: 'journal',
   };
 }
@@ -144,38 +268,59 @@ export async function fetchTrialBalanceReport(
     (options.projectScopeId && options.projectScopeId !== 'all'
       ? `project:${options.projectScopeId}`
       : 'all');
-  if (scopeFilterId !== 'all') {
-    const fb = options.ledgerFallback;
-    const st = options.projectScopeState;
-    if (!fb?.accounts?.length) {
-      throw new Error('Entity-scoped trial balance requires accounts to be loaded.');
+
+  if (scopeFilterId !== 'all' || options.costCenterId) {
+    const scope = dimensionScopeFromFetchOptions(scopeFilterId, options.costCenterId);
+    if (isDimensionScopeActive(scope)) {
+      if (!isLocalOnlyMode()) {
+        void tenantId;
+        const entity = entityScopeFromFilterId(scopeFilterId);
+        const raw = await journalApi.getTrialBalanceCanonical({
+          from,
+          to,
+          basis,
+          projectId: entity.projectId !== 'all' ? entity.projectId : undefined,
+          buildingId: entity.buildingId !== 'all' ? entity.buildingId : undefined,
+          costCenterId: options.costCenterId,
+        });
+        return mapApiToTrialBalanceResult(raw as Parameters<typeof mapApiToTrialBalanceResult>[0]);
+      }
+
+      const journalResult = await fetchScopedTrialBalanceFromJournalLocal(tenantId, from, to, basis, scope);
+      if (journalResult.accounts.length > 0) {
+        return journalResult;
+      }
+
+      const fb = options.ledgerFallback;
+      const st = options.projectScopeState;
+      if (fb?.accounts?.length && st) {
+        const scopedTx = filterTransactionsForTrialBalanceEntityScope(fb.transactions, scopeFilterId, st);
+        let rawRows: TrialBalanceRawRow[] = buildTrialBalanceRawRowsFromTransactions(
+          scopedTx,
+          fb.accounts,
+          from,
+          to,
+          basis
+        );
+        rawRows.sort((x, y) => {
+          const c = compareTrialBalanceType(x.accountType, y.accountType);
+          if (c !== 0) return c;
+          const cx = (x.accountCode || '').localeCompare(y.accountCode || '');
+          if (cx !== 0) return cx;
+          return x.accountName.localeCompare(y.accountName);
+        });
+        const report = buildTrialBalanceReport(rawRows);
+        return {
+          ...report,
+          from,
+          to,
+          basis,
+          dataSource: 'transactions_fallback',
+        };
+      }
+
+      return journalResult;
     }
-    if (!st) {
-      throw new Error('Entity-scoped trial balance requires invoice/bill context (projectScopeState).');
-    }
-    const scopedTx = filterTransactionsForTrialBalanceEntityScope(fb.transactions, scopeFilterId, st);
-    let rawRows: TrialBalanceRawRow[] = buildTrialBalanceRawRowsFromTransactions(
-      scopedTx,
-      fb.accounts,
-      from,
-      to,
-      basis
-    );
-    rawRows.sort((x, y) => {
-      const c = compareTrialBalanceType(x.accountType, y.accountType);
-      if (c !== 0) return c;
-      const cx = (x.accountCode || '').localeCompare(y.accountCode || '');
-      if (cx !== 0) return cx;
-      return x.accountName.localeCompare(y.accountName);
-    });
-    const report = buildTrialBalanceReport(rawRows);
-    return {
-      ...report,
-      from,
-      to,
-      basis,
-      dataSource: 'transactions_fallback',
-    };
   }
 
   if (!isLocalOnlyMode()) {
@@ -257,7 +402,8 @@ async function queryLocalJournalAggregates(
   from: string,
   to: string,
   basis: TrialBalanceBasis,
-  priorOnly: boolean
+  priorOnly: boolean,
+  scope?: FinancialDimensionScope
 ): Promise<TrialBalanceRawRow[]> {
   let dateCond = '';
   const params: unknown[] = [...tenantIds];
@@ -271,6 +417,11 @@ async function queryLocalJournalAggregates(
     dateCond = ` AND je.entry_date >= ? AND je.entry_date <= ?`;
     params.push(from, to);
   }
+
+  const dimensionSql =
+    scope && isDimensionScopeActive(scope)
+      ? buildDimensionSql(scope, params, { paramStyle: 'sqlite' })
+      : '';
 
   const sql = `
     SELECT
@@ -288,7 +439,7 @@ async function queryLocalJournalAggregates(
     INNER JOIN accounts a ON a.id = jl.account_id
     WHERE je.tenant_id IN (${tenantPlaceholders})
       AND a.deleted_at IS NULL
-      ${dateCond}
+      ${dateCond}${dimensionSql}
     GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active
   `;
 
@@ -532,7 +683,9 @@ export async function fetchJournalLedgerInput(
       jl.debit_amount AS debit_amount,
       jl.credit_amount AS credit_amount,
       jl.line_number AS line_number,
-      jl.project_id AS project_id
+      jl.project_id AS project_id,
+      jl.building_id AS building_id,
+      jl.cost_center_id AS cost_center_id
     FROM journal_lines jl
     INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
     WHERE je.tenant_id IN (${tenantPlaceholders})${dateCond}
@@ -550,6 +703,7 @@ export async function fetchJournalLedgerInput(
       je.source_module AS source_module,
       je.source_id AS source_id,
       je.project_id AS project_id,
+      je.building_id AS building_id,
       CASE WHEN EXISTS (
         SELECT 1 FROM journal_reversals jr WHERE jr.original_journal_entry_id = je.id
       ) THEN 1 ELSE 0 END AS is_reversed
@@ -567,6 +721,8 @@ export async function fetchJournalLedgerInput(
       creditAmount: roundMoney(Number(r.credit_amount)),
       lineNumber: Number(r.line_number),
       projectId: r.project_id != null ? String(r.project_id) : null,
+      buildingId: r.building_id != null ? String(r.building_id) : null,
+      costCenterId: r.cost_center_id != null ? String(r.cost_center_id) : null,
     })),
     journalEntries: (entriesR.rows || []).map((r: Record<string, unknown>) => ({
       id: String(r.id),
@@ -576,6 +732,7 @@ export async function fetchJournalLedgerInput(
       sourceModule: r.source_module != null ? String(r.source_module) : null,
       sourceId: r.source_id != null ? String(r.source_id) : null,
       projectId: r.project_id != null ? String(r.project_id) : null,
+      buildingId: r.building_id != null ? String(r.building_id) : null,
       isReversed: Number(r.is_reversed) !== 0,
     })),
     accounts: [],

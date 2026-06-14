@@ -65,6 +65,11 @@ function getCachedAuthUser(userId: string, tenantId: string): AuthCacheEntry | n
   return hit;
 }
 
+/** Drop cached auth row after role/profile changes so the next request re-reads the database. */
+export function invalidateAuthUserCache(userId: string, tenantId: string): void {
+  authUserCache.delete(authCacheKey(userId, tenantId));
+}
+
 function setCachedAuthUser(entry: Omit<AuthCacheEntry, 'expiresAt'>): void {
   if (authUserCache.size >= AUTH_CACHE_MAX) {
     const oldest = authUserCache.keys().next().value;
@@ -174,7 +179,7 @@ export async function authMiddleware(
     }
 
     if (isTokenRoleStale(payload.role, user.role)) {
-      authUserCache.delete(authCacheKey(user.id, user.tenant_id));
+      invalidateAuthUserCache(user.id, user.tenant_id);
       sendFailure(res, 401, 'TOKEN_STALE', 'Session expired. Please sign in again.');
       return;
     }

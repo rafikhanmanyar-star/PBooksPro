@@ -1,7 +1,7 @@
 /**
  * Release staging:
- *   1. Commit + push source to origin/staging
- *   2. Bump version, build installers, publish GitHub prerelease, push tag
+ *   1. Commit source on staging (local)
+ *   2. Bump version, build installers, publish GitHub prerelease, push staging + tag once
  *
  * Usage: npm run release:staging
  */
@@ -31,7 +31,7 @@ requireGitHubTokenForPublish('.env.staging');
 
 run('git fetch origin');
 
-console.log('[release:staging] Step 1/2 — Commit and push source to origin/staging…');
+console.log('[release:staging] Step 1/2 — Commit source on staging (push after build)…');
 
 checkoutBranchPreservingChanges('staging');
 
@@ -46,10 +46,7 @@ if (commitPendingChanges('Pre-release staging commit')) {
   console.log('[release:staging] Committed pending local changes.');
 }
 
-console.log('[release:staging] Pushing source to origin/staging…');
-run('git push origin staging');
-
-console.log('[release:staging] Step 2/2 — Build, bump version, publish GitHub prerelease (staging channel)…');
+console.log('[release:staging] Step 2/2 — Build, bump version, publish GitHub prerelease, push staging + tag…');
 run('npm run deploy:staging');
 
 console.log('');

@@ -23,6 +23,15 @@ function run(cmd, opts = {}) {
   execSync(cmd, { cwd: root, stdio: 'inherit', shell: true, ...opts });
 }
 
+function tryRun(cmd) {
+  try {
+    execSync(cmd, { cwd: root, stdio: 'pipe', shell: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function runOut(cmd) {
   return execSync(cmd, { cwd: root, encoding: 'utf8', shell: true }).trim();
 }
@@ -63,7 +72,10 @@ if (branch === 'HEAD') {
   process.exit(1);
 }
 
+// Push branch once (triggers Render / Cloudflare). Tag is a separate ref update.
 run(`git push origin ${branch}`);
-run(`git push -f origin ${tag}`);
+if (!tryRun(`git push origin ${tag}`)) {
+  run(`git push -f origin ${tag}`);
+}
 
 console.log(`[push-release-source] Pushed branch "${branch}" and tag "${tag}" to origin.`);

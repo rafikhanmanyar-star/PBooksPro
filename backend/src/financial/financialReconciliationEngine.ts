@@ -119,9 +119,9 @@ export function getFinancialReportSourceRegistry(): FinancialReportSourceAudit[]
     {
       reportId: 'cash_flow',
       reportName: 'Cash Flow',
-      primarySource: 'transactions',
-      status: 'legacy',
-      notes: 'Not yet journal-unified — operational transactions + journal hints',
+      primarySource: 'journal',
+      status: 'unified',
+      notes: 'journal_lines on Bank/Cash accounts; dimension scope from GL project_id/building_id/cost_center_id',
     },
     {
       reportId: 'tenant_ledger',

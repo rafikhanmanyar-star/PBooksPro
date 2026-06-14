@@ -2,7 +2,12 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import { JournalRepository } from '../modules/accounting/repositories/JournalRepository.js';
-import { roundMoney } from '../financial/validation.js';
+import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { allocateAdvancesFifo, type AdvanceRemains } from './contractorFifo.js';
 import { getContactById } from './contactsService.js';
 import { getVendorById } from './vendorsService.js';
@@ -248,6 +253,7 @@ export async function createContractorAdvance(
   const id = newId();
   const projectId =
     input.projectId != null && String(input.projectId).trim() !== '' ? String(input.projectId).trim() : null;
+  const dims = resolveJournalDimensions({ projectId });
   await new ContractorAdvanceRepository(tenantId).insertAdvance(client, {
     id,
     contractor_contact_id: contractorContactId,
@@ -267,20 +273,16 @@ export async function createContractorAdvance(
     sourceModule: 'contractor_advance',
     sourceId: id,
     createdBy,
-    projectId,
+    ...entryDimensionsFrom(dims),
     lines: [
-      {
-        accountId: input.advanceAssetAccountId,
-        debitAmount: amt,
-        creditAmount: 0,
-        projectId,
-      },
-      {
-        accountId: input.cashAccountId,
-        debitAmount: 0,
-        creditAmount: amt,
-        projectId,
-      },
+      journalLineWithDimensions(
+        { accountId: input.advanceAssetAccountId, debitAmount: amt, creditAmount: 0 },
+        dims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt },
+        dims
+      ),
     ],
   });
 
@@ -458,17 +460,18 @@ export async function approveContractorBill(
   }
 
   const entryDate = opts?.entryDate?.trim() ? opts.entryDate.trim() : bill.bill_date;
-  const projectId =
-    bill.project_id != null && String(bill.project_id).trim() !== '' ? String(bill.project_id).trim() : null;
+  const dims = resolveJournalDimensions(bill);
 
   const expenseLine = bill.construction_expense_account_id;
   const advanceAcct = advanceGlId!;
-  const lines = [
-    { accountId: expenseLine, debitAmount: billAmount, creditAmount: 0, projectId },
-    { accountId: advanceAcct, debitAmount: 0, creditAmount: adjustmentSum, projectId },
+  const lines: JournalLineInput[] = [
+    journalLineWithDimensions({ accountId: expenseLine, debitAmount: billAmount, creditAmount: 0 }, dims),
+    journalLineWithDimensions({ accountId: advanceAcct, debitAmount: 0, creditAmount: adjustmentSum }, dims),
   ];
   if (residual > MONEY_EPS) {
-    lines.push({ accountId: residualAcct, debitAmount: 0, creditAmount: residual, projectId });
+    lines.push(
+      journalLineWithDimensions({ accountId: residualAcct, debitAmount: 0, creditAmount: residual }, dims)
+    );
   }
 
   const { journalEntryId } = await new JournalRepository(tenantId).insertEntry(client, {
@@ -478,7 +481,7 @@ export async function approveContractorBill(
     sourceModule: 'contractor_bill',
     sourceId: billId,
     createdBy,
-    projectId,
+    ...entryDimensionsFrom(dims),
     lines,
   });
 

@@ -96,4 +96,20 @@ describe('transactionJournalPostingService', () => {
     assert.equal(lines![0].accountId, 'acc-b');
     assert.equal(lines![1].accountId, 'acc-a');
   });
+
+  it('propagates project_id and building_id to all journal lines', () => {
+    const lines = buildJournalLinesFromTransaction(
+      baseRow({
+        type: 'Income',
+        amount: '100',
+        project_id: 'proj-a',
+        building_id: 'bld-a',
+      })
+    );
+    assert.ok(lines);
+    for (const line of lines!) {
+      assert.equal(line.projectId, 'proj-a');
+      assert.equal(line.buildingId, 'bld-a');
+    }
+  });
 });

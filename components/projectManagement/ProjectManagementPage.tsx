@@ -43,6 +43,7 @@ const ProjectExpenseVoucherReportsPage = React.lazy(() => import('../reports/Pro
 const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
 const ExpenseAnalyticsPage = React.lazy(() => import('../../modules/expense-analytics/ExpenseAnalyticsPage'));
 const CollectionsAnalyticsPage = React.lazy(() => import('../../modules/collections-analytics/CollectionsAnalyticsPage'));
+const SellingAnalyticsPage = React.lazy(() => import('../../modules/selling-analytics/SellingAnalyticsPage'));
 
 interface ProjectManagementPageProps {
     initialPage: Page;
@@ -50,7 +51,7 @@ interface ProjectManagementPageProps {
 
 // Define all possible view keys
 type ProjectView =
-    | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Collections Analytics' | 'Bills' | 'Expense Analytics' | 'Expense Vouchers' | 'Sales Returns'
+    | 'Marketing' | 'Agreements' | 'Contracts' | 'Invoices' | 'Selling Analytics' | 'Collections Analytics' | 'Bills' | 'Expense Analytics' | 'Expense Vouchers' | 'Sales Returns'
     | 'Assets'
     | 'Broker Payouts' | 'PM Payouts'
     | 'Visual Layout' | 'Tabular View'
@@ -61,7 +62,7 @@ type ProjectView =
     | 'Petty cash report';
 
 /** Project selling — operational tabs (persistent mount) */
-const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns'];
+const SELLING_OPERATIONAL_VIEWS: ProjectView[] = ['Selling Analytics', 'Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns'];
 
 const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
@@ -118,7 +119,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const setActiveView = isSellingMode ? setSellingView : setConstructionView;
 
     const allowedSellingViews = [
-        'Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns', 'Broker Payouts',
+        'Selling Analytics', 'Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns', 'Broker Payouts',
         'Visual Layout', 'Tabular View',
         'Project Summary', 'Marketing Activity', 'Revenue Analysis',
         'Broker Report', 'Income by Category', 'Expense by Category',
@@ -150,7 +151,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                 else if (subTab === 'Project Units') setActiveView('Tabular View');
                 else if (subTab === 'PM Cost') setActiveView('PM Cost Report');
                 else setActiveView(subTab as ProjectView);
-            } else if (['Marketing', 'Agreements', 'Contracts', 'Invoices', 'Collections Analytics', 'Bills', 'Expense Vouchers', 'Sales Returns'].includes(mainTab)) {
+            } else if (['Selling Analytics', 'Marketing', 'Agreements', 'Contracts', 'Invoices', 'Collections Analytics', 'Bills', 'Expense Vouchers', 'Sales Returns'].includes(mainTab)) {
                 setActiveView(mainTab as ProjectView);
             }
             dispatch({ type: 'CLEAR_INITIAL_TABS' });
@@ -182,6 +183,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             case 'Marketing': return <MarketingPage />;
             case 'Agreements': return <ProjectAgreementsPage />;
             case 'Invoices': return <InvoicesPage invoiceTypeFilter={InvoiceType.INSTALLMENT} hideTitleAndGoBack={true} />;
+            case 'Selling Analytics': return <SellingAnalyticsPage />;
             case 'Collections Analytics': return <CollectionsAnalyticsPage />;
             case 'Assets': return <ProjectReceivedAssetsPage />;
             case 'Contracts': return <ProjectContractsPage />;
@@ -338,6 +340,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
             </div>
             <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-1 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600 min-h-0" aria-label="Project selling navigation" data-tour="project-selling-subnav">
                 <div className="space-y-0.5">
+                    <ModuleNavItem view="Selling Analytics" label="Selling Analytics" collapsed={subCollapsed} />
                     <ModuleNavItem view="Marketing" label="Marketing" collapsed={subCollapsed} dataTour="selling-plan" />
                     <ModuleNavItem view="Agreements" label="Agreements" collapsed={subCollapsed} dataTour="selling-agreements" />
                     <ModuleNavItem view="Invoices" label="Invoices" collapsed={subCollapsed} dataTour="selling-invoices" />

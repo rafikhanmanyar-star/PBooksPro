@@ -1,4 +1,9 @@
 /**
+ * AUTO-GENERATED — do not edit. Source: shared/financial-core/trialBalanceCore.ts
+ * Regenerate: node scripts/ensure-shared-financial-cores.mjs
+ */
+
+/**
  * Trial balance presentation from journal line aggregates (gross debit/credit per account).
  * Net columns: balance = grossDebit - grossCredit; one column holds |balance|, the other 0.
  */
@@ -55,6 +60,8 @@ export interface TrialBalanceReportPayload {
   totals: TrialBalanceTotals;
   /** True when net columns balance (and gross debits == gross credits). */
   isBalanced: boolean;
+  /** Net debit column minus net credit column (0 when balanced). */
+  difference: number;
 }
 
 /**
@@ -105,6 +112,10 @@ export function isTrialBalanceBalanced(totals: TrialBalanceTotals): boolean {
   return netOk && grossOk;
 }
 
+export function trialBalanceDifference(totals: TrialBalanceTotals): number {
+  return roundMoney(totals.totalDebit - totals.totalCredit);
+}
+
 export function buildTrialBalanceReport(rows: TrialBalanceRawRow[]): TrialBalanceReportPayload {
   const accounts = mapRawRowsToTrialBalanceLines(rows);
   const totals = sumTrialBalanceTotals(accounts);
@@ -112,6 +123,7 @@ export function buildTrialBalanceReport(rows: TrialBalanceRawRow[]): TrialBalanc
     accounts,
     totals,
     isBalanced: isTrialBalanceBalanced(totals),
+    difference: trialBalanceDifference(totals),
   };
 }
 
@@ -266,3 +278,16 @@ export function ledgerTenantIdsForLocalQuery(raw: string | undefined | null): st
   set.add('');
   return [...set];
 }
+
+export {
+  applyDimensionFilter,
+  buildDimensionSql,
+  isDimensionScopeActive,
+  isJournalEntityScopeActive,
+  journalLineMatchesDimensionScope,
+  matchesDimensionScope,
+  resolveJournalLineDimensions,
+  scopeFromReportFilters,
+  shouldApplyOpeningBalancesForScope,
+  type FinancialDimensionScope,
+} from './dimensionScope';

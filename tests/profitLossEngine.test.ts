@@ -342,4 +342,30 @@ function assertClose(a: number, b: number, label: string) {
   assertClose(all.totalExpense, 700, 'consolidated expense');
 }
 
+{
+  const s = baseState({
+    transactions: [
+      tx({
+        id: 'office',
+        amount: 150,
+        date: '2025-06-15',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+      }),
+      tx({
+        id: 'proj',
+        amount: 300,
+        date: '2025-06-16',
+        type: TransactionType.EXPENSE,
+        accountId: 'acc-bank',
+        categoryId: 'cat-opex',
+        projectId: 'proj-1',
+      }),
+    ],
+  });
+  const all = computeProjectProfitLossTotals(s, 'all', '2025-01-01', '2025-12-31');
+  assertClose(all.totalExpense, 450, 'consolidated includes unscoped overhead');
+}
+
 console.log('profitLossEngine.test.ts: OK');

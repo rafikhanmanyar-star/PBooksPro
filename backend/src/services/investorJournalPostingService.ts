@@ -3,6 +3,11 @@
  */
 import type pg from 'pg';
 import { roundMoney } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { recordDomainMutation } from '../core/recordDomainMutation.js';
 import {
   type CreateJournalBody,
@@ -173,6 +178,7 @@ export async function postInvestorContribution(
 ): Promise<{ journalEntryId: string }> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Amount must be positive.');
+  const dims = resolveJournalDimensions({ projectId: input.projectId });
   const body: CreateJournalBody = {
     entryDate: input.entryDate,
     reference: input.reference ?? `INV-C-${Date.now()}`,
@@ -180,17 +186,18 @@ export async function postInvestorContribution(
     sourceModule: 'investor_module',
     sourceId: `contribution:${input.investorEquityAccountId}`,
     createdBy: input.createdBy ?? null,
-    projectId: input.projectId,
+    ...entryDimensionsFrom(dims),
     investorId: investorMetadataId(input.investorPartyId, input.investorEquityAccountId),
     investorTransactionType: 'investment' as InvestorTransactionType,
     lines: [
-      { accountId: input.cashAccountId, debitAmount: amt, creditAmount: 0, projectId: input.projectId },
-      {
-        accountId: input.investorEquityAccountId,
-        debitAmount: 0,
-        creditAmount: amt,
-        projectId: input.projectId,
-      },
+      journalLineWithDimensions(
+        { accountId: input.cashAccountId, debitAmount: amt, creditAmount: 0 },
+        dims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.investorEquityAccountId, debitAmount: 0, creditAmount: amt },
+        dims
+      ),
     ],
   };
   const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
@@ -240,6 +247,7 @@ export async function postInvestorWithdrawal(
       );
     }
   }
+  const dims = resolveJournalDimensions({ projectId: input.projectId });
   const body: CreateJournalBody = {
     entryDate: input.entryDate,
     reference: input.reference ?? `INV-W-${Date.now()}`,
@@ -247,17 +255,18 @@ export async function postInvestorWithdrawal(
     sourceModule: 'investor_module',
     sourceId: `withdrawal:${input.investorEquityAccountId}`,
     createdBy: input.createdBy ?? null,
-    projectId: input.projectId,
+    ...entryDimensionsFrom(dims),
     investorId: investorMetadataId(input.investorPartyId, input.investorEquityAccountId),
     investorTransactionType: 'withdrawal',
     lines: [
-      {
-        accountId: input.investorEquityAccountId,
-        debitAmount: amt,
-        creditAmount: 0,
-        projectId: input.projectId,
-      },
-      { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt, projectId: input.projectId },
+      journalLineWithDimensions(
+        { accountId: input.investorEquityAccountId, debitAmount: amt, creditAmount: 0 },
+        dims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt },
+        dims
+      ),
     ],
   };
   const { journalEntryId } = await postInvestorJournalEntry(client, tenantId, body);
@@ -293,6 +302,7 @@ export async function postProfitAllocationToInvestor(
 ): Promise<{ journalEntryId: string }> {
   const amt = roundMoney(input.amount);
   if (amt <= 0) throw new Error('Amount must be positive.');
+  const dims = resolveJournalDimensions({ projectId: input.projectId });
   const body: CreateJournalBody = {
     entryDate: input.entryDate,
     reference: input.reference ?? `INV-P-${Date.now()}`,
@@ -300,22 +310,18 @@ export async function postProfitAllocationToInvestor(
     sourceModule: 'investor_module',
     sourceId: `profit_allocation:${input.investorEquityAccountId}`,
     createdBy: input.createdBy ?? null,
-    projectId: input.projectId,
+    ...entryDimensionsFrom(dims),
     investorId: investorMetadataId(input.investorPartyId, input.investorEquityAccountId),
     investorTransactionType: 'profit_allocation',
     lines: [
-      {
-        accountId: input.retainedEarningsAccountId,
-        debitAmount: amt,
-        creditAmount: 0,
-        projectId: input.projectId,
-      },
-      {
-        accountId: input.investorEquityAccountId,
-        debitAmount: 0,
-        creditAmount: amt,
-        projectId: input.projectId,
-      },
+      journalLineWithDimensions(
+        { accountId: input.retainedEarningsAccountId, debitAmount: amt, creditAmount: 0 },
+        dims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.investorEquityAccountId, debitAmount: 0, creditAmount: amt },
+        dims
+      ),
     ],
   };
   return postInvestorJournalEntry(client, tenantId, body);
@@ -343,6 +349,7 @@ export async function postInterProjectEquityTransfer(
   if (amt <= 0) throw new Error('Amount must be positive.');
   const baseDesc = input.description ?? 'Inter-project equity transfer';
 
+  const outDims = resolveJournalDimensions({ projectId: input.sourceProjectId });
   const outJe = await postInvestorJournalEntry(client, tenantId, {
     entryDate: input.entryDate,
     reference: `INV-T-OUT-${Date.now()}`,
@@ -350,20 +357,22 @@ export async function postInterProjectEquityTransfer(
     sourceModule: 'investor_module',
     sourceId: `transfer_out:${input.investorEquityAccountId}`,
     createdBy: input.createdBy ?? null,
-    projectId: input.sourceProjectId,
+    ...entryDimensionsFrom(outDims),
     investorId: investorMetadataId(input.investorPartyId, input.investorEquityAccountId),
     investorTransactionType: 'transfer',
     lines: [
-      {
-        accountId: input.investorEquityAccountId,
-        debitAmount: amt,
-        creditAmount: 0,
-        projectId: input.sourceProjectId,
-      },
-      { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt, projectId: input.sourceProjectId },
+      journalLineWithDimensions(
+        { accountId: input.investorEquityAccountId, debitAmount: amt, creditAmount: 0 },
+        outDims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.cashAccountId, debitAmount: 0, creditAmount: amt },
+        outDims
+      ),
     ],
   });
 
+  const inDims = resolveJournalDimensions({ projectId: input.destProjectId });
   const inJe = await postInvestorJournalEntry(client, tenantId, {
     entryDate: input.entryDate,
     reference: `INV-T-IN-${Date.now()}`,
@@ -371,17 +380,18 @@ export async function postInterProjectEquityTransfer(
     sourceModule: 'investor_module',
     sourceId: `transfer_in:${input.investorEquityAccountId}`,
     createdBy: input.createdBy ?? null,
-    projectId: input.destProjectId,
+    ...entryDimensionsFrom(inDims),
     investorId: investorMetadataId(input.investorPartyId, input.investorEquityAccountId),
     investorTransactionType: 'transfer',
     lines: [
-      { accountId: input.cashAccountId, debitAmount: amt, creditAmount: 0, projectId: input.destProjectId },
-      {
-        accountId: input.investorEquityAccountId,
-        debitAmount: 0,
-        creditAmount: amt,
-        projectId: input.destProjectId,
-      },
+      journalLineWithDimensions(
+        { accountId: input.cashAccountId, debitAmount: amt, creditAmount: 0 },
+        inDims
+      ),
+      journalLineWithDimensions(
+        { accountId: input.investorEquityAccountId, debitAmount: 0, creditAmount: amt },
+        inDims
+      ),
     ],
   });
 

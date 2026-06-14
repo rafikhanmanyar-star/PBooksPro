@@ -48,7 +48,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-budget-vs-actual', title: 'Budget vs Actual Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Budget vs Actual' },
     // Accounting — financial statements (consolidated / per-project)
     { id: 'accounting-profit-loss', title: 'Profit & Loss Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Profit & Loss' },
-    { id: 'accounting-balance-sheet', title: 'Balance Sheet Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Balance Sheet' },
+    { id: 'accounting-project-financial-position', title: 'Project Financial Position', group: 'Accounting', path: 'accounting', subPath: 'Reports:Project Financial Position' },
     { id: 'accounting-trial-balance', title: 'Trial Balance Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Trial Balance' },
     { id: 'accounting-reconciliation', title: 'Financial Reconciliation', group: 'Accounting', path: 'accounting', subPath: 'Reports:Reconciliation' },
     { id: 'accounting-cash-flows', title: 'Cash Flow Report', group: 'Accounting', path: 'accounting', subPath: 'Reports:Cash Flows' },

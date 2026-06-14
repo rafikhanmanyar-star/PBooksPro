@@ -2,7 +2,7 @@
 export type AccountingView =
   | 'Analytics'
   | 'Profit & Loss'
-  | 'Balance Sheet'
+  | 'Project Financial Position'
   | 'Trial Balance'
   | 'Reconciliation'
   | 'Cash Flows'
@@ -16,7 +16,7 @@ export type AccountingView =
 
 export const ACCOUNTING_FINANCIAL_REPORTS: AccountingView[] = [
   'Profit & Loss',
-  'Balance Sheet',
+  'Project Financial Position',
   'Cash Flows',
   'Analytics',
   'Unposted Transactions',

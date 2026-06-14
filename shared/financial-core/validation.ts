@@ -47,11 +47,14 @@ export function validateBalanced(lines: JournalLineInput[]): string | null {
   return null;
 }
 
-/** Swap debit/credit for reversal lines. */
+/** Swap debit/credit for reversal lines; preserve dimension tags. */
 export function swapLinesForReversal(lines: JournalLineInput[]): JournalLineInput[] {
   return lines.map((l) => ({
     accountId: l.accountId,
     debitAmount: roundMoney(l.creditAmount),
     creditAmount: roundMoney(l.debitAmount),
+    projectId: l.projectId ?? null,
+    buildingId: l.buildingId ?? null,
+    costCenterId: l.costCenterId ?? null,
   }));
 }

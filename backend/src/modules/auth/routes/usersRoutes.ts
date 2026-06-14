@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
+import { invalidateAuthUserCache } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import { appendAuditEvent } from '../../../services/enterpriseAuditService.js';
@@ -266,6 +267,9 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
         row = r.rows[0];
       }
 
+      // Login JWT + authMiddleware read role from user_tenants — keep in sync with users.role.
+      await ensureUserTenantMembership(client, id, tenantId, role);
+
       const apiRow = rowToApi(row);
       const roleChanged = before.role !== role;
       await appendAuditEvent(client, {
@@ -289,6 +293,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
       sendFailure(res, 404, 'NOT_FOUND', 'User not found');
       return;
     }
+    invalidateAuthUserCache(id, tenantId);
     emitEntityEvent(tenantId, 'updated', 'user', { data: updated, sourceUserId: req.userId });
     sendSuccess(res, updated);
   } catch (e: unknown) {

@@ -20,11 +20,13 @@ import { transactionsRouter } from './transactionsRoutes.js';
 import { buildingsRouter } from './buildingsRoutes.js';
 import { propertiesRouter } from './propertiesRoutes.js';
 import { optionalFeatureRouter } from './optionalFeatureRoutes.js';
+import { whatsappRouter } from './whatsappRoutes.js';
 import { projectsRouter } from './projectsRoutes.js';
 import { unitsRouter } from './unitsRoutes.js';
 import { vendorsRouter } from './vendorsRoutes.js';
 import { quotationsRouter } from './quotationsRoutes.js';
 import { quotationValidationRouter } from '../modules/vendors/routes/quotationValidationRoutes.js';
+import { quotationIntelligenceRouter } from '../modules/vendors/routes/quotationIntelligenceRoutes.js';
 import { documentsRouter } from './documentsRoutes.js';
 import { transactionAuditRouter } from './transactionAuditRoutes.js';
 import { appSettingsRouter } from './appSettingsRoutes.js';
@@ -61,6 +63,7 @@ import { rentalAnalyticsRouter } from './rentalAnalyticsRoutes.js';
 import { accountingAnalyticsRouter } from './accountingAnalyticsRoutes.js';
 import { expenseAnalyticsRouter } from './expenseAnalyticsRoutes.js';
 import { collectionsAnalyticsRouter } from './collectionsAnalyticsRoutes.js';
+import { sellingAnalyticsRouter } from './sellingAnalyticsRoutes.js';
 import { vendorAnalyticsRouter } from './vendorAnalyticsRoutes.js';
 import { bankingAnalyticsRouter } from './bankingAnalyticsRoutes.js';
 import { customReportsRouter } from './customReportsRoutes.js';
@@ -132,6 +135,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), systemRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), appUpdateRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), optionalFeatureRouter);
+  app.use(`${prefix}/whatsapp`, authMiddleware, requireActiveSubscription(), whatsappRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), chatRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), permissionsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), auditTrailRouter);
@@ -180,6 +184,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), accountingAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), expenseAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), collectionsAnalyticsRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), sellingAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), vendorAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), bankingAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rentalOwnerSummariesRouter);
@@ -273,6 +278,12 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     requireActiveSubscription(),
     requireFinancialWriteOnMutations,
     quotationValidationRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    quotationIntelligenceRouter
   );
   app.use(
     prefix,

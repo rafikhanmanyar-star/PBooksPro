@@ -1,1 +1,1 @@
-export * from '../../components/reports/cashFlowEngine.js';
+export * from '../../shared/financial-core/cashFlowJournalCore.js';
