@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Input from '../../../components/ui/Input';
+import AmountInput from '../../../components/common/AmountInput';
 import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
 import { useCreateUnpostedTransaction } from '../hooks/useUnpostedTransactions';
 import { uploadUnpostedAttachment } from '../../../services/api/unpostedTransactionsApi';
@@ -372,12 +373,8 @@ export default function QuickTransactionWizard() {
                 {isInflowType(transactionType) ? 'Collection' : 'Payment'}
               </span>
             </div>
-            <Input
+            <AmountInput
               label={`Amount (${CURRENCY})`}
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="1"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="text-2xl font-bold text-center"

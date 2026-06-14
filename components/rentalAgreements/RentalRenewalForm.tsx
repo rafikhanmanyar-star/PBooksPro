@@ -5,6 +5,7 @@ import { RentalAgreement, RentalAgreementStatus, type AppState } from '../../typ
 import Button from '../ui/Button';
 import DatePicker from '../ui/DatePicker';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import { ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { toLocalDateString } from '../../utils/dateUtils';
@@ -165,9 +166,8 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Input
+        <AmountInput
           label="Monthly rent (new term)"
-          type="number"
           value={monthlyRent}
           onChange={(e) => setMonthlyRent(e.target.value)}
           required

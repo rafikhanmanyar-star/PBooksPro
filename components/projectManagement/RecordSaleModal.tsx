@@ -2,7 +2,7 @@ import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelect
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProjectReceivedAsset, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
-import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import DatePicker from '../ui/DatePicker';
@@ -172,11 +172,8 @@ const RecordSaleModal: React.FC<RecordSaleModalProps> = ({ isOpen, onClose, asse
                     {asset.description} — Recorded value: {CURRENCY} {asset.recordedValue.toLocaleString()}
                 </p>
                 <DatePicker label="Sale date" value={saleDate} onChange={d => setSaleDate(toLocalDateString(d))} />
-                <Input
+                <AmountInput
                     label="Sale amount"
-                    type="number"
-                    min="0"
-                    step="0.01"
                     value={saleAmount}
                     onChange={e => setSaleAmount(e.target.value)}
                     placeholder="0.00"

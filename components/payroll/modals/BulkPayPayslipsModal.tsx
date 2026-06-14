@@ -18,6 +18,7 @@ import { payslipDisplayPaidAmount, payslipRemainingAmount } from '../utils/paysl
 import { resolvePayslipAssignment } from '../utils/payslipAssignment';
 import { todayLocalYyyyMmDd, toLocalDateString } from '../../../utils/dateUtils';
 import DatePicker from '../../ui/DatePicker';
+import AmountInput from '../../common/AmountInput';
 
 export interface BulkPayItem {
   payslip: Payslip;
@@ -401,10 +402,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
                         <td className="py-2 px-3 text-slate-600">{periodLabel}</td>
                         <td className="py-2 px-3 text-right tabular-nums">{remaining.toLocaleString()}</td>
                         <td className="py-2 px-3 text-right">
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.01}
+                          <AmountInput
                             value={rawAmount}
                             onChange={(e) => setAmountForPayslip(payslip.id, e.target.value)}
                             className={`w-28 text-right border rounded-lg px-2 py-1.5 tabular-nums focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 ${invalid ? 'border-red-400 bg-red-50' : 'border-slate-300'}`}

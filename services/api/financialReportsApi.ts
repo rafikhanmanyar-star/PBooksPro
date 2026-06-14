@@ -83,6 +83,8 @@ export async function fetchBalanceSheetReport(options: {
     supplemental: raw.supplemental as BalanceSheetReportResult['supplemental'],
     totals: raw.totals as BalanceSheetReportResult['totals'],
     retainedEarningsFromPL: Number(raw.retainedEarningsFromPL ?? 0),
+    retainedEarningsPriorYears: Number(raw.retainedEarningsPriorYears ?? raw.retainedEarningsFromPL ?? 0),
+    currentYearEarningsFromPL: Number(raw.currentYearEarningsFromPL ?? 0),
     isBalanced: Boolean(raw.isBalanced),
     discrepancy: Number(raw.discrepancy ?? 0),
     validation: normalizeBalanceSheetValidation(raw.validation),

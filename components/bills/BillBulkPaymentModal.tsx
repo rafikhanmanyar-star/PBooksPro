@@ -13,7 +13,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { isLocalOnlyMode } from '../../config/apiUrl';
-import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
+import AmountInput from '../common/AmountInput';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
 import { resolveBillLinkedExpenseCategoryId } from '../../utils/billExpenseCategory';
@@ -76,10 +76,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
     }, [isOpen, selectedBills, userSelectableAccounts]);
 
     const handleAmountChange = (id: string, value: string) => {
-        const normalized = normalizeDecimalAmountInput(value);
-        if (normalized === '' || /^\d*\.?\d*$/.test(normalized)) {
-            setPayments(prev => ({ ...prev, [id]: normalized }));
-        }
+        setPayments(prev => ({ ...prev, [id]: value }));
     };
 
     const handleSubmit = async () => {
@@ -327,12 +324,12 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
                                         {due.toLocaleString()}
                                     </div>
                                     <div className="col-span-3">
-                                        <input
-                                            type="text"
-                                            className="w-full text-right border rounded px-2 py-1 focus:ring-2 focus:ring-accent/50 outline-none font-bold text-rose-600"
+                                        <AmountInput
                                             value={payments[bill.id] || ''}
                                             onChange={(e) => handleAmountChange(bill.id, e.target.value)}
                                             placeholder="0"
+                                            className="w-full text-right border rounded px-2 py-1 focus:ring-2 focus:ring-accent/50 outline-none font-bold text-rose-600"
+                                            aria-label={`Payment for bill ${bill.billNumber}`}
                                         />
                                     </div>
                                     <div className={`col-span-2 text-right text-xs font-medium ${isFullyPaid ? 'text-slate-400' : 'text-rose-500'}`}>

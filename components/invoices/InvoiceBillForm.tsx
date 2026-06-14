@@ -12,6 +12,7 @@ import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
 import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Modal from '../ui/Modal';
@@ -1768,24 +1769,20 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                  <Input
+                  <AmountInput
                     label={`Rent Amount (${CURRENCY})`}
-                    type="text"
-                    inputMode="decimal"
                     value={rentAmount}
                     onChange={e => setRentAmount(e.target.value)}
                     required
                     disabled={isAgreementCancelled}
                   />
                   {showSecurityDeposit && (
-                    <Input
+                    <AmountInput
                       label="Security Deposit (Optional)"
-                      type="text"
-                      inputMode="decimal"
                       value={securityDepositCharge}
                       onChange={e => setSecurityDepositCharge(e.target.value)}
                       placeholder="Enter amount"
-                      readOnly={isLocked || isAgreementCancelled}
+                      disabled={isLocked || isAgreementCancelled}
                     />
                   )}
                 </div>
@@ -2166,14 +2163,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="space-y-1">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <AmountInput
                               value={item.pricePerUnit.toString() || ''}
                               onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
                               className="w-full text-right text-xs h-8 bg-app-toolbar/40 rounded-lg"
                               disabled={isAgreementCancelled}
+                              aria-label="Price per unit"
                             />
                             {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
                               <div className="flex justify-end">
@@ -2191,14 +2186,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                          <AmountInput
                             value={item.netValue?.toString() || '0'}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { netValue: parseFloat(e.target.value) || 0 }, true); }}
                             className="w-full text-right font-semibold text-xs h-8 bg-app-toolbar/40 rounded-lg"
                             disabled={isAgreementCancelled}
+                            aria-label="Net value"
                           />
                         </td>
                         <td className="px-1 py-2 text-center">
@@ -2341,10 +2334,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   </div>
                 </div>
               ) : (
-                <Input
+                <AmountInput
                   label="Amount"
-                  type="text"
-                  inputMode="decimal"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
                   required
@@ -2592,10 +2583,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Amount Field for Project Invoices (INSTALLMENT) */}
         {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT && (
-          <Input
+          <AmountInput
             label="Amount"
-            type="text"
-            inputMode="decimal"
             value={amount}
             onChange={e => setAmount(e.target.value)}
             required
@@ -2682,10 +2671,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                               </td>
                               <td className="px-2 py-1.5">
                                 <div className="space-y-1">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
+                                  <AmountInput
                                     value={item.pricePerUnit.toString() || ''}
                                     onChange={(e) => {
                                       const pricePerUnit = parseFloat(e.target.value) || 0;
@@ -2693,6 +2679,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                     }}
                                     className="w-full text-xs h-8"
                                     disabled={isAgreementCancelled}
+                                    aria-label="Price per unit"
                                   />
                                   {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
                                     <QuotationPriceIndicator
@@ -2708,10 +2695,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                 </div>
                               </td>
                               <td className="px-2 py-1.5">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
+                                <AmountInput
                                   value={item.netValue?.toString() || '0'}
                                   onChange={(e) => {
                                     const netValue = parseFloat(e.target.value) || 0;
@@ -2719,6 +2703,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                   }}
                                   className="w-full text-right font-semibold text-xs h-8"
                                   disabled={isAgreementCancelled}
+                                  aria-label="Net value"
                                 />
                               </td>
                               <td className="px-1 py-1.5 text-center">

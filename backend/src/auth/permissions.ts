@@ -115,7 +115,7 @@ export const ENTERPRISE_ROLE_LABELS: Record<EnterpriseRole, string> = {
 
 export const PERMISSION_LABELS: Record<Permission, string> = {
   'reports.trial_balance.read': 'Trial Balance (read)',
-  'reports.balance_sheet.read': 'Project Financial Position (read)',
+  'reports.balance_sheet.read': 'Balance Sheet (read)',
   'reports.profit_loss.read': 'Profit & Loss (read)',
   'reports.cash_flow.read': 'Cash Flow (read)',
   'payroll.read': 'Payroll (read)',

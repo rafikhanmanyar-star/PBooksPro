@@ -16,7 +16,7 @@ export type { AccountingView } from './accountingReportTypes';
 export { ACCOUNTING_FINANCIAL_REPORTS, ACCOUNTING_PORTFOLIO_REPORTS } from './accountingReportTypes';
 
 const ProjectProfitLossReport = React.lazy(() => import('../reports/ProjectProfitLossReport'));
-const ProjectFinancialPositionReport = React.lazy(() => import('../reports/ProjectFinancialPositionReport'));
+const ProjectBalanceSheetReport = React.lazy(() => import('../reports/ProjectBalanceSheetReport'));
 const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
 const ReconciliationDashboard = React.lazy(() => import('../reports/ReconciliationDashboard'));
 const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
@@ -54,7 +54,7 @@ const AccountingPage: React.FC = () => {
         return perms.canReadProfitLoss || perms.canReadBalanceSheet;
       case 'Profit & Loss':
         return perms.canReadProfitLoss;
-      case 'Project Financial Position':
+      case 'Balance Sheet':
         return perms.canReadBalanceSheet;
       case 'Trial Balance':
         return perms.canReadTrialBalance;
@@ -78,15 +78,16 @@ const AccountingPage: React.FC = () => {
   const visibleReports = [...visibleFinancialReports, ...visiblePortfolioReports];
 
   useEffect(() => {
-    if ((activeView as string) === 'Balance Sheet') {
-      setActiveView('Project Financial Position');
+    if ((activeView as string) === 'Project Financial Position') {
+      setActiveView('Balance Sheet');
     }
   }, [activeView, setActiveView]);
 
   useEffect(() => {
     if (initialTabs && initialTabs.length > 0) {
       const [mainTab, subTab] = initialTabs;
-      const normalizeTab = (t: string) => (t === 'Balance Sheet' ? 'Project Financial Position' : t);
+      const normalizeTab = (t: string) =>
+        t === 'Project Financial Position' ? 'Balance Sheet' : t;
       const main = normalizeTab(mainTab);
       const sub = subTab ? normalizeTab(subTab) : subTab;
       if (mainTab === 'Reports' && sub && visibleReports.includes(sub as AccountingView)) {
@@ -111,8 +112,8 @@ const AccountingPage: React.FC = () => {
         return <UnpostedTransactionsQueuePage />;
       case 'Profit & Loss':
         return perms.canReadProfitLoss ? <ProjectProfitLossReport /> : null;
-      case 'Project Financial Position':
-        return perms.canReadBalanceSheet ? <ProjectFinancialPositionReport /> : null;
+      case 'Balance Sheet':
+        return perms.canReadBalanceSheet ? <ProjectBalanceSheetReport /> : null;
       case 'Trial Balance':
         return perms.canReadTrialBalance ? <TrialBalanceReport /> : null;
       case 'Reconciliation':
@@ -212,7 +213,15 @@ const AccountingPage: React.FC = () => {
                 view={name}
                 label={name}
                 collapsed={collapsed}
-                dataTour={name === 'Trial Balance' ? 'report-trial-balance' : name === 'Profit & Loss' ? 'report-profit-loss' : undefined}
+                dataTour={
+                  name === 'Trial Balance'
+                    ? 'report-trial-balance'
+                    : name === 'Profit & Loss'
+                      ? 'report-profit-loss'
+                      : name === 'Balance Sheet'
+                        ? 'report-balance-sheet'
+                        : undefined
+                }
               />
             ))}
           </>

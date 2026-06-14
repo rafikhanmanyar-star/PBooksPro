@@ -19,6 +19,7 @@ import {
     InvoiceType
 } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Card from '../ui/Card';
@@ -139,12 +140,20 @@ const AmenityConfigModal: React.FC<{
                                     </label>
                                 </div>
                             </div>
-                            <Input 
-                                label={isPercentage ? "Percentage (%)" : "Price"} 
-                                type="number" 
-                                value={price} 
-                                onChange={e => setPrice(e.target.value)}
-                            />
+                            {isPercentage ? (
+                                <Input 
+                                    label="Percentage (%)" 
+                                    type="number" 
+                                    value={price} 
+                                    onChange={e => setPrice(e.target.value)}
+                                />
+                            ) : (
+                                <AmountInput 
+                                    label="Price" 
+                                    value={price} 
+                                    onChange={e => setPrice(e.target.value)}
+                                />
+                            )}
                             <Input 
                                 label="Description (Optional)" 
                                 value={description} 
@@ -1607,9 +1616,8 @@ const MarketingPage: React.FC = () => {
 
                                 {/* Pricing & Discount */}
                                 <div className="space-y-2 pt-2 border-t border-app-border">
-                                    <Input 
+                                    <AmountInput 
                                         label="Base Price" 
-                                        type="number" 
                                         value={listPrice} 
                                         onChange={e => setListPrice(e.target.value)} 
                                         horizontal
@@ -1699,9 +1707,8 @@ const MarketingPage: React.FC = () => {
                                         />
                                         <div className="flex gap-1.5">
                                             <div className="flex-1">
-                                                <Input 
+                                                <AmountInput 
                                                     label="Amt" 
-                                                    type="number"
                                                     value={newDiscountAmount}
                                                     onChange={e => setNewDiscountAmount(e.target.value)}
                                                     horizontal

@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Textarea from '../ui/Textarea';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
@@ -283,11 +284,8 @@ export const FirstTransactionStepPanel: React.FC<StepPanelProps> = ({ state, onS
         value={data.description ?? 'Opening cash balance'}
         onChange={(e) => onStepDataChange({ description: e.target.value })}
       />
-      <Input
+      <AmountInput
         label="Amount"
-        type="number"
-        min="0"
-        step="0.01"
         value={data.amount ?? ''}
         onChange={(e) => onStepDataChange({ amount: e.target.value })}
       />

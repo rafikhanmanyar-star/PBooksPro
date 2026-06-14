@@ -3,6 +3,7 @@ import { useContacts, useDispatchOnly, useProjects, useStateSelector, useUnits }
 import React, { useState, useEffect } from 'react';
 import { Unit, Project, Contact, ContactType, UnitOccupancyStatus } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
@@ -143,7 +144,7 @@ const UnitForm: React.FC<UnitFormProps> = ({ onSubmit, onCancel, onDelete, unitT
                         <Input label="Area (sq ft)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={area} onChange={e => setArea(e.target.value)} placeholder="Enter area" />
                         <Input label="Floor (e.g., Ground floor, 1st floor)" value={floor} onChange={e => setFloor(e.target.value)} placeholder="Enter floor" />
                     </div>
-                    <Input label="Sale Price (Optional)" type="text" inputMode="decimal" pattern="[0-9]*\.?[0-9]*" value={salePrice} onChange={e => setSalePrice(e.target.value)} />
+                    <AmountInput label="Sale Price (Optional)" value={salePrice} onChange={e => setSalePrice(e.target.value)} />
                 </div>
 
                 <div className="flex-shrink-0 flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-4 mt-auto border-t">

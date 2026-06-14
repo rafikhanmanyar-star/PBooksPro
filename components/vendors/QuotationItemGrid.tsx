@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { QuotationItem, TransactionType } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import ComboBox from '../ui/ComboBox';
 import Button from '../ui/Button';
 import { useQuotationItemRates, computeVariancePercent, varianceSeverity } from '../../hooks/useQuotationItemRates';
@@ -173,12 +174,9 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
                     />
                   </td>
                   <td className="px-2 py-2 min-w-[90px]">
-                    <Input
-                      type="number"
-                      value={String(item.pricePerQuantity || 0)}
+                    <AmountInput
+                      value={item.pricePerQuantity || 0}
                       onChange={(e) => handleUnitRateChange(item, parseFloat(e.target.value) || 0)}
-                      min="0"
-                      step="0.01"
                     />
                   </td>
                   <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{fmt(item.previousRate)}</td>

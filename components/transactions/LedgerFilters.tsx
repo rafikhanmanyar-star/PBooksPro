@@ -2,6 +2,7 @@ import { useAccounts, useCategories } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, SortDirection, LedgerSortKey as SortKey, FilterCriteria } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
@@ -153,15 +154,13 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                 <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Amount Range</label>
                     <div className="grid grid-cols-2 gap-2">
-                        <input
-                            type="number"
+                        <AmountInput
                             value={tempFilters.minAmount}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, minAmount: e.target.value }))}
                             placeholder="Min"
                             className="ds-input-field w-full px-2 py-1.5 text-xs font-medium"
                         />
-                        <input
-                            type="number"
+                        <AmountInput
                             value={tempFilters.maxAmount}
                             onChange={(e) => setTempFilters(prev => ({ ...prev, maxAmount: e.target.value }))}
                             placeholder="Max"

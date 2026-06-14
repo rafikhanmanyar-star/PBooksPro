@@ -5,6 +5,7 @@ import { storageService } from '../services/storageService';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
 import { EarningType, DeductionType } from '../types';
+import AmountInput from '../../common/AmountInput';
 
 interface SalaryConfigModalProps {
   isOpen: boolean;
@@ -140,7 +141,11 @@ const SalaryConfigModal: React.FC<SalaryConfigModalProps> = ({ isOpen, onClose, 
             </div>
             <div className="flex-1">
               <label htmlFor="salary-config-amount" className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">{formData.is_percentage ? 'Rate (%)' : 'Amount (PKR)'}</label>
-              <input id="salary-config-amount" type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" title={formData.is_percentage ? 'Rate (%)' : 'Amount (PKR)'} placeholder={formData.is_percentage ? 'e.g. 10' : 'e.g. 5000'} />
+              {formData.is_percentage ? (
+                <input id="salary-config-amount" type="number" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" title="Rate (%)" placeholder="e.g. 10" aria-label="Rate percentage" />
+              ) : (
+                <AmountInput id="salary-config-amount" required value={formData.amount} onChange={(e) => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-700" title="Amount (PKR)" placeholder="e.g. 5000" aria-label="Amount in PKR" />
+              )}
             </div>
           </div>
           <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex gap-3">

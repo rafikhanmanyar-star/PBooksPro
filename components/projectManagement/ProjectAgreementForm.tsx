@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project, InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
@@ -405,18 +406,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const handleRemoveUnit = (idToRemove: string) => {
         if (invoiceLockedLayout) return;
         setUnitIds(prev => prev.filter(id => id !== idToRemove));
-    };
-    
-    // Generic handler for amount fields to allow only numbers and one decimal
-    const handleAmountChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
-        let { value } = e.target;
-        // Allow only numbers and one decimal point.
-        value = value.replace(/[^0-9.]/g, '');
-        const parts = value.split('.');
-        if (parts.length > 2) {
-            value = parts[0] + '.' + parts.slice(1).join('');
-        }
-        setter(value);
     };
 
     const generateInvoices = async (
@@ -1274,51 +1263,41 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                             >
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                                        <Input
+                                        <AmountInput
                                             label="List Price"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={listPrice}
                                             onChange={(e) => {
                                                 userEditedListPriceRef.current = true;
-                                                handleAmountChange(setListPrice)(e);
+                                                setListPrice(e.target.value);
                                             }}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Customer Discount"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={customerDiscount}
-                                            onChange={handleAmountChange(setCustomerDiscount)}
+                                            onChange={(e) => setCustomerDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Floor Discount"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={floorDiscount}
-                                            onChange={handleAmountChange(setFloorDiscount)}
+                                            onChange={(e) => setFloorDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Lump Sum"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={lumpSumDiscount}
-                                            onChange={handleAmountChange(setLumpSumDiscount)}
+                                            onChange={(e) => setLumpSumDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Misc"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={miscDiscount}
-                                            onChange={handleAmountChange(setMiscDiscount)}
+                                            onChange={(e) => setMiscDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={`${inputClass} sm:col-span-2`}
                                         />
@@ -1381,26 +1360,16 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         disabled={brokerFieldsDisabled}
                                         allowAddNew={false}
                                     />
-                                    <div>
-                                        <label htmlFor="rebate-amount" className="block text-sm font-medium text-app-text mb-1">
-                                            Rebate Amount
-                                        </label>
-                                        <div className="relative flex rounded-lg border border-app-border bg-app-card focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20">
-                                            <input
-                                                id="rebate-amount"
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={rebateAmount}
-                                                onChange={handleAmountChange(setRebateAmount)}
-                                                disabled={brokerFieldsDisabled}
-                                                className="block w-full rounded-l-lg border-0 bg-transparent px-3 py-2.5 text-sm tabular-nums text-app-text focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:opacity-60"
-                                                aria-label="Rebate amount"
-                                            />
-                                            <span className="inline-flex items-center rounded-r-lg border-l border-app-border bg-app-toolbar px-3 text-xs font-semibold text-app-muted">
-                                                {CURRENCY}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    <AmountInput
+                                        label="Rebate Amount"
+                                        id="rebate-amount"
+                                        value={rebateAmount}
+                                        onChange={(e) => setRebateAmount(e.target.value)}
+                                        disabled={brokerFieldsDisabled}
+                                        showCurrency
+                                        currency={CURRENCY}
+                                        aria-label="Rebate amount"
+                                    />
                                 </div>
                             </FormSectionCard>
                         </div>

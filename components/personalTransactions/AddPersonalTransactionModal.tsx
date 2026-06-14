@@ -3,6 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import { AccountType } from '../../types';
 import { getPersonalIncomeCategories, getPersonalExpenseCategories, addPersonalCategory } from './personalCategoriesService';
@@ -464,14 +465,9 @@ const AddPersonalTransactionModal: React.FC<AddPersonalTransactionModalProps> = 
               </div>
             )}
             <div>
-              <label htmlFor="add-txn-amount" className="block text-sm font-medium text-app-text mb-1">
-                Amount ({CURRENCY})
-              </label>
-              <Input
+              <AmountInput
                 id="add-txn-amount"
-                type="number"
-                step="0.01"
-                min="0.01"
+                label={`Amount (${CURRENCY})`}
                 value={amount}
                 onChange={(e) => { setAmount(e.target.value); setError(''); }}
                 placeholder="0.00"

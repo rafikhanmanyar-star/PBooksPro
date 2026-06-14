@@ -3,6 +3,7 @@ import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelect
 import React, { useState, useMemo, useEffect } from 'react';
 import { Contract, ContractExpenseCategoryItem, ContactType, ContractStatus, TransactionType } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
@@ -511,10 +512,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                                         </td>
                                                         <td className="px-3 py-2">
                                                             <div className="space-y-1">
-                                                                <Input
-                                                                    type="number"
-                                                                    min="0"
-                                                                    step="0.01"
+                                                                <AmountInput
                                                                     value={item.pricePerUnit.toString() || ''}
                                                                     onChange={(e) => {
                                                                         const pricePerUnit = parseFloat(e.target.value) || 0;
@@ -536,10 +534,7 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                                                             </div>
                                                         </td>
                                                         <td className="px-3 py-2">
-                                                            <Input
-                                                                type="number"
-                                                                min="0"
-                                                                step="0.01"
+                                                            <AmountInput
                                                                 value={item.netValue?.toString() || '0'}
                                                                 onChange={(e) => {
                                                                     const netValue = parseFloat(e.target.value) || 0;

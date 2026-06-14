@@ -18,6 +18,7 @@ import { SECURITY_SETTLEMENT_BATCH_PREFIX } from '../../utils/rentalSecurityDepo
 import { getOutstandingSecurityDepositInvoicesForProperty } from '../../utils/rentalInvoiceClassification';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
@@ -973,15 +974,13 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                         <div className="text-sm font-semibold text-slate-800">Pay to Owner</div>
                                         <div className="text-xs text-slate-500">Transfer security deposit to {owner?.name || 'owner'}</div>
                                     </div>
-                                    <input
-                                        type="number"
-                                        className="w-36 border rounded px-3 py-1.5 text-right text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    <AmountInput
+                                        className="w-36 text-right text-sm"
                                         value={securityAllocations.owner || ''}
                                         onChange={e => {
                                             const v = parseFloat(e.target.value) || 0;
                                             setSecurityAllocations(prev => ({ ...prev, owner: Math.max(0, v) }));
                                         }}
-                                        onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                         placeholder="0"
                                         aria-label="Amount to pay to owner"
                                     />
@@ -997,15 +996,13 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                             {effectiveTenant ? `Refund to ${effectiveTenant.name}` : 'No tenant linked (add agreement or rental invoices for this unit)'}
                                         </div>
                                     </div>
-                                    <input
-                                        type="number"
-                                        className="w-36 border rounded px-3 py-1.5 text-right text-sm focus:ring-2 focus:ring-emerald-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                    <AmountInput
+                                        className="w-36 text-right text-sm"
                                         value={securityAllocations.tenant || ''}
                                         onChange={e => {
                                             const v = parseFloat(e.target.value) || 0;
                                             setSecurityAllocations(prev => ({ ...prev, tenant: Math.max(0, v) }));
                                         }}
-                                        onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                         disabled={!effectiveTenant}
                                         placeholder="0"
                                         aria-label="Amount to refund to tenant"
@@ -1068,12 +1065,10 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                                             {CURRENCY} {row.outstanding.toLocaleString()}
                                                         </div>
                                                         <div className="col-span-4">
-                                                            <input
-                                                                type="number"
-                                                                className="w-full border rounded px-2 py-1 text-right text-xs focus:ring-2 focus:ring-amber-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            <AmountInput
+                                                                className="w-full text-right text-xs"
                                                                 value={row.adjustAmount || ''}
                                                                 onChange={e => handleInvoiceAmountChange(idx, e.target.value)}
-                                                                onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                                                 disabled={!effectiveTenant}
                                                                 placeholder="0"
                                                                 aria-label={`Adjust amount for ${row.invoiceNumber}`}
@@ -1150,12 +1145,10 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                                             {CURRENCY} {row.outstanding.toLocaleString()}
                                                         </div>
                                                         <div className="col-span-4">
-                                                            <input
-                                                                type="number"
-                                                                className="w-full border rounded px-2 py-1 text-right text-xs focus:ring-2 focus:ring-violet-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                            <AmountInput
+                                                                className="w-full text-right text-xs"
                                                                 value={row.adjustAmount || ''}
                                                                 onChange={e => handleBillAmountChange(idx, e.target.value)}
-                                                                onKeyDown={e => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                                                 disabled={!effectiveTenant}
                                                                 placeholder="0"
                                                                 aria-label={`Adjust amount for ${row.billNumber}`}
@@ -1289,12 +1282,10 @@ const OwnerPayoutModal: React.FC<OwnerPayoutModalProps> = ({ isOpen, onClose, ow
                                                 {CURRENCY} {row.balanceDue.toLocaleString()}
                                             </div>
                                             <div className="col-span-3">
-                                                <input
-                                                    type="number"
-                                                    className="w-full border rounded px-2 py-1 text-right text-sm focus:ring-2 focus:ring-indigo-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                <AmountInput
+                                                    className="w-full text-right text-sm"
                                                     value={row.paymentAmount || ''}
                                                     onChange={(e) => handleAmountChange(idx, e.target.value)}
-                                                    onKeyDown={(e) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                                     disabled={!row.isSelected}
                                                     aria-label={`Pay now amount for ${row.propertyName}`}
                                                     placeholder="0"

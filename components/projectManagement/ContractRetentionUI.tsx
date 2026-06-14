@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import type { Contract, ContractRetentionReleaseMethod, ContractRetentionType } from '../../types';
 import Select from '../ui/Select';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Textarea from '../ui/Textarea';
 import { CURRENCY } from '../../constants';
 import {
@@ -140,11 +141,8 @@ export const ContractRetentionControls: React.FC<ContractRetentionControlsProps>
       )}
 
       {state.retentionType === 'FIXED_AMOUNT' && (
-        <Input
+        <AmountInput
           label="Retention Amount"
-          type="number"
-          min="0"
-          step="0.01"
           disabled={readOnly}
           value={state.retentionFixedAmount}
           onChange={(e) => onChange({ retentionFixedAmount: e.target.value })}

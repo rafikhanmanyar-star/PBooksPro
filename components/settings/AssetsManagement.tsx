@@ -9,6 +9,7 @@ import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Textarea from '../ui/Textarea';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -1018,9 +1019,8 @@ const AssetsManagement: React.FC = () => {
                     {(selectedType === 'property' || selectedType === 'unit') && (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                             {selectedType === 'property' && (
-                                <Input
+                                <AmountInput
                                     label="Monthly Service Charge"
-                                    type="number"
                                     value={monthlyServiceCharge}
                                     onChange={(e) => setMonthlyServiceCharge(e.target.value)}
                                     placeholder="0.00"
@@ -1073,9 +1073,8 @@ const AssetsManagement: React.FC = () => {
                                         placeholder="Floor number"
                                         className="text-sm border-app-border border-2 focus:border-ds-primary"
                                     />
-                                    <Input
+                                    <AmountInput
                                         label="Sale Price"
-                                        type="number"
                                         value={salePrice}
                                         onChange={(e) => setSalePrice(e.target.value)}
                                         placeholder="0.00"
