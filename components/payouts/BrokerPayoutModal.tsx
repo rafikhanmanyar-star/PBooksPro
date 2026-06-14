@@ -20,6 +20,7 @@ import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import Textarea from '../ui/Textarea';
 import Button from '../ui/Button';
@@ -565,12 +566,10 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                                         {item.remaining.toLocaleString()}
                                     </div>
                                     <div className="col-span-3">
-                                        <input 
-                                            type="number" 
-                                            className="ds-input-field w-full rounded px-2 py-1 text-right text-sm outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-50"
+                                        <AmountInput
+                                            className="w-full text-right text-sm"
                                             value={item.paymentAmount}
                                             onChange={(e) => handleAmountChange(idx, e.target.value)}
-                                            onKeyDown={(e) => (e.key === 'ArrowUp' || e.key === 'ArrowDown') && e.preventDefault()}
                                             disabled={!item.isSelected}
                                             aria-label={`Pay now amount for ${item.entityName}`}
                                         />

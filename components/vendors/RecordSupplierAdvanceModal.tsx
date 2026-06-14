@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Vendor, Account, AccountType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
@@ -279,11 +280,10 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input
+                    <AmountInput
                         id="supplier-advance-amount"
                         name="supplier-advance-amount"
                         label={`Advance amount (${CURRENCY})`}
-                        type="number"
                         value={amountStr}
                         onChange={(e) => setAmountStr(e.target.value)}
                         placeholder="0.00"

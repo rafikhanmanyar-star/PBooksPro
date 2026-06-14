@@ -11,7 +11,8 @@ export async function getCashFlowReportJson(
   from: string,
   to: string,
   selectedProjectId: string,
-  selectedBuildingId: string = 'all'
+  selectedBuildingId: string = 'all',
+  selectedCostCenterId: string = 'all'
 ) {
   const report = await getCashFlowReportFromJournal(
     client,
@@ -19,7 +20,8 @@ export async function getCashFlowReportJson(
     from,
     to,
     selectedProjectId,
-    selectedBuildingId
+    selectedBuildingId,
+    selectedCostCenterId
   );
 
   return {

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useDispatchOnly, useProperties, useTransactions } from '../../hooks/useSelectiveState';
 import { Transaction } from '../../types';
 import Modal from '../ui/Modal';
-import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
@@ -156,9 +156,8 @@ const ServiceChargeUpdateModal: React.FC<ServiceChargeUpdateModalProps> = ({ isO
                     <p className="text-xs text-slate-500 mt-1">Updating this will adjust the Owner's ledger and Building Fund automatically.</p>
                 </div>
 
-                <Input 
+                <AmountInput 
                     label="Amount" 
-                    type="number" 
                     value={amount} 
                     onChange={e => setAmount(e.target.value)} 
                 />

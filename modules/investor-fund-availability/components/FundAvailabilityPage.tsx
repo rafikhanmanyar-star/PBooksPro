@@ -6,6 +6,7 @@ import { usePrintReport } from '../../../hooks/usePrintReport';
 import { useAuth } from '../../../context/AuthContext';
 import Button from '../../../components/ui/Button';
 import Input from '../../../components/ui/Input';
+import AmountInput from '../../../components/common/AmountInput';
 import ComboBox from '../../../components/ui/ComboBox';
 import { toLocalDateString } from '../../../utils/dateUtils';
 import ReportHeader from '../../../components/reports/ReportHeader';
@@ -173,7 +174,7 @@ export const FundAvailabilityPage: React.FC = () => {
                                 <ComboBox label="Project" items={projectItems} selectedId={valProjectId} onSelect={(i) => setValProjectId(i?.id || '')} allowAddNew={false} />
                             </div>
                             <div className="w-36">
-                                <Input label="Amount" type="number" value={valAmount} onChange={(e) => setValAmount(e.target.value)} placeholder="0" />
+                                <AmountInput label="Amount" value={valAmount} onChange={(e) => setValAmount(e.target.value)} placeholder="0" />
                             </div>
                             <Button type="button" onClick={runValidation}>
                                 Check against distributable

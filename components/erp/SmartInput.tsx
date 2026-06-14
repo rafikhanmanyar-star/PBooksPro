@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react';
 import { computeFormulas, type FormulaMap } from './formulaEngine';
+import AmountInput from '../common/AmountInput';
+import { formatAmountForInput } from '../../utils/numberFormatting';
 
 export type SmartInputValues = Record<string, number>;
 
@@ -38,9 +40,9 @@ export const SmartInput: React.FC<SmartInputProps> = ({
 
   const merged = useMemo(() => computeFormulas(formulas, values), [formulas, values]);
 
-  const handleNumberChange = (key: string, raw: string) => {
-    const trimmed = raw.trim();
-    const n = trimmed === '' ? 0 : parseFloat(trimmed);
+  const handleNumberChange = (key: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.trim();
+    const n = raw === '' ? 0 : parseFloat(raw);
     const nextBase: SmartInputValues = {
       ...values,
       [key]: Number.isFinite(n) ? n : 0,
@@ -65,7 +67,7 @@ export const SmartInput: React.FC<SmartInputProps> = ({
         const displayVal = merged[key];
         const str =
           typeof displayVal === 'number' && Number.isFinite(displayVal)
-            ? String(displayVal)
+            ? formatAmountForInput(String(displayVal))
             : '';
         const err = errors[key];
 
@@ -95,14 +97,12 @@ export const SmartInput: React.FC<SmartInputProps> = ({
             <label htmlFor={`smart-input-${key}`} className="block text-ds-small font-medium text-app-text mb-ds-xs">
               {label}
             </label>
-            <input
+            <AmountInput
               id={`smart-input-${key}`}
-              type="number"
-              inputMode="decimal"
               disabled={disabled}
               className={`${baseInputClass} text-right ${err ? 'ds-input-error' : ''}`}
               value={str}
-              onChange={(e) => handleNumberChange(key, e.target.value)}
+              onChange={(e) => handleNumberChange(key, e)}
               {...(err ? { 'aria-invalid': true as const } : {})}
             />
             {err ? (

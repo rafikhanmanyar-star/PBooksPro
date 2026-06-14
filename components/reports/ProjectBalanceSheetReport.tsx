@@ -1,38 +1,43 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { useFinancialReportAppState, useProjects, useBuildings } from '../../hooks/useSelectiveState';
+import { useFinancialReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import Card from '../ui/Card';
+import ComboBox from '../ui/ComboBox';
 import { CURRENCY } from '../../constants';
-import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from './ReportHeader';
 import ReportFooter from './ReportFooter';
 import ReportToolbar, { ReportDateRange } from './ReportToolbar';
-import FinancialEntityFilterCombo from './FinancialEntityFilterCombo';
-import {
-  entityScopeFromFilterId,
-  financialEntityFilterLabel,
-  FINANCIAL_ENTITY_FILTER_ALL,
-} from './financialEntityScope';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
 import {
   computeBalanceSheetReport,
+  computeComparativeBalanceSheetReport,
   BS_GROUP_LABELS,
+  flattenBalanceSheetLines,
   type BalanceSheetLine,
   type BsGroupKey,
   type BalanceSheetReportResult,
+  type ComparativeBalanceSheetResult,
+  type BalanceSheetCompareMode,
 } from './balanceSheetEngine';
+import { computeProjectFinancialPosition } from './projectFinancialPositionEngine';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchBalanceSheetReport } from '../../services/api/financialReportsApi';
 import { useReportTenantId } from '../../hooks/useReportTenantId';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
+import {
+  exportBalanceSheetExcel,
+  exportBalanceSheetPdf,
+  exportComparativeBalanceSheetExcel,
+} from './exportBalanceSheet';
+import { priorFiscalYearEnd, priorMonthEnd } from '../../utils/fiscalYear';
+import { FINANCIAL_ENTITY_FILTER_ALL } from './financialEntityScope';
 
 function formatMoney(n: number, hideZero: boolean): string | null {
   if (hideZero && Math.abs(n) < 0.01) return null;
-  const s = `${CURRENCY} ${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
-  return s;
+  return `${CURRENCY} ${n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }
 
 function MoneyCell({ amount, hideZero }: { amount: number; hideZero: boolean }) {
@@ -45,75 +50,164 @@ function MoneyCell({ amount, hideZero }: { amount: number; hideZero: boolean }) 
 function groupLinesByKey(lines: BalanceSheetLine[]): Map<BsGroupKey, BalanceSheetLine[]> {
   const m = new Map<BsGroupKey, BalanceSheetLine[]>();
   for (const line of lines) {
-    const k = line.groupKey;
-    const arr = m.get(k) ?? [];
+    const arr = m.get(line.groupKey) ?? [];
     arr.push(line);
-    m.set(k, arr);
+    m.set(line.groupKey, arr);
   }
   return m;
 }
 
+function isComparativeResult(
+  r: BalanceSheetReportResult | ComparativeBalanceSheetResult
+): r is ComparativeBalanceSheetResult {
+  return 'current' in r && 'previous' in r;
+}
+
+const FISCAL_START_MONTH = 1;
+
 const ProjectBalanceSheetReport: React.FC = () => {
   const projects = useProjects();
-  const buildings = useBuildings();
   const reportState = useFinancialReportAppState();
   const { print: triggerPrint } = usePrintContext();
   const [dateRange, setDateRange] = useState<ReportDateRange>('all');
   const [asOfDate, setAsOfDate] = useState(toLocalDateString(new Date()));
-  const [entityFilterId, setEntityFilterId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
-  const entityScope = useMemo(() => entityScopeFromFilterId(entityFilterId), [entityFilterId]);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>(FINANCIAL_ENTITY_FILTER_ALL);
   const [hideZeros, setHideZeros] = useState(false);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [ledger, setLedger] = useState<{ id: string; name: string } | null>(null);
   const [debugOpen, setDebugOpen] = useState(false);
+  const [compareMode, setCompareMode] = useState<BalanceSheetCompareMode>('none');
+  const [includeProjectAnalysis, setIncludeProjectAnalysis] = useState(false);
   const localOnly = isLocalOnlyMode();
   const tenantId = useReportTenantId();
   const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
+  const [serverPreviousReport, setServerPreviousReport] = useState<BalanceSheetReportResult | null>(null);
+  const [serverPreviousDate, setServerPreviousDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const entityLabel = useMemo(
-    () => financialEntityFilterLabel(entityFilterId, projects, buildings),
-    [entityFilterId, projects, buildings]
+  const projectItems = useMemo(
+    () => [
+      { id: FINANCIAL_ENTITY_FILTER_ALL, name: 'All projects' },
+      ...projects.map((p) => ({ id: p.id, name: p.name })),
+    ],
+    [projects]
+  );
+
+  const projectLabel = useMemo(() => {
+    if (selectedProjectId === FINANCIAL_ENTITY_FILTER_ALL) return 'Consolidated';
+    return projects.find((p) => p.id === selectedProjectId)?.name ?? 'Project';
+  }, [selectedProjectId, projects]);
+
+  const engineOptions = useMemo(
+    () => ({
+      asOfDate,
+      selectedProjectId,
+      selectedBuildingId: FINANCIAL_ENTITY_FILTER_ALL,
+      fiscalStartMonth: FISCAL_START_MONTH,
+    }),
+    [asOfDate, selectedProjectId]
   );
 
   useEffect(() => {
     if (localOnly || !tenantId) {
       setServerReport(null);
+      setServerPreviousReport(null);
+      setServerPreviousDate(null);
       return;
     }
     let cancelled = false;
     setServerReport(null);
+    setServerPreviousReport(null);
     setLoading(true);
-    void fetchBalanceSheetReport({
-      asOfDate,
-      projectId: entityScope.projectId,
-      buildingId: entityScope.buildingId,
-      debug: debugOpen,
-    })
-      .then((r) => {
-        if (!cancelled) setServerReport(r);
-      })
-      .catch(() => {
+
+    const load = async () => {
+      try {
+        const current = await fetchBalanceSheetReport({
+          asOfDate,
+          projectId: selectedProjectId,
+        });
+        if (cancelled) return;
+        setServerReport(current);
+
+        if (compareMode !== 'none') {
+          const prevDate =
+            compareMode === 'prior_year'
+              ? priorFiscalYearEnd(FISCAL_START_MONTH, asOfDate)
+              : priorMonthEnd(asOfDate);
+          const previous = await fetchBalanceSheetReport({
+            asOfDate: prevDate,
+            projectId: selectedProjectId,
+          });
+          if (!cancelled) {
+            setServerPreviousReport(previous);
+            setServerPreviousDate(prevDate);
+          }
+        } else {
+          setServerPreviousReport(null);
+          setServerPreviousDate(null);
+        }
+      } catch {
         if (!cancelled) setServerReport(null);
-      })
-      .finally(() => {
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    };
+
+    void load();
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, asOfDate, entityScope, debugOpen]);
+  }, [localOnly, tenantId, asOfDate, compareMode, selectedProjectId]);
 
-  const clientReport = useMemo(
-    () =>
-      computeBalanceSheetReport(reportState, {
+  const clientResult = useMemo(() => {
+    if (compareMode === 'none') {
+      return computeBalanceSheetReport(reportState, engineOptions);
+    }
+    return computeComparativeBalanceSheetReport(reportState, {
+      ...engineOptions,
+      compareMode,
+    });
+  }, [reportState, engineOptions, compareMode]);
+
+  const report: BalanceSheetReportResult | null = !localOnly
+    ? serverReport
+    : isComparativeResult(clientResult)
+      ? clientResult.current
+      : clientResult;
+
+  const previousReport: BalanceSheetReportResult | null = !localOnly
+    ? serverPreviousReport
+    : isComparativeResult(clientResult)
+      ? clientResult.previous
+      : null;
+
+  const previousAsOfDate: string | null = !localOnly
+    ? serverPreviousDate
+    : isComparativeResult(clientResult)
+      ? clientResult.previousAsOfDate
+      : null;
+
+  const projectAnalysisRows = useMemo(() => {
+    if (!includeProjectAnalysis || !report) return [];
+    return projects.map((p) => {
+      const snap = computeProjectFinancialPosition(reportState, {
         asOfDate,
-        selectedProjectId: entityScope.projectId,
-        selectedBuildingId: entityScope.buildingId,
-      }),
-    [reportState, asOfDate, entityScope]
-  );
-  const report = !localOnly ? serverReport : clientReport;
+        selectedProjectId: p.id,
+      });
+      return {
+        projectId: p.id,
+        projectName: p.name,
+        assets: snap.totalAssets,
+        liabilities: snap.totalLiabilities,
+        netPosition: snap.netPosition,
+      };
+    });
+  }, [includeProjectAnalysis, report, projects, reportState, asOfDate]);
+
+  const previousByLineKey = useMemo(() => {
+    if (!previousReport) return new Map<string, number>();
+    return new Map(flattenBalanceSheetLines(previousReport).map((l) => [l.id + l.name, l.amount]));
+  }, [previousReport]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -131,9 +225,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
   const handleDateChange = (date: string) => {
     setAsOfDate(date);
-    if (dateRange !== 'custom') {
-      setDateRange('custom');
-    }
+    if (dateRange !== 'custom') setDateRange('custom');
   };
 
   const toggleGroup = useCallback((key: string) => {
@@ -143,47 +235,43 @@ const ProjectBalanceSheetReport: React.FC = () => {
     });
   }, []);
 
-  const handleExport = () => {
+  const handleExportExcel = () => {
     if (!report) return;
-    const rows: { Category: string; Amount: number | string }[] = [
-      { Category: 'ASSETS', Amount: '' },
-      { Category: '  Current', Amount: '' },
-      ...report.assets.current.map((l) => ({
-        Category: `    ${BS_GROUP_LABELS[l.groupKey] ?? l.groupKey}: ${l.name}`,
-        Amount: l.amount,
-      })),
-      { Category: '  Non-current', Amount: '' },
-      ...report.assets.non_current.map((l) => ({
-        Category: `    ${BS_GROUP_LABELS[l.groupKey] ?? l.groupKey}: ${l.name}`,
-        Amount: l.amount,
-      })),
-      { Category: 'TOTAL ASSETS', Amount: report.totals.assets },
-      { Category: '', Amount: '' },
-      { Category: 'LIABILITIES', Amount: '' },
-      ...report.liabilities.current.map((l) => ({
-        Category: `  Current: ${BS_GROUP_LABELS[l.groupKey] ?? l.groupKey}: ${l.name}`,
-        Amount: l.amount,
-      })),
-      ...report.liabilities.non_current.map((l) => ({
-        Category: `  Non-current: ${BS_GROUP_LABELS[l.groupKey] ?? l.groupKey}: ${l.name}`,
-        Amount: l.amount,
-      })),
-      { Category: 'TOTAL LIABILITIES', Amount: report.totals.liabilities },
-      { Category: '', Amount: '' },
-      { Category: 'EQUITY', Amount: '' },
-      ...report.equity.items.map((l) => ({ Category: `  ${l.name}`, Amount: l.amount })),
-      { Category: 'TOTAL EQUITY', Amount: report.totals.equity },
-    ];
-    if (report.supplemental.marketInventoryMemo > 0.01) {
-      rows.push(
-        { Category: '', Amount: '' },
-        {
-          Category: 'SUPPLEMENTAL (non-GAAP): Unsold units list-price memo',
-          Amount: report.supplemental.marketInventoryMemo,
-        }
-      );
+    if (previousReport && previousAsOfDate) {
+      exportComparativeBalanceSheetExcel(report, previousReport, previousAsOfDate);
+    } else {
+      exportBalanceSheetExcel(report);
     }
-    exportJsonToExcel(rows, 'balance-sheet.xlsx', 'Balance Sheet');
+  };
+
+  const handleExportPdf = () => {
+    if (!report) return;
+    exportBalanceSheetPdf(report, asOfDate);
+  };
+
+  const renderLineRow = (line: BalanceSheetLine) => {
+    if (hideZeros && Math.abs(line.amount) < 0.01) return null;
+    const prev = previousByLineKey.get(line.id + line.name);
+    const showCompare = previousReport && prev !== undefined;
+    return (
+      <div
+        key={line.id + line.name}
+        className={`flex ${showCompare ? 'grid grid-cols-[1fr_auto_auto_auto] gap-2' : 'justify-between'} py-0.5 px-1.5 hover:bg-app-toolbar/50 rounded cursor-pointer items-center`}
+        onClick={() => {
+          if (line.accountId) setLedger({ id: line.accountId, name: line.name });
+        }}
+        title={line.accountId ? 'Click for ledger drill-down' : undefined}
+      >
+        <span className="text-app-text pr-2 truncate">{line.name}</span>
+        <MoneyCell amount={line.amount} hideZero={false} />
+        {showCompare && (
+          <>
+            <MoneyCell amount={prev ?? 0} hideZero={false} />
+            <MoneyCell amount={line.amount - (prev ?? 0)} hideZero={false} />
+          </>
+        )}
+      </div>
+    );
   };
 
   const renderSection = (
@@ -197,6 +285,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     const color =
       side === 'asset' ? 'text-ds-success' : side === 'liability' ? 'text-ds-danger' : 'text-primary';
     const total = lines.reduce((s, l) => s + l.amount, 0);
+    const showCompare = !!previousReport;
 
     return (
       <div className="mb-2 rounded-lg border border-app-border overflow-hidden bg-app-card shadow-ds-card">
@@ -210,6 +299,14 @@ const ProjectBalanceSheetReport: React.FC = () => {
         </button>
         {openGroups[sectionKey] !== false && (
           <div className="p-2 space-y-1.5 text-xs leading-snug">
+            {showCompare && (
+              <div className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-1.5 pb-1 text-[10px] font-semibold text-app-muted uppercase">
+                <span>Account</span>
+                <span className="text-right">Current</span>
+                <span className="text-right">Previous</span>
+                <span className="text-right">Variance</span>
+              </div>
+            )}
             {keys.map((gk) => {
               const groupLines = byKey.get(gk) ?? [];
               const subtotal = groupLines.reduce((s, l) => s + l.amount, 0);
@@ -219,22 +316,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                   <div className="px-1.5 py-0.5 bg-app-toolbar/80 text-[11px] font-semibold text-app-muted leading-tight">
                     {BS_GROUP_LABELS[gk] ?? gk}
                   </div>
-                  {groupLines.map((line) => {
-                    if (hideZeros && Math.abs(line.amount) < 0.01) return null;
-                    return (
-                      <div
-                        key={line.id}
-                        className="flex justify-between py-0.5 px-1.5 hover:bg-app-toolbar/50 rounded cursor-pointer"
-                        onClick={() => {
-                          if (line.accountId) setLedger({ id: line.accountId, name: line.name });
-                        }}
-                        title={line.accountId ? 'Click for ledger' : undefined}
-                      >
-                        <span className="text-app-text pr-2">{line.name}</span>
-                        <MoneyCell amount={line.amount} hideZero={false} />
-                      </div>
-                    );
-                  })}
+                  {groupLines.map((line) => renderLineRow(line))}
                 </div>
               );
             })}
@@ -242,14 +324,48 @@ const ProjectBalanceSheetReport: React.FC = () => {
         )}
         <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border-t border-app-border font-bold text-sm text-app-text">
           <span>Subtotal {title}</span>
-          <span className="tabular-nums">
-            {CURRENCY}{' '}
-            {total.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}
-          </span>
+          <span className="tabular-nums font-mono">{formatMoney(total, false)}</span>
         </div>
       </div>
     );
   };
+
+  const summaryCards = report ? (
+    <div className="max-w-7xl mx-auto grid grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
+      <div className="rounded-lg border border-ds-success/30 bg-app-card p-2.5">
+        <p className="text-[10px] uppercase font-bold text-app-muted tracking-wide">Total Assets</p>
+        <p className="text-base font-bold font-mono text-ds-success tabular-nums mt-0.5">
+          {formatMoney(report.totals.assets, false)}
+        </p>
+      </div>
+      <div className="rounded-lg border border-ds-danger/25 bg-app-card p-2.5">
+        <p className="text-[10px] uppercase font-bold text-app-muted tracking-wide">Total Liabilities</p>
+        <p className="text-base font-bold font-mono text-ds-danger tabular-nums mt-0.5">
+          {formatMoney(report.totals.liabilities, false)}
+        </p>
+      </div>
+      <div className="rounded-lg border border-primary/25 bg-app-card p-2.5">
+        <p className="text-[10px] uppercase font-bold text-app-muted tracking-wide">Total Equity</p>
+        <p className="text-base font-bold font-mono text-primary tabular-nums mt-0.5">
+          {formatMoney(report.totals.equity, false)}
+        </p>
+      </div>
+      <div
+        className={`rounded-lg border p-2.5 bg-app-card ${
+          report.isBalanced ? 'border-ds-success/40' : 'border-ds-danger/40'
+        }`}
+      >
+        <p className="text-[10px] uppercase font-bold text-app-muted tracking-wide">Balance Status</p>
+        {report.isBalanced ? (
+          <p className="text-sm font-bold text-ds-success mt-1">✓ Balanced</p>
+        ) : (
+          <p className="text-sm font-bold text-ds-danger mt-1">
+            ⚠ Out of Balance — {formatMoney(report.totals.difference, false)}
+          </p>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   return (
     <div className="flex flex-col h-full space-y-2 bg-background">
@@ -259,7 +375,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
           startDate={asOfDate}
           endDate={asOfDate}
           onDateChange={(start) => handleDateChange(start)}
-          onExport={handleExport}
+          onExport={handleExportExcel}
           onPrint={() => triggerPrint('REPORT', { elementId: 'printable-area' })}
           hideGroup={true}
           showDateFilterPills={true}
@@ -269,15 +385,17 @@ const ProjectBalanceSheetReport: React.FC = () => {
           singleDateMode={true}
           compact
         >
-          <FinancialEntityFilterCombo
-            className="w-44 sm:w-52 flex-shrink-0"
-            selectedId={entityFilterId}
-            onSelect={setEntityFilterId}
+          <ComboBox
+            items={projectItems}
+            selectedId={selectedProjectId}
+            onSelect={(item) => setSelectedProjectId(item?.id ?? FINANCIAL_ENTITY_FILTER_ALL)}
+            placeholder="Project"
+            className="w-40 sm:w-52 flex-shrink-0"
           />
         </ReportToolbar>
       </div>
 
-      <div className="flex flex-wrap gap-1.5 px-1 text-xs leading-none">
+      <div className="flex flex-wrap gap-3 px-1 text-xs leading-none items-center">
         <label className="flex items-center gap-2 cursor-pointer text-app-muted">
           <input
             type="checkbox"
@@ -287,8 +405,40 @@ const ProjectBalanceSheetReport: React.FC = () => {
           />
           Hide zero lines
         </label>
+        <label className="flex items-center gap-2 cursor-pointer text-app-muted">
+          <input
+            type="checkbox"
+            checked={compareMode !== 'none'}
+            onChange={(e) => setCompareMode(e.target.checked ? 'prior_year' : 'none')}
+            className="rounded border-app-border"
+          />
+          Compare with previous period
+        </label>
+        {compareMode !== 'none' && (
+          <select
+            value={compareMode}
+            onChange={(e) => setCompareMode(e.target.value as BalanceSheetCompareMode)}
+            className="rounded border border-app-border bg-app-input text-app-text text-xs py-1 px-2"
+            aria-label="Comparison period"
+          >
+            <option value="prior_year">Prior fiscal year</option>
+            <option value="prior_month">Prior month</option>
+          </select>
+        )}
+        <label className="flex items-center gap-2 cursor-pointer text-app-muted">
+          <input
+            type="checkbox"
+            checked={includeProjectAnalysis}
+            onChange={(e) => setIncludeProjectAnalysis(e.target.checked)}
+            className="rounded border-app-border"
+          />
+          Include project analysis
+        </label>
+        <Button type="button" variant="secondary" className="text-xs py-1" onClick={handleExportPdf}>
+          Export PDF
+        </Button>
         <Button type="button" variant="secondary" className="text-xs py-1" onClick={() => setDebugOpen(true)}>
-          Discrepancy / debug
+          Validation / debug
         </Button>
       </div>
 
@@ -296,24 +446,43 @@ const ProjectBalanceSheetReport: React.FC = () => {
         <Card className="min-h-full p-2 sm:p-3">
           <ReportHeader />
           <div className="text-center mb-2">
-            <h3 className="text-lg font-bold text-app-text uppercase tracking-wide leading-tight">
-              Statement of Financial Position
-            </h3>
-            <p className="text-xs text-app-muted font-medium mt-0.5 leading-tight">
-              {entityLabel}
+            <h3 className="text-lg font-bold text-app-text uppercase tracking-wide leading-tight">Balance Sheet</h3>
+            <p className="text-[11px] text-app-muted/90 leading-tight">
+              {projectLabel} · As of {formatDate(asOfDate)}
             </p>
-            <p className="text-[11px] text-app-muted/90 leading-tight">As of {formatDate(asOfDate)}</p>
-            {!localOnly && loading && (
-              <p className="text-xs text-app-muted mt-1">Loading from server…</p>
+            {previousAsOfDate && (
+              <p className="text-[10px] text-app-muted leading-tight">
+                Compared with {formatDate(previousAsOfDate)}
+              </p>
             )}
+            {!localOnly && loading && <p className="text-xs text-app-muted mt-1">Loading from server…</p>}
           </div>
 
           {!localOnly && !report ? (
             <p className="text-center text-sm text-app-muted py-8">
-              {loading ? 'Loading balance sheet for this organization…' : 'Could not load balance sheet from the server.'}
+              {loading ? 'Loading balance sheet…' : 'Could not load balance sheet from the server.'}
             </p>
           ) : report ? (
             <>
+              {summaryCards}
+
+              <div className="max-w-7xl mx-auto mb-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                <div className="rounded-md border border-app-border bg-app-toolbar/40 px-2 py-1.5">
+                  <span className="text-app-muted">Retained Earnings (prior fiscal years): </span>
+                  <span className="font-mono font-semibold">{formatMoney(report.retainedEarningsPriorYears, false)}</span>
+                </div>
+                <div className="rounded-md border border-app-border bg-app-toolbar/40 px-2 py-1.5">
+                  <span className="text-app-muted">Current Year Earnings: </span>
+                  <span className="font-mono font-semibold">{formatMoney(report.currentYearEarningsFromPL, false)}</span>
+                </div>
+              </div>
+
+              {!report.isBalanced && (
+                <div className="max-w-7xl mx-auto mb-2 p-2 rounded-lg border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-sm text-ds-danger">
+                  ⚠ Balance Sheet is out of balance. Difference: {formatMoney(report.totals.difference, false)}
+                </div>
+              )}
+
               <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4">
                 <div>
                   <h4 className="text-sm font-bold text-ds-success mb-1">Assets</h4>
@@ -321,9 +490,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
                   {renderSection('Non-current assets', report.assets.non_current, 'asset', 'assets-nc')}
                   <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-ds-success/35 rounded-lg font-bold text-sm text-app-text">
                     <span className="text-ds-success">Total assets</span>
-                    <span className="tabular-nums font-mono">
-                      {formatMoney(report.totals.assets, false)}
-                    </span>
+                    <span className="tabular-nums font-mono">{formatMoney(report.totals.assets, false)}</span>
                   </div>
                 </div>
 
@@ -337,13 +504,41 @@ const ProjectBalanceSheetReport: React.FC = () => {
                   </div>
 
                   <h4 className="text-sm font-bold text-primary mb-1">Equity</h4>
-                  {renderSection("Shareholders' equity", report.equity.items, 'equity', 'eq')}
+                  {renderSection("Owner's equity", report.equity.items, 'equity', 'eq')}
                   <div className="flex justify-between py-1.5 px-2 bg-app-toolbar border border-primary/25 rounded-lg font-bold text-sm">
                     <span className="text-primary">Total equity</span>
                     <span className="tabular-nums font-mono">{formatMoney(report.totals.equity, false)}</span>
                   </div>
                 </div>
               </div>
+
+              {includeProjectAnalysis && projectAnalysisRows.length > 0 && (
+                <div className="max-w-7xl mx-auto mt-3 p-2 rounded-lg border border-app-border bg-app-toolbar/30">
+                  <p className="text-xs font-bold text-app-text mb-2 uppercase tracking-wide">
+                    Supplementary project analysis (does not affect balance sheet totals)
+                  </p>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-app-muted border-b border-app-border">
+                        <th className="text-left py-1">Project</th>
+                        <th className="text-right py-1">Assets</th>
+                        <th className="text-right py-1">Liabilities</th>
+                        <th className="text-right py-1">Net position</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {projectAnalysisRows.map((row) => (
+                        <tr key={row.projectId} className="border-b border-app-border/40">
+                          <td className="py-1 text-app-text">{row.projectName}</td>
+                          <td className="py-1 text-right font-mono">{formatMoney(row.assets, false)}</td>
+                          <td className="py-1 text-right font-mono">{formatMoney(row.liabilities, false)}</td>
+                          <td className="py-1 text-right font-mono">{formatMoney(row.netPosition, false)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {report.supplemental.marketInventoryMemo > 0.01 && (
                 <div className="max-w-7xl mx-auto mt-2 p-2 rounded-lg border border-app-border bg-app-toolbar/50 text-xs text-app-muted leading-snug">
@@ -354,40 +549,22 @@ const ProjectBalanceSheetReport: React.FC = () => {
 
               <div className="max-w-7xl mx-auto mt-2 border-t border-app-border pt-2">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-2 bg-app-toolbar p-2 rounded-lg border border-app-border shadow-ds-card">
-                  <div className="text-center md:text-left mb-0">
+                  <div className="text-center md:text-left">
                     <p className="text-[10px] text-app-muted font-bold uppercase tracking-wide mb-0.5">Accounting equation</p>
-                    <p className="text-xs font-medium text-app-text leading-tight">Assets = Liabilities + Equity</p>
+                    <p className="text-xs font-medium text-app-text">Assets = Liabilities + Equity</p>
                   </div>
-
                   <div className="flex items-center gap-2 sm:gap-3 text-sm sm:text-base font-bold font-mono tabular-nums flex-wrap justify-center">
-                    <div className="text-ds-success">
-                      <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
-                        Assets
-                      </span>
-                      {formatMoney(report.totals.assets, false)}
-                    </div>
+                    <div className="text-ds-success">{formatMoney(report.totals.assets, false)}</div>
                     <div className="text-app-muted text-sm">=</div>
-                    <div className="text-app-text">
-                      <span className="text-[10px] text-app-muted block font-sans font-normal text-center leading-none">
-                        Liab + Equity
-                      </span>
-                      {formatMoney(report.totals.liabilities + report.totals.equity, false)}
-                    </div>
+                    <div className="text-app-text">{formatMoney(report.totals.liabilities + report.totals.equity, false)}</div>
                   </div>
-
                   {report.isBalanced ? (
                     <div className="flex items-center gap-1.5 border border-ds-success/40 bg-[color:var(--badge-paid-bg)] text-ds-success px-2 py-0.5 rounded-full text-[11px] font-bold">
                       <span>✓</span> Balanced
                     </div>
                   ) : (
-                    <div className="flex flex-col items-end gap-0.5">
-                      <div className="flex items-center gap-1.5 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-2 py-0.5 rounded-full text-[11px] font-bold">
-                        <span>⚠</span> Discrepancy: {formatMoney(report.discrepancy, false)}
-                      </div>
-                      <span className="text-[9px] text-app-muted max-w-xs text-right leading-tight">
-                        Review validation messages and debug detail. Common causes: unreconciled Internal Clearing, or data
-                        entry timing.
-                      </span>
+                    <div className="flex items-center gap-1.5 border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] text-[color:var(--badge-unpaid-text)] px-2 py-0.5 rounded-full text-[11px] font-bold">
+                      <span>⚠</span> Out of Balance
                     </div>
                   )}
                 </div>
@@ -409,56 +586,32 @@ const ProjectBalanceSheetReport: React.FC = () => {
         />
       )}
 
-      <Modal
-        isOpen={debugOpen && !!report}
-        onClose={() => setDebugOpen(false)}
-        title="Balance sheet validation & debug"
-        size="xl"
-      >
+      <Modal isOpen={debugOpen && !!report} onClose={() => setDebugOpen(false)} title="Balance sheet validation & debug" size="xl">
         {report && (
-        <div className="space-y-4 max-h-[70vh] overflow-y-auto text-sm">
-          <div>
-            <p className="font-semibold text-app-text mb-2">Validation</p>
-            {report.validation.length === 0 ? (
-              <p className="text-app-muted">No issues reported.</p>
-            ) : (
-              <ul className="list-disc pl-5 space-y-1 text-app-text">
-                {report.validation.map((v, i) => (
-                  <li key={i}>
-                    <span className={v.severity === 'error' ? 'text-ds-danger' : 'text-app-muted'}>
-                      [{v.code}] {v.message}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto text-sm">
+            <div>
+              <p className="font-semibold text-app-text mb-2">Validation</p>
+              {report.validation.length === 0 ? (
+                <p className="text-app-muted">No issues reported.</p>
+              ) : (
+                <ul className="list-disc pl-5 space-y-1 text-app-text">
+                  {report.validation.map((v, i) => (
+                    <li key={i}>
+                      <span className={v.severity === 'error' ? 'text-ds-danger' : 'text-app-muted'}>
+                        [{v.code}] {v.message}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div className="text-app-muted text-xs space-y-1">
+              <p>Cumulative P&amp;L (inception → as-of): {report.retainedEarningsFromPL.toFixed(2)}</p>
+              <p>Retained earnings (prior fiscal years): {report.retainedEarningsPriorYears.toFixed(2)}</p>
+              <p>Current year earnings: {report.currentYearEarningsFromPL.toFixed(2)}</p>
+              <p>Equation difference: {report.totals.difference.toFixed(2)}</p>
+            </div>
           </div>
-          <div>
-            <p className="font-semibold text-app-text mb-2">Line items (breakdown)</p>
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-app-border text-left text-app-muted">
-                  <th className="py-1 pr-2">Name</th>
-                  <th className="py-1 pr-2">Group</th>
-                  <th className="py-1 text-right">Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.debugLines.map((line) => (
-                  <tr key={line.id + line.name} className="border-b border-app-border/50">
-                    <td className="py-1 pr-2 text-app-text">{line.name}</td>
-                    <td className="py-1 pr-2 text-app-muted">{line.groupKey}</td>
-                    <td className="py-1 text-right font-mono">{line.amount.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="text-app-muted text-xs">
-            Retained earnings (cumulative P&amp;L): {report.retainedEarningsFromPL.toFixed(2)} (same rules as Project
-            P&amp;L through this date).
-          </div>
-        </div>
         )}
       </Modal>
     </div>

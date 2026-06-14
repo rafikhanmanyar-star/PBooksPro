@@ -13,6 +13,7 @@ import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { formatApiErrorMessage } from '../../services/api/client';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
+import AmountInput from '../common/AmountInput';
 
 const pevApi = new ProjectExpenseVoucherApiRepository();
 
@@ -278,10 +279,7 @@ const ProjectExpenseVouchersPage: React.FC<ProjectExpenseVouchersPageProps> = ({
                     />
                   </td>
                   <td className="py-2 pr-2 align-middle">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
+                    <AmountInput
                       className={`${cellInput} text-right`}
                       placeholder="0"
                       value={inline.amount}

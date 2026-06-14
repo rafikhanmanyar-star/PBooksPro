@@ -46,6 +46,7 @@ import {
 } from './types';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
+import AmountInput from '../common/AmountInput';
 import { ActionModal } from './modals/ActionModals';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
@@ -1176,19 +1177,17 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-app-muted uppercase mb-2">Basic Salary (Monthly)</label>
-                    <div className="relative">
-                      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-app-muted font-bold text-[10px]">PKR</div>
-                      <input 
-                        type="number" 
-                        value={editFormData.salary?.basic || 0}
-                        onChange={e => setEditFormData({
-                          ...editFormData, 
-                          salary: { ...editFormData.salary!, basic: parseFloat(e.target.value) || 0 }
-                        })}
-                        className="w-full pl-12 pr-4 py-3 rounded-xl border border-app-border focus:ring-4 ring-primary/20 outline-none font-black text-app-text"
-                        aria-label="Basic Salary (Monthly)"
-                      />
-                    </div>
+                    <AmountInput
+                      showCurrency
+                      currency="PKR"
+                      value={editFormData.salary?.basic || 0}
+                      onChange={e => setEditFormData({
+                        ...editFormData,
+                        salary: { ...editFormData.salary!, basic: parseFloat(e.target.value) || 0 }
+                      })}
+                      className="w-full py-3 rounded-xl border border-app-border focus:ring-4 ring-primary/20 outline-none font-black text-app-text"
+                      aria-label="Basic Salary (Monthly)"
+                    />
                   </div>
                 </div>
 

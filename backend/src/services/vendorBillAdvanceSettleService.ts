@@ -18,6 +18,11 @@ import {
   rowAdvanceToApi,
 } from './contractorBillingService.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { BillRepository } from '../modules/vendors/repositories/BillRepository.js';
 import { ContractorAdvanceRepository } from '../modules/vendors/repositories/ContractorAdvanceRepository.js';
 import { VendorBillAdvanceClearingRepository } from '../modules/vendors/repositories/VendorBillAdvanceClearingRepository.js';
@@ -232,26 +237,25 @@ export async function settleVendorBillsBatchWithAdvances(
   for (const p of prepared) {
     const { bill } = p;
     const billId = bill.id;
-    const projectId =
-      bill.project_id != null && String(bill.project_id).trim() !== ''
-        ? String(bill.project_id).trim()
-        : null;
+    const dims = resolveJournalDimensions(bill);
 
     const linesJe: JournalLineInput[] = [
-      {
-        accountId: p.line.expenseAccountId,
-        debitAmount: p.settleTotal,
-        creditAmount: 0,
-        projectId,
-      },
+      journalLineWithDimensions(
+        { accountId: p.line.expenseAccountId, debitAmount: p.settleTotal, creditAmount: 0 },
+        dims
+      ),
     ];
     const advGl = advanceGlAggregate;
     if (p.adjSum > MONEY_EPS) {
       if (!advGl) throw new Error(`Bill ${billId}: advance allocations require a valid advance GL account.`);
-      linesJe.push({ accountId: advGl, debitAmount: 0, creditAmount: p.adjSum, projectId });
+      linesJe.push(
+        journalLineWithDimensions({ accountId: advGl, debitAmount: 0, creditAmount: p.adjSum }, dims)
+      );
     }
     if (p.cash > MONEY_EPS) {
-      linesJe.push({ accountId: payAcct, debitAmount: 0, creditAmount: p.cash, projectId });
+      linesJe.push(
+        journalLineWithDimensions({ accountId: payAcct, debitAmount: 0, creditAmount: p.cash }, dims)
+      );
     }
 
     const journalDescription =
@@ -268,7 +272,7 @@ export async function settleVendorBillsBatchWithAdvances(
       sourceModule: 'vendor_bill_advance_clearing',
       sourceId: billId,
       createdBy: actorUserId,
-      projectId,
+      ...entryDimensionsFrom(dims),
       lines: linesJe,
     });
     journalEntries.push({ billId, journalEntryId });
@@ -308,7 +312,8 @@ export async function settleVendorBillsBatchWithAdvances(
           billId,
           contactId: bill.contact_id ?? undefined,
           vendorId: bill.vendor_id ?? undefined,
-          projectId: projectId ?? undefined,
+          projectId: dims.projectId ?? undefined,
+          buildingId: dims.buildingId ?? undefined,
           categoryId: resolveBillRowCategoryIdForExpenseMirror(bill),
           batchId: input.batchId ?? undefined,
         },

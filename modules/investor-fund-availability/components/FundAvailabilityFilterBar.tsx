@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import Input from '../../../components/ui/Input';
+import AmountInput from '../../../components/common/AmountInput';
 import Button from '../../../components/ui/Button';
 import ComboBox from '../../../components/ui/ComboBox';
 import type { AppState } from '../../../types';
@@ -158,9 +159,8 @@ export const FundAvailabilityFilterBar: React.FC<FundAvailabilityFilterBarProps>
                     </div>
                 ) : (
                     <div className="w-36">
-                        <Input
+                        <AmountInput
                             label="Reserve amount"
-                            type="number"
                             value={String(reservePolicy.amount)}
                             onChange={(e) => setReservePolicy({ mode: 'fixed', amount: Math.max(0, Number(e.target.value) || 0) })}
                         />

@@ -1,6 +1,7 @@
 import { useAccounts, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useMemo, useState, useCallback } from 'react';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import Button from '../ui/Button';
 import type { Account } from '../../types';
@@ -179,11 +180,9 @@ const ManualJournalEntrySection: React.FC = () => {
                     </select>
                   </td>
                   <td className="px-3 py-2 text-right">
-                    <input
-                      type="number"
+                    <AmountInput
+                      allowNegative
                       className="w-full max-w-[140px] ml-auto border border-app-border rounded-md px-2 py-1.5 tabular-nums text-right"
-                      min={0}
-                      step="0.01"
                       value={line.amountStr}
                       onChange={(e) => updateLine(line.key, { amountStr: e.target.value })}
                       placeholder="0.00"

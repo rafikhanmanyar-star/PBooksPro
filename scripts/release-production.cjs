@@ -1,6 +1,7 @@
 /**
- * Release production: merge origin/staging into main, push main, bump version,
- * build production installers, publish GitHub full release (client auto-update).
+ * Release production: merge origin/staging into main (local), bump version,
+ * build production installers, publish GitHub full release, then push main + tag once
+ * (avoids double Render/Cloudflare deploys from two pushes to main).
  *
  * Usage: npm run release:production
  */
@@ -49,8 +50,9 @@ if (!tryRun('git merge origin/staging --no-ff -m "Release: merge staging into ma
   process.exit(1);
 }
 
-console.log('[release:production] Pushing merged main to origin…');
-run('git push origin main');
+console.log(
+  '[release:production] Merge complete locally — main will be pushed once after a successful build (see push-release-source-to-github.cjs).'
+);
 
 console.log('[release:production] Building, bumping version, publishing GitHub full release (latest channel)…');
 run('npm run deploy:production');

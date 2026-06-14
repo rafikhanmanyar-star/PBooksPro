@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
 import { Transaction, TransactionType, LoanSubtype, EquityLedgerSubtype, ContactType, Account, InvoiceStatus, AccountType, ContractStatus } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Select from '../ui/Select';
@@ -622,12 +623,10 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     />
                 )}
 
-                <Input
+                <AmountInput
                     id="transaction-amount"
                     name="transaction-amount"
                     label="Amount"
-                    type="number"
-                    step="0.01"
                     value={amount}
                     onChange={e => setAmount(e.target.value)}
                     required

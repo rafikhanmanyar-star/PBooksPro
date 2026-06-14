@@ -2,7 +2,7 @@
 import { useDispatchOnly, useBudgetDashboardState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { Category, TransactionType, Budget } from '../../types';
-import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Select from '../ui/Select';
 import { CURRENCY, ICONS } from '../../constants';
 
@@ -74,19 +74,17 @@ const BudgetRow: React.FC<{
             <div className="sm:col-span-3 w-full">
                 <label className="block text-[10px] font-semibold text-app-muted mb-0.5 sm:hidden">Budget Goal</label>
                 <div className="relative group/input">
-                    <div className="absolute inset-y-0 left-0 pl-2.5 flex items-center pointer-events-none text-app-muted font-medium text-xs">
-                        {CURRENCY}
-                    </div>
-                    <input
-                        type="text"
-                        inputMode="decimal"
-                        className={`ds-input-field block w-full pl-8 pr-3 py-1.5 text-sm font-medium rounded-md transition-all duration-ds text-right shadow-ds-card
-                            ${!projectId ? 'cursor-not-allowed bg-app-toolbar text-app-muted opacity-80' : 'text-app-text group-hover:border-primary/40'}`}
+                    <AmountInput
                         value={amount}
                         onChange={(e) => setAmount(e.target.value)}
                         onBlur={handleBlur}
                         placeholder="0.00"
                         disabled={!projectId}
+                        showCurrency
+                        currency={CURRENCY}
+                        className={`ds-input-field block w-full py-1.5 text-sm font-medium rounded-md transition-all duration-ds text-right shadow-ds-card
+                            ${!projectId ? 'cursor-not-allowed bg-app-toolbar text-app-muted opacity-80' : 'text-app-text group-hover:border-primary/40'}`}
+                        aria-label={`Budget goal for ${category.name}`}
                     />
                 </div>
             </div>

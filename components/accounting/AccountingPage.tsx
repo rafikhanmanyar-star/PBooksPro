@@ -78,12 +78,22 @@ const AccountingPage: React.FC = () => {
   const visibleReports = [...visibleFinancialReports, ...visiblePortfolioReports];
 
   useEffect(() => {
+    if ((activeView as string) === 'Project Financial Position') {
+      setActiveView('Balance Sheet');
+    }
+  }, [activeView, setActiveView]);
+
+  useEffect(() => {
     if (initialTabs && initialTabs.length > 0) {
       const [mainTab, subTab] = initialTabs;
-      if (mainTab === 'Reports' && subTab && visibleReports.includes(subTab as AccountingView)) {
-        setActiveView(subTab as AccountingView);
-      } else if (visibleReports.includes(mainTab as AccountingView)) {
-        setActiveView(mainTab as AccountingView);
+      const normalizeTab = (t: string) =>
+        t === 'Project Financial Position' ? 'Balance Sheet' : t;
+      const main = normalizeTab(mainTab);
+      const sub = subTab ? normalizeTab(subTab) : subTab;
+      if (mainTab === 'Reports' && sub && visibleReports.includes(sub as AccountingView)) {
+        setActiveView(sub as AccountingView);
+      } else if (visibleReports.includes(main as AccountingView)) {
+        setActiveView(main as AccountingView);
       }
       dispatch({ type: 'CLEAR_INITIAL_TABS' });
       return;
@@ -203,7 +213,15 @@ const AccountingPage: React.FC = () => {
                 view={name}
                 label={name}
                 collapsed={collapsed}
-                dataTour={name === 'Trial Balance' ? 'report-trial-balance' : name === 'Profit & Loss' ? 'report-profit-loss' : undefined}
+                dataTour={
+                  name === 'Trial Balance'
+                    ? 'report-trial-balance'
+                    : name === 'Profit & Loss'
+                      ? 'report-profit-loss'
+                      : name === 'Balance Sheet'
+                        ? 'report-balance-sheet'
+                        : undefined
+                }
               />
             ))}
           </>

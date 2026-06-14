@@ -4,6 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Vendor, Transaction, TransactionType, InvoiceStatus, AccountType, Bill } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
@@ -1117,11 +1118,10 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                                 {a.advanceDate ? formatDate(a.advanceDate) : '—'} — prepaid remaining{' '}
                                                 <span className="font-mono">{CURRENCY} {a.remainingAmount.toLocaleString()}</span>
                                             </span>
-                                            <Input
+                                            <AmountInput
                                                 id={`advance-amt-${a.id}`}
                                                 name={`advance-amt-${a.id}`}
                                                 aria-label={`Amount from prepaid advance dated ${a.advanceDate ? formatDate(a.advanceDate) : 'unknown'}`}
-                                                type="number"
                                                 compact
                                                 className="!max-w-[140px]"
                                                 value={manualAdvanceAmounts[a.id] ?? ''}
@@ -1171,7 +1171,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                             placeholder="Select Account"
                             required
                         />
-                        <Input
+                        <AmountInput
                             id="payment-amount"
                             name="payment-amount"
                             label={
@@ -1181,7 +1181,6 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                                         : `Cash payable from bank (FIFO remainder — ${CURRENCY} ${cashToPayFromBank.toLocaleString()} planned)`
                                     : 'Total payment amount'
                             }
-                            type="number"
                             value={totalAmount}
                             onChange={(e) => setTotalAmount(e.target.value)}
                             disabled={!cashFieldEditable}

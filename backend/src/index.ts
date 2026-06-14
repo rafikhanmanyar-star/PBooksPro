@@ -36,6 +36,7 @@ import { startMonitoringScheduler } from './services/monitoring/monitoringSchedu
 import { initObservabilityProviders } from './services/monitoring/observabilityProvider.js';
 import { adminPortalRouter } from './routes/adminPortalRoutes.js';
 import { mountVersionedApi } from './routes/mountVersionedApi.js';
+import { whatsappWebhookRouter } from './routes/whatsappWebhookRoutes.js';
 import { startDashboardSnapshotScheduler } from './modules/dashboard/services/dashboardSnapshotScheduler.js';
 import { startReportScheduleScheduler } from './services/reportScheduleScheduler.js';
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
@@ -66,6 +67,7 @@ app.use(
 );
 
 app.use('/api/webhooks/paddle', express.raw({ type: 'application/json' }), paddleWebhookRouter);
+app.use('/api/whatsapp/webhook', express.json({ limit: '2mb' }), whatsappWebhookRouter);
 
 app.use(express.json({ limit: '2mb' }));
 app.use(requestLoggingMiddleware);

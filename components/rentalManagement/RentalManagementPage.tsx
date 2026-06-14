@@ -261,7 +261,9 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         <div className="relative h-full w-full min-h-0">
             {normalizedView === 'Rental setup' && <RentalSettingsPage embeddedInRentalModule />}
             {normalizedView === 'Analytics' && <RentalAnalyticsPage />}
-            {normalizedView === 'Collections Analytics' && <CollectionsAnalyticsPage />}
+            {normalizedView === 'Collections Analytics' && (
+                <CollectionsAnalyticsPage defaultScope="rental" showScopeFilter={false} />
+            )}
             {normalizedView === 'Expense Analytics' && (
                 <ExpenseAnalyticsPage defaultScope="rental" showScopeFilter={false} />
             )}

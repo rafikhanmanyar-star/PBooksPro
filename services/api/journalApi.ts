@@ -87,6 +87,9 @@ export const journalApi = {
     from: string;
     to: string;
     basis?: 'period' | 'cumulative';
+    projectId?: string;
+    buildingId?: string;
+    costCenterId?: string;
   }): Promise<{
     from: string;
     to: string;
@@ -112,11 +115,26 @@ export const journalApi = {
       gross_credit: number;
     };
     is_balanced: boolean;
+    difference: number;
+    diagnostics?: {
+      missing_project_ids: number;
+      missing_building_ids: number;
+      missing_cost_centers: number;
+      unbalanced_projects: Array<{
+        project_id: string;
+        gross_debit: number;
+        gross_credit: number;
+        difference: number;
+      }>;
+    };
   }> {
     const q = new URLSearchParams();
     q.set('from', options.from);
     q.set('to', options.to);
     if (options.basis) q.set('basis', options.basis);
+    if (options.projectId) q.set('projectId', options.projectId);
+    if (options.buildingId) q.set('buildingId', options.buildingId);
+    if (options.costCenterId) q.set('costCenterId', options.costCenterId);
     return apiClient.get(`/reports/trial-balance?${q.toString()}`);
   },
 

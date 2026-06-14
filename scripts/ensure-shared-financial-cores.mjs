@@ -23,13 +23,20 @@ function syncFile(relSrc, relDest, transform = (s) => s) {
 syncFile(
   'shared/financial-core/trialBalanceCore.ts',
   'backend/src/financial/trialBalanceCore.ts',
-  (s) => s.replace("from './validation'", "from './validation.js'")
+  (s) =>
+    s
+      .replace("from './validation'", "from './validation.js'")
+      .replace("from './dimensionScope'", "from './dimensionScope.js'")
 );
 
 syncFile(
   'shared/financial-core/journalLedgerCore.ts',
   'backend/src/financial/journalLedgerCore.ts',
-  (s) => s.replace("from './validation'", "from './validation.js'").replace("from './trialBalanceCore'", "from './trialBalanceCore.js'")
+  (s) =>
+    s
+      .replace("from './validation'", "from './validation.js'")
+      .replace("from './trialBalanceCore'", "from './trialBalanceCore.js'")
+      .replace("from './dimensionScope'", "from './dimensionScope.js'")
 );
 
 syncFile(
@@ -44,6 +51,45 @@ syncFile(
 syncFile(
   'shared/financial-core/types.ts',
   'backend/src/financial/types.ts'
+);
+
+syncFile(
+  'shared/financial-core/journalDimensions.ts',
+  'backend/src/financial/journalDimensions.ts',
+  (s) => s.replace("from './types'", "from './types.js'")
+);
+
+syncFile(
+  'shared/financial-core/dimensionScope.ts',
+  'backend/src/financial/dimensionScope.ts',
+  (s) => s.replace("from './journalDimensions'", "from './journalDimensions.js'")
+);
+
+syncFile(
+  'shared/financial-core/cashFlowJournalCore.ts',
+  'backend/src/financial/cashFlowJournalCore.ts',
+  (s) => s.replace("from './validation'", "from './validation.js'")
+);
+
+syncFile(
+  'shared/financial-core/journalLedgerCore.ts',
+  'services/financialEngine/journalLedgerCore.ts'
+);
+
+syncFile(
+  'shared/financial-core/journalDimensions.ts',
+  'services/financialEngine/journalDimensions.ts'
+);
+
+syncFile(
+  'shared/financial-core/dimensionScope.ts',
+  'services/financialEngine/dimensionScope.ts'
+);
+
+syncFile(
+  'shared/financial-core/trialBalanceCore.ts',
+  'services/financialEngine/trialBalanceCore.ts',
+  (s) => s.replace("from './validation'", "from './validation'").replace("from './dimensionScope'", "from './dimensionScope'")
 );
 
 // payrollLedgerCore: shared → backend services (+ ledger type constants used by DB layer)

@@ -9,6 +9,7 @@ import { storageService } from '../services/storageService';
 import { useAuth } from '../../../context/AuthContext';
 import { toLocalDateString } from '../../../utils/dateUtils';
 import DatePicker from '../../ui/DatePicker';
+import AmountInput from '../../common/AmountInput';
 
 interface ActionModalProps {
   isOpen: boolean;
@@ -120,12 +121,12 @@ export const ActionModal: React.FC<ActionModalProps> = ({ isOpen, onClose, emplo
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-400 uppercase mb-2">New Basic Salary (PKR)</label>
-                <input 
-                  type="number" 
-                  required 
-                  value={formData.basicSalary} 
-                  onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value)})} 
-                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 ring-blue-500/20" 
+                <AmountInput
+                  required
+                  value={formData.basicSalary}
+                  onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value)})}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 outline-none focus:ring-2 ring-blue-500/20"
+                  aria-label="New basic salary in PKR"
                 />
               </div>
             </div>

@@ -15,6 +15,7 @@ import Button from '../ui/Button';
 import { ICONS, CURRENCY } from '../../constants';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -703,9 +704,8 @@ const RecurringInvoicesList: React.FC = () => {
                         {/* Invoice Settings */}
                         <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-4">
-                                <Input
+                                <AmountInput
                                     label="Monthly Amount"
-                                    type="number"
                                     value={editAmount}
                                     onChange={e => setEditAmount(e.target.value)}
                                 />

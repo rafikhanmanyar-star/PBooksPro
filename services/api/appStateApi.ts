@@ -25,6 +25,8 @@ import {
   PersonalTransactionEntry,
   TransactionLogEntry,
 } from '../../types';
+import { normalizeTransactionFromApi } from './normalizeTransactionFromApi';
+export { normalizeTransactionFromApi } from './normalizeTransactionFromApi';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { parseApiEntityVersion } from '../../utils/parseApiVersion';
 
@@ -676,6 +678,40 @@ export class AppStateApiService {
     }
     if (merged.planAmenities && Array.isArray(merged.planAmenities)) {
       merged.planAmenities = merged.planAmenities.map((a: any) => normalizePlanAmenityFromApiRow(a));
+    }
+
+    if (merged.transactions && Array.isArray(merged.transactions)) {
+      merged.transactions = merged.transactions.map((t: any) => normalizeTransactionFromApi(t));
+    }
+
+    if (merged.units && Array.isArray(merged.units)) {
+      merged.units = merged.units.map((u: any) => {
+        const label = String(u.unitNumber ?? u.unit_number ?? u.name ?? '').trim() || u.id;
+        return {
+          id: u.id,
+          name: label,
+          unitNumber: (u.unitNumber ?? u.unit_number ?? label) || undefined,
+          projectId: u.project_id || u.projectId || '',
+          contactId: (u.contact_id ?? u.contactId ?? u.owner_contact_id ?? u.ownerContactId) || undefined,
+          ownerContactId: (u.ownerContactId ?? u.owner_contact_id) || undefined,
+          salePrice: (() => {
+            const price = u.sale_price || u.salePrice;
+            if (price == null) return undefined;
+            return typeof price === 'number' ? price : parseFloat(String(price));
+          })(),
+          description: u.description || undefined,
+          type: u.unit_type ?? u.type ?? u.unitType ?? undefined,
+          size: u.size != null && u.size !== '' ? String(u.size) : undefined,
+          area: (() => {
+            const areaValue = u.area;
+            if (areaValue == null) return undefined;
+            return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
+          })(),
+          floor: u.floor || undefined,
+          status: (u.status as AppState['units'][0]['status']) || 'available',
+          version: typeof u.version === 'number' ? u.version : undefined,
+        };
+      });
     }
 
     try {
@@ -1373,38 +1409,7 @@ export class AppStateApiService {
     );
 
     // Normalize transactions from API (transform snake_case to camelCase)
-    // The server returns snake_case fields, but the client expects camelCase
-    const normalizedTransactions = transactions.map((t: any) => ({
-      id: t.id,
-      type: t.type,
-      subtype: t.subtype || undefined,
-      amount: typeof t.amount === 'number' ? t.amount : parseFloat(t.amount || '0'),
-      date: t.date,
-      description: t.description || undefined,
-      accountId: t.account_id || t.accountId,
-      fromAccountId: t.from_account_id || t.fromAccountId || undefined,
-      toAccountId: t.to_account_id || t.toAccountId || undefined,
-      categoryId: t.category_id || t.categoryId || undefined,
-      contactId: t.contact_id || t.contactId || undefined,
-      vendorId: t.vendor_id || t.vendorId || undefined,
-      projectId: t.project_id || t.projectId || undefined,
-      buildingId: t.building_id || t.buildingId || undefined,
-      propertyId: t.property_id || t.propertyId || undefined,
-      unitId: t.unit_id || t.unitId || undefined,
-      invoiceId: t.invoice_id || t.invoiceId || undefined,
-      billId: t.bill_id || t.billId || undefined,
-      contractId: t.contract_id || t.contractId || undefined,
-      agreementId: t.agreement_id || t.agreementId || undefined,
-      batchId: t.batch_id || t.batchId || undefined,
-      projectAssetId: t.project_asset_id || t.projectAssetId || undefined,
-      ownerId: t.owner_id || t.ownerId || undefined,
-      isSystem: t.is_system === true || t.is_system === 1 || t.isSystem === true || false,
-      userId: t.user_id || t.userId || undefined,
-      payslipId: t.payslip_id || t.payslipId || undefined,
-      reference: t.reference || undefined,
-      children: t.children || undefined,
-      version: typeof t.version === 'number' ? t.version : t.version != null ? parseInt(String(t.version), 10) : undefined,
-    }));
+    const normalizedTransactions = transactions.map((t: any) => normalizeTransactionFromApi(t));
 
     // Normalize accounts from API (types: BANK vs Bank — see normalizeAccountTypeFromApi)
     const normalizedAccounts = accounts.map((a: any) => normalizeAccountFromApi(a));
@@ -1791,39 +1796,7 @@ export class AppStateApiService {
     };
     logger.logCategory('sync', `💾 Syncing transaction (POST upsert): ${transactionWithId.id}`);
     const saved = await this.transactionsRepo.create(transactionWithId);
-
-    // Normalize the response (server returns snake_case, client expects camelCase)
-    const sv = saved as any;
-    return {
-      id: saved.id,
-      type: saved.type,
-      subtype: sv.subtype || saved.subtype || undefined,
-      amount: typeof saved.amount === 'number' ? saved.amount : parseFloat(saved.amount || '0'),
-      date: saved.date,
-      description: saved.description || undefined,
-      accountId: sv.account_id || saved.accountId,
-      fromAccountId: sv.from_account_id || saved.fromAccountId || undefined,
-      toAccountId: sv.to_account_id || saved.toAccountId || undefined,
-      categoryId: sv.category_id || saved.categoryId || undefined,
-      contactId: sv.contact_id || saved.contactId || undefined,
-      vendorId: sv.vendor_id || saved.vendorId || undefined,
-      projectId: sv.project_id || saved.projectId || undefined,
-      buildingId: sv.building_id || saved.buildingId || undefined,
-      propertyId: sv.property_id || saved.propertyId || undefined,
-      unitId: sv.unit_id || saved.unitId || undefined,
-      invoiceId: sv.invoice_id || saved.invoiceId || undefined,
-      billId: sv.bill_id || saved.billId || undefined,
-      contractId: sv.contract_id || saved.contractId || undefined,
-      agreementId: sv.agreement_id || saved.agreementId || undefined,
-      batchId: sv.batch_id || saved.batchId || undefined,
-      projectAssetId: sv.project_asset_id || saved.projectAssetId || undefined,
-      ownerId: sv.owner_id || saved.ownerId || undefined,
-      isSystem: sv.is_system === true || sv.is_system === 1 || saved.isSystem === true || false,
-      payslipId: sv.payslip_id || saved.payslipId || undefined,
-      reference: saved.reference || undefined,
-      children: saved.children || undefined,
-      version: typeof sv.version === 'number' ? sv.version : sv.version != null ? parseInt(String(sv.version), 10) : undefined,
-    };
+    return normalizeTransactionFromApi(saved as Record<string, unknown>);
   }
 
   /**

@@ -5,7 +5,10 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 import { isValidDateOnly } from '../../../services/dashboard/dashboardMetricsHelpers.js';
 import { getCollectionsAnalyticsJson } from '../../../services/dashboard/collectionsAnalyticsService.js';
-import type { CollectionsAnalyticsFilters } from '../../../services/dashboard/collectionsAnalyticsTypes.js';
+import type {
+  CollectionsAnalyticsFilters,
+  CollectionsScope,
+} from '../../../services/dashboard/collectionsAnalyticsTypes.js';
 
 export const collectionsAnalyticsRouter = Router();
 
@@ -21,7 +24,10 @@ function parseFilters(query: Record<string, unknown>): CollectionsAnalyticsFilte
     const v = query[k];
     return typeof v === 'string' && v.trim() && v.trim() !== 'all' ? v.trim() : undefined;
   };
-  return { from, to, projectId: str('projectId'), propertyId: str('propertyId') };
+  const scopeRaw = typeof query.scope === 'string' ? query.scope.trim() : '';
+  const scope: CollectionsScope | undefined =
+    scopeRaw === 'project' || scopeRaw === 'rental' || scopeRaw === 'all' ? scopeRaw : undefined;
+  return { from, to, scope, projectId: str('projectId'), propertyId: str('propertyId') };
 }
 
 collectionsAnalyticsRouter.get('/collections/analytics', async (req: AuthedRequest, res) => {
@@ -32,7 +38,7 @@ collectionsAnalyticsRouter.get('/collections/analytics', async (req: AuthedReque
   }
 
   const filters = parseFilters(req.query as Record<string, unknown>);
-  const cacheKey = `collections_analytics:${tenantId}:${filters.from}:${filters.to}:${filters.projectId ?? ''}:${filters.propertyId ?? ''}`;
+  const cacheKey = `collections_analytics:${tenantId}:${filters.from}:${filters.to}:${filters.scope ?? 'all'}:${filters.projectId ?? ''}:${filters.propertyId ?? ''}`;
   const cached = memoryCacheGet<Awaited<ReturnType<typeof getCollectionsAnalyticsJson>>>(cacheKey);
   if (cached) {
     sendSuccess(res, cached);

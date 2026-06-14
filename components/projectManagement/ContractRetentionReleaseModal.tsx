@@ -4,6 +4,7 @@ import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { useDispatchOnly } from '../../hooks/useSelectiveState';
@@ -125,11 +126,8 @@ const ContractRetentionReleaseModal: React.FC<ContractRetentionReleaseModalProps
         </div>
 
         {mode === 'partial' && (
-          <Input
+          <AmountInput
             label="Release Amount"
-            type="number"
-            min="0"
-            step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
           />

@@ -12,6 +12,7 @@ import { formatDate } from '../../utils/dateUtils';
 import SubscriptionStatusWidget from '../billing/SubscriptionStatusWidget';
 import ReportDashboardWidgets from './ReportDashboardWidgets';
 import VendorQuotationComplianceWidget from '../procurement/VendorQuotationComplianceWidget';
+import ProcurementDashboardWidgets from '../procurement/ProcurementDashboardWidgets';
 import {
   useDashboardActivity,
   useDashboardCharts,
@@ -264,6 +265,12 @@ const DashboardPage: React.FC = () => {
         {isAuthenticated && isAdmin && (
           <div className="md:col-span-3">
             <VendorQuotationComplianceWidget />
+          </div>
+        )}
+
+        {isAuthenticated && isAdmin && (
+          <div className="md:col-span-3">
+            <ProcurementDashboardWidgets />
           </div>
         )}
 

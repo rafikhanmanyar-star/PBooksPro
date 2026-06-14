@@ -18,6 +18,7 @@ import { resolvePayslipAssignment } from '../utils/payslipAssignment';
 import { employeePayrollNetBalanceFromTotals } from '../utils/payrollLedgerCore';
 import { todayLocalYyyyMmDd, toLocalDateString } from '../../../utils/dateUtils';
 import DatePicker from '../../ui/DatePicker';
+import AmountInput from '../../common/AmountInput';
 import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
 import RecordLockBanner from '../../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../../recordLock/RecordLockConflictModal';
@@ -533,15 +534,13 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
               <label className="block text-sm font-medium text-slate-700 mb-1">
                 Deduct from salary advance <span className="text-slate-400 font-normal">(optional)</span>
               </label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+              <AmountInput
                 value={advanceApplyStr}
                 onChange={(e) => setAdvanceApplyStr(e.target.value)}
                 className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="0"
                 disabled={advanceOutstanding <= EPS}
+                aria-label="Deduct from salary advance"
               />
               <p className="text-[10px] text-slate-400 mt-1">
                 Max {Math.max(0, Math.min(advanceOutstanding, remainingAmount)).toLocaleString()} for this payslip.
@@ -550,14 +549,12 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1">Pay from bank / cash</label>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
+              <AmountInput
                 value={cashAmountStr}
                 onChange={(e) => setCashAmountStr(e.target.value)}
                 className="w-full border border-slate-300 rounded-xl px-3 py-2.5 text-slate-900 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 placeholder="0"
+                aria-label="Pay from bank or cash"
               />
               <p className="text-[10px] text-slate-400 mt-1">
                 Total applied to this payslip now:{' '}

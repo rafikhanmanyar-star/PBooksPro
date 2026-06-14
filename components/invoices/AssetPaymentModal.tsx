@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { Invoice, ProjectReceivedAsset, ProjectReceivedAssetType, InvoiceStatus, TransactionType } from '../../types';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import DatePicker from '../ui/DatePicker';
@@ -143,11 +144,8 @@ const AssetPaymentModal: React.FC<AssetPaymentModalProps> = ({ isOpen, onClose, 
                     ))}
                 </select>
             </div>
-            <Input
+            <AmountInput
                 label="Value applied to invoice"
-                type="number"
-                min="0"
-                step="0.01"
                 value={value}
                 onChange={e => setValue(e.target.value)}
                 placeholder={balanceDue.toFixed(0)}

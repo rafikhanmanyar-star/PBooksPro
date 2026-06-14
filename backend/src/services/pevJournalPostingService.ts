@@ -4,6 +4,11 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import type { CreateJournalBody } from './journalService.js';
 import type { ProjectExpenseVoucherRow } from './projectExpenseVoucherService.js';
 import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
@@ -31,24 +36,13 @@ export function buildJournalLinesFromPeV(
   const M = roundMoney(Math.abs(Number(row.amount)));
   if (M < 0.005) return null;
 
-  const projectId =
-    row.project_id != null && String(row.project_id).trim() !== ''
-      ? String(row.project_id).trim()
-      : null;
-
+  const dims = resolveJournalDimensions(row);
   return [
-    {
-      accountId: expenseGlAccountId,
-      debitAmount: M,
-      creditAmount: 0,
-      projectId,
-    },
-    {
-      accountId: row.payment_source_account_id,
-      debitAmount: 0,
-      creditAmount: M,
-      projectId,
-    },
+    journalLineWithDimensions({ accountId: expenseGlAccountId, debitAmount: M, creditAmount: 0 }, dims),
+    journalLineWithDimensions(
+      { accountId: row.payment_source_account_id, debitAmount: 0, creditAmount: M },
+      dims
+    ),
   ];
 }
 
@@ -60,10 +54,7 @@ export function buildJournalBodyFromPeV(
   row: ProjectExpenseVoucherRow,
   lines: JournalLineInput[]
 ): CreateJournalBody {
-  const projectId =
-    row.project_id != null && String(row.project_id).trim() !== ''
-      ? String(row.project_id).trim()
-      : null;
+  const dims = resolveJournalDimensions(row);
   const desc =
     (row.description && String(row.description).trim()) ||
     `Project expense voucher ${row.voucher_number}`;
@@ -74,7 +65,7 @@ export function buildJournalBodyFromPeV(
     sourceModule: PEV_JOURNAL_SOURCE_MODULE,
     sourceId: row.id,
     createdBy: row.posted_by ?? row.created_by,
-    projectId,
+    ...entryDimensionsFrom(dims),
     lines,
   };
 }

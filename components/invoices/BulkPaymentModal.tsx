@@ -13,7 +13,7 @@ import { useNotification } from '../../context/NotificationContext';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
-import { normalizeDecimalAmountInput } from '../../utils/amountInputNormalize';
+import AmountInput from '../common/AmountInput';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { isPureSecurityDepositInvoice } from '../../utils/rentalInvoiceClassification';
 const ASSET_TYPES: { value: ProjectReceivedAssetType; label: string }[] = [
@@ -132,28 +132,21 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
     }, [sortedInvoices]);
 
     const handleTotalAmountToReceiveChange = (value: string) => {
-        const normalized = normalizeDecimalAmountInput(value);
-        if (normalized === '' || /^\d*\.?\d*$/.test(normalized)) {
-            setTotalAmountToReceive(normalized);
-            const num = parseFloat(normalized);
-            if (!Number.isNaN(num) && num > 0) {
-                const allocated = allocateFromTotal(num);
-                if (Object.keys(allocated).length > 0) {
-                    // Defer allocation update so the input stays responsive (avoids keyboard lag)
-                    startTransition(() => setPayments(allocated));
-                }
+        setTotalAmountToReceive(value);
+        const num = parseFloat(value);
+        if (!Number.isNaN(num) && num > 0) {
+            const allocated = allocateFromTotal(num);
+            if (Object.keys(allocated).length > 0) {
+                startTransition(() => setPayments(allocated));
             }
         }
     };
 
     const handleAmountChange = (id: string, value: string) => {
-        const normalized = normalizeDecimalAmountInput(value);
-        if (normalized === '' || /^\d*\.?\d*$/.test(normalized)) {
-            const next = { ...payments, [id]: normalized };
-            setPayments(next);
-            const newSum = Object.keys(next).reduce((s, k) => s + (parseFloat(next[k]) || 0), 0);
-            setTotalAmountToReceive(newSum > 0 ? newSum.toString() : '');
-        }
+        const next = { ...payments, [id]: value };
+        setPayments(next);
+        const newSum = Object.keys(next).reduce((s, k) => s + (parseFloat(next[k]) || 0), 0);
+        setTotalAmountToReceive(newSum > 0 ? newSum.toString() : '');
     };
 
     const handleSubmit = async () => {
@@ -390,14 +383,13 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                 <div className="flex flex-col md:flex-row gap-4">
                     <div className="flex-grow">
                         <label className="block text-sm font-medium text-slate-700 mb-1">Total amount to receive</label>
-                        <input
+                        <AmountInput
                             ref={totalAmountInputRef}
-                            type="text"
-                            inputMode="decimal"
                             value={totalAmountToReceive}
                             onChange={(e) => handleTotalAmountToReceiveChange(e.target.value)}
                             placeholder={totalDue > 0 ? totalDue.toString() : '0'}
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg text-lg font-bold text-slate-800 focus:ring-2 focus:ring-accent/50 focus:border-accent"
+                            aria-label="Total amount to receive"
                         />
                         <p className="text-xs text-slate-500 mt-1">
                             Amounts are distributed across invoices (first invoices full, remainder on last). Total due for selection: {CURRENCY} {totalDue.toLocaleString()}
@@ -459,12 +451,12 @@ const BulkPaymentModal: React.FC<BulkPaymentModalProps> = ({ isOpen, onClose, se
                                         {due.toLocaleString()}
                                     </div>
                                     <div className="col-span-3">
-                                        <input
-                                            type="text"
-                                            className="w-full text-right border rounded px-2 py-1 focus:ring-2 focus:ring-accent/50 outline-none font-bold text-emerald-600"
+                                        <AmountInput
                                             value={payments[inv.id] || ''}
                                             onChange={(e) => handleAmountChange(inv.id, e.target.value)}
                                             placeholder="0"
+                                            className="w-full text-right border rounded px-2 py-1 focus:ring-2 focus:ring-accent/50 outline-none font-bold text-emerald-600"
+                                            aria-label={`Payment for invoice ${inv.invoiceNumber}`}
                                         />
                                     </div>
                                     <div className={`col-span-2 text-right text-xs font-medium ${isFullyPaid ? 'text-slate-400' : 'text-rose-500'}`}>

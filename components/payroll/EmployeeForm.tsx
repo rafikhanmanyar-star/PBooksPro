@@ -46,6 +46,7 @@ import {
 import { mapAppProjectsToPayroll } from './utils/projectUtils';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
+import AmountInput from '../common/AmountInput';
 
 const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee }) => {
   const { user, tenant } = useAuth();
@@ -834,15 +835,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Basic Salary (Monthly) <span className="text-red-500">*</span></label>
-                <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
-                  <input 
-                    type="number" required placeholder="0.00"
-                    value={formData.basicSalary}
-                    onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value) || 0})}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-200 focus:ring-4 ring-emerald-500/10 outline-none transition-all font-black text-lg text-slate-900"
-                  />
-                </div>
+                <AmountInput
+                  required
+                  showCurrency
+                  currency="PKR"
+                  placeholder="0.00"
+                  value={formData.basicSalary}
+                  onChange={e => setFormData({...formData, basicSalary: parseFloat(e.target.value) || 0})}
+                  className="py-3 rounded-xl border border-slate-200 focus:ring-4 ring-emerald-500/10 outline-none transition-all font-black text-lg text-slate-900"
+                  aria-label="Basic salary monthly"
+                />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Net Payable</label>

@@ -5,6 +5,7 @@ import { storageService } from '../services/storageService';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { GradeLevel } from '../types';
 import { useAuth } from '../../../context/AuthContext';
+import AmountInput from '../../common/AmountInput';
 
 interface GradeConfigModalProps {
   isOpen: boolean;
@@ -113,11 +114,11 @@ const GradeConfigModal: React.FC<GradeConfigModalProps> = ({ isOpen, onClose, in
           <div className="flex gap-4">
             <div className="flex-1">
               <label htmlFor="grade-config-min-salary" className="block text-xs font-bold text-app-muted uppercase tracking-wider mb-2">Min Salary (PKR)</label>
-              <input id="grade-config-min-salary" type="number" required value={formData.min_salary} onChange={(e) => setFormData({...formData, min_salary: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl ds-input-field font-medium" aria-label="Minimum salary in PKR" />
+              <AmountInput id="grade-config-min-salary" required value={formData.min_salary} onChange={(e) => setFormData({...formData, min_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl ds-input-field font-medium" aria-label="Minimum salary in PKR" />
             </div>
             <div className="flex-1">
               <label htmlFor="grade-config-max-salary" className="block text-xs font-bold text-app-muted uppercase tracking-wider mb-2">Max Salary (PKR)</label>
-              <input id="grade-config-max-salary" type="number" required value={formData.max_salary} onChange={(e) => setFormData({...formData, max_salary: parseFloat(e.target.value) || 0})} onWheel={e => e.currentTarget.blur()} className="w-full px-4 py-2.5 rounded-xl ds-input-field font-medium" aria-label="Maximum salary in PKR" />
+              <AmountInput id="grade-config-max-salary" required value={formData.max_salary} onChange={(e) => setFormData({...formData, max_salary: parseFloat(e.target.value) || 0})} className="w-full px-4 py-2.5 rounded-xl ds-input-field font-medium" aria-label="Maximum salary in PKR" />
             </div>
           </div>
           <div className="bg-primary/10 p-4 rounded-xl border border-primary/20 flex gap-3">

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { flushSync } from 'react-dom';
 import { ProjectAgreement, ContactType, ProjectAgreementStatus, Invoice, InvoiceStatus, InvoiceType, Project, InstallmentFrequency } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
@@ -35,6 +36,7 @@ import { ProjectAgreementsApiRepository } from '../../services/api/repositories/
 import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
 import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
+import { backupAlertWarning, backupAlertInfo } from '../settings/backupThemeClasses';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import { isActiveInvoice } from '../../utils/invoiceActive';
 
@@ -404,18 +406,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const handleRemoveUnit = (idToRemove: string) => {
         if (invoiceLockedLayout) return;
         setUnitIds(prev => prev.filter(id => id !== idToRemove));
-    };
-    
-    // Generic handler for amount fields to allow only numbers and one decimal
-    const handleAmountChange = (setter: React.Dispatch<React.SetStateAction<string>>) => (e: React.ChangeEvent<HTMLInputElement>) => {
-        let { value } = e.target;
-        // Allow only numbers and one decimal point.
-        value = value.replace(/[^0-9.]/g, '');
-        const parts = value.split('.');
-        if (parts.length > 2) {
-            value = parts[0] + '.' + parts.slice(1).join('');
-        }
-        setter(value);
     };
 
     const generateInvoices = async (
@@ -1018,7 +1008,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     }, [projectId, state]);
 
     const inputClass =
-        'text-sm rounded-lg border-slate-200 focus:ring-2 focus:ring-violet-500/30 focus:border-violet-400';
+        'text-sm rounded-lg border-app-border focus:ring-2 focus:ring-primary/30 focus:border-primary';
     const isEditMode = Boolean(agreementToEdit);
     const modalTitle = isEditMode ? 'Edit Project Agreement' : 'New Project Agreement';
     const modalSubtitle = isEditMode
@@ -1042,25 +1032,25 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 aria-label={modalTitle}
             >
                 {/* Header */}
-                <header className="flex-shrink-0 pb-5 border-b border-slate-200/80">
+                <header className="flex-shrink-0 pb-5 border-b border-app-border">
                     <div className="flex items-start justify-between gap-4">
                         <div className="flex items-start gap-3 min-w-0 flex-1">
                             <div
-                                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-600 shadow-sm"
+                                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary shadow-sm"
                                 aria-hidden="true"
                             >
                                 <FileCheck className="h-5 w-5" strokeWidth={2} />
                             </div>
                             <div className="min-w-0 flex-1 space-y-2">
                                 <div>
-                                    <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                                    <h2 className="text-lg sm:text-xl font-bold text-app-text tracking-tight">
                                         {modalTitle}
                                     </h2>
-                                    <p className="mt-0.5 text-sm text-slate-500">{modalSubtitle}</p>
+                                    <p className="mt-0.5 text-sm text-app-muted">{modalSubtitle}</p>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
-                                    <div className="inline-flex items-center gap-2 rounded-full border border-violet-200 bg-violet-50 px-3 py-1.5 shadow-sm">
-                                        <span className="text-xs font-medium text-violet-600">Agreement ID</span>
+                                    <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1.5 shadow-sm">
+                                        <span className="text-xs font-medium text-primary">Agreement ID</span>
                                         <input
                                             type="text"
                                             value={agreementNumber}
@@ -1070,11 +1060,11 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                             aria-label="Agreement ID"
                                             aria-invalid={Boolean(agreementNumberError)}
                                             aria-describedby={agreementNumberError ? 'agreement-id-error' : undefined}
-                                            className="min-w-[5rem] max-w-[10rem] bg-transparent border-0 p-0 text-sm font-semibold text-violet-900 focus:outline-none focus:ring-0 disabled:opacity-60"
+                                            className="min-w-[5rem] max-w-[10rem] bg-transparent border-0 p-0 text-sm font-semibold text-app-text focus:outline-none focus:ring-0 disabled:opacity-60"
                                         />
                                     </div>
                                     {agreementNumberError && (
-                                        <p id="agreement-id-error" className="text-xs text-red-600 w-full" role="alert">
+                                        <p id="agreement-id-error" className="text-xs text-ds-danger w-full" role="alert">
                                             {agreementNumberError}
                                         </p>
                                     )}
@@ -1084,7 +1074,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex-shrink-0 rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 min-w-[44px] min-h-[44px] flex items-center justify-center"
+                            className="flex-shrink-0 rounded-full p-2 text-app-muted transition-colors hover:bg-app-table-hover hover:text-app-text focus:outline-none focus-visible:ring-2 focus-visible:ring-primary min-w-[44px] min-h-[44px] flex items-center justify-center"
                             aria-label="Close modal"
                         >
                             <X className="h-5 w-5" />
@@ -1102,7 +1092,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
                             )}
                             {invoiceLockedLayout && !recordLock.viewOnly && (
-                                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                                <p className={`text-xs ${backupAlertWarning} px-3 py-2`}>
                                     This agreement has installment invoices. Owner, project, pricing, dates, and installment
                                     plan are locked. You can still update the broker and the rebate amount (broker fee),
                                     then save.
@@ -1161,14 +1151,14 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
-                                            Units <span className="text-red-500" aria-hidden="true">*</span>
+                                        <label className="block text-sm font-medium text-app-text mb-2">
+                                            Units <span className="text-ds-danger" aria-hidden="true">*</span>
                                         </label>
                                         <div
                                             className={`min-h-[5.5rem] rounded-xl border p-4 transition-colors ${
                                                 projectId
-                                                    ? 'border-slate-200 bg-white focus-within:border-violet-300 focus-within:ring-2 focus-within:ring-violet-500/20'
-                                                    : 'border-slate-200 bg-slate-50/80 opacity-80'
+                                                    ? 'border-app-border bg-app-card focus-within:border-primary/40 focus-within:ring-2 focus-within:ring-primary/20'
+                                                    : 'border-app-border bg-app-toolbar/40 opacity-80'
                                             }`}
                                         >
                                             <div className="flex flex-wrap gap-2 mb-2">
@@ -1178,14 +1168,14 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                                     return (
                                                         <span
                                                             key={id}
-                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-sm font-medium text-slate-700"
+                                                            className="inline-flex items-center gap-1.5 rounded-lg border border-app-border bg-app-toolbar px-2.5 py-1 text-sm font-medium text-app-text"
                                                         >
                                                             {unit.name}
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleRemoveUnit(id)}
                                                                 disabled={agreementFieldsDisabled}
-                                                                className="rounded p-0.5 text-slate-400 transition-colors hover:text-rose-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-400/50 disabled:opacity-40 disabled:pointer-events-none"
+                                                                className="rounded p-0.5 text-app-muted transition-colors hover:text-ds-danger focus:outline-none focus-visible:ring-2 focus-visible:ring-ds-danger/50 disabled:opacity-40 disabled:pointer-events-none"
                                                                 aria-label={`Remove unit ${unit.name}`}
                                                             >
                                                                 <X className="h-3.5 w-3.5" />
@@ -1194,11 +1184,11 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                                     );
                                                 })}
                                                 {unitIds.length === 0 && (
-                                                    <span className="text-sm italic text-slate-400">No units selected</span>
+                                                    <span className="text-sm italic text-app-muted">No units selected</span>
                                                 )}
                                             </div>
                                             {!projectId && (
-                                                <p className="text-xs text-slate-400 mb-2">
+                                                <p className="text-xs text-app-muted mb-2">
                                                     Select project first to choose units
                                                 </p>
                                             )}
@@ -1214,7 +1204,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                     </div>
                                     {agreementToEdit && (
                                         <div>
-                                            <label htmlFor="agreement-status" className="block text-sm font-medium text-slate-700 mb-2">
+                                            <label htmlFor="agreement-status" className="block text-sm font-medium text-app-text mb-2">
                                                 Status
                                             </label>
                                             <select
@@ -1222,7 +1212,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                                 value={status}
                                                 onChange={(e) => setStatus(e.target.value as ProjectAgreementStatus)}
                                                 disabled={agreementFieldsDisabled}
-                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-500/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+                                                className="w-full ds-input-field rounded-lg px-3 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-60"
                                             >
                                                 <option value={ProjectAgreementStatus.ACTIVE}>Active</option>
                                                 <option value={ProjectAgreementStatus.CANCELLED}>Cancelled</option>
@@ -1230,7 +1220,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                             </select>
                                             {status === ProjectAgreementStatus.CANCELLED &&
                                                 agreementToEdit.status !== ProjectAgreementStatus.CANCELLED && (
-                                                    <p className="mt-1.5 text-xs text-amber-600">
+                                                    <p className="mt-1.5 text-xs text-ds-warning">
                                                         Use &quot;Cancel Agreement&quot; below for proper processing.
                                                     </p>
                                                 )}
@@ -1255,7 +1245,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         maxLength={500}
                                     />
                                     <p
-                                        className="mt-1.5 text-right text-xs text-slate-400 tabular-nums"
+                                        className="mt-1.5 text-right text-xs text-app-muted tabular-nums"
                                         aria-live="polite"
                                     >
                                         {description.length} / 500
@@ -1273,66 +1263,56 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                             >
                                 <div className="space-y-4">
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
-                                        <Input
+                                        <AmountInput
                                             label="List Price"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={listPrice}
                                             onChange={(e) => {
                                                 userEditedListPriceRef.current = true;
-                                                handleAmountChange(setListPrice)(e);
+                                                setListPrice(e.target.value);
                                             }}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Customer Discount"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={customerDiscount}
-                                            onChange={handleAmountChange(setCustomerDiscount)}
+                                            onChange={(e) => setCustomerDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Floor Discount"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={floorDiscount}
-                                            onChange={handleAmountChange(setFloorDiscount)}
+                                            onChange={(e) => setFloorDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Lump Sum"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={lumpSumDiscount}
-                                            onChange={handleAmountChange(setLumpSumDiscount)}
+                                            onChange={(e) => setLumpSumDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={inputClass}
                                         />
-                                        <Input
+                                        <AmountInput
                                             label="Misc"
-                                            type="text"
-                                            inputMode="decimal"
                                             value={miscDiscount}
-                                            onChange={handleAmountChange(setMiscDiscount)}
+                                            onChange={(e) => setMiscDiscount(e.target.value)}
                                             disabled={agreementFieldsDisabled}
                                             className={`${inputClass} sm:col-span-2`}
                                         />
                                     </div>
 
-                                    <div className="border-t border-slate-200 pt-4">
-                                        <label className="block text-sm font-medium text-slate-700 mb-2">
+                                    <div className="border-t border-app-border pt-4">
+                                        <label className="block text-sm font-medium text-app-text mb-2">
                                             Final Price (Selling Price){' '}
-                                            <span className="text-red-500" aria-hidden="true">*</span>
+                                            <span className="text-ds-danger" aria-hidden="true">*</span>
                                         </label>
                                         <div
                                             className={`rounded-xl border-2 px-4 py-3.5 transition-colors ${
                                                 isFinalPriceValid
-                                                    ? 'border-emerald-300 bg-emerald-50/80'
-                                                    : 'border-amber-300 bg-amber-50/80'
+                                                    ? 'border-ds-success/30 bg-[color:var(--badge-paid-bg)]'
+                                                    : 'border-ds-warning/30 bg-[color:var(--badge-partial-bg)]'
                                             }`}
                                             role="status"
                                             aria-live="polite"
@@ -1340,24 +1320,24 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                             <div className="flex items-center justify-between gap-3">
                                                 <span
                                                     className={`text-xl sm:text-2xl font-bold tabular-nums ${
-                                                        isFinalPriceValid ? 'text-emerald-700' : 'text-amber-700'
+                                                        isFinalPriceValid ? 'text-ds-success' : 'text-ds-warning'
                                                     }`}
                                                 >
                                                     {formatCurrencyDisplay(sellingPrice)}
                                                 </span>
                                                 {isFinalPriceValid ? (
                                                     <CheckCircle2
-                                                        className="h-6 w-6 flex-shrink-0 text-emerald-600"
+                                                        className="h-6 w-6 flex-shrink-0 text-ds-success"
                                                         aria-label="Final price is valid"
                                                     />
                                                 ) : (
                                                     <AlertCircle
-                                                        className="h-6 w-6 flex-shrink-0 text-amber-600"
+                                                        className="h-6 w-6 flex-shrink-0 text-ds-warning"
                                                         aria-label="Final price must be greater than zero"
                                                     />
                                                 )}
                                             </div>
-                                            <p className="mt-1 text-xs text-slate-500">
+                                            <p className="mt-1 text-xs text-app-muted">
                                                 Calculated from list price and discounts; must be greater than zero
                                             </p>
                                         </div>
@@ -1380,26 +1360,16 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         disabled={brokerFieldsDisabled}
                                         allowAddNew={false}
                                     />
-                                    <div>
-                                        <label htmlFor="rebate-amount" className="block text-sm font-medium text-slate-700 mb-1">
-                                            Rebate Amount
-                                        </label>
-                                        <div className="relative flex rounded-lg border border-slate-200 bg-white focus-within:border-violet-400 focus-within:ring-2 focus-within:ring-violet-500/30">
-                                            <input
-                                                id="rebate-amount"
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={rebateAmount}
-                                                onChange={handleAmountChange(setRebateAmount)}
-                                                disabled={brokerFieldsDisabled}
-                                                className="block w-full rounded-l-lg border-0 bg-transparent px-3 py-2.5 text-sm tabular-nums focus:outline-none focus:ring-0 disabled:cursor-not-allowed disabled:bg-slate-100"
-                                                aria-label="Rebate amount"
-                                            />
-                                            <span className="inline-flex items-center rounded-r-lg border-l border-slate-200 bg-slate-50 px-3 text-xs font-semibold text-slate-500">
-                                                {CURRENCY}
-                                            </span>
-                                        </div>
-                                    </div>
+                                    <AmountInput
+                                        label="Rebate Amount"
+                                        id="rebate-amount"
+                                        value={rebateAmount}
+                                        onChange={(e) => setRebateAmount(e.target.value)}
+                                        disabled={brokerFieldsDisabled}
+                                        showCurrency
+                                        currency={CURRENCY}
+                                        aria-label="Rebate amount"
+                                    />
                                 </div>
                             </FormSectionCard>
                         </div>
@@ -1418,7 +1388,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         variant="secondary"
                                         onClick={() => setShowInstallmentConfig(!showInstallmentConfig)}
                                         disabled={recordLock.viewOnly || invoiceLockedLayout}
-                                        className="!text-xs !py-1.5 !px-3 rounded-lg border-slate-200"
+                                        className="!text-xs !py-1.5 !px-3 rounded-lg border-app-border"
                                     >
                                         {showInstallmentConfig ? 'Hide' : installmentPlan ? 'Edit Plan' : 'Configure'}
                                     </Button>
@@ -1427,29 +1397,29 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                             >
                                 {installmentPlan && !showInstallmentConfig && (
                                     <div className="flex flex-wrap gap-2">
-                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                        <span className="inline-flex items-center rounded-lg border border-app-border bg-app-toolbar px-3 py-1.5 text-sm font-medium text-app-text">
                                             {installmentPlan.durationYears} Years
                                         </span>
-                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                        <span className="inline-flex items-center rounded-lg border border-app-border bg-app-toolbar px-3 py-1.5 text-sm font-medium text-app-text">
                                             {installmentPlan.downPaymentPercentage}% Down Payment
                                         </span>
-                                        <span className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-700">
+                                        <span className="inline-flex items-center rounded-lg border border-app-border bg-app-toolbar px-3 py-1.5 text-sm font-medium text-app-text">
                                             {installmentPlan.frequency} Installments
                                         </span>
                                         {installmentPlan.optionalInstallment && (
-                                            <span className="inline-flex items-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-800">
+                                            <span className="inline-flex items-center rounded-lg border border-ds-success/30 bg-[color:var(--badge-paid-bg)] px-3 py-1.5 text-sm font-medium text-ds-success">
                                                 + {installmentPlan.optionalInstallmentName || 'On Possession'}
                                             </span>
                                         )}
                                     </div>
                                 )}
                                 {!installmentPlan && !showInstallmentConfig && (
-                                    <p className="text-sm text-slate-500">
+                                    <p className="text-sm text-app-muted">
                                         No installment plan configured. Click Configure to set up payment terms.
                                     </p>
                                 )}
                                 {showInstallmentConfig && (
-                                    <div className="mt-2 min-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                                    <div className="mt-2 min-h-[320px] overflow-y-auto overflow-x-hidden rounded-xl border border-app-border bg-app-toolbar/40 p-4">
                                         <InstallmentConfigForm
                                             config={installmentPlan}
                                             onSave={handleConfigSave}
@@ -1463,10 +1433,10 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 </div>
 
                 {/* Sticky footer */}
-                <footer className="flex-shrink-0 border-t border-slate-200/80 bg-white/95 backdrop-blur-sm pt-4 mt-auto pointer-events-auto">
-                    <div className="mb-4 flex items-center gap-2 rounded-lg border border-violet-100 bg-violet-50/80 px-3 py-2.5 text-sm text-violet-800">
-                        <Info className="h-4 w-4 flex-shrink-0 text-violet-600" aria-hidden="true" />
-                        <span>Fields marked with * are required.</span>
+                <footer className="flex-shrink-0 border-t border-app-border bg-app-toolbar/40 backdrop-blur-sm pt-4 mt-auto pointer-events-auto">
+                    <div className={`mb-4 flex items-center gap-2 ${backupAlertInfo} px-3 py-2.5 text-sm`}>
+                        <Info className="h-4 w-4 flex-shrink-0 text-primary" aria-hidden="true" />
+                        <span className="text-app-text">Fields marked with * are required.</span>
                     </div>
 
                     <div className="flex flex-wrap items-center justify-between gap-3">
@@ -1490,7 +1460,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         variant="secondary"
                                         onClick={() => onCancelRequest(agreementToEdit)}
                                         disabled={recordLock.viewOnly || isSaving}
-                                        className="!text-sm !py-2 !px-4 rounded-lg border-rose-200 text-rose-700 hover:bg-rose-50"
+                                        className="!text-sm !py-2 !px-4 rounded-lg border-ds-danger/30 text-ds-danger hover:bg-ds-danger/10"
                                     >
                                         Cancel Agreement
                                     </Button>
@@ -1527,7 +1497,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                 variant="secondary"
                                 onClick={onClose}
                                 disabled={isSaving}
-                                className="!text-sm !py-2 !px-4 rounded-lg border-slate-200"
+                                className="!text-sm !py-2 !px-4 rounded-lg border-app-border"
                             >
                                 Cancel
                             </Button>
@@ -1538,7 +1508,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                     (Boolean(agreementToEdit) && recordLock.viewOnly) ||
                                     isSaving
                                 }
-                                className="!text-sm !py-2.5 !px-5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white border-0 shadow-sm"
+                                className="!text-sm !py-2.5 !px-5 rounded-lg bg-primary hover:bg-primary/90 text-ds-on-primary border-0 shadow-sm"
                             >
                                 {isSaving ? (
                                     <>
@@ -1559,14 +1529,14 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
             <Modal isOpen={showMissingPlanDialog} onClose={() => setShowMissingPlanDialog(false)} title="Installment Plan Not Configured">
                 <div className="space-y-4">
-                    <p className="text-slate-600">Installment plan is not configured for this owner and project.</p>
-                    <p className="text-slate-600 font-medium">Would you like to configure it now?</p>
-                    <p className="text-xs text-slate-500">This configuration will be saved as organizational data and synced across all users.</p>
+                    <p className="text-app-muted">Installment plan is not configured for this owner and project.</p>
+                    <p className="text-app-text font-medium">Would you like to configure it now?</p>
+                    <p className="text-xs text-app-muted">This configuration will be saved as organizational data and synced across all users.</p>
                     
                     <div className="flex flex-col gap-2 pt-2">
                         <Button onClick={handleCreatePlan} className="w-full justify-center">Configure Installment Plan</Button>
-                        <Button variant="secondary" onClick={handleManualProceed} className="w-full justify-center border-slate-300">Proceed with Manual Installments</Button>
-                        <Button variant="ghost" onClick={() => setShowMissingPlanDialog(false)} className="w-full justify-center text-slate-500">Cancel</Button>
+                        <Button variant="secondary" onClick={handleManualProceed} className="w-full justify-center border-app-border">Proceed with Manual Installments</Button>
+                        <Button variant="ghost" onClick={() => setShowMissingPlanDialog(false)} className="w-full justify-center text-app-muted">Cancel</Button>
                     </div>
                 </div>
             </Modal>

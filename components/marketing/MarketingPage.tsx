@@ -1,4 +1,4 @@
-import { useDispatchOnly, useMarketingPageState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useMarketingPageState, useWhatsAppMode } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';
@@ -19,6 +19,7 @@ import {
     InvoiceType
 } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import ComboBox from '../ui/ComboBox';
 import Card from '../ui/Card';
@@ -33,6 +34,8 @@ import PrintButton from '../ui/PrintButton';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import { toLocalDateString } from '../../utils/dateUtils';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import { useWhatsApp } from '../../context/WhatsAppContext';
 
 // Amenity Configuration Modal Component
 const AmenityConfigModal: React.FC<{
@@ -137,12 +140,20 @@ const AmenityConfigModal: React.FC<{
                                     </label>
                                 </div>
                             </div>
-                            <Input 
-                                label={isPercentage ? "Percentage (%)" : "Price"} 
-                                type="number" 
-                                value={price} 
-                                onChange={e => setPrice(e.target.value)}
-                            />
+                            {isPercentage ? (
+                                <Input 
+                                    label="Percentage (%)" 
+                                    type="number" 
+                                    value={price} 
+                                    onChange={e => setPrice(e.target.value)}
+                                />
+                            ) : (
+                                <AmountInput 
+                                    label="Price" 
+                                    value={price} 
+                                    onChange={e => setPrice(e.target.value)}
+                                />
+                            )}
                             <Input 
                                 label="Description (Optional)" 
                                 value={description} 
@@ -264,6 +275,8 @@ const MarketingPage: React.FC = () => {
     const { canWriteProjectSellingMarketingPlans, canWriteProjectSellingAgreements } = usePermissions();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();
+    const whatsAppMode = useWhatsAppMode();
+    const { openChat } = useWhatsApp();
     
     const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
     const [showForm, setShowForm] = useState(false);
@@ -896,7 +909,7 @@ const MarketingPage: React.FC = () => {
         );
     };
 
-    // Send Installment Plan via WhatsApp
+    // Send Installment Plan via WhatsApp (uses app-wide manual / in-app chat flow)
     const handleSendWhatsApp = async (plan: InstallmentPlan) => {
         try {
             const lead = contacts.find(l => l.id === plan.leadId);
@@ -904,156 +917,34 @@ const MarketingPage: React.FC = () => {
                 await showAlert('This lead does not have a phone number saved.');
                 return;
             }
-
-            // Show loading message
-            showToast('Generating plan image...');
-
-            // Generate image from the plan HTML
-            // First, we need to render the plan in a hidden div, capture it, then send
-            // For now, let's create a simplified approach: generate the plan HTML and convert to image
-            const project = projects.find(p => p.id === plan.projectId);
-            const unit = appUnits.find(u => u.id === plan.unitId);
-            
-            // Create a temporary element to render the plan
-            const tempDiv = document.createElement('div');
-            tempDiv.style.position = 'absolute';
-            tempDiv.style.left = '-9999px';
-            tempDiv.style.width = '800px';
-            tempDiv.className = 'printable-area';
-            document.body.appendChild(tempDiv);
-
-            // Render the plan HTML (simplified version for image generation)
-            const planHtml = `
-                <div style="padding: 20px; font-family: Arial, sans-serif;">
-                    <h2 style="text-align: center; margin-bottom: 20px;">Installment Plan</h2>
-                    <div style="margin-bottom: 15px;">
-                        <strong>Lead:</strong> ${lead.name}<br>
-                        <strong>Project:</strong> ${project?.name || 'N/A'}<br>
-                        <strong>Unit:</strong> ${unit?.name || 'N/A'}<br>
-                        <strong>Net Value:</strong> Rs. ${plan.netValue?.toLocaleString() || '0'}<br>
-                        <strong>Down Payment:</strong> Rs. ${plan.downPaymentAmount?.toLocaleString() || '0'}<br>
-                        <strong>Installment Amount:</strong> Rs. ${plan.installmentAmount?.toLocaleString() || '0'}<br>
-                        <strong>Frequency:</strong> ${plan.frequency}<br>
-                        <strong>Duration:</strong> ${plan.durationYears} Years
-                    </div>
-                </div>
-            `;
-            tempDiv.innerHTML = planHtml;
-
-            // Use html2canvas to capture the image
-            // Note: html2canvas needs to be installed: npm install html2canvas
-            const html2canvas = (window as any).html2canvas;
-            if (!html2canvas) {
-                // Fallback: use a simpler approach - generate PDF-like image server-side
-                // For now, let's upload the plan data and generate on server
-                document.body.removeChild(tempDiv);
-                
-                // Create a document with plan data
-                const planJson = JSON.stringify({
-                    plan: plan,
-                    lead: lead,
-                    project: project,
-                    unit: unit
-                });
-                const base64Data = btoa(planJson);
-                // Calculate file size from base64: base64 is ~4/3 the size of the original
-                const fileSize = Math.ceil(base64Data.length * 0.75);
-                
-                const documentData = {
-                    name: `Installment Plan - ${lead.name}`,
-                    type: 'installment_plan',
-                    entityId: plan.id,
-                    entityType: 'installment_plan',
-                    fileData: base64Data,
-                    fileName: `plan-${plan.id}.json`,
-                    fileSize: fileSize,
-                    mimeType: 'application/json'
-                };
-
-                // Upload document
-                const docResponse = await apiClient.post<{ id: string }>('/documents', documentData);
-                const docId = docResponse.id;
-
-                        // Get public URL (including tenant ID for access)
-                        const baseUrl = window.location.origin;
-                        const tenantId = apiClient.getTenantId() || localStorage.getItem('tenant_id') || '';
-                        const documentUrl = `${baseUrl}/api/documents/${docId}/file?tenantId=${tenantId}`;
-
-                // Send via WhatsApp
-                await apiClient.post('/whatsapp/send-document', {
-                    contactId: lead.id,
-                    phoneNumber: lead.contactNo,
-                    documentUrl: documentUrl,
-                    filename: `Installment-Plan-${lead.name.replace(/\s+/g, '-')}.pdf`,
-                    caption: `Installment Plan for ${project?.name || 'Project'} - Unit ${unit?.name || 'N/A'}`
-                });
-
-                showToast('Plan sent via WhatsApp!');
+            if (!WhatsAppService.isValidPhoneNumber(lead.contactNo)) {
+                await showAlert('Phone number is not valid for WhatsApp. Update it in People.');
                 return;
             }
 
-            // Use html2canvas to generate image
-            const canvas = await html2canvas(tempDiv, {
-                scale: 2,
-                useCORS: true,
-                logging: false
-            });
+            const project = projects.find(p => p.id === plan.projectId);
+            const unit = appUnits.find(u => u.id === plan.unitId);
 
-            document.body.removeChild(tempDiv);
+            const message = [
+                `Installment Plan for ${project?.name || 'Project'} - Unit ${unit?.name || 'N/A'}`,
+                '',
+                `Lead: ${lead.name}`,
+                `Net Value: Rs. ${plan.netValue?.toLocaleString() || '0'}`,
+                `Down Payment: Rs. ${plan.downPaymentAmount?.toLocaleString() || '0'}`,
+                `${plan.frequency} Installment: Rs. ${plan.installmentAmount?.toLocaleString() || '0'}`,
+                `Duration: ${plan.durationYears} Year${plan.durationYears === 1 ? '' : 's'}`,
+            ].join('\n');
 
-            // Convert canvas to blob
-            canvas.toBlob(async (blob: Blob | null) => {
-                if (!blob) {
-                    await showAlert('Failed to generate plan image.');
-                    return;
-                }
-
-                // Convert blob to base64
-                const reader = new FileReader();
-                reader.onloadend = async () => {
-                    const base64Data = (reader.result as string).split(',')[1];
-                    
-                    // Upload to documents API
-                    const documentData = {
-                        name: `Installment Plan - ${lead.name}`,
-                        type: 'installment_plan_image',
-                        entityId: plan.id,
-                        entityType: 'installment_plan',
-                        fileData: base64Data,
-                        fileName: `plan-${plan.id}-${Date.now()}.png`,
-                        fileSize: blob.size,
-                        mimeType: 'image/png'
-                    };
-
-                    try {
-                        const docResponse = await apiClient.post<{ id: string }>('/documents', documentData);
-                        const docId = docResponse.id;
-
-                        // Get public URL (including tenant ID for access)
-                        const baseUrl = window.location.origin;
-                        const tenantId = apiClient.getTenantId() || localStorage.getItem('tenant_id') || '';
-                        const documentUrl = `${baseUrl}/api/documents/${docId}/file?tenantId=${tenantId}`;
-
-                        // Send via WhatsApp
-                        await apiClient.post('/whatsapp/send-document', {
-                            contactId: lead.id,
-                            phoneNumber: lead.contactNo,
-                            documentUrl: documentUrl,
-                            filename: `Installment-Plan-${lead.name.replace(/\s+/g, '-')}.png`,
-                            caption: `Installment Plan for ${project?.name || 'Project'} - Unit ${unit?.name || 'N/A'}\n\nNet Value: Rs. ${plan.netValue?.toLocaleString()}\nDown Payment: Rs. ${plan.downPaymentAmount?.toLocaleString()}\nMonthly Installment: Rs. ${plan.installmentAmount?.toLocaleString()}`
-                        });
-
-                        showToast('Plan sent via WhatsApp!');
-                    } catch (error: any) {
-                        devLogger.error('Error sending plan via WhatsApp:', error);
-                        await showAlert(`Failed to send plan: ${error.message || 'Unknown error'}`);
-                    }
-                };
-                reader.readAsDataURL(blob);
-            }, 'image/png');
-        } catch (error: any) {
+            sendOrOpenWhatsApp(
+                { contact: lead, message, phoneNumber: lead.contactNo },
+                () => whatsAppMode,
+                openChat
+            );
+            showToast(whatsAppMode === 'manual' ? 'WhatsApp opened with plan details.' : 'WhatsApp chat opened with plan details.');
+        } catch (error: unknown) {
             devLogger.error('Error in handleSendWhatsApp:', error);
-            await showAlert(`Failed to send plan via WhatsApp: ${error.message || 'Unknown error'}`);
+            const msg = error instanceof Error ? error.message : 'Unknown error';
+            await showAlert(`Failed to send plan via WhatsApp: ${msg}`);
         }
     };
 
@@ -1725,9 +1616,8 @@ const MarketingPage: React.FC = () => {
 
                                 {/* Pricing & Discount */}
                                 <div className="space-y-2 pt-2 border-t border-app-border">
-                                    <Input 
+                                    <AmountInput 
                                         label="Base Price" 
-                                        type="number" 
                                         value={listPrice} 
                                         onChange={e => setListPrice(e.target.value)} 
                                         horizontal
@@ -1817,9 +1707,8 @@ const MarketingPage: React.FC = () => {
                                         />
                                         <div className="flex gap-1.5">
                                             <div className="flex-1">
-                                                <Input 
+                                                <AmountInput 
                                                     label="Amt" 
-                                                    type="number"
                                                     value={newDiscountAmount}
                                                     onChange={e => setNewDiscountAmount(e.target.value)}
                                                     horizontal

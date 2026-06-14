@@ -4,6 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useNotification } from '../../context/NotificationContext';
 import { AppAction, RentalAgreement, ContactType, RentalAgreementStatus, Invoice, InvoiceStatus, InvoiceType, type AppState } from '../../types';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import ComboBox from '../ui/ComboBox';
@@ -703,9 +704,9 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                                 </div>
                             )}
                             <div className="grid grid-cols-3 gap-3">
-                                <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
+                                <AmountInput label="Monthly Rent" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
                                 <Input label="Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required />
-                                <Input label="Security Deposit" type="number" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} />
+                                <AmountInput label="Security Deposit" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} />
                             </div>
                             <div>
                                 <label className="block text-xs font-medium text-slate-600 mb-1">Description / Notes</label>
@@ -724,7 +725,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <div className="grid grid-cols-[1fr_auto] gap-3 items-end">
                                 <ComboBox label="Broker (Optional)" items={brokers} selectedId={brokerId} onSelect={item => { setBrokerId(item?.id || ''); if (!item) { setBrokerFee(''); setBrokerFeeManuallySet(false); } }} placeholder="Select broker" allowAddNew={false} />
                                 <div className="w-32">
-                                    <Input label="Broker Fee" type="number" value={brokerFee} onChange={e => { setBrokerFee(e.target.value); setBrokerFeeManuallySet(true); }} disabled={!brokerId} />
+                                    <AmountInput label="Broker Fee" value={brokerFee} onChange={e => { setBrokerFee(e.target.value); setBrokerFeeManuallySet(true); }} disabled={!brokerId} />
                                 </div>
                             </div>
                             {brokerId && !brokerFeeManuallySet && brokerFee && (
@@ -888,9 +889,9 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     <div className="p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
                         <h3 className="text-xs font-semibold text-slate-700 mb-2 uppercase tracking-wide">Rent Details</h3>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                            <Input label="Monthly Rent" type="number" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
+                            <AmountInput label="Monthly Rent" value={monthlyRent} onChange={e => setMonthlyRent(e.target.value)} required />
                             <Input label="Due Day" type="number" min="1" max="31" value={rentDueDate} onChange={e => setRentDueDate(e.target.value)} required />
-                            <Input label="Security" type="number" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} />
+                            <AmountInput label="Security" value={securityDeposit} onChange={e => setSecurityDeposit(e.target.value)} />
                         </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 p-2 rounded-lg bg-slate-50/80 border border-slate-200 flex-shrink-0">
@@ -898,7 +899,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                             <ComboBox label="Broker" items={brokers} selectedId={brokerId} onSelect={item => { setBrokerId(item?.id || ''); if (!item) { setBrokerFee(''); setBrokerFeeManuallySet(false); } }} placeholder="Select broker" allowAddNew={false} />
                         </div>
                         <div className="w-full sm:w-28 flex-shrink-0">
-                            <Input label="Fee" type="number" value={brokerFee} onChange={e => { setBrokerFee(e.target.value); setBrokerFeeManuallySet(true); }} disabled={!brokerId} />
+                            <AmountInput label="Fee" value={brokerFee} onChange={e => { setBrokerFee(e.target.value); setBrokerFeeManuallySet(true); }} disabled={!brokerId} />
                         </div>
                         {agreementToEdit && brokerFee !== '' && !isNaN(parseFloat(brokerFee)) && parseFloat(brokerFee) > 0 && (
                             <div className="flex items-end pb-1">

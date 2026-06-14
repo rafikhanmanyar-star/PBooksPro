@@ -147,7 +147,10 @@ const ProjectProfitLossReport: React.FC = () => {
     [report?.validation.issues]
   );
   const showValidationBanner =
-    !!report && (validationErrors.length > 0 || !report.validation.ledgerMatch);
+    !!report &&
+    (validationErrors.length > 0 ||
+      !report.validation.ledgerMatch ||
+      (report.validation.equityReconciliation != null && !report.validation.equityReconciliation.passed));
 
   const toggleOpexRoot = useCallback((id: string) => {
     setCollapsedOpexRoots((prev) => {
@@ -325,6 +328,18 @@ const ProjectProfitLossReport: React.FC = () => {
                 <div className="text-xs text-app-muted">
                   Ledger P&amp;L net: {CURRENCY} {report.validation.legacyNetProfit.toFixed(2)} · Structured net: {CURRENCY}{' '}
                   {report.validation.structuredNetProfit.toFixed(2)}
+                </div>
+              )}
+              {report.validation.equityReconciliation && !report.validation.equityReconciliation.passed && (
+                <div className="text-sm rounded px-3 py-2 bg-amber-50 text-amber-900 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-100 dark:border-amber-700">
+                  Net profit ({CURRENCY} {report.validation.equityReconciliation.netProfit.toFixed(2)}) does not equal
+                  change in equity ({CURRENCY} {report.validation.equityReconciliation.equityChange.toFixed(2)}) for this
+                  period (difference {CURRENCY} {report.validation.equityReconciliation.difference.toFixed(2)}).
+                </div>
+              )}
+              {report.validation.equityReconciliation?.passed && (
+                <div className="text-xs text-emerald-700 dark:text-emerald-300">
+                  Reconciliation: net profit equals change in equity for {formatDate(startDate)} – {formatDate(endDate)}.
                 </div>
               )}
             </div>

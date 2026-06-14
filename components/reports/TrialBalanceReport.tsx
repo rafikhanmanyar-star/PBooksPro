@@ -182,9 +182,22 @@ const TrialBalanceReport: React.FC = () => {
   }, [data, hideZeros, selectedAccountId]);
 
   const balanceDifference = useMemo(() => {
+    if (data?.difference != null) return Math.abs(data.difference);
     if (!displayTotals) return 0;
     return Math.abs(displayTotals.totalDebit - displayTotals.totalCredit);
-  }, [displayTotals]);
+  }, [data?.difference, displayTotals]);
+
+  const hasMissingDimensions = useMemo(() => {
+    const d = data?.diagnostics;
+    if (!d) return false;
+    return d.missingProjectIds > 0 || d.missingBuildingIds > 0 || d.missingCostCenters > 0;
+  }, [data?.diagnostics]);
+
+  const projectNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of projects) map.set(p.id, p.name);
+    return map;
+  }, [projects]);
 
   const canDrillDown = data?.dataSource === 'journal';
 
@@ -316,6 +329,81 @@ const TrialBalanceReport: React.FC = () => {
             </div>
           )}
 
+          {hasMissingDimensions && (
+            <div
+              className="rounded-lg border border-amber-400 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-600 px-3 py-2 text-sm text-amber-950 dark:text-amber-100"
+              role="alert"
+            >
+              Some transactions are missing financial dimensions. Reports may be incomplete.
+            </div>
+          )}
+
+          {data?.diagnostics && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900/40 px-4 py-3 text-sm">
+              <h4 className="font-semibold text-app-text mb-3">Dimension audit</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
+                  <p className="text-xs text-app-muted uppercase tracking-wide">Missing project IDs</p>
+                  <p className="text-lg font-semibold tabular-nums text-app-text">
+                    {data.diagnostics.missingProjectIds.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">Journal lines in range</p>
+                </div>
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
+                  <p className="text-xs text-app-muted uppercase tracking-wide">Missing building IDs</p>
+                  <p className="text-lg font-semibold tabular-nums text-app-text">
+                    {data.diagnostics.missingBuildingIds.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">Journal lines in range</p>
+                </div>
+                <div className="rounded-md border border-slate-200 dark:border-slate-700 px-3 py-2">
+                  <p className="text-xs text-app-muted uppercase tracking-wide">Missing cost centers</p>
+                  <p className="text-lg font-semibold tabular-nums text-app-text">
+                    {data.diagnostics.missingCostCenters.toLocaleString()}
+                  </p>
+                  <p className="text-xs text-slate-500">Journal lines in range</p>
+                </div>
+              </div>
+              {data.diagnostics.unbalancedProjects.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold text-app-muted uppercase tracking-wide mb-2">
+                    Unbalanced projects (gross debits ≠ credits)
+                  </p>
+                  <div className="overflow-x-auto rounded-md border border-slate-200 dark:border-slate-700">
+                    <table className="min-w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50 dark:bg-slate-800 text-left">
+                          <th className="px-2 py-1.5">Project</th>
+                          <th className="px-2 py-1.5 text-right">Debit</th>
+                          <th className="px-2 py-1.5 text-right">Credit</th>
+                          <th className="px-2 py-1.5 text-right">Difference</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.diagnostics.unbalancedProjects.map((row) => (
+                          <tr key={row.projectId} className="border-t border-slate-100 dark:border-slate-800">
+                            <td className="px-2 py-1.5">
+                              {projectNameById.get(row.projectId) ?? row.projectId}
+                            </td>
+                            <td className="px-2 py-1.5 text-right font-mono tabular-nums">{money(row.grossDebit)}</td>
+                            <td className="px-2 py-1.5 text-right font-mono tabular-nums">{money(row.grossCredit)}</td>
+                            <td className="px-2 py-1.5 text-right font-mono tabular-nums text-red-700 dark:text-red-300">
+                              {money(Math.abs(row.difference))}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-emerald-700 dark:text-emerald-300">
+                  All projects with journal activity in this range have balanced gross postings.
+                </p>
+              )}
+            </div>
+          )}
+
           {data?.dataSource === 'transactions_fallback' && !hasEntityScope && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/40 dark:border-amber-700 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
               No posted <strong>journal</strong> lines in this range — amounts are reconstructed from your{' '}
@@ -323,10 +411,17 @@ const TrialBalanceReport: React.FC = () => {
               Post journals from Settings → Journal entry (GL) for immutable double-entry in the database.
             </div>
           )}
-          {hasEntityScope && (
+          {hasEntityScope && data?.dataSource === 'journal' && (
             <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
-              Project scope matches <strong>Profit &amp; Loss</strong> / <strong>Balance Sheet</strong> (operational
-              transactions and journal lines tagged to the selected project; tenant opening balances are excluded).
+              Scoped trial balance from <strong>journal lines</strong> tagged to the selected project or building.
+              Tenant opening balances are excluded. Shared bank or overhead accounts may cause an imbalance for a
+              single project — review the dimension audit below.
+            </div>
+          )}
+          {hasEntityScope && data?.dataSource === 'transactions_fallback' && (
+            <div className="rounded-lg border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900/50 px-3 py-2 text-xs text-slate-600 dark:text-slate-300">
+              No scoped journal lines in range — amounts are reconstructed from operational transactions (legacy
+              fallback).
             </div>
           )}
 

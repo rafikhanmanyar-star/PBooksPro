@@ -3,6 +3,7 @@ import { useLookupMaps } from '../../hooks/useLookupMaps';
 import { Transaction, TransactionType, LedgerSortKey as SortKey, SortDirection } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
+import { coerceAmount } from '../../utils/numberFormatting';
 
 interface LedgerTableProps {
     groups: {
@@ -253,12 +254,13 @@ const LedgerTable: React.FC<LedgerTableProps> = ({
     const calculateGroupSummary = (transactions: Transaction[]) => {
         return transactions.reduce(
             (acc, tx) => {
+                const amount = coerceAmount(tx.amount);
                 if (tx.type === TransactionType.INCOME) {
-                    acc.income += tx.amount;
-                    acc.net += tx.amount;
+                    acc.income += amount;
+                    acc.net += amount;
                 } else if (tx.type === TransactionType.EXPENSE) {
-                    acc.expense += tx.amount;
-                    acc.net -= tx.amount;
+                    acc.expense += amount;
+                    acc.net -= amount;
                 }
                 acc.count++;
                 return acc;

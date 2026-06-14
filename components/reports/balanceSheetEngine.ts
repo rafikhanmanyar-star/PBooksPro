@@ -36,6 +36,7 @@ import {
   transactionMatchesFinancialEntityScope,
   type FinancialEntityScope,
 } from './financialEntityScope';
+import { isDimensionScopeActive } from '../../shared/financial-core/dimensionScope';
 import { findProjectAssetCategory } from '../../constants/projectAssetSystemCategories';
 import { resolveSystemAccountId } from '../../services/systemEntityIds';
 import { computeProfitLossReport } from './profitLossEngine';
@@ -44,6 +45,12 @@ import {
   openingAmountToGross,
 } from '../../services/financialEngine/trialBalanceCore';
 import { roundMoney } from '../../services/financialEngine/validation';
+import {
+  fiscalYearStartForDate,
+  priorFiscalYearEnd,
+  type BalanceSheetCompareMode,
+  compareAsOfDate,
+} from '../../utils/fiscalYear';
 
 /** Start date for cumulative P&L → retained earnings (company inception). */
 export const BS_PL_CUMULATIVE_START = '2000-01-01';
@@ -54,31 +61,31 @@ export type BsTerm = 'current' | 'non_current';
 /** Line grouping keys — mapped from account tags or derived (no hardcoded user account names). */
 /** UI labels for `groupKey` (derived / tagged lines). */
 export const BS_GROUP_LABELS: Record<BsGroupKey, string> = {
-  cash_equivalents: 'Cash & Cash Equivalents',
+  cash_equivalents: 'Cash in Hand',
   bank_accounts: 'Bank Accounts',
   accounts_receivable: 'Accounts Receivable',
   inventory: 'Inventory',
-  prepaid_expenses: 'Prepaid Expenses',
+  prepaid_expenses: 'Advances to Suppliers',
   other_current_assets: 'Other Current Assets',
   ppe: 'Property, Plant & Equipment',
-  intangible_assets: 'Intangible Assets',
-  long_term_investments: 'Long-term Investments',
+  intangible_assets: 'Fixed Assets',
+  long_term_investments: 'Long-Term Investments',
   project_assets: 'Project Assets',
-  other_non_current_assets: 'Other Non-current Assets',
+  other_non_current_assets: 'Security Deposits',
   accounts_payable: 'Accounts Payable',
-  short_term_loans: 'Short-term Loans',
+  short_term_loans: 'Short-Term Loans',
   accrued_expenses: 'Accrued Expenses',
   taxes_payable: 'Taxes Payable',
-  other_current_liabilities: 'Other Current Liabilities',
-  long_term_loans: 'Long-term Loans',
-  deferred_liabilities: 'Deferred Liabilities',
-  other_non_current_liabilities: 'Other Non-current Liabilities',
-  owner_capital: 'Owner / Shareholder Capital',
+  other_current_liabilities: 'Customer Advances',
+  long_term_loans: 'Long-Term Loans',
+  deferred_liabilities: 'Contractor Payables',
+  other_non_current_liabilities: 'Lease Liabilities',
+  owner_capital: 'Share Capital',
   retained_earnings: 'Retained Earnings',
   current_year_earnings: 'Current Year Earnings',
   drawings: 'Drawings / Withdrawals',
-  revaluation_surplus: 'Revaluation Surplus',
-  other_equity: 'Other Equity Adjustments',
+  revaluation_surplus: 'Investor Capital',
+  other_equity: 'Partner Capital',
   internal_clearing_suspense: 'Internal Clearing / Suspense',
   unknown: 'Unclassified',
 };
@@ -163,6 +170,10 @@ export interface BalanceSheetReportResult {
     difference: number;
   };
   retainedEarningsFromPL: number;
+  /** Retained earnings through prior fiscal year end (cumulative P&L minus current-year P&L). */
+  retainedEarningsPriorYears: number;
+  /** Current fiscal year net profit/loss through as-of date. */
+  currentYearEarningsFromPL: number;
   isBalanced: boolean;
   discrepancy: number;
   validation: BalanceSheetValidationIssue[];
@@ -290,9 +301,16 @@ export function computeBalanceSheetReport(
     selectedProjectId: string;
     selectedBuildingId?: string;
     useJournalLedger?: boolean;
+    /** Fiscal year start month (1–12). Default January. */
+    fiscalStartMonth?: number;
+    /** Filter to a single account group key. */
+    accountGroupKey?: BsGroupKey | 'all';
+    /** Filter to a single account id. */
+    accountId?: string | 'all';
   }
 ): BalanceSheetReportResult {
   const { asOfDate, selectedProjectId } = options;
+  const fiscalStartMonth = options.fiscalStartMonth ?? 1;
   const selectedBuildingId = options.selectedBuildingId ?? FINANCIAL_ENTITY_FILTER_ALL;
   const entityScope: FinancialEntityScope = {
     projectId: selectedProjectId,
@@ -481,6 +499,16 @@ export function computeBalanceSheetReport(
     selectedBuildingId,
   });
   const retainedEarningsFromPL = pl.net_profit;
+
+  const fyStart = fiscalYearStartForDate(fiscalStartMonth, asOfDate);
+  const currentYearPl = computeProfitLossReport(state as AppState, {
+    startDate: fyStart,
+    endDate: asOfDate,
+    selectedProjectId,
+    selectedBuildingId,
+  });
+  const currentYearEarningsFromPL = currentYearPl.net_profit;
+  const retainedEarningsPriorYears = roundMoney(retainedEarningsFromPL - currentYearEarningsFromPL);
 
   const receivedAssetsEquityOffset = receivedAssetsHeldBalance;
 
@@ -764,7 +792,7 @@ export function computeBalanceSheetReport(
   }
 
   /** Journal: offset bank/cash opening_balance with synthetic equity (consolidated only). */
-  if (useJournal && !scopeTargetsProject(entityScope) && !scopeTargetsBuilding(entityScope)) {
+  if (useJournal && !isDimensionScopeActive(entityScope)) {
     let openingNetDebit = 0;
     for (const acc of state.accounts || []) {
       const ob = roundMoney(Number(acc.openingBalance ?? 0));
@@ -881,36 +909,114 @@ export function computeBalanceSheetReport(
   const currentLiab = liabilityLines.filter((l) => l.term === 'current');
   const nonCurrentLiab = liabilityLines.filter((l) => l.term === 'non_current');
 
+  const groupFilter = options.accountGroupKey && options.accountGroupKey !== 'all' ? options.accountGroupKey : null;
+  const accountFilter = options.accountId && options.accountId !== 'all' ? options.accountId : null;
+
+  const filterLines = (lines: BalanceSheetLine[]) =>
+    lines.filter((l) => {
+      if (groupFilter && l.groupKey !== groupFilter) return false;
+      if (accountFilter && l.accountId !== accountFilter) return false;
+      return true;
+    });
+
+  const filteredCurrentAssets = filterLines(currentAssets);
+  const filteredNonCurrentAssets = filterLines(nonCurrentAssets);
+  const filteredCurrentLiab = filterLines(currentLiab);
+  const filteredNonCurrentLiab = filterLines(nonCurrentLiab);
+  const filteredEquity = filterLines(equityLines);
+
+  const useLineFilter = !!(groupFilter || accountFilter);
+  const reportAssets = useLineFilter
+    ? filteredCurrentAssets.reduce((s, l) => s + l.amount, 0) + filteredNonCurrentAssets.reduce((s, l) => s + l.amount, 0)
+    : sumAssets;
+  const reportLiab = useLineFilter
+    ? filteredCurrentLiab.reduce((s, l) => s + l.amount, 0) + filteredNonCurrentLiab.reduce((s, l) => s + l.amount, 0)
+    : sumLiab;
+  const reportEq = useLineFilter ? filteredEquity.reduce((s, l) => s + l.amount, 0) : sumEq;
+  const reportDiff = useLineFilter ? reportAssets - (reportLiab + reportEq) : difference;
+
   return {
     asOfDate,
     selectedProjectId,
     assets: {
-      current: currentAssets,
-      non_current: nonCurrentAssets,
-      total: sumAssets,
+      current: filteredCurrentAssets,
+      non_current: filteredNonCurrentAssets,
+      total: reportAssets,
     },
     liabilities: {
-      current: currentLiab,
-      non_current: nonCurrentLiab,
-      total: sumLiab,
+      current: filteredCurrentLiab,
+      non_current: filteredNonCurrentLiab,
+      total: reportLiab,
     },
     equity: {
-      items: equityLines,
-      total: sumEq,
+      items: filteredEquity,
+      total: reportEq,
     },
     supplemental: {
       marketInventoryMemo: supplementalMarketMemo,
     },
     totals: {
-      assets: sumAssets,
-      liabilities: sumLiab,
-      equity: sumEq,
-      difference,
+      assets: reportAssets,
+      liabilities: reportLiab,
+      equity: reportEq,
+      difference: reportDiff,
     },
     retainedEarningsFromPL,
-    isBalanced,
-    discrepancy: difference,
+    retainedEarningsPriorYears,
+    currentYearEarningsFromPL,
+    isBalanced: Math.abs(reportDiff) < 1,
+    discrepancy: reportDiff,
     validation,
     debugLines,
   };
 }
+
+export interface ComparativeBalanceSheetResult {
+  current: BalanceSheetReportResult;
+  previous: BalanceSheetReportResult;
+  previousAsOfDate: string;
+  compareMode: BalanceSheetCompareMode;
+}
+
+/** Run balance sheet for current and prior period (year or month). */
+export function computeComparativeBalanceSheetReport(
+  state: BalanceSheetStateInput,
+  options: {
+    asOfDate: string;
+    selectedProjectId: string;
+    selectedBuildingId?: string;
+    useJournalLedger?: boolean;
+    fiscalStartMonth?: number;
+    compareMode: BalanceSheetCompareMode;
+    accountGroupKey?: BsGroupKey | 'all';
+    accountId?: string | 'all';
+  }
+): ComparativeBalanceSheetResult | BalanceSheetReportResult {
+  const current = computeBalanceSheetReport(state, options);
+  const previousAsOfDate = compareAsOfDate(options.asOfDate, options.compareMode, options.fiscalStartMonth ?? 1);
+  if (!previousAsOfDate) return current;
+  const previous = computeBalanceSheetReport(state, {
+    ...options,
+    asOfDate: previousAsOfDate,
+  });
+  return {
+    current,
+    previous,
+    previousAsOfDate,
+    compareMode: options.compareMode,
+  };
+}
+
+/** Flatten all statement lines for comparative export / variance tables. */
+export function flattenBalanceSheetLines(report: BalanceSheetReportResult): BalanceSheetLine[] {
+  return [
+    ...report.assets.current,
+    ...report.assets.non_current,
+    ...report.liabilities.current,
+    ...report.liabilities.non_current,
+    ...report.equity.items,
+  ];
+}
+
+export { priorFiscalYearEnd, fiscalYearStartForDate, compareAsOfDate };
+export type { BalanceSheetCompareMode };

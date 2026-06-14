@@ -13,6 +13,7 @@ import { useStateSelector } from '../../../hooks/useSelectiveState';
 import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
 import RecordLockBanner from '../../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../../recordLock/RecordLockConflictModal';
+import AmountInput from '../../common/AmountInput';
 
 interface EditPayslipModalProps {
   isOpen: boolean;
@@ -163,10 +164,8 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
         <div className={`space-y-3 ${recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''}`}>
           <div>
             <label htmlFor="edit-payslip-basic-pay" className="block text-sm font-medium text-slate-700 mb-1">Basic pay</label>
-            <input
+            <AmountInput
               id="edit-payslip-basic-pay"
-              type="number"
-              min={0}
               value={basicPay}
               onChange={(e) => setBasicPay(Number(e.target.value) || 0)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
@@ -175,10 +174,8 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           </div>
           <div>
             <label htmlFor="edit-payslip-total-allowances" className="block text-sm font-medium text-slate-700 mb-1">Total allowances</label>
-            <input
+            <AmountInput
               id="edit-payslip-total-allowances"
-              type="number"
-              min={0}
               value={totalAllowances}
               onChange={(e) => setTotalAllowances(Number(e.target.value) || 0)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
@@ -187,10 +184,8 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           </div>
           <div>
             <label htmlFor="edit-payslip-total-deductions" className="block text-sm font-medium text-slate-700 mb-1">Total deductions</label>
-            <input
+            <AmountInput
               id="edit-payslip-total-deductions"
-              type="number"
-              min={0}
               value={totalDeductions}
               onChange={(e) => setTotalDeductions(Number(e.target.value) || 0)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
@@ -199,9 +194,9 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           </div>
           <div>
             <label htmlFor="edit-payslip-total-adjustments" className="block text-sm font-medium text-slate-700 mb-1">Total adjustments</label>
-            <input
+            <AmountInput
               id="edit-payslip-total-adjustments"
-              type="number"
+              allowNegative
               value={totalAdjustments}
               onChange={(e) => setTotalAdjustments(Number(e.target.value) || 0)}
               className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900"

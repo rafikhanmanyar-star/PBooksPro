@@ -306,3 +306,26 @@ export function emitUserNotification(tenantId: string, userId: string, notificat
   };
   io.to(tenantRoom(tenantId)).emit('notification_created', body);
 }
+
+export type WhatsAppSocketPayload = Record<string, unknown>;
+
+function emitWhatsAppEvent(
+  event: 'whatsapp:message:sent' | 'whatsapp:message:received' | 'whatsapp:message:status',
+  tenantId: string,
+  payload: WhatsAppSocketPayload
+): void {
+  if (!io) return;
+  io.to(tenantRoom(tenantId)).emit(event, payload);
+}
+
+export function emitWhatsAppMessageSent(tenantId: string, payload: WhatsAppSocketPayload): void {
+  emitWhatsAppEvent('whatsapp:message:sent', tenantId, payload);
+}
+
+export function emitWhatsAppMessageReceived(tenantId: string, payload: WhatsAppSocketPayload): void {
+  emitWhatsAppEvent('whatsapp:message:received', tenantId, payload);
+}
+
+export function emitWhatsAppMessageStatus(tenantId: string, payload: WhatsAppSocketPayload): void {
+  emitWhatsAppEvent('whatsapp:message:status', tenantId, payload);
+}

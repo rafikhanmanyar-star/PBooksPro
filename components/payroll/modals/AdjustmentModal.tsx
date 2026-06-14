@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { X, Save, Gift, AlertCircle, TrendingDown } from 'lucide-react';
 import { SalaryAdjustment, AdjustmentType } from '../types';
 import { useAuth } from '../../../context/AuthContext';
+import AmountInput from '../../common/AmountInput';
 
 interface AdjustmentModalProps {
   isOpen: boolean;
@@ -82,12 +83,13 @@ const AdjustmentModal: React.FC<AdjustmentModalProps> = ({ isOpen, onClose, onAd
             </div>
             <div className="flex-1">
               <label className="block text-xs font-black text-slate-400 uppercase tracking-widest mb-2">Amount (PKR)</label>
-              <input 
-                type="number" 
-                required 
-                value={formData.amount} 
-                onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} 
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 font-black text-slate-900" 
+              <AmountInput
+                required
+                allowNegative
+                value={formData.amount}
+                onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 font-black text-slate-900"
+                aria-label="Adjustment amount in PKR"
               />
             </div>
           </div>

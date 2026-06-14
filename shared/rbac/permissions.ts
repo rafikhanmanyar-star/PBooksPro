@@ -40,7 +40,13 @@ export type Permission =
   | 'project_selling.marketing_plans.write'
   | 'project_selling.agreements.write'
   | 'project_selling.invoices.write'
-  | 'project_selling.payments.receive';
+  | 'project_selling.payments.receive'
+  | 'procurement.quotations.create'
+  | 'procurement.quotations.edit'
+  | 'procurement.quotations.approve'
+  | 'procurement.quotations.compare'
+  | 'procurement.price_validation.override'
+  | 'procurement.price_history.read';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -72,6 +78,12 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'project_selling.agreements.write',
   'project_selling.invoices.write',
   'project_selling.payments.receive',
+  'procurement.quotations.create',
+  'procurement.quotations.edit',
+  'procurement.quotations.approve',
+  'procurement.quotations.compare',
+  'procurement.price_validation.override',
+  'procurement.price_history.read',
 ] as const;
 
 /** Project selling write keys (sales user bundle — not full financial.write). */
@@ -126,6 +138,12 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'project_selling.agreements.write': 'Project agreements (create & convert)',
   'project_selling.invoices.write': 'Project selling invoices (create)',
   'project_selling.payments.receive': 'Project selling payments (receive)',
+  'procurement.quotations.create': 'Create vendor quotation',
+  'procurement.quotations.edit': 'Edit vendor quotation',
+  'procurement.quotations.approve': 'Approve vendor quotation',
+  'procurement.quotations.compare': 'Compare vendor quotations',
+  'procurement.price_validation.override': 'Override price validation',
+  'procurement.price_history.read': 'View vendor price history',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
@@ -140,6 +158,15 @@ const REPORTS_READ: Permission[] = [
   'reports.balance_sheet.read',
   'reports.profit_loss.read',
   'reports.cash_flow.read',
+];
+
+const PROCUREMENT_ALL: Permission[] = [
+  'procurement.quotations.create',
+  'procurement.quotations.edit',
+  'procurement.quotations.approve',
+  'procurement.quotations.compare',
+  'procurement.price_validation.override',
+  'procurement.price_history.read',
 ];
 
 const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
@@ -162,6 +189,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
     ...RETENTION_OVERRIDE,
+    ...PROCUREMENT_ALL,
   ]),
   accountant: new Set([
     ...REPORTS_READ,
@@ -175,6 +203,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_VIEW,
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
+    ...PROCUREMENT_ALL,
   ]),
   project_manager: new Set([
     'reports.profit_loss.read',
@@ -184,9 +213,20 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_VIEW,
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
+    'procurement.quotations.create',
+    'procurement.quotations.edit',
+    'procurement.quotations.compare',
+    'procurement.price_history.read',
   ]),
   sales_user: new Set([...PROJECT_SELLING_SALES_USER_PERMISSIONS]),
-  read_only: new Set([...REPORTS_READ, 'payroll.read', 'audit_logs.read', 'pev.read', ...RETENTION_VIEW]),
+  read_only: new Set([
+    ...REPORTS_READ,
+    'payroll.read',
+    'audit_logs.read',
+    'pev.read',
+    ...RETENTION_VIEW,
+    'procurement.price_history.read',
+  ]),
 };
 
 /** Maps stored user.role values (legacy + new) to enterprise role slugs. */

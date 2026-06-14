@@ -4,6 +4,11 @@
 import type pg from 'pg';
 import { formatPgDateToYyyyMmDd } from '../utils/dateOnly.js';
 import { roundMoney, type JournalLineInput } from '../financial/validation.js';
+import {
+  entryDimensionsFrom,
+  journalLineWithDimensions,
+  resolveJournalDimensions,
+} from '../financial/journalDimensions.js';
 import { type CreateJournalBody } from './journalService.js';
 import { createFinancialPostingService } from '../modules/accounting/services/FinancialPostingService.js';
 import type { BillRow } from './billsService.js';
@@ -15,11 +20,6 @@ const SYS_EXPENSE_SUMMARY = 'sys-acc-expense-summary';
 
 function billDateYmd(row: BillRow): string {
   return formatPgDateToYyyyMmDd(row.issue_date as Date | string);
-}
-
-function billProjectId(row: BillRow): string | null {
-  const p = row.project_id;
-  return p != null && String(p).trim() !== '' ? String(p).trim() : null;
 }
 
 export function shouldSkipBillJournalMirror(row: Pick<BillRow, 'status' | 'description' | 'amount' | 'deleted_at'>): boolean {
@@ -36,10 +36,10 @@ export function buildJournalLinesFromBill(row: BillRow): JournalLineInput[] | nu
   const M = roundMoney(Math.abs(Number(row.amount)));
   if (M < 0.005) return null;
 
-  const projectId = billProjectId(row);
+  const dims = resolveJournalDimensions(row);
   return [
-    { accountId: SYS_EXPENSE_SUMMARY, debitAmount: M, creditAmount: 0, projectId },
-    { accountId: SYS_AP, debitAmount: 0, creditAmount: M, projectId },
+    journalLineWithDimensions({ accountId: SYS_EXPENSE_SUMMARY, debitAmount: M, creditAmount: 0 }, dims),
+    journalLineWithDimensions({ accountId: SYS_AP, debitAmount: 0, creditAmount: M }, dims),
   ];
 }
 
@@ -47,6 +47,7 @@ export function buildJournalBodyFromBill(row: BillRow, lines: JournalLineInput[]
   const desc =
     (row.description && String(row.description).trim()) ||
     `Bill ${row.bill_number}`;
+  const dims = resolveJournalDimensions(row);
   return {
     entryDate: billDateYmd(row),
     reference: `BILL:${row.bill_number}`,
@@ -54,7 +55,7 @@ export function buildJournalBodyFromBill(row: BillRow, lines: JournalLineInput[]
     sourceModule: BILL_JOURNAL_SOURCE_MODULE,
     sourceId: row.id,
     createdBy: row.user_id,
-    projectId: billProjectId(row),
+    ...entryDimensionsFrom(dims),
     lines,
   };
 }
@@ -114,7 +115,6 @@ export async function ensureBillJournalMirror(
   const body = buildJournalBodyFromBill(row, lines);
   const { journalEntryId } = await createFinancialPostingService(tenantId).postJournal(client, body, {
     actorUserId,
-    emitRealtime: true,
   });
   return { journalEntryId, skipped: null };
 }

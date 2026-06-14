@@ -102,11 +102,3 @@ optionalFeatureRouter.get('/tenants/online-users', (req: AuthedRequest, res) => 
   }
   res.json(getOnlineUsersFromPresence(tid));
 });
-
-optionalFeatureRouter.get('/whatsapp/unread-count', (_req: AuthedRequest, res) => {
-  res.json({ count: 0 });
-});
-
-optionalFeatureRouter.get('/whatsapp/unread-conversations', (_req: AuthedRequest, res) => {
-  res.json([]);
-});

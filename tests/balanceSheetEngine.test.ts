@@ -2,7 +2,8 @@
  * Balance sheet engine smoke tests (tsx / node).
  */
 import assert from 'node:assert';
-import { computeBalanceSheetReport } from '../components/reports/balanceSheetEngine';
+import { computeBalanceSheetReport, computeComparativeBalanceSheetReport } from '../components/reports/balanceSheetEngine';
+import { balanceSheetToExportRows } from '../components/reports/exportBalanceSheet';
 import type { AppState } from '../types';
 import { AccountType, TransactionType } from '../types';
 
@@ -273,6 +274,92 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
     !p1.equity.items.some((l) => l.id === '__opening_balance_equity__'),
     'no Opening Balance Equity on project-scoped BS'
   );
+}
+
+/** Retained earnings split: prior-year RE + current-year earnings = cumulative P&L. */
+{
+  const state = minimalState({
+    categories: [{ id: 'cat-rev', name: 'Sales', type: TransactionType.INCOME }],
+    transactions: [
+      {
+        id: 'inc-prior',
+        type: TransactionType.INCOME,
+        amount: 1000,
+        date: '2023-06-01',
+        description: 'Prior year income',
+        accountId: 'cash1',
+        categoryId: 'cat-rev',
+      } as AppState['transactions'][0],
+      {
+        id: 'inc-current',
+        type: TransactionType.INCOME,
+        amount: 400,
+        date: '2024-06-01',
+        description: 'Current year income',
+        accountId: 'cash1',
+        categoryId: 'cat-rev',
+      } as AppState['transactions'][0],
+    ],
+  });
+  const r = computeBalanceSheetReport(state, { asOfDate: '2024-12-31', selectedProjectId: 'all', fiscalStartMonth: 1 });
+  assert.ok(Math.abs(r.retainedEarningsFromPL - 1400) < 1, `cumulative P&L expected 1400 got ${r.retainedEarningsFromPL}`);
+  assert.ok(Math.abs(r.currentYearEarningsFromPL - 400) < 1, `current year expected 400 got ${r.currentYearEarningsFromPL}`);
+  assert.ok(
+    Math.abs(r.retainedEarningsPriorYears - 1000) < 1,
+    `prior years RE expected 1000 got ${r.retainedEarningsPriorYears}`
+  );
+}
+
+/** Comparative balance sheet: prior fiscal year end produces a previous snapshot. */
+{
+  const state = minimalState({
+    categories: [{ id: 'cat-rev', name: 'Sales', type: TransactionType.INCOME }],
+    transactions: [
+      {
+        id: 'inc1',
+        type: TransactionType.INCOME,
+        amount: 500,
+        date: '2024-03-01',
+        description: 'Q1 income',
+        accountId: 'cash1',
+        categoryId: 'cat-rev',
+      } as AppState['transactions'][0],
+    ],
+  });
+  const cmp = computeComparativeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'all',
+    compareMode: 'prior_year',
+    fiscalStartMonth: 1,
+  });
+  assert.ok('current' in cmp && 'previous' in cmp, 'expected comparative result');
+  if ('current' in cmp) {
+    assert.ok(cmp.current.totals.assets > 0, 'current period should show assets');
+    assert.ok(cmp.previousAsOfDate === '2023-12-31', `expected prior FY end 2023-12-31 got ${cmp.previousAsOfDate}`);
+  }
+}
+
+/** Export rows preserve screen totals. */
+{
+  const state = minimalState({
+    transactions: [
+      {
+        id: 't1',
+        type: TransactionType.TRANSFER,
+        amount: 2000,
+        date: '2024-01-15',
+        description: 'Fund cash',
+        accountId: 'cash1',
+        fromAccountId: 'sys-acc-clearing',
+        toAccountId: 'cash1',
+      } as AppState['transactions'][0],
+    ],
+  });
+  const r = computeBalanceSheetReport(state, { asOfDate: '2024-12-31', selectedProjectId: 'all' });
+  const rows = balanceSheetToExportRows(r);
+  const totalAssetsRow = rows.find((row) => row.Account === 'Total Assets');
+  assert.ok(totalAssetsRow && Math.abs(Number(totalAssetsRow.Amount) - r.totals.assets) < 0.01);
+  assert.ok(r.isBalanced, 'equation should balance');
 }
 
 console.log('balanceSheetEngine.test.ts: OK');

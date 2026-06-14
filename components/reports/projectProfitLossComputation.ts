@@ -70,8 +70,11 @@ function runPlBillAccrual(
         if (!billMatchesFinancialEntityScope(bill, state as ReportStateSlice, scope)) return;
         const isProjectBill = !!bill.projectId;
         const buildingId = resolveBillBuildingId(bill, state);
-        const isBuildingBill = !!buildingId && !bill.projectId;
-        if (!isProjectBill && !isBuildingBill) return;
+        if (scopeTargetsBuilding(scope)) {
+            if (!buildingId) return;
+        } else if (scopeTargetsProject(scope)) {
+            if (!isProjectBill) return;
+        }
         const excludeRentalCats = isProjectBill || scopeTargetsProject(scope);
 
         const billDate = new Date(bill.issueDate);
@@ -413,8 +416,6 @@ export function transactionIncludedInPlLoop(
         if (!buildingId) return false;
     } else if (scopeTargetsProject(scope)) {
         if (!projectId) return false;
-    } else if (!projectId && !buildingId) {
-        return false;
     }
 
     if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {
@@ -541,8 +542,6 @@ export function computeProjectProfitLossTotals(
             if (!buildingId) return;
         } else if (scopeTargetsProject(scope)) {
             if (!projectId) return;
-        } else if (!projectId && !buildingId) {
-            return;
         }
 
         if (transactionIsDuplicatePrepaidAdvanceVersusAccruedBill(tx, state, processedBills, selectedProjectId)) {

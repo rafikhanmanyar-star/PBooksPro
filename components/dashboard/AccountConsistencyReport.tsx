@@ -3,7 +3,9 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react'
 import { AccountType, type AccountConsistencySettings } from '../../types';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
+import AmountInput from '../common/AmountInput';
 import { formatRoundedNumber } from '../../utils/numberUtils';
+import { parseAmount } from '../../utils/numberFormatting';
 import { computeBankAccountProjectBalances } from './bankAccountReportBalances';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 
@@ -11,14 +13,6 @@ const LEGACY_STORAGE_VERSION = 1;
 
 function legacyStorageKey(tenantId: string): string {
     return `pbooks_account_consistency_v${LEGACY_STORAGE_VERSION}_${tenantId}`;
-}
-
-function parseAmountInput(raw: string): number | null {
-    const t = raw.trim();
-    if (t === '') return null;
-    const normalized = t.replace(/,/g, '');
-    const n = parseFloat(normalized);
-    return Number.isFinite(n) ? n : null;
 }
 
 async function copyTextToClipboard(text: string): Promise<boolean> {
@@ -178,7 +172,7 @@ const AccountConsistencyReport: React.FC = () => {
     const handleSave = useCallback(() => {
         const actualByAccountId: Record<string, number | null> = {};
         rows.forEach(r => {
-            const parsed = parseAmountInput(actualInputs[r.accountId] ?? '');
+            const parsed = parseAmount(actualInputs[r.accountId] ?? '');
             actualByAccountId[r.accountId] = parsed === null ? null : parsed;
         });
         const iso = new Date().toISOString();
@@ -198,7 +192,7 @@ const AccountConsistencyReport: React.FC = () => {
         let sum = 0;
         let any = false;
         rows.forEach(r => {
-            const p = parseAmountInput(actualInputs[r.accountId] ?? '');
+            const p = parseAmount(actualInputs[r.accountId] ?? '');
             if (p !== null) {
                 sum += p;
                 any = true;
@@ -293,7 +287,7 @@ const AccountConsistencyReport: React.FC = () => {
                         </thead>
                         <tbody className="divide-y divide-app-border bg-app-card">
                             {rows.map(r => {
-                                const actual = parseAmountInput(actualInputs[r.accountId] ?? '');
+                                const actual = parseAmount(actualInputs[r.accountId] ?? '');
                                 const diff = actual === null ? null : r.currentBalance - actual;
                                 return (
                                     <tr key={r.accountId} className="hover:bg-app-toolbar/80 transition-colors duration-ds">
@@ -311,15 +305,11 @@ const AccountConsistencyReport: React.FC = () => {
                                             {formatRoundedNumber(r.currentBalance)}
                                         </td>
                                         <td className="px-3 py-3 text-right">
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                autoComplete="off"
-                                                spellCheck={false}
-                                                placeholder="—"
-                                                aria-label={`Actual amount for ${r.accountName}; copy and paste supported`}
+                                            <AmountInput
                                                 value={actualInputs[r.accountId] ?? ''}
                                                 onChange={e => setActualFor(r.accountId, e.target.value)}
+                                                placeholder="—"
+                                                aria-label={`Actual amount for ${r.accountName}; copy and paste supported`}
                                                 className={inputActualClass}
                                             />
                                         </td>

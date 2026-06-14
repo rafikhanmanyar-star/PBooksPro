@@ -19,6 +19,7 @@ import PrintButton from '../../../components/ui/PrintButton';
 import { usePrintContext } from '../../../context/PrintContext';
 import { PayslipPrintData } from '../../print/PayslipPrintTemplate';
 import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
+import AmountInput from '../../common/AmountInput';
 
 interface PayslipModalProps {
   isOpen: boolean;
@@ -723,14 +724,13 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
                   <label className="block text-xs font-bold text-slate-500 uppercase mb-2">
                     Amount <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
+                  <AmountInput
+                    required
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(e.target.value)}
                     placeholder={payslipData != null ? String(payslipRemainingAmount(payslipData)) : String(netPay)}
                     className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:ring-2 ring-blue-500/20 outline-none font-medium text-slate-900"
+                    aria-label="Payment amount"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">
                     {payslipData != null ? (

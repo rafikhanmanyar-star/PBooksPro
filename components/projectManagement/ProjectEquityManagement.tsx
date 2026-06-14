@@ -5,6 +5,7 @@ import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY, ICONS } from '../../constants';
@@ -1566,7 +1567,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                             )}
                             <div className="grid grid-cols-2 gap-4">
                                 <Input label="Cycle Name" value={cycleName} onChange={e => setCycleName(e.target.value)} />
-                                <Input label="Amount to Distribute" type="number" value={distProfit} onChange={e => setDistProfit(e.target.value)} />
+                                <AmountInput label="Amount to Distribute" value={distProfit} onChange={e => setDistProfit(e.target.value)} />
                             </div>
                             <Button onClick={handleCalculateDistShares} disabled={!distProjectId || !distProfit}>Next</Button>
                         </div>
@@ -1761,13 +1762,10 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                                                         <td className="px-4 py-3 text-sm font-medium text-app-text">{row.investorName}</td>
                                                         <td className="px-4 py-3 text-sm text-right font-mono text-app-muted">{CURRENCY} {row.currentEquity.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                                         <td className="px-4 py-3 text-sm text-right">
-                                                            <input 
-                                                                type="number" 
-                                                                step="0.01"
-                                                                min="0"
+                                                            <AmountInput
                                                                 max={row.currentEquity}
                                                                 className={`w-32 text-right border rounded px-2 py-1 font-mono text-sm ${row.isSelected ? 'border-app-border focus:border-primary focus:ring-1 focus:ring-primary/30' : 'border-app-border bg-app-table-header text-app-muted cursor-not-allowed'}`}
-                                                                value={row.transferAmount} 
+                                                                value={row.transferAmount}
                                                                 onChange={(e) => {
                                                                     const val = parseFloat(e.target.value) || 0;
                                                                     const clamped = Math.min(Math.max(0, val), row.currentEquity);
@@ -1868,7 +1866,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                     <ComboBox label="Investor" items={investorAccounts} selectedId={formInvestorId} onSelect={(i) => setFormInvestorId(i?.id || '')} required />
                     <ComboBox label="Project" items={state.projects} selectedId={formProjectId} onSelect={(i) => setFormProjectId(i?.id || '')} required allowAddNew={false} />
                     <ComboBox label="Bank/Cash Account" items={bankAccounts} selectedId={formBankAccountId} onSelect={(i) => setFormBankAccountId(i?.id || '')} required allowAddNew={false} />
-                    <Input label="Amount" type="number" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
+                    <AmountInput label="Amount" value={formAmount} onChange={e => setFormAmount(e.target.value)} required />
                     <DatePicker label="Date" value={formDate} onChange={d => setFormDate(toLocalDateString(d))} required />
                     <Input label="Description" value={formDescription} onChange={e => setFormDescription(e.target.value)} placeholder="Optional note" />
                     
@@ -1910,7 +1908,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                             </>
                         )}
 
-                        <Input label="Amount" type="number" value={editingBatch.amount} onChange={e => setEditingBatch({...editingBatch, amount: e.target.value})} required />
+                        <AmountInput label="Amount" value={editingBatch.amount} onChange={e => setEditingBatch({...editingBatch, amount: e.target.value})} required />
                         <DatePicker
                             label="Date"
                             value={editingBatch.date}

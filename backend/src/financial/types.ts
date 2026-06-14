@@ -15,6 +15,10 @@ export type JournalLineInput = {
   creditAmount: number;
   /** Optional project scope (journal_lines.project_id). */
   projectId?: string | null;
+  /** Optional building scope (journal_lines.building_id). */
+  buildingId?: string | null;
+  /** Optional cost center scope (journal_lines.cost_center_id). */
+  costCenterId?: string | null;
 };
 
 export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
@@ -29,6 +33,10 @@ export type CreateJournalEntryInput = {
   createdBy?: string | null;
   /** journal_entries.project_id */
   projectId?: string | null;
+  /** journal_entries.building_id */
+  buildingId?: string | null;
+  /** Optional cost center on entry header (lines may also carry cost_center_id). */
+  costCenterId?: string | null;
   /** journal_entries.investor_id (party or equity GL id) */
   investorId?: string | null;
   investorTransactionType?: InvestorTransactionType | null;

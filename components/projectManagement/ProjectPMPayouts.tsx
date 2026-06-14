@@ -7,6 +7,7 @@ import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import DatePicker from '../ui/DatePicker';
 import ComboBox from '../ui/ComboBox';
 import { useNotification } from '../../context/NotificationContext';
@@ -194,7 +195,7 @@ const ProjectPMPayouts: React.FC = () => {
                         <p className="text-sm text-app-muted mt-2">Outstanding Balance</p>
                         <p className="font-bold text-ds-danger">{CURRENCY} {(selectedBalance?.balance || 0).toLocaleString()}</p>
                     </div>
-                    <Input label="Payment Amount" type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
+                    <AmountInput label="Payment Amount" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} />
                     <ComboBox label="Pay From Account" items={accounts} selectedId={paymentAccount} onSelect={item => setPaymentAccount(item?.id || '')} placeholder="Select account" />
                     <DatePicker label="Date" value={paymentDate} onChange={d => setPaymentDate(toLocalDateString(d))} />
                     <div className="flex justify-end gap-2 pt-4 border-t border-app-border">

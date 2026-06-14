@@ -12,6 +12,7 @@ import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
 import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import Input from '../ui/Input';
+import AmountInput from '../common/AmountInput';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Modal from '../ui/Modal';
@@ -42,6 +43,9 @@ import { backupAlertWarning, backupAlertError } from '../settings/backupThemeCla
 import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 import { validateBillAgainstContract } from '../../utils/contractBilling';
 import BillSummarySidePanel, { type BillSidebarPreview } from '../bills/BillSummarySidePanel';
+import { isPureSecurityDepositInvoice } from '../../utils/rentalInvoiceClassification';
+import { formatDate } from '../../utils/dateUtils';
+import { formatCurrency } from '../../utils/numberFormatting';
 
 const billSegmentTabActive = 'bg-primary text-ds-on-primary border-primary';
 const billSegmentTabInactive = 'bg-app-card text-app-muted border-app-border hover:bg-app-table-hover';
@@ -441,6 +445,23 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [type, itemToEdit, initialData]);
 
   const preservedServiceCharges = sourceInvoice?.serviceCharges ?? 0;
+
+  /** Security-deposit billing invoices may edit amount even when linked to an agreement or partially paid. */
+  const isSecurityDepositOnlyInvoice = useMemo(() => {
+    if (type !== 'invoice') return false;
+    if (invoiceType === InvoiceType.SECURITY_DEPOSIT) return true;
+    if (invoiceTypeForNew === InvoiceType.SECURITY_DEPOSIT) return true;
+    if (sourceInvoice) return isPureSecurityDepositInvoice(sourceInvoice);
+    return false;
+  }, [type, invoiceType, invoiceTypeForNew, sourceInvoice]);
+
+  const invoicePaymentTransactions = useMemo(() => {
+    if (!itemToEdit?.id || type !== 'invoice') return [];
+    return state.transactions
+      .filter(t => t.invoiceId === itemToEdit.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 10);
+  }, [itemToEdit?.id, type, state.transactions]);
 
   const calculatedAmount =
     (parseFloat(rentAmount) || 0) +
@@ -1304,8 +1325,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       finalAmount = parseFloat(amount) || 0;
     }
 
-    if (isPartiallyPaid && finalAmount < itemToEdit!.paidAmount) {
-      await showAlert(`Cannot reduce amount below the already paid amount of ${CURRENCY} ${itemToEdit!.paidAmount.toLocaleString()}.`, { title: 'Invalid Amount' });
+    if (isPartiallyPaid && finalAmount < itemToEdit!.paidAmount - 0.01) {
+      await showAlert(
+        isSecurityDepositOnlyInvoice
+          ? `Security deposit amount cannot be less than ${CURRENCY} ${itemToEdit!.paidAmount.toLocaleString()} already received.`
+          : `Cannot reduce amount below the already paid amount of ${CURRENCY} ${itemToEdit!.paidAmount.toLocaleString()}.`,
+        { title: 'Invalid Amount' }
+      );
       return;
     }
 
@@ -1651,12 +1677,20 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     const property = state.properties.find(p => p.id === propertyId);
     const building = property ? state.buildings.find(b => b.id === property.buildingId) : null;
     const showDetails = itemToEdit || initialData || agreementId;
-    const showSecurityDeposit = !itemToEdit || parseFloat(securityDepositCharge) > 0 || !isLocked;
+    const showSecurityDeposit =
+      isSecurityDepositOnlyInvoice ||
+      !itemToEdit ||
+      parseFloat(securityDepositCharge) > 0 ||
+      !isLocked;
+    const canEditSecurityDepositAmount =
+      !isAgreementCancelled && (!isLocked || isSecurityDepositOnlyInvoice);
 
     const tenantName = state.contacts.find(c => c.id === contactId)?.name || '';
     const agreementLabel = agreementItems.find(a => a.id === agreementId)?.name || '';
     const rentVal = parseFloat(rentAmount) || 0;
     const secVal = parseFloat(securityDepositCharge) || 0;
+    const editPaidAmount = itemToEdit ? (itemToEdit as Invoice).paidAmount || 0 : 0;
+    const editBalanceDue = Math.max(0, calculatedAmount - editPaidAmount);
 
     return (
       <div className="space-y-5">
@@ -1768,24 +1802,32 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
-                  <Input
-                    label={`Rent Amount (${CURRENCY})`}
-                    type="text"
-                    inputMode="decimal"
-                    value={rentAmount}
-                    onChange={e => setRentAmount(e.target.value)}
-                    required
-                    disabled={isAgreementCancelled}
-                  />
+                  {!isSecurityDepositOnlyInvoice && (
+                    <AmountInput
+                      label={`Rent Amount (${CURRENCY})`}
+                      value={rentAmount}
+                      onChange={e => setRentAmount(e.target.value)}
+                      required
+                      disabled={isAgreementCancelled}
+                    />
+                  )}
                   {showSecurityDeposit && (
-                    <Input
-                      label="Security Deposit (Optional)"
-                      type="text"
-                      inputMode="decimal"
+                    <AmountInput
+                      label={
+                        isSecurityDepositOnlyInvoice
+                          ? `Security Deposit (${CURRENCY})`
+                          : 'Security Deposit (Optional)'
+                      }
                       value={securityDepositCharge}
                       onChange={e => setSecurityDepositCharge(e.target.value)}
                       placeholder="Enter amount"
-                      readOnly={isLocked || isAgreementCancelled}
+                      required={isSecurityDepositOnlyInvoice}
+                      disabled={!canEditSecurityDepositAmount}
+                      helperText={
+                        isSecurityDepositOnlyInvoice && isPartiallyPaid
+                          ? `${CURRENCY} ${formatCurrency(editPaidAmount)} already received — you may adjust the total down to match payments.`
+                          : undefined
+                      }
                     />
                   )}
                 </div>
@@ -1841,8 +1883,48 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                     <span className="font-semibold tabular-nums">{secVal.toLocaleString()}</span>
                   </div>
                 )}
+                {itemToEdit && editPaidAmount > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm pt-1">
+                      <span className="text-blue-200">Received</span>
+                      <span className="font-semibold tabular-nums text-emerald-200">{editPaidAmount.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-blue-200">Balance Due</span>
+                      <span className="font-semibold tabular-nums">{editBalanceDue.toLocaleString()}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
+
+            {/* Recent payments for this invoice */}
+            {itemToEdit && invoicePaymentTransactions.length > 0 && (
+              <div className="bg-app-card rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className="px-4 py-3 border-b border-slate-100">
+                  <h3 className="text-sm font-bold text-slate-800">Recent Payments</h3>
+                </div>
+                <ul className="divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                  {invoicePaymentTransactions.map(tx => {
+                    const accountName = state.accounts.find(a => a.id === tx.accountId)?.name ?? '—';
+                    return (
+                      <li key={tx.id} className="px-4 py-2.5 flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-medium text-slate-700 tabular-nums">{formatDate(tx.date)}</p>
+                          <p className="text-[11px] text-slate-500 truncate" title={accountName}>{accountName}</p>
+                          {tx.description && (
+                            <p className="text-[11px] text-slate-400 truncate" title={tx.description}>{tx.description}</p>
+                          )}
+                        </div>
+                        <span className="text-sm font-semibold text-emerald-600 tabular-nums flex-shrink-0">
+                          {CURRENCY} {formatCurrency(Math.abs(tx.amount || 0))}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="space-y-2">
@@ -2166,14 +2248,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         </td>
                         <td className="px-3 py-2 text-right">
                           <div className="space-y-1">
-                            <Input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                            <AmountInput
                               value={item.pricePerUnit.toString() || ''}
                               onChange={(e) => { updateExpenseCategoryItem(item.id, { pricePerUnit: parseFloat(e.target.value) || 0 }); }}
                               className="w-full text-right text-xs h-8 bg-app-toolbar/40 rounded-lg"
                               disabled={isAgreementCancelled}
+                              aria-label="Price per unit"
                             />
                             {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
                               <div className="flex justify-end">
@@ -2191,14 +2271,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                           </div>
                         </td>
                         <td className="px-3 py-2">
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
+                          <AmountInput
                             value={item.netValue?.toString() || '0'}
                             onChange={(e) => { updateExpenseCategoryItem(item.id, { netValue: parseFloat(e.target.value) || 0 }, true); }}
                             className="w-full text-right font-semibold text-xs h-8 bg-app-toolbar/40 rounded-lg"
                             disabled={isAgreementCancelled}
+                            aria-label="Net value"
                           />
                         </td>
                         <td className="px-1 py-2 text-center">
@@ -2341,10 +2419,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                   </div>
                 </div>
               ) : (
-                <Input
+                <AmountInput
                   label="Amount"
-                  type="text"
-                  inputMode="decimal"
                   value={amount}
                   onChange={e => setAmount(e.target.value)}
                   required
@@ -2592,10 +2668,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
         {/* Amount Field for Project Invoices (INSTALLMENT) */}
         {type === 'invoice' && invoiceType === InvoiceType.INSTALLMENT && (
-          <Input
+          <AmountInput
             label="Amount"
-            type="text"
-            inputMode="decimal"
             value={amount}
             onChange={e => setAmount(e.target.value)}
             required
@@ -2682,10 +2756,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                               </td>
                               <td className="px-2 py-1.5">
                                 <div className="space-y-1">
-                                  <Input
-                                    type="number"
-                                    min="0"
-                                    step="0.01"
+                                  <AmountInput
                                     value={item.pricePerUnit.toString() || ''}
                                     onChange={(e) => {
                                       const pricePerUnit = parseFloat(e.target.value) || 0;
@@ -2693,6 +2764,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                     }}
                                     className="w-full text-xs h-8"
                                     disabled={isAgreementCancelled}
+                                    aria-label="Price per unit"
                                   />
                                   {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
                                     <QuotationPriceIndicator
@@ -2708,10 +2780,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                 </div>
                               </td>
                               <td className="px-2 py-1.5">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
+                                <AmountInput
                                   value={item.netValue?.toString() || '0'}
                                   onChange={(e) => {
                                     const netValue = parseFloat(e.target.value) || 0;
@@ -2719,6 +2788,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                   }}
                                   className="w-full text-right font-semibold text-xs h-8"
                                   disabled={isAgreementCancelled}
+                                  aria-label="Net value"
                                 />
                               </td>
                               <td className="px-1 py-1.5 text-center">
@@ -2901,7 +2971,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           This bill has associated payments recorded. You can edit expense categories and amounts, but the supplier cannot be changed. To change the supplier, please delete all payments first.
         </div>
       )}
-      {isPartiallyPaid && type === 'invoice' && (
+      {isPartiallyPaid && type === 'invoice' && isSecurityDepositOnlyInvoice && (
+        <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
+          Payments are recorded for this security deposit invoice. You can adjust the deposit amount; status updates automatically when you save (e.g. matching the amount already received marks it fully paid).
+        </div>
+      )}
+      {isPartiallyPaid && type === 'invoice' && !isSecurityDepositOnlyInvoice && (
         <div className={`${backupAlertWarning} p-1.5 text-[10px] font-medium mb-2 flex-shrink-0`}>
           This {type} has associated payments recorded. Editing critical details may affect your ledger consistency.
         </div>
