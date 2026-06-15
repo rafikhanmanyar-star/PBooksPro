@@ -10,7 +10,7 @@ import {
   listAccountingPeriods,
   reopenAccountingPeriod,
   rowToAccountingPeriodApi,
-} from '../../../services/accountingPeriodService.js';
+} from '../services/accountingPeriodService.js';
 import {
   closeAccountingPeriod,
   logAccountingPeriodOpened,

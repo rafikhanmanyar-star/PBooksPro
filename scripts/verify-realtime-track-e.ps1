@@ -91,6 +91,18 @@ Assert-FileContains -Label 'pmCycleAllocationsService lives in project-selling m
     -Path (Join-Path $root 'backend/src/modules/project-selling/services/pmCycleAllocationsService.ts') `
     -Pattern 'export async function upsertPmCycleAllocation'
 
+Assert-FileContains -Label 'contractsService lives in vendors module' `
+    -Path (Join-Path $root 'backend/src/modules/vendors/services/contractsService.ts') `
+    -Pattern 'export async function upsertContract'
+
+Assert-FileContains -Label 'projectAgreementsService lives in project-selling module' `
+    -Path (Join-Path $root 'backend/src/modules/project-selling/services/projectAgreementsService.ts') `
+    -Pattern 'export async function createProjectAgreement'
+
+Assert-FileContains -Label 'accountingPeriodService lives in accounting module' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/accountingPeriodService.ts') `
+    -Pattern 'export async function assertAccountingPeriodOpen'
+
 Write-Host "[build] npm run build:backend"
 npm run build:backend | Out-Null
 

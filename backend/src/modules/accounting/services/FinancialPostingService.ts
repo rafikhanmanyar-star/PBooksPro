@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { validateBalanced } from '../../../financial/validation.js';
-import { assertAccountingPeriodOpen } from '../../../services/accountingPeriodService.js';
+import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { emitFinancialPosted } from '../../../core/realtime.js';
 import type { CreateJournalBody } from '../../../services/journalService.js';
 import { JournalRepository } from '../repositories/JournalRepository.js';

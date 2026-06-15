@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ContractRow } from '../../../services/contractsService.js';
+import type { ContractRow } from '../services/contractsService.js';
 
 const CONTRACT_COLUMNS = `id, tenant_id, contract_number, name, project_id, vendor_id, total_amount, area, rate,
   start_date, end_date, status, category_ids, expense_category_items,

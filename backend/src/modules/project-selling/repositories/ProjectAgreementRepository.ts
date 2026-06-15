@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ProjectAgreementRow } from '../../../services/projectAgreementsService.js';
+import type { ProjectAgreementRow } from '../services/projectAgreementsService.js';
 
 export type ProjectAgreementWriteFields = {
   agreement_number: string;

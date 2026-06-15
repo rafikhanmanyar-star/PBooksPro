@@ -10,7 +10,7 @@ import {
   rowToProjectAgreementApi,
   softDeleteProjectAgreement,
   updateProjectAgreement,
-} from '../../../services/projectAgreementsService.js';
+} from '../services/projectAgreementsService.js';
 import { listInvoices, rowToInvoiceApi } from '../../../services/invoicesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';

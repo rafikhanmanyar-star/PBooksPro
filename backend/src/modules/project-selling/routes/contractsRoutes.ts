@@ -9,7 +9,7 @@ import {
   rowToContractApi,
   softDeleteContract,
   upsertContract,
-} from '../../../services/contractsService.js';
+} from '../../vendors/services/contractsService.js';
 import {
   getContractRetentionSummary,
   getRetentionMonitoringDashboard,

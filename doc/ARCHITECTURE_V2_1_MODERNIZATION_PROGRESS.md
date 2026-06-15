@@ -146,7 +146,9 @@ npm run verify:realtime:track-e
 | **Project-selling services** | `installmentPlansService` + `planAmenitiesService` moved to `modules/project-selling/services/` |
 | **Record locks** | `recordLocksService` moved to `modules/accounting/services/` |
 | **Accounting CRUD** | `accountsService` + `categoriesService` moved to `modules/accounting/services/` |
-| **Project-selling CRUD** | `budgetsService` + `pmCycleAllocationsService` moved to `modules/project-selling/services/` |
+| **Project-selling CRUD** | `budgetsService`, `pmCycleAllocationsService`, `projectAgreementsService` → `modules/project-selling/services/` |
+| **Vendors** | `contractsService` → `modules/vendors/services/` (routes in project-selling import cross-module) |
+| **Accounting periods** | `accountingPeriodService` → `modules/accounting/services/` (`FinancialPostingService`, `JournalRepository` use module path) |
 | **Flat shims** | Corresponding `backend/src/services/*.ts` files re-export only |
 | **Module imports** | Routes and repositories import from module `services/` layer |
 

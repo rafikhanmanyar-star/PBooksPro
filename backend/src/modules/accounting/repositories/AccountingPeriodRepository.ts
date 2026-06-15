@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { AccountingPeriodRow } from '../../../services/accountingPeriodService.js';
+import type { AccountingPeriodRow } from '../services/accountingPeriodService.js';
 
 export class AccountingPeriodRepository extends TenantRepository {
   constructor(tenantId: string, client?: pg.PoolClient) {
