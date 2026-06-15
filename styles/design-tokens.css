@@ -229,6 +229,6 @@
   --badge-overdue-text: #f87171;
 
   --segment-bg: #1f2937;
-  --segment-active-bg: #6366f1;
-  --segment-active-text: #ffffff;
+  --segment-active-bg: var(--color-primary);
+  --segment-active-text: var(--color-on-primary);
 }

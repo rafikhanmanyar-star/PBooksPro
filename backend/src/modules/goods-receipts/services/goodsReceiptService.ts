@@ -62,6 +62,16 @@ export function rowToGoodsReceiptApi(row: GoodsReceiptRow, lines: GoodsReceiptLi
   };
 }
 
+function newGrnId(): string {
+  return `grn_${randomUUID().replace(/-/g, '')}`;
+}
+
+function resolveGrnId(body: Record<string, unknown>): string {
+  const raw = body.id ?? body.goods_receipt_id;
+  if (typeof raw === 'string' && raw.trim()) return raw.trim();
+  return newGrnId();
+}
+
 function parseLines(body: Record<string, unknown>): GoodsReceiptLineWrite[] {
   const raw = body.lines ?? body.items;
   if (!Array.isArray(raw)) return [];
@@ -72,8 +82,12 @@ function parseLines(body: Record<string, unknown>): GoodsReceiptLineWrite[] {
       const receivedQty = Number(o.receivedQty ?? o.received_qty ?? 0);
       const unitRate = Number(o.unitRate ?? o.unit_rate ?? 0);
       const orderedQty = Number(o.orderedQty ?? o.ordered_qty ?? 0);
+      const lineId = o.id ?? o.goods_receipt_line_id;
       return {
-        id: String(o.id ?? `grn_line_${idx}_${randomUUID().slice(0, 8)}`),
+        id:
+          typeof lineId === 'string' && String(lineId).trim()
+            ? String(lineId).trim()
+            : `grn_line_${idx}_${randomUUID().slice(0, 8)}`,
         purchase_order_line_id: (o.purchaseOrderLineId ?? o.purchase_order_line_id) as string | null,
         item_id: (o.itemId ?? o.item_id) as string | null,
         item_name: (o.itemName ?? o.item_name) as string | null,
@@ -193,7 +207,7 @@ export async function upsertGoodsReceipt(
   body: Record<string, unknown>,
   userId: string | null
 ) {
-  const id = String(body.id ?? randomUUID());
+  const id = resolveGrnId(body);
   const purchaseOrderId = String(body.purchaseOrderId ?? body.purchase_order_id ?? '');
   const vendorId = String(body.vendorId ?? body.vendor_id ?? '');
   if (!purchaseOrderId) throw new Error('Purchase order is required.');

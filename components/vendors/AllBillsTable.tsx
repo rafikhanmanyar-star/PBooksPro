@@ -30,15 +30,15 @@ const BillRow = memo(function BillRow({
     return (
         <tr
             onClick={() => onEditBill?.(bill)}
-            className="hover:bg-slate-50 cursor-pointer transition-colors group"
+            className="hover:bg-app-table-header cursor-pointer transition-colors group"
         >
-            <td className="px-4 py-3 whitespace-nowrap text-sm text-slate-700">{formatDate(bill.issueDate)}</td>
-            <td className="px-4 py-3 text-sm font-medium text-slate-800 group-hover:text-accent">{bill.billNumber}</td>
-            <td className="px-4 py-3 text-sm font-medium text-slate-800 group-hover:text-accent">{vendorName}</td>
-            <td className="px-4 py-3 text-sm max-w-xs truncate text-slate-500 italic">{bill.description || '-'}</td>
+            <td className="px-4 py-3 whitespace-nowrap text-sm text-app-text">{formatDate(bill.issueDate)}</td>
+            <td className="px-4 py-3 text-sm font-medium text-app-text group-hover:text-accent">{bill.billNumber}</td>
+            <td className="px-4 py-3 text-sm font-medium text-app-text group-hover:text-accent">{vendorName}</td>
+            <td className="px-4 py-3 text-sm max-w-xs truncate text-app-muted italic">{bill.description || '-'}</td>
             <td className="px-4 py-3 text-sm text-right font-medium tabular-nums">{CURRENCY} {bill.amount.toLocaleString()}</td>
             <td className="px-4 py-3 text-sm text-right text-emerald-600 tabular-nums">{CURRENCY} {(bill.paidAmount || 0).toLocaleString()}</td>
-            <td className={`px-4 py-3 text-sm text-right font-bold tabular-nums ${balance > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+            <td className={`px-4 py-3 text-sm text-right font-bold tabular-nums ${balance > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                 {CURRENCY} {balance.toLocaleString()}
             </td>
             <td className="px-4 py-3 text-center">
@@ -79,16 +79,16 @@ const VirtualBillRow = memo(function VirtualBillRow({
     return (
         <div
             style={style}
-            className="grid grid-cols-[88px_100px_minmax(96px,140px)_minmax(120px,1fr)_88px_88px_88px_100px] gap-0 items-center border-b border-slate-100 bg-white hover:bg-slate-50 cursor-pointer text-sm"
+            className="grid grid-cols-[88px_100px_minmax(96px,140px)_minmax(120px,1fr)_88px_88px_88px_100px] gap-0 items-center border-b border-app-border bg-app-card hover:bg-app-table-header cursor-pointer text-sm"
             onClick={() => onEditBill?.(bill)}
         >
-            <div className="px-3 py-2 whitespace-nowrap text-slate-700">{formatDate(bill.issueDate)}</div>
-            <div className="px-3 py-2 font-medium text-slate-800 truncate">{bill.billNumber}</div>
-            <div className="px-3 py-2 font-medium text-slate-800 truncate">{vendorName}</div>
-            <div className="px-3 py-2 text-slate-500 italic truncate">{bill.description || '-'}</div>
+            <div className="px-3 py-2 whitespace-nowrap text-app-text">{formatDate(bill.issueDate)}</div>
+            <div className="px-3 py-2 font-medium text-app-text truncate">{bill.billNumber}</div>
+            <div className="px-3 py-2 font-medium text-app-text truncate">{vendorName}</div>
+            <div className="px-3 py-2 text-app-muted italic truncate">{bill.description || '-'}</div>
             <div className="px-3 py-2 text-right tabular-nums">{CURRENCY} {bill.amount.toLocaleString()}</div>
             <div className="px-3 py-2 text-right text-emerald-600 tabular-nums">{CURRENCY} {(bill.paidAmount || 0).toLocaleString()}</div>
-            <div className={`px-3 py-2 text-right font-bold tabular-nums ${balance > 0 ? 'text-rose-600' : 'text-slate-400'}`}>
+            <div className={`px-3 py-2 text-right font-bold tabular-nums ${balance > 0 ? 'text-ds-danger' : 'text-app-muted'}`}>
                 {CURRENCY} {balance.toLocaleString()}
             </div>
             <div className="px-3 py-2 text-center">
@@ -209,7 +209,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
     }, []);
 
     const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-slate-300 opacity-50 ml-1 text-[10px]">↕</span>;
+        if (sortConfig.key !== column) return <span className="text-app-muted/50 opacity-50 ml-1 text-[10px]">↕</span>;
         return <span className="text-accent ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
     };
 
@@ -250,7 +250,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                         onChange={(e) => setSearch(e.target.value)}
                         className="pl-9 py-2 text-sm"
                     />
-                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-app-muted">
                         <div className="w-4 h-4">{ICONS.search}</div>
                     </div>
                 </div>
@@ -265,62 +265,62 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                 </div>
             </div>
 
-            <div ref={containerRef} className="overflow-auto border rounded-lg flex-grow bg-white shadow-sm min-h-[400px] flex flex-col">
+            <div ref={containerRef} className="overflow-auto border rounded-lg flex-grow bg-app-card shadow-sm min-h-[400px] flex flex-col">
                 {!useVirtual ? (
-                    <table className="min-w-full divide-y divide-slate-200 text-sm relative">
-                        <thead className="bg-slate-50 sticky top-0 z-10 shadow-sm">
+                    <table className="min-w-full divide-y divide-app-border text-sm relative">
+                        <thead className="bg-app-table-header sticky top-0 z-10 shadow-sm">
                             <tr>
                                 <th
                                     onClick={() => handleSort('issueDate')}
-                                    className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Date <SortIcon column="issueDate" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('billNumber')}
-                                    className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Bill # <SortIcon column="billNumber" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('vendorName')}
-                                    className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Vendor <SortIcon column="vendorName" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('description')}
-                                    className="px-4 py-3 text-left font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none"
+                                    className="px-4 py-3 text-left font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none"
                                 >
                                     Description <SortIcon column="description" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('amount')}
-                                    className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Amount <SortIcon column="amount" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('paidAmount')}
-                                    className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Paid <SortIcon column="paidAmount" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('balance')}
-                                    className="px-4 py-3 text-right font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-right font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Balance <SortIcon column="balance" />
                                 </th>
                                 <th
                                     onClick={() => handleSort('status')}
-                                    className="px-4 py-3 text-center font-semibold text-slate-600 cursor-pointer hover:bg-slate-100 select-none whitespace-nowrap"
+                                    className="px-4 py-3 text-center font-semibold text-app-muted cursor-pointer hover:bg-app-table-hover select-none whitespace-nowrap"
                                 >
                                     Status <SortIcon column="status" />
                                 </th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-slate-200 bg-white">
+                        <tbody className="divide-y divide-app-border bg-app-card">
                             {filteredBills.length > 0 ? (
                                 filteredBills.map((bill) => {
                                     const vendor = bill.vendorId ? vendorById.get(bill.vendorId) : undefined;
@@ -335,7 +335,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                                 })
                             ) : (
                                 <tr>
-                                    <td colSpan={8} className="px-4 py-12 text-center text-slate-500">
+                                    <td colSpan={8} className="px-4 py-12 text-center text-app-muted">
                                         No bills found matching your filters.
                                     </td>
                                 </tr>
@@ -344,7 +344,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                     </table>
                 ) : (
                     <div className="flex flex-col min-h-0 flex-1">
-                        <div className="grid grid-cols-[88px_100px_minmax(96px,140px)_minmax(120px,1fr)_88px_88px_88px_100px] gap-0 bg-slate-50 border-b border-slate-200 sticky top-0 z-10 text-xs font-semibold text-slate-600 px-0 py-2 shrink-0">
+                        <div className="grid grid-cols-[88px_100px_minmax(96px,140px)_minmax(120px,1fr)_88px_88px_88px_100px] gap-0 bg-app-table-header border-b border-app-border sticky top-0 z-10 text-xs font-semibold text-app-muted px-0 py-2 shrink-0">
                             <button type="button" onClick={() => handleSort('issueDate')} className="text-left px-3">
                                 Date <SortIcon column="issueDate" />
                             </button>
@@ -371,7 +371,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                             </button>
                         </div>
                         {filteredBills.length === 0 ? (
-                            <div className="py-12 text-center text-slate-500">No bills found matching your filters.</div>
+                            <div className="py-12 text-center text-app-muted">No bills found matching your filters.</div>
                         ) : (
                             <List
                                 defaultHeight={listHeight - 40}

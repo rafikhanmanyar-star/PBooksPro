@@ -18,9 +18,9 @@ function formatMoney(value: number) {
 }
 
 const statusBadge: Record<string, string> = {
-  Draft: 'bg-slate-100 text-slate-700',
-  Posted: 'bg-emerald-100 text-emerald-800',
-  Closed: 'bg-indigo-100 text-indigo-800',
+  Draft: 'bg-app-toolbar text-app-muted border border-app-border',
+  Posted: 'bg-[color:var(--badge-paid-bg)] text-ds-success',
+  Closed: 'bg-primary/15 text-primary',
 };
 
 type GoodsReceiptsPageProps = {
@@ -52,13 +52,10 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
   );
 
   const { data: receipts = [], isFetching, refetch } = useGoodsReceipts(filters);
-  const { data: purchaseOrders = [] } = usePurchaseOrders({
-    vendorId,
-    status: 'Approved',
-  });
+  const { data: purchaseOrders = [] } = usePurchaseOrders({ vendorId });
   const { save, post, close, remove } = useGoodsReceiptMutations();
 
-  const billablePos = useMemo(
+  const receiptEligiblePos = useMemo(
     () =>
       purchaseOrders.filter((po) =>
         ['Approved', 'Partially Billed'].includes(po.status)
@@ -83,6 +80,14 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
 
   const [form, setForm] = useState<TenantGoodsReceipt>(emptyForm());
   const consumedPoRef = useRef<string | null>(null);
+
+  const poDropdownOptions = useMemo(() => {
+    const eligible = receiptEligiblePos;
+    if (!form.purchaseOrderId) return eligible;
+    if (eligible.some((po) => po.id === form.purchaseOrderId)) return eligible;
+    const current = purchaseOrders.find((po) => po.id === form.purchaseOrderId);
+    return current ? [current, ...eligible] : eligible;
+  }, [receiptEligiblePos, purchaseOrders, form.purchaseOrderId]);
 
   const openCreate = () => {
     setEditing(null);
@@ -160,9 +165,12 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
   const handleSave = async () => {
     setFormError(null);
     try {
-      await save.mutateAsync(form);
+      const saved = await save.mutateAsync(form);
       setIsFormOpen(false);
       void refetch();
+      if (!editing && saved?.id) {
+        setForm((f) => ({ ...f, id: saved.id, grnNumber: saved.grnNumber, version: saved.version }));
+      }
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Failed to save goods receipt.');
     }
@@ -213,7 +221,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
       </div>
 
       {formError && (
-        <div className="rounded-lg border border-ds-danger/40 bg-red-50 px-4 py-2 text-sm text-ds-danger">
+        <div className="rounded-lg border border-ds-danger/40 bg-[color:var(--badge-unpaid-bg)] px-4 py-2 text-sm text-ds-danger">
           {formError}
         </div>
       )}
@@ -295,7 +303,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-app-card rounded-xl border border-app-border shadow-xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h3 className="text-lg font-bold">{editing ? 'Edit GRN' : 'New Goods Receipt'}</h3>
+            <h3 className="text-lg font-bold text-app-text">{editing ? 'Edit GRN' : 'New Goods Receipt'}</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Select
@@ -305,7 +313,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
                 onChange={(e) => void loadPoLines(e.target.value)}
                 options={[
                   { value: '', label: 'Select PO…' },
-                  ...billablePos.map((po) => ({
+                  ...poDropdownOptions.map((po) => ({
                     value: po.id,
                     label: `${po.poNumber} (${formatMoney(po.totalAmount)})`,
                   })),
