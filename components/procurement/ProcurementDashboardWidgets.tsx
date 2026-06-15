@@ -2,42 +2,13 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MetricCard, ChartCard } from '../analytics';
 import { fetchProcurementDashboardMetrics } from '../../services/quotationIntelligenceApi';
-import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
+import PurchaseOrderReportWidget from './PurchaseOrderReportWidget';
 import { CURRENCY } from '../../constants';
 
-function localMetrics(state: ReturnType<typeof useFinancialReportAppState>) {
-  const now = new Date();
-  const in7 = new Date(now);
-  in7.setDate(in7.getDate() + 7);
-  let active = 0;
-  let expiring = 0;
-  const rates: Array<{ vendorId: string; vendorName: string; rate: number }> = [];
-  for (const q of state.quotations ?? []) {
-    const st = q.status ?? (q.isActive ? 'Active' : 'Draft');
-    if (st === 'Active' || st === 'Approved') active += 1;
-    if (q.expiryDate) {
-      const exp = new Date(`${q.expiryDate.slice(0, 10)}T12:00:00`);
-      if (exp >= now && exp <= in7) expiring += 1;
-    }
-    for (const item of q.items ?? []) {
-      if (item.pricePerQuantity > 0) {
-        rates.push({ vendorId: q.vendorId, vendorName: q.name, rate: item.pricePerQuantity });
-      }
-    }
-  }
-  rates.sort((a, b) => a.rate - b.rate);
-  return { activeQuotations: active, expiringQuotations: expiring, lowestVendorRates: rates.slice(0, 5), priceIncreaseAlerts: 0 };
-}
-
 const ProcurementDashboardWidgets: React.FC = () => {
-  const state = useFinancialReportAppState();
-
   const { data, isLoading } = useQuery({
     queryKey: ['procurement-dashboard'],
-    queryFn: async () => {
-      return fetchProcurementDashboardMetrics();
-      return localMetrics(state);
-    },
+    queryFn: () => fetchProcurementDashboardMetrics(),
     staleTime: 60_000,
   });
 
@@ -70,6 +41,9 @@ const ProcurementDashboardWidgets: React.FC = () => {
       ) : (
         <p className="text-sm text-app-muted">No quotation rate data yet.</p>
       )}
+      <div className="mt-6">
+        <PurchaseOrderReportWidget />
+      </div>
     </ChartCard>
   );
 };

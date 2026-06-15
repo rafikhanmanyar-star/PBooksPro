@@ -158,6 +158,25 @@ export async function invalidateQueriesForEntityEvent(
   if (entityType === 'vendor' || entityType === 'quotation') {
     await queryClient.invalidateQueries({ queryKey: ['vendors'] });
     await queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+  }
+
+  if (entityType === 'purchase_order') {
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
+  }
+
+  if (entityType === 'goods_receipt') {
+    await queryClient.invalidateQueries({ queryKey: ['goods-receipts'] });
+    await queryClient.invalidateQueries({ queryKey: ['goods-receipt-report'] });
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+  }
+
+  if (entityType === 'approval_request' || entityType === 'settings') {
+    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
   }
 
   if (entityType === 'contract') {

@@ -28,13 +28,15 @@ import AllBillsTable from './AllBillsTable';
 import VendorComparisonReport from '../reports/VendorComparisonReport';
 import VendorQuotationComparisonPage from '../procurement/VendorQuotationComparisonPage';
 import VendorPriceHistoryPage from '../procurement/VendorPriceHistoryPage';
+import PurchaseOrdersPage from '../procurement/PurchaseOrdersPage';
+import GoodsReceiptsPage from '../procurement/GoodsReceiptsPage';
 const VendorAnalyticsPage = React.lazy(() => import('../../modules/vendor-analytics/VendorAnalyticsPage'));
 import VendorLedgerReport from '../reports/VendorLedgerReport';
 import { reportDefinitions } from '../reports/reportDefinitions';
 
 const AddVendorSection: React.FC<{
-    optionsView: 'Quotation' | 'Comparison' | 'PriceHistory' | 'Bills' | 'Analytics' | 'Reports' | null;
-    setOptionsView: (view: 'Quotation' | 'Comparison' | 'PriceHistory' | 'Bills' | 'Analytics' | 'Reports' | null) => void;
+    optionsView: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports' | null;
+    setOptionsView: (view: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports' | null) => void;
     setSelectedVendorId: (id: string | null) => void;
     triggerAddVendor?: boolean;
     onModalOpenHandled?: () => void;
@@ -74,10 +76,12 @@ const AddVendorSection: React.FC<{
         setIsModalOpen(false);
     };
 
-    const navItems: { id: 'Quotation' | 'Comparison' | 'PriceHistory' | 'Bills' | 'Analytics' | 'Reports'; label: string; icon: any }[] = [
+    const navItems: { id: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports'; label: string; icon: any }[] = [
         { id: 'Quotation', label: 'All Quotations', icon: ICONS.fileText },
         { id: 'Comparison', label: 'Compare', icon: ICONS.barChart },
         { id: 'PriceHistory', label: 'Price History', icon: ICONS.trendingUp },
+        { id: 'PurchaseOrders', label: 'Purchase Orders', icon: ICONS.fileText },
+        { id: 'GoodsReceipts', label: 'Goods Receipts', icon: ICONS.trendingUp },
         { id: 'Bills', label: 'All Bills', icon: ICONS.creditCard },
         { id: 'Analytics', label: 'Analytics', icon: ICONS.barChart },
         { id: 'Reports', label: 'Reports', icon: ICONS.barChart }
@@ -197,7 +201,7 @@ const VendorDirectoryPage: React.FC = () => {
 
     const [vendorSearch, setVendorSearch] = useState('');
     const [activeTab, setActiveTab] = useLocalStorage<'Ledger' | 'Bills' | 'Quotations'>('vendorDirectory_activeTab', 'Ledger');
-    const [optionsView, setOptionsView] = useLocalStorage<'Quotation' | 'Comparison' | 'PriceHistory' | 'Bills' | 'Analytics' | 'Reports'>('vendorDirectory_optionsView', 'Quotation');
+    const [optionsView, setOptionsView] = useLocalStorage<'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports'>('vendorDirectory_optionsView', 'Quotation');
     const [selectedReport, setSelectedReport] = useState<string>('vendor-comparison');
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('vendorDirectory_sidebarWidth', 320);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' });
@@ -809,6 +813,10 @@ const VendorDirectoryPage: React.FC = () => {
                                     <VendorQuotationComparisonPage />
                                 ) : optionsView === 'PriceHistory' ? (
                                     <VendorPriceHistoryPage />
+                                ) : optionsView === 'PurchaseOrders' ? (
+                                    <PurchaseOrdersPage />
+                                ) : optionsView === 'GoodsReceipts' ? (
+                                    <GoodsReceiptsPage />
                                 ) : optionsView === 'Bills' ? (
                                     <AllBillsTable
                                         onEditBill={(bill) => {

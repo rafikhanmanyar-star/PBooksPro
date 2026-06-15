@@ -27,6 +27,11 @@ import { vendorsRouter } from './vendorsRoutes.js';
 import { quotationsRouter } from './quotationsRoutes.js';
 import { quotationValidationRouter } from '../modules/vendors/routes/quotationValidationRoutes.js';
 import { quotationIntelligenceRouter } from '../modules/vendors/routes/quotationIntelligenceRoutes.js';
+import { procurementQuotationComparisonRouter } from '../modules/procurement/routes/quotationComparisonRoutes.js';
+import { purchaseOrdersRouter } from '../modules/purchase-orders/routes/purchaseOrdersRoutes.js';
+import { workflowSettingsRouter } from '../modules/workflow/routes/workflowSettingsRoutes.js';
+import { workflowApprovalRouter } from '../modules/workflow/routes/workflowApprovalRoutes.js';
+import { goodsReceiptsRouter } from '../modules/goods-receipts/routes/goodsReceiptsRoutes.js';
 import { documentsRouter } from './documentsRoutes.js';
 import { transactionAuditRouter } from './transactionAuditRoutes.js';
 import { appSettingsRouter } from './appSettingsRoutes.js';
@@ -284,6 +289,36 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     authMiddleware,
     requireActiveSubscription(),
     quotationIntelligenceRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    procurementQuotationComparisonRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    purchaseOrdersRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    workflowSettingsRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    workflowApprovalRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    goodsReceiptsRouter
   );
   app.use(
     prefix,

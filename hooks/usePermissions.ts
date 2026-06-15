@@ -58,6 +58,23 @@ export function usePermissions() {
       canCreatePeV: has('pev.create'),
       canApprovePeV: has('pev.approve'),
       canPostPeV: has('pev.post'),
+      canCompareQuotations: has('procurement.quotations.compare'),
+      canSelectQuotation: has('procurement.quotations.select'),
+      canApproveQuotation: has('procurement.quotations.approve'),
+      canViewPurchaseOrders: has('purchase_order.view'),
+      canCreatePurchaseOrder: has('purchase_order.create'),
+      canEditPurchaseOrder: has('purchase_order.edit'),
+      canApprovePurchaseOrder: has('purchase_order.approve'),
+      canCancelPurchaseOrder: has('purchase_order.cancel'),
+      canViewWorkflow: has('workflow.view'),
+      canApproveWorkflow: has('workflow.approve'),
+      canManageWorkflow: has('workflow.manage'),
+      canAdminWorkflow: has('workflow.admin'),
+      canViewGoodsReceipt: has('goods_receipt.view'),
+      canCreateGoodsReceipt: has('goods_receipt.create'),
+      canEditGoodsReceipt: has('goods_receipt.edit'),
+      canPostGoodsReceipt: has('goods_receipt.post'),
+      canCloseGoodsReceipt: has('goods_receipt.close'),
     };
   }, [role]);
 }

@@ -8,6 +8,10 @@ import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
 import { BillRepository, type BillWriteFields } from '../repositories/BillRepository.js';
 import { ContractRepository } from '../repositories/ContractRepository.js';
 import { validateContractBillAmount } from '../../../contractBilling/contractBillingCore.js';
+import {
+  assertBillAllowedAgainstPurchaseOrder,
+  recalculatePurchaseOrderBilling,
+} from '../../purchase-orders/services/purchaseOrderBillingService.js';
 
 export type BillRow = {
   id: string;
@@ -32,6 +36,7 @@ export type BillRow = {
   expense_category_items: string | null;
   document_path: string | null;
   document_id: string | null;
+  purchase_order_id: string | null;
   user_id: string | null;
   version: number;
   deleted_at: Date | null;
@@ -126,6 +131,7 @@ export function rowToBillApi(row: BillRow): Record<string, unknown> {
     expenseCategoryItems,
     documentPath: row.document_path ?? undefined,
     documentId: row.document_id ?? undefined,
+    purchaseOrderId: row.purchase_order_id ?? undefined,
     userId: row.user_id ?? undefined,
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -168,6 +174,7 @@ function pickBody(body: Record<string, unknown>) {
     expense_category_items: expenseItemsToDb(body),
     document_path: (body.documentPath ?? body.document_path) as string | null | undefined,
     document_id: (body.documentId ?? body.document_id) as string | null | undefined,
+    purchase_order_id: (body.purchaseOrderId ?? body.purchase_order_id) as string | null | undefined,
     user_id: (body.userId ?? body.user_id) as string | null | undefined,
     version: typeof body.version === 'number' ? body.version : undefined,
   };
@@ -199,6 +206,7 @@ function billWriteFieldsFromPick(p: ReturnType<typeof pickBody>): BillWriteField
     expense_category_items: p.expense_category_items,
     document_path: trimOptId(p.document_path),
     document_id: trimOptId(p.document_id),
+    purchase_order_id: trimOptId(p.purchase_order_id),
   };
 }
 
@@ -249,6 +257,9 @@ async function finalizeBillSaveFromLedger(
     newValue: rowToBillApi(row),
     version: row.version,
   });
+  if (row.purchase_order_id) {
+    await recalculatePurchaseOrderBilling(client, tenantId, row.purchase_order_id, opts?.actorUserId);
+  }
   return row;
 }
 
@@ -325,6 +336,11 @@ export async function createBill(
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `bill_${randomUUID().replace(/-/g, '')}`;
 
   await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, id);
+  await assertBillAllowedAgainstPurchaseOrder(client, tenantId, {
+    purchaseOrderId: p.purchase_order_id,
+    billAmount: p.amount,
+    billVendorId: p.vendor_id,
+  });
 
   return new BillRepository(tenantId).insertBill(
     client,
@@ -347,6 +363,12 @@ export async function updateBill(
   const billRepo = new BillRepository(tenantId);
 
   await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, id);
+  await assertBillAllowedAgainstPurchaseOrder(client, tenantId, {
+    purchaseOrderId: p.purchase_order_id,
+    billAmount: p.amount,
+    billVendorId: p.vendor_id,
+    excludeBillId: id,
+  });
 
   if (expectedVersion !== undefined) {
     const u = await billRepo.updateActiveWithExpectedVersion(client, id, fields, expectedVersion);
@@ -400,6 +422,20 @@ async function upsertBillByTenantAndBillNumber(
     }
   }
 
+  await assertContractBillWithinLimit(
+    client,
+    tenantId,
+    p.contract_id,
+    p.amount,
+    existingByNumber?.id ?? proposeId
+  );
+  await assertBillAllowedAgainstPurchaseOrder(client, tenantId, {
+    purchaseOrderId: p.purchase_order_id,
+    billAmount: p.amount,
+    billVendorId: p.vendor_id,
+    excludeBillId: existingByNumber?.id,
+  });
+
   const u = await billRepo.upsertOnTenantBillNumber(
     client,
     proposeId,
@@ -438,6 +474,12 @@ export async function upsertBill(
   const existingById = await getBillByIdIncludingDeleted(client, tenantId, id);
 
   await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, existingById?.id ?? id);
+  await assertBillAllowedAgainstPurchaseOrder(client, tenantId, {
+    purchaseOrderId: p.purchase_order_id,
+    billAmount: p.amount,
+    billVendorId: p.vendor_id,
+    excludeBillId: existingById?.id ?? id,
+  });
 
   /**
    * Legacy clients used `Date.now()` for new bill ids. That can match an unrelated existing row PK,
@@ -551,6 +593,9 @@ export async function softDeleteBill(
       newValue: rowToBillApi(after),
       version: after.version,
     });
+  }
+  if (before.purchase_order_id) {
+    await recalculatePurchaseOrderBilling(client, tenantId, before.purchase_order_id, actorUserId);
   }
   return { ok: true, conflict: false };
 }

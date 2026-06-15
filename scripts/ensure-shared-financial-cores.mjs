@@ -155,4 +155,22 @@ syncFile(
   (s) => s.replace("from '../contract-retention/contractRetentionCore.js'", "from '../contractRetention/contractRetentionCore.js'")
 );
 
+syncFile(
+  'shared/procurement/vendorRecommendationEngine.ts',
+  'backend/src/procurement/vendorRecommendationEngine.ts'
+);
+
+syncFile(
+  'shared/procurement/purchaseOrderBillingCore.ts',
+  'backend/src/procurement/purchaseOrderBillingCore.ts'
+);
+
+syncFile('shared/workflow/workflowTypes.ts', 'backend/src/workflow/workflowTypes.ts');
+syncFile('shared/workflow/ruleEngine.ts', 'backend/src/workflow/ruleEngine.ts');
+
+syncFile(
+  'shared/procurement/goodsReceiptCore.ts',
+  'backend/src/procurement/goodsReceiptCore.ts'
+);
+
 console.log('[ensure-shared-financial-cores] OK');

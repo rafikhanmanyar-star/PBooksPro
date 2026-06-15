@@ -47,7 +47,21 @@ export type Permission =
   | 'procurement.quotations.compare'
   | 'procurement.quotations.select'
   | 'procurement.price_validation.override'
-  | 'procurement.price_history.read';
+  | 'procurement.price_history.read'
+  | 'purchase_order.view'
+  | 'purchase_order.create'
+  | 'purchase_order.edit'
+  | 'purchase_order.approve'
+  | 'purchase_order.cancel'
+  | 'workflow.manage'
+  | 'workflow.approve'
+  | 'workflow.view'
+  | 'workflow.admin'
+  | 'goods_receipt.view'
+  | 'goods_receipt.create'
+  | 'goods_receipt.edit'
+  | 'goods_receipt.post'
+  | 'goods_receipt.close';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -86,6 +100,20 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'procurement.quotations.select',
   'procurement.price_validation.override',
   'procurement.price_history.read',
+  'purchase_order.view',
+  'purchase_order.create',
+  'purchase_order.edit',
+  'purchase_order.approve',
+  'purchase_order.cancel',
+  'workflow.manage',
+  'workflow.approve',
+  'workflow.view',
+  'workflow.admin',
+  'goods_receipt.view',
+  'goods_receipt.create',
+  'goods_receipt.edit',
+  'goods_receipt.post',
+  'goods_receipt.close',
 ] as const;
 
 /** Project selling write keys (sales user bundle — not full financial.write). */
@@ -147,6 +175,20 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'procurement.quotations.select': 'Select preferred vendor quotation',
   'procurement.price_validation.override': 'Override price validation',
   'procurement.price_history.read': 'View vendor price history',
+  'purchase_order.view': 'View purchase orders',
+  'purchase_order.create': 'Create purchase orders',
+  'purchase_order.edit': 'Edit purchase orders',
+  'purchase_order.approve': 'Approve purchase orders',
+  'purchase_order.cancel': 'Cancel purchase orders',
+  'workflow.manage': 'Manage workflow settings',
+  'workflow.approve': 'Approve workflow requests',
+  'workflow.view': 'View approval queue',
+  'workflow.admin': 'Workflow administration',
+  'goods_receipt.view': 'View goods receipts',
+  'goods_receipt.create': 'Create goods receipts',
+  'goods_receipt.edit': 'Edit goods receipts',
+  'goods_receipt.post': 'Post goods receipts',
+  'goods_receipt.close': 'Close goods receipts',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
@@ -171,6 +213,26 @@ const PROCUREMENT_ALL: Permission[] = [
   'procurement.quotations.select',
   'procurement.price_validation.override',
   'procurement.price_history.read',
+  'purchase_order.view',
+  'purchase_order.create',
+  'purchase_order.edit',
+  'purchase_order.approve',
+  'purchase_order.cancel',
+];
+
+const WORKFLOW_ALL: Permission[] = [
+  'workflow.manage',
+  'workflow.approve',
+  'workflow.view',
+  'workflow.admin',
+];
+
+const GOODS_RECEIPT_ALL: Permission[] = [
+  'goods_receipt.view',
+  'goods_receipt.create',
+  'goods_receipt.edit',
+  'goods_receipt.post',
+  'goods_receipt.close',
 ];
 
 const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
@@ -194,6 +256,8 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_RELEASE,
     ...RETENTION_OVERRIDE,
     ...PROCUREMENT_ALL,
+    ...WORKFLOW_ALL,
+    ...GOODS_RECEIPT_ALL,
   ]),
   accountant: new Set([
     ...REPORTS_READ,
@@ -208,6 +272,9 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
     ...PROCUREMENT_ALL,
+    'workflow.approve',
+    'workflow.view',
+    ...GOODS_RECEIPT_ALL,
   ]),
   project_manager: new Set([
     'reports.profit_loss.read',
@@ -222,6 +289,13 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'procurement.quotations.compare',
     'procurement.quotations.select',
     'procurement.price_history.read',
+    'purchase_order.view',
+    'purchase_order.create',
+    'purchase_order.edit',
+    'workflow.view',
+    'goods_receipt.view',
+    'goods_receipt.create',
+    'goods_receipt.edit',
   ]),
   sales_user: new Set([...PROJECT_SELLING_SALES_USER_PERMISSIONS]),
   read_only: new Set([
@@ -231,6 +305,9 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'pev.read',
     ...RETENTION_VIEW,
     'procurement.price_history.read',
+    'purchase_order.view',
+    'workflow.view',
+    'goods_receipt.view',
   ]),
 };
 
