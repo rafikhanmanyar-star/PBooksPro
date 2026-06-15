@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
@@ -89,7 +90,15 @@ projectsRouter.put('/projects/:id', async (req: AuthedRequest, res) => {
       updateProject(client, tenantId, id, req.body as Record<string, unknown>)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getProjectById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.row) {
@@ -125,7 +134,15 @@ projectsRouter.delete('/projects/:id', async (req: AuthedRequest, res) => {
       return;
     }
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getProjectById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

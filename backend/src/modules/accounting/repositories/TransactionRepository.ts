@@ -8,11 +8,15 @@ import type {
 const SELECT_ROW = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,
   t.account_id, t.from_account_id, t.to_account_id, t.category_id, t.contact_id, t.vendor_id, t.project_id,
   t.building_id, t.property_id, t.unit_id, t.invoice_id, t.bill_id, t.payslip_id, t.contract_id, t.agreement_id,
-  t.batch_id, t.project_asset_id, t.owner_id, t.is_system, t.version, t.deleted_at, t.created_at, t.updated_at`;
+  t.batch_id, t.project_asset_id, t.owner_id, t.is_system,
+  t.approval_status, t.submitted_at, t.submitted_by, t.approved_at, t.approved_by,
+  t.version, t.deleted_at, t.created_at, t.updated_at`;
 
 const TX_RETURNING = `id, tenant_id, user_id, type, subtype, amount, date, description, reference, account_id, from_account_id, to_account_id,
   category_id, contact_id, vendor_id, project_id, building_id, property_id, unit_id, invoice_id, bill_id, payslip_id,
-  contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system, version, deleted_at, created_at, updated_at`;
+  contract_id, agreement_id, batch_id, project_asset_id, owner_id, is_system,
+  approval_status, submitted_at, submitted_by, approved_at, approved_by,
+  version, deleted_at, created_at, updated_at`;
 
 export type TransactionWriteFields = {
   type: string;

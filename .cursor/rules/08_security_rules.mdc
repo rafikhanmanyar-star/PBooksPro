@@ -1,0 +1,82 @@
+---
+description: Security rules — auth, tenant isolation, secrets, rate limiting, documents
+globs: "{backend/src/auth/**,backend/src/middleware/**,electron/**,config/**,backend/src/modules/documents/**}"
+alwaysApply: false
+---
+
+# Security Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md`
+
+## Authentication
+
+| Concern | Implementation |
+|---------|----------------|
+| Tenant API JWT | `authMiddleware` on `/api/v1` |
+| Request context | `req.tenantId`, `req.userId`, `req.role` on `AuthedRequest` |
+| Admin portal | `/api/admin` — separate JWT via `adminPortal/`, not tenant-scoped |
+| MFA | `shared/rbac/mfaPolicy.ts` → `backend/src/auth/mfaPolicy.ts` |
+| Sessions | `modules/auth/` — `UserSessionRepository`, `MfaRepository` |
+| Password policy | `backend/src/utils/passwordPolicy.ts` |
+
+## Tenant isolation (critical)
+
+- **Never** authorize using `tenant_id` from request body, query string, or client headers
+- Always use `req.tenantId` set by `authMiddleware` after JWT verification
+- Repository queries: `WHERE tenant_id = $1` with constructor `tenantId`
+- Socket: join only `tenant:${tenantId}`; clients filter foreign `tenantId` in payloads
+- PostgreSQL RLS is **deferred** (post-launch P5) — application-layer scoping is mandatory today
+
+## Secrets & configuration
+
+- **Never** commit `.env`, `.env.staging`, `.env.production`, tokens, keys, `.pfx`
+- Production env validation: `backend/src/utils/productionEnvCheck.ts`
+- Use env examples: `.env.staging.example`, `.env.production.example`
+
+## API hardening
+
+- Rate limiting on public endpoints (login, lookup) — `express-rate-limit`
+- `sendFailure(res, 400, 'CODE', 'message')` — never expose SQL or stack traces
+- `handleRouteError` logs server-side; client gets safe message
+- Webhooks: verify signatures (Paddle, WhatsApp) before processing
+
+## Documents & files
+
+- Store files in R2 via `DocumentStorageService`
+- Metadata in `document_metadata` (tenant-scoped)
+- **No** new inline `file_data` BLOB columns
+- Legacy `documents` table: read-only archive
+
+## Subscription & license
+
+- `requireActiveSubscription()` on tenant `/api/v1` stack
+- Billing/license enforcement in `modules/billing/`
+
+## Audit & privacy
+
+- Tenant mutations: `recordDomainMutation()` / `withAudit()`
+- Privacy requests: `modules/privacy/`
+- Enterprise audit: `modules/organization/services/enterpriseAuditService.ts`
+
+## Electron / desktop
+
+- API client connects to configured host (staging 3001 / production 3000)
+- No local SQLite credential storage for business data
+
+## MUST NOT
+
+- Client-supplied tenant override
+- Cross-tenant socket broadcasts
+- Log passwords, JWTs, or full PII in production
+- Skip auth middleware on tenant business routes
+- Store secrets in source code or committed config
+
+## Security review triggers
+
+New code requires extra care when touching:
+
+- Auth flows, password reset, MFA
+- Admin portal routes
+- Webhook ingress
+- Backup restore / DR
+- Cross-tenant admin queries

@@ -4,7 +4,9 @@ import type { BillRow } from '../services/billsService.js';
 
 const BILL_COLUMNS = `id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
   description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-  expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at`;
+  expense_bearer_type, expense_category_items, document_path, document_id, purchase_order_id, goods_receipt_id,
+  approval_status, submitted_at, submitted_by, approved_at, approved_by,
+  user_id, version, deleted_at, created_at, updated_at`;
 
 export type BillWriteFields = {
   bill_number: string;
@@ -27,6 +29,8 @@ export type BillWriteFields = {
   expense_category_items: string | null;
   document_path: string | null;
   document_id: string | null;
+  purchase_order_id: string | null;
+  goods_receipt_id: string | null;
 };
 
 function billFieldParams(fields: BillWriteFields): unknown[] {
@@ -51,6 +55,8 @@ function billFieldParams(fields: BillWriteFields): unknown[] {
     fields.expense_category_items,
     fields.document_path,
     fields.document_id,
+    fields.purchase_order_id,
+    fields.goods_receipt_id,
   ];
 }
 
@@ -183,9 +189,9 @@ export class BillRepository extends TenantRepository {
       `INSERT INTO bills (
          id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
          description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-         expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
+         expense_bearer_type, expense_category_items, document_path, document_id, purchase_order_id, goods_receipt_id, user_id, version, deleted_at, created_at, updated_at
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, 1, NULL, NOW(), NOW()
+         $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 1, NULL, NOW(), NOW()
        )
        RETURNING ${BILL_COLUMNS}`,
       [id, this.tenantId, ...billFieldParams(fields), userId]
@@ -200,7 +206,7 @@ export class BillRepository extends TenantRepository {
     options?: { userId?: string | null; restoreDeleted?: boolean }
   ): Promise<BillRow | null> {
     const restore = options?.restoreDeleted === true;
-    const userClause = restore ? ', user_id = COALESCE($23, user_id)' : '';
+    const userClause = restore ? ', user_id = COALESCE($25, user_id)' : '';
     const deletedClause = restore ? ', deleted_at = NULL' : '';
     const whereDeleted = restore ? '' : ' AND deleted_at IS NULL';
     const params: unknown[] = [id, this.tenantId, ...billFieldParams(fields)];
@@ -212,7 +218,7 @@ export class BillRepository extends TenantRepository {
          issue_date = $9::date, due_date = $10::date, description = $11,
          category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
          contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-         document_path = $21, document_id = $22${userClause},
+         document_path = $21, document_id = $22, purchase_order_id = $23, goods_receipt_id = $24${userClause},
          version = version + 1, updated_at = NOW()${deletedClause}
        WHERE id = $1 AND tenant_id = $2${whereDeleted}
        RETURNING ${BILL_COLUMNS}`,
@@ -233,9 +239,9 @@ export class BillRepository extends TenantRepository {
          issue_date = $9::date, due_date = $10::date, description = $11,
          category_id = $12, project_id = $13, building_id = $14, property_id = $15, project_agreement_id = $16,
          contract_id = $17, staff_id = $18, expense_bearer_type = $19, expense_category_items = $20,
-         document_path = $21, document_id = $22,
+         document_path = $21, document_id = $22, purchase_order_id = $23, goods_receipt_id = $24,
          version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $23
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND version = $25
        RETURNING ${BILL_COLUMNS}`,
       [id, this.tenantId, ...billFieldParams(fields), expectedVersion]
     );
@@ -254,9 +260,9 @@ export class BillRepository extends TenantRepository {
       `INSERT INTO bills (
          id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
          description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
-         expense_bearer_type, expense_category_items, document_path, document_id, user_id, version, deleted_at, created_at, updated_at
+         expense_bearer_type, expense_category_items, document_path, document_id, purchase_order_id, goods_receipt_id, user_id, version, deleted_at, created_at, updated_at
        ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+         $1, $2, $3, $4, $5, $6, $7, $8, $9::date, $10::date, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25,
          1, NULL, NOW(), NOW()
        )
        ON CONFLICT ON CONSTRAINT bills_tenant_id_bill_number_key
@@ -281,11 +287,13 @@ export class BillRepository extends TenantRepository {
          expense_category_items = EXCLUDED.expense_category_items,
          document_path = EXCLUDED.document_path,
          document_id = EXCLUDED.document_id,
+         purchase_order_id = EXCLUDED.purchase_order_id,
+         goods_receipt_id = EXCLUDED.goods_receipt_id,
          user_id = COALESCE(EXCLUDED.user_id, bills.user_id),
          deleted_at = NULL,
          version = bills.version + 1,
          updated_at = NOW()
-       WHERE $24::integer IS NULL OR bills.version = $24::integer
+       WHERE $26::integer IS NULL OR bills.version = $26::integer
        RETURNING ${BILL_COLUMNS}`,
       [proposeId, this.tenantId, ...billFieldParams(fields), userId, expectedVersion]
     );

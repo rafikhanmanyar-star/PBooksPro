@@ -1,0 +1,95 @@
+---
+description: Mandatory feature completion checklist — no feature is done without all applicable items
+alwaysApply: true
+---
+
+# Feature Completion Checklist (Mandatory)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` § Architecture Compliance Checklist
+
+A feature is **NOT complete** unless every **applicable** item below is satisfied.
+
+## Mandatory checklist
+
+```
+□ API
+   /api/v1 endpoint in modules/<domain>/routes/
+   Registered in mountVersionedApi.ts
+   Zod validation, sendSuccess/handleRouteError
+
+□ Tenant Isolation
+   tenant_id on all queries via TenantRepository
+   req.tenantId only — never client-supplied tenant_id
+   Socket events scoped to tenant:${tenantId}
+
+□ Audit Trail
+   withAudit() or recordDomainMutation() on mutations
+   IP/user-agent via auditRequestContextMiddleware
+
+□ Real-Time Synchronization
+   emitEntityEvent() or emitFinancialPosted() after PostgreSQL commit
+   Frontend: socket listener + React Query invalidateQueries / setQueryData
+   No local-only updates for shared business entities
+
+□ Permissions
+   Permission in shared/rbac/permissions.ts
+   npm run build:backend
+   requirePermission() on routes
+   usePermissions() on UI actions
+
+□ Version Conflict Handling
+   checkEntityLwwConflict() where entity has version column
+   HTTP 409 CONFLICT with { serverVersion }
+   UI informs user on conflict
+
+□ Reporting Integration
+   (If financial or report-facing)
+   Calculations in shared/financial-core/ or shared/report-engines/
+   Report service imports reportEngines/index.ts
+   No duplicate formulas in components
+
+□ Architecture Compliance
+   modules/<domain>/ layout — no new flat routes/services
+   FinancialPostingService for GL writes
+   PostgreSQL only — no SQLite
+   No secrets committed
+```
+
+## Architecture v2.1 sub-checklist
+
+- [ ] Repository extends `TenantRepository`
+- [ ] No SQL in route handlers
+- [ ] No direct GL writes outside `FinancialPostingService`
+- [ ] Migration added if schema changed
+- [ ] No duplicate business logic
+- [ ] No legacy pattern extensions
+
+## Real-Time First sub-checklist
+
+- [ ] Commit before emit
+- [ ] Payload includes tenantId, type, id, action, ts
+- [ ] version in data when LWW-enabled
+- [ ] No cross-tenant leakage
+- [ ] Screens update without manual F5
+- [ ] No refresh button as primary sync
+- [ ] Not polling-only for mutations
+
+## Agent behavior
+
+Before marking any task complete:
+
+1. Walk through applicable checkboxes explicitly in the response
+2. If user requests skipping an item, explain compliance risk
+3. If feature lacked sync, add emit + subscription + invalidation before claiming done
+
+## Verification commands
+
+```powershell
+npm run build:backend
+npm run verify:track-f-p4      # if report engines touched
+npm run verify:track-e2        # if real-time / modules touched
+```
+
+## Reference rule files
+
+`01_backend_architecture.mdc` · `02_database_rules.mdc` · `03_realtime_sync.mdc` · `04_accounting_rules.mdc` · `05_procurement_rules.mdc` · `06_reporting_rules.mdc` · `07_frontend_rules.mdc` · `08_security_rules.mdc` · `09_permissions_rules.mdc`

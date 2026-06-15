@@ -1,0 +1,121 @@
+---
+description: Backend Architecture V2.1 — modules, repositories, API, audit, real-time pipeline
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Architecture (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §8
+
+## Layer pattern
+
+```
+modules/<domain>/routes/       ← HTTP, Zod validation, sendSuccess/handleRouteError
+modules/<domain>/services/     ← business logic, rowTo*Api()
+modules/<domain>/repositories/ ← TenantRepository subclasses
+```
+
+Legacy `backend/src/routes/*.ts` are **@deprecated re-exports only**. Register new routers in `mountVersionedApi.ts`.
+
+## Registered module examples
+
+| Module | Path |
+|--------|------|
+| accounting | `modules/accounting/` |
+| vendors | `modules/vendors/` |
+| customers | `modules/customers/` |
+| leases | `modules/leases/` |
+| project-selling | `modules/project-selling/` |
+| properties | `modules/properties/` |
+| crm | `modules/crm/` |
+| payroll | `modules/payroll/` |
+| documents | `modules/documents/` |
+| dashboard | `modules/dashboard/` |
+| reporting | `modules/reporting/` |
+| backup / dr | `modules/backup/`, `modules/dr/` |
+
+## Core infrastructure
+
+| Component | Path / purpose |
+|-----------|----------------|
+| `TenantRepository` | `(tenantId, client?)`; `query()`, `softDelete()`, `activeOnly()` |
+| `recordDomainMutation()` | audit_events + change_log + sync_queue — `core/recordDomainMutation.ts` |
+| `withAudit()` | Transactional audit — `core/AuditMutation.ts` |
+| `FinancialPostingService` | **Only** GL gateway; period lock; `emitFinancialPosted()` |
+| `checkEntityLwwConflict()` | LWW before upsert — `core/entityMutation.ts` |
+| `emitEntityEvent()` | Mandatory after mutations — `core/realtime.ts` |
+| `initRealtime()` | Socket.IO tenant rooms `tenant:${tenantId}` |
+
+## Mutation pipeline (every business mutation)
+
+```
+1. withTransaction (when multi-step)
+2. checkEntityLwwConflict() — if entity has version
+3. Repository write (PostgreSQL)
+4. withAudit() or recordDomainMutation()
+5. emitEntityEvent(tenantId, action, entityType, { data, sourceUserId })
+6. sendSuccess — or sendFailure(409, 'CONFLICT', …, { serverVersion })
+```
+
+**No mutation is complete until step 5.** Reference: `modules/vendors/routes/billsRoutes.ts`
+
+## Accounting periods
+
+| Status | Behavior |
+|--------|----------|
+| `open` | Full write access |
+| `closed` | Mutations rejected |
+| `locked` | Rejected unless `super_admin` override |
+
+Enforced in `FinancialPostingService`.
+
+## Middleware chain (`/api/v1`)
+
+1. `authMiddleware` → `req.userId`, `req.tenantId`, `req.role`
+2. `requireActiveSubscription()`
+3. Optional: RBAC / financial-write / payroll guards
+4. `auditRequestContextMiddleware`
+5. Per-endpoint: `requirePermission('feature.action')`
+
+## API
+
+- Canonical prefix: `/api/v1` only (`/api` alias removed)
+- Exempt: `/health`, `/api/webhooks/*`, `/api/admin`
+- `req.tenantId` from JWT — **never** from request body
+- Responses: `sendSuccess` / `sendFailure` / `handleRouteError`
+- Envelope: `{ success, data?, error? }`
+- DB snake_case → camelCase via `rowTo*Api()`
+
+## New REST endpoint checklist
+
+1. Migration in `database/migrations/`
+2. `*Repository extends TenantRepository`
+3. Service — pass `tenantId` explicitly
+4. Thin route — Zod → service → response
+5. Register in `mountVersionedApi.ts`
+6. Mutations: audit + **`emitEntityEvent()`**
+7. GL: `FinancialPostingService` only
+8. Permissions: `shared/rbac/permissions.ts` → `npm run build:backend`
+9. LWW: 409 on conflict
+
+## Report services
+
+Import from `backend/src/reportEngines/index.ts` (built from `shared/report-engines/serverEntry.ts` via `ensure-shared-report-engines.mjs`). Do not use `loadReportEngine()` or per-engine `dist/*Engine.mjs`.
+
+## Strangler (when touching legacy)
+
+| Legacy | v2.1 |
+|--------|------|
+| Inline SQL in flat `services/` | Module repository + service |
+| New handlers in `routes/*.ts` | `modules/<domain>/routes/` |
+| Direct journal posting | `FinancialPostingService` |
+| Ad hoc `appendAuditEvent` | `withAudit()` / `recordDomainMutation()` |
+
+## Reference implementations
+
+- GL: `FinancialPostingService` → `JournalRepository` → `emitFinancialPosted()`
+- Domain CRUD + real-time: `modules/vendors/routes/billsRoutes.ts`
+- Dashboard: `modules/dashboard/` → `GET /dashboard/snapshots`
+- Documents: `DocumentStorageService` + R2
+- Custom reports: `modules/reporting/`

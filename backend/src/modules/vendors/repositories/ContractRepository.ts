@@ -7,6 +7,7 @@ const CONTRACT_COLUMNS = `id, tenant_id, contract_number, name, project_id, vend
   terms_and_conditions, payment_terms, description, document_path, document_id,
   retention_type, retention_percentage, retention_amount, retention_release_method,
   retention_release_date, retention_notes, retention_balance, retention_released, retention_release_by,
+  approval_status, submitted_at, submitted_by, approved_at, approved_by,
   user_id, version, deleted_at, created_at, updated_at`;
 
 export type ContractWriteFields = {

@@ -130,6 +130,7 @@ export enum SalesReturnReason {
 }
 
 export enum ContractStatus {
+  PENDING = 'Pending',
   ACTIVE = 'Active',
   COMPLETED = 'Completed',
   TERMINATED = 'Terminated',
@@ -513,6 +514,15 @@ export interface Invoice {
 
 export type ExpenseBearerType = 'owner' | 'building' | 'tenant';
 
+export interface BillPoLine {
+  id?: string;
+  purchaseOrderLineId: string;
+  goodsReceiptLineId?: string;
+  billedQty: number;
+  unitRate: number;
+  lineTotal: number;
+}
+
 export interface Bill {
   id: string;
   billNumber: string;
@@ -535,6 +545,10 @@ export interface Bill {
   expenseCategoryItems?: ContractExpenseCategoryItem[]; // New: expense category tracking with units and prices
   documentPath?: string; // Path to uploaded document file (legacy/local)
   documentId?: string; // Reference to documents table (local + cloud)
+  purchaseOrderId?: string;
+  goodsReceiptId?: string;
+  poBillLines?: BillPoLine[];
+  approvalStatus?: string;
   version?: number; // Version for optimistic locking (default: 1)
 }
 
@@ -651,7 +665,10 @@ export interface VendorQuotationComparisonRow {
   vendorName: string;
   quotationId: string;
   quotationNumber?: string;
+  /** @deprecated use unitPrice */
   rate: number;
+  unitPrice: number;
+  totalAmount: number;
   deliveryPeriod?: string;
   warrantyPeriod?: string;
   paymentTerms?: string;
@@ -659,7 +676,38 @@ export interface VendorQuotationComparisonRow {
   isLowestRate?: boolean;
   isBestDelivery?: boolean;
   isBestWarranty?: boolean;
+  isHighestRated?: boolean;
   vendorRating?: number;
+  recommendationScore?: number;
+  recommendationRank?: number;
+  isRecommended?: boolean;
+  itemName?: string;
+  categoryId?: string;
+}
+
+export interface QuotationComparisonResponse {
+  matrix: VendorQuotationComparisonRow[];
+  recommended: VendorQuotationComparisonRow | null;
+}
+
+export interface QuotationComparisonSession {
+  id: string;
+  title?: string;
+  projectId?: string;
+  buildingId?: string;
+  packageName?: string;
+  categoryId?: string;
+  itemName?: string;
+  preferredQuotationId?: string;
+  approvedQuotationId?: string;
+  purchaseOrderId?: string;
+  status: 'comparing' | 'preferred' | 'approved' | 'converted';
+  version: number;
+  createdBy?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface VendorPerformanceRating {
@@ -880,6 +928,7 @@ export interface Contract {
   retentionReleaseBy?: string;
   /** API / PostgreSQL optimistic concurrency */
   version?: number;
+  approvalStatus?: string;
 }
 
 export type ContractRetentionType = 'NONE' | 'PERCENTAGE' | 'FIXED_AMOUNT';
@@ -1305,7 +1354,163 @@ export interface POItem {
   unitPrice: number;
   total: number;
   categoryId?: string;
+  itemId?: string;
+  itemName?: string;
+  unitRate?: number;
+  taxPercent?: number;
+  taxAmount?: number;
+  lineTotal?: number;
 }
+
+export type PurchaseOrderLifecycleStatus =
+  | 'Draft'
+  | 'Submitted'
+  | 'Approved'
+  | 'Partially Billed'
+  | 'Fully Billed'
+  | 'Cancelled';
+
+/** Tenant-scoped purchase order (procurement module). */
+export interface TenantPurchaseOrder {
+  id: string;
+  poNumber: string;
+  vendorId: string;
+  quotationId?: string;
+  comparisonSessionId?: string;
+  projectId?: string;
+  buildingId?: string;
+  departmentId?: string;
+  totalAmount: number;
+  billedAmount: number;
+  receivedAmount?: number;
+  taxAmount: number;
+  status: PurchaseOrderLifecycleStatus;
+  items: POItem[];
+  paymentTerms?: string;
+  deliveryPeriod?: string;
+  warrantyPeriod?: string;
+  description?: string;
+  issueDate: string;
+  requiredDate?: string;
+  targetDeliveryDate?: string;
+  currency: string;
+  createdBy?: string;
+  userId?: string;
+  submittedAt?: string;
+  submittedBy?: string;
+  approvedAt?: string;
+  approvedBy?: string;
+  cancelledAt?: string;
+  cancelledBy?: string;
+  cancelReason?: string;
+  closedAt?: string;
+  version: number;
+  tenantId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type GoodsReceiptStatus = 'Draft' | 'Posted' | 'Closed';
+
+export interface GoodsReceiptLine {
+  id: string;
+  purchaseOrderLineId?: string;
+  itemId?: string;
+  itemName?: string;
+  description?: string;
+  orderedQty: number;
+  receivedQty: number;
+  remainingQty?: number;
+  unitRate: number;
+  lineTotal: number;
+  sortOrder?: number;
+}
+
+export interface TenantGoodsReceipt {
+  id: string;
+  grnNumber: string;
+  vendorId: string;
+  projectId?: string;
+  purchaseOrderId: string;
+  receivedDate: string;
+  status: GoodsReceiptStatus;
+  notes?: string;
+  lines: GoodsReceiptLine[];
+  postedAt?: string;
+  postedBy?: string;
+  closedAt?: string;
+  closedBy?: string;
+  version: number;
+  tenantId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GoodsReceiptReportSummary {
+  pendingReceipts: Array<{
+    purchaseOrderId: string;
+    poNumber: string;
+    vendorId: string;
+    vendorName: string;
+    projectId?: string | null;
+    orderedQty: number;
+    receivedQty: number;
+    remainingQty: number;
+    orderedValue: number;
+    receivedValue: number;
+  }>;
+  poVsReceived: Array<{
+    purchaseOrderId: string;
+    poNumber: string;
+    vendorName: string;
+    totalAmount: number;
+    receivedAmount: number;
+    billedAmount: number;
+    receiptCount: number;
+    receivePercent: number;
+  }>;
+  vendorPerformance: Array<{
+    vendorId: string;
+    vendorName: string;
+    grnCount: number;
+    totalReceivedValue: number;
+    avgDaysToReceive: number;
+  }>;
+  grnByStatus: Array<{ status: string; count: number }>;
+}
+
+export interface PurchaseOrderReportSummary {
+  byStatus: Array<{
+    status: string;
+    count: number;
+    totalAmount: number;
+    receivedAmount: number;
+    billedAmount: number;
+    openAmount: number;
+  }>;
+  totals: {
+    count: number;
+    totalAmount: number;
+    receivedAmount: number;
+    billedAmount: number;
+    openAmount: number;
+  };
+  openPurchaseOrders: Array<{
+    id: string;
+    poNumber: string;
+    vendorId: string;
+    vendorName: string;
+    status: string;
+    totalAmount: number;
+    receivedAmount: number;
+    billedAmount: number;
+    remainingAmount: number;
+    billableRemaining: number;
+    issueDate: string;
+  }>;
+}
+
+// PO Line Item (legacy P2P alias fields on POItem above)
 
 // Purchase Order
 export interface PurchaseOrder {

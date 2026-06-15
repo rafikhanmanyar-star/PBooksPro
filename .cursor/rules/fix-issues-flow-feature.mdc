@@ -13,7 +13,7 @@ Use this rule when debugging or fixing bugs in current behavior (not when adding
 2. **Locate the flow** – Find the code paths involved (UI, API, DB, tenant context).
 3. **Identify root cause** – Don’t only fix symptoms; find why it fails.
 4. **Minimal change** – Prefer the smallest change that fixes the bug and keeps existing behavior.
-5. **Respect conventions** – Follow project-conventions (tenant_id, imports, migrations, etc.).
+5. **Respect conventions** – Follow `00_architecture_authority.mdc` and domain rules (`01`–`09`).
 
 ---
 

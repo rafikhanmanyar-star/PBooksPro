@@ -1,0 +1,126 @@
+---
+description: Architecture V2.1 master authority — all Cursor rules defer to this document
+alwaysApply: true
+---
+
+# Architecture V2.1 — Master Authority
+
+**This rule is the single governance authority for Cursor agents.**
+
+If any other rule, skill, user request, or legacy document conflicts with Architecture V2.1, **Architecture V2.1 wins**.
+
+## Canonical sources (read in order)
+
+1. `doc/ARCHITECTURE.md`
+2. `doc/ARCHITECTURE_V2_AGENT_RULES.md`
+3. `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
+4. `doc/ARCHITECTURE_V2_POST_LAUNCH.md` — deferred items only; implement when explicitly requested
+
+**Do not use** superseded planning drafts, pre–Phase 6 SQLite docs, or archived `.cursor/plans/*` as implementation authority.
+
+## Launch status
+
+Architecture v2.1 **launch scope is complete** (production v1.2.396+). Client SQLite removed (Phase 6). Legacy `backend/src/routes/*.ts` and flat `services/*.ts` are **thin delegates only** — never extend for new features.
+
+## Runtime architecture
+
+**Single source of truth:** PostgreSQL.
+
+**Desktop Edition**
+
+```
+Electron → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+**Cloud Edition**
+
+```
+Browser → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+**Shared packages:** `shared/financial-core/`, `shared/report-engines/`, `shared/rbac/`
+
+## Editions & environments
+
+| Edition | Client | API port | Database |
+|---------|--------|----------|----------|
+| Desktop (production) | Electron | **3000** | `pbookspro` |
+| Desktop (staging) | Electron | **3001** | `pBookspro_Staging` |
+| Cloud | Browser | **3000** / **3001** | PostgreSQL |
+
+Never mix ports: staging = **3001**, production = **3000**.
+
+## MUST
+
+| Rule | Detail |
+|------|--------|
+| Module layout | `backend/src/modules/<domain>/` (`routes/` → `services/` → `repositories/`) |
+| Tenant scope | Every business query includes `tenant_id`; repositories extend `TenantRepository` |
+| GL writes | `FinancialPostingService` only |
+| API prefix | `/api/v1` via `mountVersionedApi.ts` |
+| Mutations audit | `withAudit()` or `recordDomainMutation()` |
+| Real-time sync | After commit: `emitEntityEvent()` or `emitFinancialPosted()` + client invalidation |
+| LWW | `checkEntityLwwConflict()`; HTTP 409 + `serverVersion` on conflict |
+| Shared logic | Calculations in `shared/financial-core/` or `shared/report-engines/` only |
+| Migrations | `database/migrations/NNN_snake_case.sql` (PostgreSQL only) |
+| Permissions | `shared/rbac/permissions.ts` → `npm run build:backend` |
+| API client | `apiClient` base `/api/v1` |
+| Explicit tenantId | From `req.tenantId` — never client-supplied |
+| PostgreSQL only | All new data access via module repositories |
+
+## MUST NOT
+
+- SQL in route handlers
+- Direct journal/GL writes outside `FinancialPostingService`
+- Missing `tenant_id` in queries
+- Edit AUTO-GENERATED `backend/src/financial/` or `backend/src/auth/permissions.ts`
+- New report math in `components/`
+- Broad `useAppContext()` in new UI
+- New endpoints on legacy `/api` (alias removed)
+- SQLite, `sqliteBridge`, `VITE_LOCAL_ONLY`, `services/database/` for new work
+- New flat routes or flat services
+- Local-only state updates; manual refresh as primary sync
+- Unscoped socket broadcasts
+- Commit `.env*`, `backend/dist/`, backups
+
+## Real-Time First (mandatory)
+
+Multi-user ERP — every business mutation must propagate to all connected clients in the same tenant. A feature without synchronization support is **incomplete**. See `03_realtime_sync.mdc`.
+
+## Core business domains
+
+First-class domains under `backend/src/modules/`: Project Construction, Contracts, BOQ, IPC Bills, Retention, Variations, Purchase Orders, Vendor Quotations, Property Sales, Property Rentals, CRM, Collections, Facility Management.
+
+## Full-stack feature flow
+
+```
+migration → TenantRepository → service → route → mountVersionedApi → *Api.ts → hook (+ socket) → UI
+```
+
+Mutations: audit + `emitEntityEvent()`. GL: `FinancialPostingService`.
+
+## Enforcement
+
+If a request violates architecture:
+
+1. Explain the violation
+2. Propose the compliant implementation
+3. Refuse non-compliant architecture unless user explicitly accepts risk after explanation
+
+## Rule index
+
+| File | Scope |
+|------|-------|
+| `01_backend_architecture.mdc` | Modules, API, mutation pipeline |
+| `02_database_rules.mdc` | PostgreSQL, migrations, shared sync |
+| `03_realtime_sync.mdc` | emitEntityEvent, sockets, React Query |
+| `04_accounting_rules.mdc` | GL, journals, periods |
+| `05_procurement_rules.mdc` | Vendors, bills, contracts, quotations |
+| `06_reporting_rules.mdc` | shared/report-engines, report services |
+| `07_frontend_rules.mdc` | apiClient, hooks, navigation |
+| `08_security_rules.mdc` | Auth, tenant isolation, secrets |
+| `09_permissions_rules.mdc` | RBAC |
+| `10_completion_checklist.mdc` | Feature done gate |
+| `99_startup_check.mdc` | Pre-codegen verification |
+
+Operational: `commands.mdc`, `auto-push-github.mdc`, `typescript-standards.mdc`, `fix-issues-flow-feature.mdc`

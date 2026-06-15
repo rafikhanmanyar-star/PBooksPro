@@ -10,6 +10,8 @@ import {
   softDeleteTransaction,
   updateTransaction,
   upsertTransaction,
+  submitPaymentForApproval,
+  approvePayment,
   type ListTransactionFilters,
 } from '../services/transactionsService.js';
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
@@ -208,6 +210,76 @@ transactionsRouter.put('/transactions/:id', async (req: AuthedRequest, res) => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+transactionsRouter.post('/transactions/:id/submit', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      submitPaymentForApproval(
+        client,
+        tenantId,
+        req.params.id,
+        expectedVersion,
+        req.userId ?? null,
+        req.role ?? null
+      )
+    );
+    if (result.conflict) {
+      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      return;
+    }
+    const apiRow = rowToTransactionApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+transactionsRouter.post('/transactions/:id/approve', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      approvePayment(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
+    );
+    if (result.conflict) {
+      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      return;
+    }
+    const apiRow = rowToTransactionApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
+    const pool = getPool();
+    const c = await pool.connect();
+    try {
+      if (result.row.bill_id) {
+        const billRow = await getBillById(c, tenantId, result.row.bill_id);
+        if (billRow) {
+          emitEntityEvent(tenantId, 'updated', 'bill', {
+            data: rowToBillApi(billRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+    } finally {
+      c.release();
+    }
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    handleRouteError(res, e);
   }
 });
 

@@ -1,0 +1,128 @@
+---
+description: Real-Time First — mandatory sync for all tenant mutations (emit, socket, React Query, LWW)
+globs: "{backend/**/*.ts,context/**,hooks/**,services/realtime/**,services/api/**,core/socket.ts}"
+alwaysApply: false
+---
+
+# Real-Time Synchronization (Mandatory)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE.md` § Real-Time First · `doc/REALTIME_EMIT_AUDIT.md`
+
+> A feature without synchronization support is **incomplete**.
+
+## Every business mutation MUST
+
+1. **PostgreSQL commit** — transaction committed before emitting
+2. **Audit trail** — `withAudit()` or `recordDomainMutation()`
+3. **Event emission** — `emitEntityEvent()` or `emitFinancialPosted()`
+4. **Tenant-scoped broadcast** — Socket.IO room `tenant:${tenantId}` only
+5. **Client refresh** — React Query invalidation + AppContext merge; no manual F5
+
+**Applies to:** contracts, payments, invoices, bills, receipts, journals, properties, leads, customers, vendors, quotations, POs, retention, IPC bills, BOQs, and all tenant-scoped entities.
+
+## Event pipeline
+
+```
+Repository → Service → withAudit/recordDomainMutation → emitEntityEvent → initRealtime → tenant:${tenantId} → Clients
+```
+
+| Component | Path |
+|-----------|------|
+| Gateway | `backend/src/core/realtime.ts` — `emitEntityEvent()`, `emitFinancialPosted()` |
+| Audit | `backend/src/core/recordDomainMutation.ts`, `core/AuditMutation.ts` |
+| LWW | `backend/src/core/entityMutation.ts` → `checkEntityLwwConflict()` |
+| Route reference | `modules/vendors/routes/billsRoutes.ts` |
+| Socket client | `core/socket.ts` — `connectRealtimeSocket()`, `getRealtimeSocket()` |
+| Global listener | `context/AppContext.tsx` |
+| Change log merge | `services/api/changeLogMerge.ts` |
+| Entity invalidation map | `services/realtime/entityQueryInvalidation.ts` |
+
+## Socket events
+
+| Event | Use |
+|-------|-----|
+| `entity_created` | New entity |
+| `entity_updated` | Update, approve, status change |
+| `entity_deleted` | Soft/hard delete |
+| `financial.posted` | GL posting complete |
+| `lock_acquired` / `lock_released` | Record locks |
+| `notification_created` | User notifications |
+
+**Semantic actions:** `created`, `updated`, `deleted`, `approved`, `rejected`, `posted`, `reversed`, `status_changed` — map lifecycle to `emitEntityEvent(..., 'updated', …)` with audit action until dedicated socket names exist.
+
+## Event payload (tenant isolation)
+
+| Field | Source |
+|-------|--------|
+| `tenantId` | `req.tenantId` — never client body |
+| `type` | `RealtimeEntityType` in `core/realtime.ts` |
+| `id` | Entity id in payload or `data.id` |
+| `action` | `created` \| `updated` \| `deleted` |
+| `ts` | ISO timestamp from `emitEvent()` |
+| `version` | In `data` when LWW-enabled |
+
+Clients **must** ignore `payload.tenantId !== currentTenantId`.
+
+## Backend emit (after commit)
+
+```typescript
+emitEntityEvent(tenantId, 'updated', 'bill', {
+  data: row,
+  sourceUserId: req.userId,
+});
+```
+
+New entity types: extend `RealtimeEntityType` in `core/realtime.ts` + `entityQueryInvalidation.ts`.
+
+## Frontend React Query (mandatory for new hooks)
+
+```typescript
+useEffect(() => {
+  const socket = getRealtimeSocket();
+  if (!socket) return;
+  const onEntity = (payload: { tenantId?: string; type?: string }) => {
+    if (payload.tenantId && payload.tenantId !== currentTenantId) return;
+    void queryClient.invalidateQueries({ queryKey: ['bills'] });
+  };
+  socket.on('entity_updated', onEntity);
+  socket.on('entity_created', onEntity);
+  socket.on('entity_deleted', onEntity);
+  return () => {
+    socket.off('entity_updated', onEntity);
+    socket.off('entity_created', onEntity);
+    socket.off('entity_deleted', onEntity);
+  };
+}, [currentTenantId, queryClient]);
+```
+
+References: `hooks/useUserNotifications.ts`, `modules/executive-mobile/hooks/useMobileNotifications.ts`
+
+## Optimistic locking (LWW)
+
+1. Client sends `version` on upsert
+2. `checkEntityLwwConflict()` before write
+3. Conflict → HTTP **409** `CONFLICT` with `{ serverVersion }`
+4. UI informs user — no silent overwrite
+5. Client merge skips stale versions in `changeLogMerge.ts`
+
+## MUST NOT
+
+- Local-only business entity updates
+- Manual page refresh as primary sync
+- Refresh buttons as primary sync (supplementary only)
+- Polling-only mutation propagation
+- Unscoped / cross-tenant broadcasts
+- Emit before PostgreSQL commit
+
+## Bulk refresh
+
+Settings bulk operations (`dataManagementRoutes`): emit `emitEntityEvent('settings', { bulkRefresh })` — client reloads via `AppContext` + broad React Query invalidation.
+
+## Verification
+
+```powershell
+npm run verify:track-e2
+npm run test:staging
+```
+
+Multi-user test: User A mutates → User B updates without manual refresh (~2s).

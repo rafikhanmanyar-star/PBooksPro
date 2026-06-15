@@ -10,7 +10,8 @@ import {
   updateContact,
 } from '../services/contactsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 
 export const contactsRouter = Router();
 
@@ -90,7 +91,15 @@ contactsRouter.put('/contacts/:id', async (req: AuthedRequest, res) => {
       updateContact(client, tenantId, id, req.body as Record<string, unknown>)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getContactById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.row) {
@@ -122,7 +131,15 @@ contactsRouter.delete('/contacts/:id', async (req: AuthedRequest, res) => {
       softDeleteContact(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getContactById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

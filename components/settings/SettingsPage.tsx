@@ -30,6 +30,8 @@ import { useFeatures } from '../../hooks/useFeatures';
 import { navigateToSettingsHome } from '../../utils/appNavigation';
 import InterfaceModeSettingsSection from './InterfaceModeSettingsSection';
 import ProcurementSettingsSection from './ProcurementSettingsSection';
+import WorkflowSettingsSection from './WorkflowSettingsSection';
+import ApprovalQueuePanel from '../workflow/ApprovalQueuePanel';
 import AccountingPeriodsSection from './AccountingPeriodsSection';
 import PermissionManagementSection from './PermissionManagementSection';
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
@@ -745,7 +747,7 @@ const SettingsPage: React.FC = () => {
         );
     };
 
-    const preferenceTabs = ['General', 'Procurement', 'ID Sequences', 'Communication', 'Tools'];
+    const preferenceTabs = ['General', 'Procurement', 'Workflow', 'ID Sequences', 'Communication', 'Tools'];
 
     const renderToggle = (label: string, description: string, checked: boolean, onChange: (val: boolean) => void) => (
         <div className="flex items-center justify-between p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card transition-all hover:border-ds-primary/40">
@@ -1010,6 +1012,12 @@ const SettingsPage: React.FC = () => {
                         showWarningOnly: true,
                         varianceApprovalThreshold: 10,
                     }} />
+                )}
+                {activePreferenceTab === 'Workflow' && (
+                    <div className="space-y-10">
+                        <WorkflowSettingsSection />
+                        <ApprovalQueuePanel />
+                    </div>
                 )}
                 {activePreferenceTab === 'ID Sequences' && renderIDSequences()}
                 {activePreferenceTab === 'Communication' && renderCommunicationBranding()}

@@ -2,7 +2,7 @@
 
 Single reference for new development after the **Architecture v2.1** upgrade. Four sections: **Overview**, **Backend**, **Frontend**, and **Data Layer**.
 
-> **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (loaded via `.cursor/rules/architecture-v2-agent-compliance.mdc`).
+> **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (enforced via `.cursor/rules/00_architecture_authority.mdc` and `doc/CURSOR_RULES_AUDIT.md`).
 
 > **Modernization progress:** [`doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`](ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md)
 
@@ -78,7 +78,7 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 - Documents served from R2 via `DocumentStorageService` — **done**
 - Clients on `/api/v1` only — **done** (`/api` alias removed)
 
-**Deferred to post-launch:** RLS, BullMQ job queues, direct `shared/report-engines` TS imports, full audit path unification, payroll LWW columns.
+**Deferred to post-launch:** RLS, BullMQ job queues, full audit path unification, payroll LWW columns, platform flat-service strangler.
 
 **For new development:** follow v2 **patterns** (see checklists below) even while legacy code remains. Prefer extending module layers over adding inline SQL to flat services.
 
@@ -780,5 +780,5 @@ See [`doc/ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md):
 - BullMQ + Redis (replace `setInterval` schedulers)
 - Full CQRS / event sourcing
 - Field-level sync conflicts
-- Retire `/api` alias and esbuild report bundles
 - Payroll → `journal_entries` unification
+- Platform flat `services/*` strangler (`billing/`, `auth/`, `dashboard/`)

@@ -21,5 +21,8 @@ export const queryKeys = {
     /** Warmed while on Visual Layout; read for instant counts / future API merge */
     invoicesList: () => ['rental', 'invoices', 'list'] as const,
   },
+  projects: {
+    all: ['projects'] as const,
+  },
 } as const;
 

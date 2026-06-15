@@ -1,0 +1,93 @@
+---
+description: Procurement domain — vendors, bills, contracts, quotations, POs, retention, contractor billing
+globs: "{backend/src/modules/vendors/**,backend/src/modules/project-selling/**,components/vendors/**,components/procurement/**,shared/quotation-validation/**,shared/contract-retention/**,shared/contract-billing/**}"
+alwaysApply: false
+---
+
+# Procurement Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE.md` § Core Business Domains
+
+## First-class procurement domains
+
+Implement under `backend/src/modules/` — not generic utilities:
+
+- Contracts, BOQ, IPC Bills, Retention Management, Variation Orders
+- Purchase Orders, Vendor Quotations
+- Vendor bills, contractor billing, advance settlement
+
+## Module layout
+
+| Concern | Module |
+|---------|--------|
+| Vendors, bills, contracts, quotations | `modules/vendors/` |
+| Project agreements, installment plans | `modules/project-selling/` |
+| Contractor FIFO, bill advances | `modules/vendors/services/` |
+
+Key repositories: `BillRepository`, `ContractRepository`, `QuotationRepository`, `VendorRepository`
+
+## Shared procurement logic
+
+| Source | Synced to |
+|--------|-----------|
+| `shared/quotation-validation/` | `backend/src/quotationValidation/` |
+| `shared/contract-retention/` | `backend/src/contractRetention/` |
+| `shared/contract-billing/` | `backend/src/contractBilling/` |
+
+## GL integration
+
+- Bill posting: `billJournalPostingService` → `FinancialPostingService`
+- Bill payments: transaction journal posting
+- Contractor advance settlement: vendor bill prepaid stack in `modules/vendors/services/`
+- Retention releases: `contractRetentionService` + GL via posting gateway
+
+## Real-time entity types
+
+Emit after mutations affecting:
+
+- `vendor`, `bill`, `contract`, `quotation`
+- Contractor billing events
+- Bill payment / advance settlement
+
+Reference route: `modules/vendors/routes/billsRoutes.ts`
+
+```typescript
+emitEntityEvent(tenantId, 'updated', 'bill', { data: row, sourceUserId: req.userId });
+```
+
+## API pattern
+
+```
+POST/PUT /api/v1/bills → billsRoutes → billsService → BillRepository
+```
+
+- Zod validation in route
+- `requirePermission('financial.write')` or domain-specific permission
+- `checkEntityLwwConflict()` on upsert
+- Audit + emit after commit
+
+## Frontend
+
+- API: `services/api/repositories/billsApi.ts` (or vendors domain APIs)
+- React Query: `hooks/queries/` with socket invalidation on `entity_*` for `type === 'bill'`
+- UI: `components/vendors/`, procurement screens
+
+## Quotation intelligence
+
+- `quotationIntelligenceService`, `quotationValidationService` in `modules/vendors/services/`
+- Validation core from `shared/quotation-validation/`
+
+## MUST NOT
+
+- New handlers in flat `backend/src/services/billsService.ts` (shim delegates only)
+- SQLite or offline procurement flows
+- Duplicate retention/quotation logic outside `shared/`
+- Bill GL writes bypassing `FinancialPostingService`
+- Local-only bill list updates without socket path
+
+## New procurement feature flow
+
+```
+migration → BillRepository (or domain repo) → service → route → mountVersionedApi
+→ billsApi.ts → useBills hook (+ socket) → UI → usePermissions()
+```

@@ -17,12 +17,14 @@ export type RealtimeEntityType =
   | 'user'
   | 'vendor'
   | 'quotation'
+  | 'purchase_order'
   | 'document'
   | 'building'
   | 'property'
   | 'settings'
   | 'account'
   | 'transaction'
+  | 'journal_entry'
   | 'category'
   | 'bill'
   | 'recurring_invoice_template'
@@ -48,7 +50,9 @@ export type RealtimeEntityType =
   | 'accounting_period'
   | 'personal_task'
   | 'report_definition'
-  | 'custom_report_template';
+  | 'custom_report_template'
+  | 'approval_request'
+  | 'goods_receipt';
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted';
 
@@ -344,4 +348,37 @@ export function emitWhatsAppMessageReceived(tenantId: string, payload: WhatsAppS
 
 export function emitWhatsAppMessageStatus(tenantId: string, payload: WhatsAppSocketPayload): void {
   emitWhatsAppEvent('whatsapp:message:status', tenantId, payload);
+}
+
+export type ApprovalSocketEventName =
+  | 'approval_requested'
+  | 'approval_approved'
+  | 'approval_rejected'
+  | 'approval_returned'
+  | 'approval_escalated'
+  | 'approval_delegated';
+
+export type ApprovalSocketPayload = {
+  tenantId: string;
+  requestId: string;
+  entityType: string;
+  entityId: string;
+  level?: number;
+  autoApproved?: boolean;
+  sourceUserId?: string;
+  ts: string;
+};
+
+export function emitApprovalEvent(
+  tenantId: string,
+  event: ApprovalSocketEventName,
+  payload: Omit<ApprovalSocketPayload, 'tenantId' | 'ts'>
+): void {
+  if (!io) return;
+  const body: ApprovalSocketPayload = {
+    ...payload,
+    tenantId,
+    ts: new Date().toISOString(),
+  };
+  io.to(tenantRoom(tenantId)).emit(event, body);
 }

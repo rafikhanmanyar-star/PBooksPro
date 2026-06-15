@@ -17,9 +17,10 @@ import { getProfitLossReportJson } from './profitLossReportService.js';
 import {
   getAccountingPeriodById,
   markAccountingPeriodClosed,
+  rowToAccountingPeriodApi,
   type AccountingPeriodRow,
 } from './accountingPeriodService.js';
-import { appendAuditEvent } from '../../organization/services/enterpriseAuditService.js';
+import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 
 export const FISCAL_CLOSE_SOURCE_MODULE = 'fiscal_close';
 export const FISCAL_YEAR_END_SOURCE_MODULE = 'fiscal_year_end';
@@ -147,26 +148,6 @@ async function signedEquityBalanceThroughDate(
   return roundMoney(Number(r.rows[0]?.bal ?? 0));
 }
 
-async function writePeriodAuditLog(
-  client: pg.PoolClient,
-  tenantId: string,
-  periodId: string,
-  action: string,
-  userId: string | null,
-  payload: Record<string, unknown>
-): Promise<void> {
-  await appendAuditEvent(client, {
-    tenantId,
-    userId,
-    module: 'accounting_periods',
-    action,
-    entityType: 'accounting_period',
-    entityId: periodId,
-    summary: `Accounting period ${action}`,
-    newValue: payload,
-  });
-}
-
 export type CloseAccountingPeriodOptions = {
   actorUserId: string | null;
   selectedProjectId?: string;
@@ -250,13 +231,25 @@ export async function closeAccountingPeriod(
     yearEndTransferJournalEntryId
   );
 
-  await writePeriodAuditLog(client, tenantId, periodId, 'close', options.actorUserId, {
-    startDate,
-    endDate,
-    totals,
-    closingJournalEntryId,
-    yearEndTransferJournalEntryId,
-    performYearEndTransfer: yearEnd,
+  const oldApi = rowToAccountingPeriodApi(period);
+  const newApi = rowToAccountingPeriodApi(updated);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: options.actorUserId,
+    module: 'accounting_periods',
+    entityType: 'accounting_period',
+    entityId: periodId,
+    action: 'update',
+    auditAction: 'close',
+    summary: `Accounting period closed ${startDate} – ${endDate}`,
+    oldValue: oldApi,
+    newValue: {
+      ...newApi,
+      totals,
+      closingJournalEntryId,
+      yearEndTransferJournalEntryId,
+      performYearEndTransfer: yearEnd,
+    },
   });
 
   return {
@@ -265,24 +258,4 @@ export async function closeAccountingPeriod(
     yearEndTransferJournalEntryId,
     totals,
   };
-}
-
-export async function logAccountingPeriodOpened(
-  client: pg.PoolClient,
-  tenantId: string,
-  periodId: string,
-  userId: string | null,
-  payload: Record<string, unknown>
-): Promise<void> {
-  await writePeriodAuditLog(client, tenantId, periodId, 'open', userId, payload);
-}
-
-export async function logAccountingPeriodReopened(
-  client: pg.PoolClient,
-  tenantId: string,
-  periodId: string,
-  userId: string | null,
-  payload: Record<string, unknown>
-): Promise<void> {
-  await writePeriodAuditLog(client, tenantId, periodId, 'reopen', userId, payload);
 }

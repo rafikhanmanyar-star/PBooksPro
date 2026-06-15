@@ -15,7 +15,10 @@ import type {
   RetentionType,
 } from '../../../contractRetention/types.js';
 import { formatPgDateToYyyyMmDd } from '../../../utils/dateOnly.js';
+import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
+import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import type { ContractRow } from './contractsService.js';
+import { rowToContractApi } from './contractsService.js';
 import { createUserNotifications } from '../../notifications/services/userNotificationService.js';
 
 export type ContractRetentionRowFields = {
@@ -315,14 +318,26 @@ export async function releaseRetention(
   tenantId: string,
   contractId: string,
   actorUserId: string | null,
-  input: { amount?: number; fullRelease?: boolean; releaseDate?: string }
-): Promise<ContractRow & Partial<ContractRetentionRowFields>> {
+  input: { amount?: number; fullRelease?: boolean; releaseDate?: string; version?: number }
+): Promise<{ row: ContractRow & Partial<ContractRetentionRowFields>; conflict: boolean }> {
   const r = await client.query(
     `SELECT * FROM contracts WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL FOR UPDATE`,
     [contractId, tenantId]
   );
   const row = r.rows[0];
   if (!row) throw new Error('Contract not found.');
+
+  if (input.version != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contracts',
+      entityId: contractId,
+      clientVersion: input.version,
+    });
+    if (lww.conflict) {
+      return { row: row as ContractRow & Partial<ContractRetentionRowFields>, conflict: true };
+    }
+  }
 
   const fields = contractRowToRetentionFields(row);
   if (fields.retentionType === 'NONE') {
@@ -352,6 +367,7 @@ export async function releaseRetention(
   const newReleased = roundMoney(currentReleased + releaseAmt);
   const newBalance = roundMoney(totalRetention - newReleased);
   const releaseDate = input.releaseDate?.slice(0, 10) ?? new Date().toISOString().slice(0, 10);
+  const oldApi = rowToContractApi(row as ContractRow);
 
   const upd = await client.query(
     `UPDATE contracts SET
@@ -365,7 +381,23 @@ export async function releaseRetention(
      RETURNING *`,
     [contractId, tenantId, newReleased, newBalance, releaseDate, actorUserId]
   );
-  return upd.rows[0]!;
+  const updatedRow = upd.rows[0]! as ContractRow & Partial<ContractRetentionRowFields>;
+
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'contracts',
+    entityType: 'contract',
+    entityId: contractId,
+    action: 'update',
+    auditAction: 'retention_release',
+    summary: `Retention released for contract ${row.contract_number}`,
+    newValue: rowToContractApi(updatedRow as ContractRow),
+    oldValue: oldApi,
+    version: updatedRow.version,
+  });
+
+  return { row: updatedRow, conflict: false };
 }
 
 export async function notifyRetentionThresholdIfNeeded(

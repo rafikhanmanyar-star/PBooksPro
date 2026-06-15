@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
@@ -88,7 +89,15 @@ vendorsRouter.put('/vendors/:id', async (req: AuthedRequest, res) => {
       updateVendor(client, tenantId, id, req.body as Record<string, unknown>)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'VERSION_CONFLICT', 'Record was modified by another user', { serverVersion: null });
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getVendorById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.row) {
@@ -120,7 +129,15 @@ vendorsRouter.delete('/vendors/:id', async (req: AuthedRequest, res) => {
       softDeleteVendor(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getVendorById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

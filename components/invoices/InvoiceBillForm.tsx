@@ -4,7 +4,7 @@ import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState
 import { useNotification } from '../../context/NotificationContext';
 import { usePrintContext } from '../../context/PrintContext';
 import type { BillPrintData } from '../print/BillPrintTemplate';
-import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, Contract, ContractExpenseCategoryItem, Vendor } from '../../types';
+import type { Bill, BillPoLine, Contact, Contract, ContractExpenseCategoryItem, ContactType, ContractStatus, Invoice, InvoiceStatus, InvoiceType, Project, ProjectAgreement, ProjectAgreementStatus, Property, RecurringInvoiceTemplate, RentalAgreement, TransactionType, Category, Unit, Building, Vendor } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
@@ -42,6 +42,10 @@ import { backupAlertWarning, backupAlertError } from '../settings/backupThemeCla
 import { getDisplayActiveAgreementForProperty } from '../../utils/rentalActiveAgreementPick';
 import { validateBillAgainstContract } from '../../utils/contractBilling';
 import BillSummarySidePanel, { type BillSidebarPreview } from '../bills/BillSummarySidePanel';
+import BillProcurementLinksSection from '../bills/BillProcurementLinksSection';
+import SubmitForApprovalButton from '../workflow/SubmitForApprovalButton';
+import type { PoBillingContext } from '../../services/purchaseOrdersApi';
+import { validateBillAgainstPurchaseOrderWithReceipt } from '../../shared/procurement/purchaseOrderBillingCore';
 import { isPureSecurityDepositInvoice } from '../../utils/rentalInvoiceClassification';
 import { formatDate } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/numberFormatting';
@@ -253,6 +257,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       setBuildingId(bill.buildingId || '');
       setStaffId(bill.staffId || '');
       setContractId(bill.contractId || '');
+      setPurchaseOrderId(bill.purchaseOrderId || '');
+      setGoodsReceiptId(bill.goodsReceiptId || '');
+      setPoBillLines(bill.poBillLines ?? []);
       setCategoryId(bill.categoryId || '');
       if (bill.issueDate) {
         setIssueDate(parseStoredDateToYyyyMmDdInput(String(bill.issueDate)));
@@ -363,6 +370,16 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const [staffId, setStaffId] = useState((defaults && 'staffId' in defaults ? (defaults as Bill).staffId : ''));
   const [contractId, setContractId] = useState((defaults && 'contractId' in defaults ? (defaults as Bill).contractId : '') ?? '');
+  const [purchaseOrderId, setPurchaseOrderId] = useState(
+    (defaults && 'purchaseOrderId' in defaults ? (defaults as Bill).purchaseOrderId : '') ?? ''
+  );
+  const [goodsReceiptId, setGoodsReceiptId] = useState(
+    (defaults && 'goodsReceiptId' in defaults ? (defaults as Bill).goodsReceiptId : '') ?? ''
+  );
+  const [poBillingContext, setPoBillingContext] = useState<PoBillingContext | null>(null);
+  const [poBillLines, setPoBillLines] = useState<BillPoLine[]>(
+    (defaults && 'poBillLines' in defaults ? (defaults as Bill).poBillLines : undefined) ?? []
+  );
 
   const [unitId, setUnitId] = useState(
     defaults && 'unitId' in defaults
@@ -1212,6 +1229,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       serviceCharges: srcInv?.serviceCharges,
       staffId: staffId || undefined,
       contractId: contractId || undefined,
+      purchaseOrderId: type === 'bill' && purchaseOrderId ? purchaseOrderId : undefined,
+      goodsReceiptId: type === 'bill' && goodsReceiptId ? goodsReceiptId : undefined,
+      poBillLines:
+        type === 'bill' &&
+        purchaseOrderId &&
+        (poBillLines.length > 0 || ((itemToEdit as Bill | undefined)?.poBillLines?.length ?? 0) > 0)
+          ? poBillLines
+          : undefined,
       rentalMonth: rentalMonthResolved,
       userId: srcInv?.userId,
       expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : undefined,
@@ -1347,6 +1372,26 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         await showAlert(contractValidation.message ?? 'Bill amount exceeds remaining contract value.', {
           title: 'Contract Limit Exceeded',
         });
+        return;
+      }
+    }
+
+    if (type === 'bill' && purchaseOrderId && billVendorId) {
+      const ctx = poBillingContext;
+      const poVendorId = ctx?.vendorId ?? '';
+      const validation = validateBillAgainstPurchaseOrderWithReceipt({
+        poStatus: ctx?.status ?? 'Approved',
+        poTotalAmount: ctx?.totalAmount ?? 0,
+        poBilledAmount: ctx?.billedAmount ?? 0,
+        poReceivedAmount: ctx?.receivedAmount ?? 0,
+        billAmount: finalAmount,
+        poVendorId,
+        billVendorId,
+        excludeBillAmount: itemToEdit?.id ? finalAmount : undefined,
+        requireReceipt: true,
+      });
+      if (!validation.ok) {
+        await showAlert(validation.message, { title: 'Purchase Order Limit' });
         return;
       }
     }
@@ -2389,6 +2434,29 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           </div>
         </div>
 
+        {type === 'bill' && billVendorId && (
+          <BillProcurementLinksSection
+            vendorId={billVendorId}
+            purchaseOrderId={purchaseOrderId}
+            goodsReceiptId={goodsReceiptId}
+            excludeBillId={itemToEdit?.id}
+            poBillLines={poBillLines}
+            onPurchaseOrderChange={(poId) => {
+              if (poId !== purchaseOrderId) setPoBillLines([]);
+              setPurchaseOrderId(poId);
+              if (!poId) setPoBillLines([]);
+            }}
+            onGoodsReceiptChange={setGoodsReceiptId}
+            onContextChange={setPoBillingContext}
+            onPoBillLinesChange={setPoBillLines}
+            onLinesTotalChange={(total) => {
+              if (purchaseOrderId && total > 0) {
+                setAmount(total.toFixed(2));
+              }
+            }}
+          />
+        )}
+
         {/* Simplified Project Fields (Only for Bills from Project Management) */}
         {type === 'bill' && projectContext && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -3033,6 +3101,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                 {ICONS.print && <span className="w-4 h-4 inline-block [&>svg]:w-full [&>svg]:h-full">{ICONS.print}</span>}
                 Print
               </Button>
+            )}
+            {type === 'bill' && itemToEdit && (
+              <SubmitForApprovalButton
+                entityType="bill"
+                entityId={itemToEdit.id}
+                approvalStatus={(itemToEdit as Bill).approvalStatus}
+                disabled={recordLock.viewOnly}
+              />
             )}
           </div>
           <div className="flex gap-2 w-full sm:w-auto sm:ml-auto">

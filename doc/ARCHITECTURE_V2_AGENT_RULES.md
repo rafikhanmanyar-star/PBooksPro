@@ -529,8 +529,10 @@ These are tracked in `doc/ARCHITECTURE_V2_POST_LAUNCH.md`:
 - BullMQ + Redis job queues
 - Full CQRS / event sourcing
 - Field-level sync conflict resolution
-- Direct backend TS imports of `shared/report-engines` (retire esbuild bundles)
+- Platform flat `services/*` strangler; optional report engine source relocation to `shared/report-engines/`
 - Payroll → `journal_entries` unification (payroll ledger remains separate)
+
+**Done (v1.2.396):** Report engines via `reportEngines/index.ts` + `ensure-shared-report-engines.mjs` (Track F P4).
 
 ---
 

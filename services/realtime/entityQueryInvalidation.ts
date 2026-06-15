@@ -91,6 +91,7 @@ async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<vo
     queryClient.invalidateQueries({ queryKey: ['vendors'] }),
     queryClient.invalidateQueries({ queryKey: ['contacts'] }),
     queryClient.invalidateQueries({ queryKey: ['contracts'] }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }),
     queryClient.invalidateQueries({ queryKey: ['payroll'] }),
     queryClient.invalidateQueries({ queryKey: ['documents'] }),
     invalidateSellingAnalytics(queryClient),
@@ -157,10 +158,33 @@ export async function invalidateQueriesForEntityEvent(
   if (entityType === 'vendor' || entityType === 'quotation') {
     await queryClient.invalidateQueries({ queryKey: ['vendors'] });
     await queryClient.invalidateQueries({ queryKey: ['quotations'] });
+    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+  }
+
+  if (entityType === 'purchase_order') {
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
+  }
+
+  if (entityType === 'goods_receipt') {
+    await queryClient.invalidateQueries({ queryKey: ['goods-receipts'] });
+    await queryClient.invalidateQueries({ queryKey: ['goods-receipt-report'] });
+    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
+    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+  }
+
+  if (entityType === 'approval_request' || entityType === 'settings') {
+    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
   }
 
   if (entityType === 'contract') {
     await queryClient.invalidateQueries({ queryKey: ['contracts'] });
+  }
+
+  if (entityType === 'project') {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
   }
 
   if (entityType === 'user') {

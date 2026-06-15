@@ -41,7 +41,9 @@ export function normalizeContractFromApi(raw: Record<string, unknown>): Contract
   const statusRaw = String(raw.status ?? 'Active');
   const status = Object.values(ContractStatus).includes(statusRaw as ContractStatus)
     ? (statusRaw as ContractStatus)
-    : ContractStatus.ACTIVE;
+    : statusRaw === 'Pending'
+      ? ContractStatus.PENDING
+      : ContractStatus.ACTIVE;
 
   return {
     id: String(raw.id ?? ''),
@@ -101,6 +103,7 @@ export function normalizeContractFromApi(raw: Record<string, unknown>): Contract
           ? Number(raw.retention_released)
           : undefined,
     retentionReleaseBy: (raw.retentionReleaseBy ?? raw.retention_release_by) as string | undefined,
+    approvalStatus: String(raw.approvalStatus ?? raw.approval_status ?? 'Approved'),
     version: typeof raw.version === 'number' ? raw.version : undefined,
   };
 }

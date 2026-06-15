@@ -14,6 +14,22 @@ export function sendSuccess<T>(res: Response, data: T, status = 200): void {
   res.status(status).json(body);
 }
 
+const VERSION_CONFLICT_MESSAGE = 'This record was modified by another user. Please reload.';
+
+/** Standard LWW / optimistic-lock conflict (HTTP 409). */
+export function sendVersionConflict(res: Response, serverVersion: number): void {
+  res.status(409).json({
+    success: false,
+    data: null,
+    serverVersion,
+    error: {
+      code: 'CONFLICT',
+      message: VERSION_CONFLICT_MESSAGE,
+      serverVersion,
+    },
+  });
+}
+
 /** Any failure: validation, DB, or unexpected — never claim success. */
 export function sendFailure(
   res: Response,

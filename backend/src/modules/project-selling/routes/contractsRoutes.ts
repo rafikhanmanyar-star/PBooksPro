@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
@@ -9,6 +10,8 @@ import {
   rowToContractApi,
   softDeleteContract,
   upsertContract,
+  submitContractForApproval,
+  approveContract,
 } from '../../vendors/services/contractsService.js';
 import {
   getContractRetentionSummary,
@@ -110,7 +113,7 @@ contractsRouter.post('/contracts', async (req: AuthedRequest, res) => {
       upsertContract(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToContractApi(result.row);
@@ -185,12 +188,78 @@ contractsRouter.post('/contracts/:id/release-retention', requirePermission('cont
     return;
   }
   const { id } = req.params;
-  const body = req.body as { amount?: number; fullRelease?: boolean; releaseDate?: string };
+  const body = req.body as {
+    amount?: number;
+    fullRelease?: boolean;
+    releaseDate?: string;
+    version?: number;
+  };
   try {
     const result = await withTransaction((client) =>
       releaseRetention(client, tenantId, id, req.userId ?? null, body)
     );
-    const apiRow = rowToContractApi(result);
+    if (result.conflict) {
+      sendVersionConflict(res, result.row.version);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+contractsRouter.post('/contracts/:id/submit', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      submitContractForApproval(
+        client,
+        tenantId,
+        req.params.id,
+        expectedVersion,
+        req.userId ?? null,
+        req.role ?? null
+      )
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+contractsRouter.post('/contracts/:id/approve', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      approveContract(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
     emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {
@@ -214,7 +283,15 @@ contractsRouter.delete('/contracts/:id', async (req: AuthedRequest, res) => {
       softDeleteContract(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Version conflict');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getContractById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

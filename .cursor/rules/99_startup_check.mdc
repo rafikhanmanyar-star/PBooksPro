@@ -1,0 +1,84 @@
+---
+description: Startup verification — run before generating code; refuse non-compliant architecture
+alwaysApply: true
+---
+
+# Startup Verification (Pre-Codegen)
+
+**Authority:** `00_architecture_authority.mdc`
+
+Before implementing any feature, fix, or refactor, verify compliance with Architecture V2.1.
+
+## Step 1 — Read authority
+
+Confirm plan aligns with:
+
+1. `doc/ARCHITECTURE.md`
+2. `doc/ARCHITECTURE_V2_AGENT_RULES.md`
+3. Domain rule file (`01`–`09`) for the area being changed
+
+## Step 2 — Seven verification gates
+
+| Gate | Question | Fail action |
+|------|----------|-------------|
+| **Architecture** | Uses `modules/<domain>/`, `/api/v1`, `TenantRepository`, `FinancialPostingService`? | Propose module layout |
+| **Tenant isolation** | Every query scoped by `tenant_id` from `req.tenantId`? | Refuse client-supplied tenant |
+| **Audit** | Mutations use `withAudit()` or `recordDomainMutation()`? | Add audit pipeline |
+| **Synchronization** | `emitEntityEvent()` + client React Query invalidation? | Add real-time path — feature incomplete without it |
+| **PostgreSQL** | No SQLite, sqliteBridge, VITE_LOCAL_ONLY, local schema? | Redirect to API/PostgreSQL path |
+| **Permissions** | RBAC constant + route guard + UI gate? | Add to `shared/rbac/permissions.ts` |
+| **LWW** | Version conflict handling for versioned entities? | Add `checkEntityLwwConflict()` + 409 |
+
+## Step 3 — If violations exist
+
+1. **Explain** each violation against `00_architecture_authority.mdc`
+2. **Propose** compliant implementation (cite rule file + reference implementation)
+3. **Refuse** non-compliant architecture unless user explicitly accepts risk after explanation
+
+Do not silently implement legacy patterns (flat routes, SQLite, local-only sync, direct GL writes).
+
+## Step 4 — Post-launch deferrals
+
+Do **not** implement unless user explicitly requests:
+
+- PostgreSQL RLS (`SET app.tenant_id`)
+- BullMQ + Redis job queues
+- Full CQRS / event sourcing
+- Platform flat `services/*` strangler (billing/, auth/, dashboard/)
+
+See `doc/ARCHITECTURE_V2_POST_LAUNCH.md`
+
+## Reference implementations (copy these)
+
+| Pattern | File |
+|---------|------|
+| Domain CRUD + audit + emit + LWW | `modules/vendors/routes/billsRoutes.ts` |
+| GL posting | `modules/accounting/services/FinancialPostingService.ts` |
+| Real-time gateway | `backend/src/core/realtime.ts` |
+| Socket + invalidate | `hooks/useUserNotifications.ts` |
+| Dashboard snapshots | `modules/dashboard/` |
+| Report engine import | `reportEngines/index.ts` |
+| Documents R2 | `modules/documents/` |
+
+## Quick rule map
+
+| Changing | Read |
+|----------|------|
+| Backend routes/services | `01_backend_architecture.mdc` |
+| Migrations / schema | `02_database_rules.mdc` |
+| Mutations / live UI | `03_realtime_sync.mdc` |
+| Journals / GL | `04_accounting_rules.mdc` |
+| Bills / vendors / contracts | `05_procurement_rules.mdc` |
+| Financial reports | `06_reporting_rules.mdc` |
+| React / hooks | `07_frontend_rules.mdc` |
+| Auth / secrets | `08_security_rules.mdc` |
+| RBAC | `09_permissions_rules.mdc` |
+| Before marking done | `10_completion_checklist.mdc` |
+
+## Enforcement reminder
+
+> No mutation is complete until the event is emitted.
+
+> A feature without synchronization support is incomplete.
+
+> PostgreSQL is the single database engine.

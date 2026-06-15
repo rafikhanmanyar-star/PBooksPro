@@ -1,4 +1,9 @@
 import pg from 'pg';
+import {
+  clearFinancialPostedQueue,
+  flushFinancialPostedQueue,
+  runWithFinancialPostedQueue,
+} from '../core/financialPostedEmissions.js';
 import { normalizeDatabaseUrl } from '../utils/databaseUrl.js';
 
 const { Pool, types } = pg;
@@ -56,19 +61,25 @@ export async function closePool(): Promise<void> {
 }
 
 export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
-  const p = getPool();
-  const client = await p.connect();
-  try {
-    await client.query('BEGIN');
-    const result = await fn(client);
-    await client.query('COMMIT');
-    return result;
-  } catch (e) {
-    await client.query('ROLLBACK');
-    throw e;
-  } finally {
-    client.release();
-  }
+  const pendingFinancialPosted: { tenantId: string; payload: import('../core/realtime.js').FinancialPostedPayload }[] =
+    [];
+  return runWithFinancialPostedQueue(pendingFinancialPosted, async () => {
+    const p = getPool();
+    const client = await p.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn(client);
+      await client.query('COMMIT');
+      flushFinancialPostedQueue();
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      clearFinancialPostedQueue();
+      throw e;
+    } finally {
+      client.release();
+    }
+  });
 }
 
 function savepointLabel(label: string): string {

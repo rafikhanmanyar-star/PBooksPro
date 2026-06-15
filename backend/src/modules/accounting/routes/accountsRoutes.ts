@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
@@ -70,7 +71,7 @@ accountsRouter.post('/accounts', async (req: AuthedRequest, res) => {
       upsertAccount(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToAccountApi(result.row);
@@ -98,7 +99,15 @@ accountsRouter.put('/accounts/:id', async (req: AuthedRequest, res) => {
     const body = { ...(req.body as Record<string, unknown>), id };
     const result = await withTransaction((client) => updateAccount(client, tenantId, id, body));
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getAccountById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.row) {
@@ -130,7 +139,15 @@ accountsRouter.delete('/accounts/:id', async (req: AuthedRequest, res) => {
       softDeleteAccount(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getAccountById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

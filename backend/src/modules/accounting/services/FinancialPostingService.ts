@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { validateBalanced } from '../../../financial/validation.js';
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
-import { emitFinancialPosted } from '../../../core/realtime.js';
+import { queueFinancialPosted } from '../../../core/financialPostedEmissions.js';
 import type { CreateJournalBody } from './journalService.js';
 import { JournalRepository } from '../repositories/JournalRepository.js';
 import {
@@ -89,7 +89,7 @@ export class FinancialPostingService {
     );
 
     if (options?.emitRealtime !== false) {
-      emitFinancialPosted(this.tenantId, {
+      queueFinancialPosted(this.tenantId, {
         journalEntryId,
         sourceModule: input.sourceModule ?? 'manual',
         sourceId: input.sourceId ?? null,
@@ -100,24 +100,27 @@ export class FinancialPostingService {
     return { journalEntryId };
   }
 
-  async reverseJournal(
-    client: pg.PoolClient,
-    originalJournalEntryId: string,
-    reason: string,
-    createdBy: string | null
-  ): Promise<{ reversalJournalEntryId: string }> {
+  async     reverseJournal(
+      client: pg.PoolClient,
+      originalJournalEntryId: string,
+      reason: string,
+      createdBy: string | null,
+      options?: Pick<PostingOptions, 'emitRealtime'>
+    ): Promise<{ reversalJournalEntryId: string }> {
     const result = await this.journalRepo().reverseEntry(
       client,
       originalJournalEntryId,
       reason,
       createdBy
     );
-    emitFinancialPosted(this.tenantId, {
-      journalEntryId: result.reversalJournalEntryId,
-      sourceModule: 'reversal',
-      sourceId: originalJournalEntryId,
-      sourceUserId: createdBy ?? undefined,
-    });
+    if (options?.emitRealtime !== false) {
+      queueFinancialPosted(this.tenantId, {
+        journalEntryId: result.reversalJournalEntryId,
+        sourceModule: 'reversal',
+        sourceId: originalJournalEntryId,
+        sourceUserId: createdBy ?? undefined,
+      });
+    }
     return result;
   }
 

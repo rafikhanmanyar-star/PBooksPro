@@ -2,9 +2,10 @@
  * Staging API smoke test — logs in and probes module endpoints.
  * Usage: node scripts/smoke-staging-api.mjs
  */
-const API = process.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+const API = process.env.VITE_API_URL || 'http://127.0.0.1:3001/api/v1';
+const API_BASE = API.replace(/\/api\/v1$/, '').replace(/\/api$/, '');
 const TENANT = process.env.VITE_DEFAULT_TENANT_ID || 'test-company';
-const USER = process.env.STAGING_ADMIN_USERNAME || 'Rafi';
+const EMAIL = process.env.STAGING_ADMIN_EMAIL || 'rafi@company.local';
 const PASS = process.env.STAGING_ADMIN_PASSWORD || 'Rafi1234';
 
 const endpoints = [
@@ -15,6 +16,9 @@ const endpoints = [
   { module: 'Project selling', path: '/project-agreements?limit=5' },
   { module: 'Investment Mgmt', path: '/investor/journal/ledger?projectId=all' },
   { module: 'Project construction', path: '/projects' },
+  { module: 'Purchase orders', path: '/purchase-orders' },
+  { module: 'Goods receipts', path: '/goods-receipts' },
+  { module: 'Bills', path: '/bills?limit=5' },
   { module: 'Vendor directory', path: '/vendors' },
   { module: 'PM cycle', path: '/pm-cycle-allocations' },
   { module: 'Rental', path: '/rental-agreements?limit=5' },
@@ -30,16 +34,34 @@ const endpoints = [
 ];
 
 async function login() {
-  const res = await fetch(`${API}/auth/login`, {
+  const res = await fetch(`${API_BASE}/api/v1/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: USER, password: PASS, tenantId: TENANT }),
+    body: JSON.stringify({ email: EMAIL, password: PASS, tenantId: TENANT }),
   });
   const body = await res.json().catch(() => ({}));
-  if (!res.ok || !body?.data?.token) {
+  if (!res.ok) {
     throw new Error(`Login failed (${res.status}): ${body?.error?.message || JSON.stringify(body)}`);
   }
-  return body.data.token;
+  if (body?.data?.token) return body.data.token;
+  if (body?.data?.requiresCompanySelection && body?.data?.selectionToken) {
+    const pick = await fetch(`${API_BASE}/api/v1/auth/select-company`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        companyId: TENANT,
+        selectionToken: body.data.selectionToken,
+      }),
+    });
+    const picked = await pick.json().catch(() => ({}));
+    if (!pick.ok || !picked?.data?.token) {
+      throw new Error(
+        `Company selection failed (${pick.status}): ${picked?.error?.message || JSON.stringify(picked)}`
+      );
+    }
+    return picked.data.token;
+  }
+  throw new Error(`Login failed (${res.status}): ${body?.error?.message || JSON.stringify(body)}`);
 }
 
 async function probe(token, { module, path }) {
@@ -63,8 +85,8 @@ async function probe(token, { module, path }) {
 }
 
 async function main() {
-  console.log(`API smoke test → ${API} (tenant: ${TENANT}, user: ${USER})\n`);
-  const health = await fetch(`${API.replace(/\/api$/, '')}/health`);
+  console.log(`API smoke test → ${API} (tenant: ${TENANT}, email: ${EMAIL})\n`);
+  const health = await fetch(`${API_BASE}/health`);
   console.log(`Health: ${health.status} ${health.ok ? 'OK' : 'FAIL'}\n`);
 
   const token = await login();
