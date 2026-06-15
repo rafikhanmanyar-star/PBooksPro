@@ -236,6 +236,37 @@ export type MobileInstallmentPlanDetail = Record<string, unknown> & {
   canApprove: boolean;
 };
 
+export type BulkApprovalItem = { type: string; id: string };
+
+export type BulkApprovalResult = {
+  approved: number;
+  failed: Array<{ type: string; id: string; error: string }>;
+};
+
+export async function bulkApproveMobileApprovals(
+  client: pg.PoolClient,
+  tenantId: string,
+  userId: string,
+  role: string | undefined,
+  items: BulkApprovalItem[]
+): Promise<BulkApprovalResult> {
+  const failed: BulkApprovalResult['failed'] = [];
+  let approved = 0;
+  for (const item of items.slice(0, 25)) {
+    try {
+      await approveMobileApproval(client, tenantId, userId, role, item.type, item.id);
+      approved += 1;
+    } catch (e) {
+      failed.push({
+        type: item.type,
+        id: item.id,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+  return { approved, failed };
+}
+
 export async function getMobileInstallmentPlanDetail(
   client: pg.PoolClient,
   tenantId: string,

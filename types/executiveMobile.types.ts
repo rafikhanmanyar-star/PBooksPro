@@ -85,7 +85,87 @@ export type ExecutiveView =
   | 'profile'
   | 'myTransactions'
   | 'approvals'
-  | 'notifications';
+  | 'notifications'
+  | 'inbox'
+  | 'constructionDashboard'
+  | 'cashPosition';
+
+export type ExecutiveKpiTickerItem = {
+  id: string;
+  label: string;
+  value: number;
+  format: 'currency' | 'number';
+  trend?: number | null;
+  trendLabel?: string;
+  severity?: 'normal' | 'warning' | 'danger';
+};
+
+export type ExecutiveActivityItem = {
+  id: string;
+  kind: 'contract' | 'vendor_bill' | 'payment' | 'approval' | 'invoice' | 'transaction';
+  title: string;
+  subtitle?: string;
+  amount?: number;
+  occurredAt: string;
+};
+
+export type ExecutiveCommandCenterResponse = {
+  generatedAt: string;
+  ticker: ExecutiveKpiTickerItem[];
+  financial: {
+    cashPosition: MobileMetric;
+    receivables: MobileMetric;
+    payables: MobileMetric;
+    netPosition: MobileMetric;
+  };
+  projects: {
+    activeProjects: number;
+    activeProjectsTrend?: number | null;
+    onTrack: number;
+    delayed: number;
+    onTrackPercent: number;
+    contractValue: number;
+    contractValueTrend?: number | null;
+  };
+  collections: {
+    thisMonth: number;
+    thisMonthTrend?: number | null;
+    overdue: number;
+    overdueTrend?: number | null;
+    collectionEfficiency: number;
+    efficiencyTrend?: number | null;
+    topOverdueAmount: number;
+    topOverdueCustomers: number;
+  };
+  construction: {
+    siteExpenses: number;
+    vendorPayments: number;
+    materialCost: number;
+    outstandingBills: number;
+  };
+  approvalAnalytics: {
+    pendingTotal: number;
+    pendingActionable: number;
+    newSinceYesterday: number;
+    byType: Record<string, number>;
+  };
+  criticalAlerts: number;
+  recentActivity: ExecutiveActivityItem[];
+};
+
+export type BulkApprovalResult = {
+  approved: number;
+  failed: Array<{ type: string; id: string; error: string }>;
+};
+
+export type QuickActionId =
+  | 'approve_all'
+  | 'review_contracts'
+  | 'view_collections'
+  | 'review_vendor_bills'
+  | 'retention_releases'
+  | 'quick_capture'
+  | 'construction_health';
 
 export type MobileApprovalItem = {
   id: string;

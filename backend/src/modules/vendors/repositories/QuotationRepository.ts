@@ -185,4 +185,46 @@ export class QuotationRepository extends TenantRepository {
     );
     return r.rows;
   }
+
+  async quotationNumberExists(
+    client: pg.PoolClient,
+    quotationNumber: string,
+    excludeId?: string
+  ): Promise<boolean> {
+    const params: unknown[] = [this.tenantId, quotationNumber];
+    let excludeClause = '';
+    if (excludeId) {
+      params.push(excludeId);
+      excludeClause = ` AND id <> $3`;
+    }
+    const r = await client.query<{ id: string }>(
+      `SELECT id FROM quotations
+       WHERE tenant_id = $1 AND quotation_number = $2 AND deleted_at IS NULL${excludeClause}
+       LIMIT 1`,
+      params
+    );
+    return r.rows.length > 0;
+  }
+
+  async getMaxQuotationSequence(client: pg.PoolClient, prefix: string): Promise<number> {
+    const r = await client.query<{ quotation_number: string }>(
+      `SELECT quotation_number FROM quotations
+       WHERE tenant_id = $1 AND deleted_at IS NULL AND quotation_number IS NOT NULL
+         AND quotation_number LIKE $2`,
+      [this.tenantId, `${prefix}%`]
+    );
+    let maxSeq = 0;
+    for (const row of r.rows) {
+      const num = row.quotation_number;
+      if (!num.startsWith(prefix)) continue;
+      const seq = parseInt(num.slice(prefix.length), 10);
+      if (Number.isFinite(seq) && seq > maxSeq) maxSeq = seq;
+    }
+    return maxSeq;
+  }
+
+  static formatQuotationNumber(prefix: string, padding: number, sequence: number): string {
+    const pad = Number.isFinite(padding) && padding > 0 ? Math.trunc(padding) : 4;
+    return `${prefix}${String(sequence).padStart(pad, '0')}`;
+  }
 }

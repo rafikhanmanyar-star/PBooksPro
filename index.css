@@ -299,6 +299,124 @@ html[data-mobile-viewport="true"] #main-container {
   -webkit-backdrop-filter: blur(6px);
 }
 
+/* Executive Mobile V2 — Command Center */
+.executive-v2-page {
+  background: var(--app-bg, var(--color-bg));
+}
+
+[data-theme="light"] .executive-v2-page {
+  background: linear-gradient(180deg, #f8fafc 0%, #ffffff 24%);
+}
+
+.executive-v2-header {
+  box-shadow: 0 1px 0 rgb(0 0 0 / 0.04);
+}
+
+.executive-v2-logo {
+  box-shadow: 0 2px 8px rgb(37 99 235 / 0.15);
+}
+
+.executive-v2-brand {
+  letter-spacing: -0.02em;
+}
+
+.executive-ticker-card {
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--app-border) 70%, transparent);
+  background: var(--app-card);
+  padding: 0.75rem;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
+}
+
+.executive-ticker-icon {
+  display: inline-flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.625rem;
+}
+
+.executive-ticker-icon svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.executive-ticker--green .executive-ticker-icon {
+  background: rgb(16 185 129 / 0.12);
+  color: #059669;
+}
+
+.executive-ticker--blue .executive-ticker-icon {
+  background: rgb(37 99 235 / 0.12);
+  color: #2563eb;
+}
+
+.executive-ticker--amber .executive-ticker-icon {
+  background: rgb(245 158 11 / 0.12);
+  color: #d97706;
+}
+
+.executive-ticker--violet .executive-ticker-icon {
+  background: rgb(139 92 246 / 0.12);
+  color: #7c3aed;
+}
+
+.executive-ticker--danger .executive-ticker-icon {
+  background: rgb(239 68 68 / 0.12);
+  color: #dc2626;
+}
+
+.executive-qa-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 4.25rem;
+}
+
+.executive-qa-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-card);
+  border: 1px solid color-mix(in srgb, var(--app-border) 80%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+}
+
+.executive-qa-icon svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.executive-qa-icon--green { color: #059669; background: rgb(16 185 129 / 0.1); }
+.executive-qa-icon--blue { color: #2563eb; background: rgb(37 99 235 / 0.1); }
+.executive-qa-icon--amber { color: #d97706; background: rgb(245 158 11 / 0.1); }
+.executive-qa-icon--violet { color: #7c3aed; background: rgb(139 92 246 / 0.1); }
+.executive-qa-icon--rose { color: #e11d48; background: rgb(244 63 94 / 0.1); }
+
+.executive-section-metric {
+  padding: 0.875rem;
+  background: var(--app-card);
+}
+
+.executive-capture-fab {
+  width: 3.5rem;
+  height: 3.5rem;
+  background: linear-gradient(145deg, #2563eb 0%, #3b82f6 55%, #60a5fa 100%);
+  color: #fff;
+  box-shadow:
+    0 10px 28px rgb(37 99 235 / 0.35),
+    inset 0 1px 0 rgb(255 255 255 / 0.25);
+}
+
+[data-theme="dark"] .executive-ticker-card,
+[data-theme="dark"] .executive-qa-icon {
+  background: color-mix(in srgb, var(--app-card) 92%, transparent);
+}
+
 /* Non-interactive nav section labels (distinct from clickable nav links) */
 .nav-section-label {
   display: block;

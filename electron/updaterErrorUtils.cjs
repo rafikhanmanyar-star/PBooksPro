@@ -49,6 +49,17 @@ function primaryErrorLine(err) {
 /**
  * @returns {{ userMessage: string, isReleasePending: boolean, logLine: string }}
  */
+const GITHUB_RATE_LIMIT_USER =
+  'GitHub update check was rate-limited. Wait a few minutes and try again, or install the latest staging build from GitHub Releases.';
+
+function isGithubRateLimitError(err) {
+  if (!err) return false;
+  const status = err.statusCode ?? err.status ?? err.response?.statusCode;
+  if (status === 403) return true;
+  const msg = String(err.message || err).toLowerCase();
+  return msg.includes('github releases request failed (403)') || msg.includes('rate limit');
+}
+
 function formatUpdaterError(err) {
   if (isReleaseMetadataPendingError(err)) {
     return {
@@ -62,6 +73,13 @@ function formatUpdaterError(err) {
       userMessage: GITHUB_TRANSIENT_USER,
       isReleasePending: false,
       logLine: '[Updater] GitHub gateway timeout while checking for updates.',
+    };
+  }
+  if (isGithubRateLimitError(err)) {
+    return {
+      userMessage: GITHUB_RATE_LIMIT_USER,
+      isReleasePending: false,
+      logLine: '[Updater] GitHub API rate limit while resolving staging prerelease.',
     };
   }
   const line = primaryErrorLine(err);
@@ -98,4 +116,5 @@ module.exports = {
   createUpdaterLogger,
   RELEASE_PENDING_USER,
   GITHUB_TRANSIENT_USER,
+  GITHUB_RATE_LIMIT_USER,
 };

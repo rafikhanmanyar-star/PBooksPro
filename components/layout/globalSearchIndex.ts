@@ -31,7 +31,7 @@ export const NAVIGATION_ITEMS: NavigationSearchItem[] = [
   { id: 'nav-investment-management', label: 'Investment Management', subtitle: 'Selling · Inv Mgmt', page: 'investmentManagement', keywords: ['investor', 'equity', 'fund'] },
   { id: 'nav-project-management', label: 'Project Construction', subtitle: 'Construction', page: 'projectManagement', keywords: ['project', 'construction', 'contracts', 'pev'] },
   { id: 'nav-bills', label: 'Bill Management', subtitle: 'Construction', page: 'bills', keywords: ['bill', 'vendor bill', 'payable'] },
-  { id: 'nav-vendor-directory', label: 'Vendor Directory', subtitle: 'Construction', page: 'vendorDirectory', keywords: ['vendor', 'supplier'] },
+  { id: 'nav-vendor-directory', label: 'Procurement', subtitle: 'Construction', page: 'vendorDirectory', keywords: ['vendor', 'supplier', 'procurement', 'quotation', 'purchase order'] },
   { id: 'nav-pm-config', label: 'PM Cycle', subtitle: 'Construction', page: 'pmConfig', keywords: ['project management cycle', 'pm'] },
   { id: 'nav-rental-management', label: 'Rental Management', subtitle: 'Rental', page: 'rentalManagement', keywords: ['rental', 'property', 'tenant'] },
   { id: 'nav-rental-invoices', label: 'Rental Invoices', subtitle: 'Rental', page: 'rentalInvoices', keywords: ['rent invoice'] },

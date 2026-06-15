@@ -376,7 +376,7 @@ function searchVendors(q: string, c: SearchBuildContext, results: BuiltSearchRow
         id: `vendor-${contact.id}`,
         type: 'Vendor',
         title: contact.name || 'No name',
-        subtitle: 'Vendor directory',
+        subtitle: 'Procurement',
         session: { key: 'openVendorId', value: contact.id },
         page: 'vendorDirectory',
       });

@@ -641,7 +641,7 @@ const App: React.FC = () => {
       case 'pmConfig': return 'PM Config.';
       case 'settings': return 'Configuration';
       case 'import': return 'Import Data';
-      case 'vendorDirectory': return 'Vendor Directory';
+      case 'vendorDirectory': return 'Procurement';
       case 'contacts': return 'Contacts';
       case 'budgets': return 'Budget Planner';
 
@@ -671,12 +671,12 @@ const App: React.FC = () => {
     const pageId = `page-${groupKey}`;
 
     // Fixed layout for certain complex modules
-    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'ACCOUNTING';
+    const isFixedLayout = groupKey === 'RENTAL' || groupKey === 'PROJECT' || groupKey === 'PROJECT_SELLING' || groupKey === 'INVESTMENT' || groupKey === 'PM_CONFIG' || groupKey === 'PAYMENTS' || groupKey === 'PAYROLL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'ACCOUNTING' || groupKey === 'VENDORS';
     const overflowClass = isFixedLayout ? 'overflow-hidden' : 'overflow-y-auto';
     const bgClass = getPageBackground(groupKey);
     // Project Selling: no top padding so tab row sits directly under header
     // Rental: same — second-level module nav sits directly under header / banners
-    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT' || groupKey === 'ACCOUNTING';
+    const noTopPad = groupKey === 'PROJECT_SELLING' || groupKey === 'RENTAL' || groupKey === 'PERSONAL_TRANSACTIONS' || groupKey === 'PAYROLL' || groupKey === 'INVESTMENT' || groupKey === 'ACCOUNTING' || groupKey === 'VENDORS';
 
     return (
       <div

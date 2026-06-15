@@ -40,7 +40,7 @@ export default function ExecutiveProfilePage() {
     {
       title: 'Preferences',
       items: [
-        { id: 'notifications', label: 'Notifications', icon: ICONS.bell, view: 'notifications' },
+        { id: 'notifications', label: 'Executive Inbox', icon: ICONS.bell, view: 'inbox' },
         { id: 'interface', label: 'Interface Mode', icon: ICONS.settings, view: 'settings' },
       ],
     },

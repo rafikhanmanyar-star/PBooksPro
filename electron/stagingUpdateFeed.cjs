@@ -1,11 +1,13 @@
 /**
  * Staging desktop apps (client + API server) should update from GitHub prereleases only (e.g. v1.2.303),
  * not from the latest production full release (e.g. v1.2.290).
+ *
+ * Resolves staging tags via the public releases Atom feed + api-server-staging.yml marker (no API token).
+ * Falls back to the GitHub REST API when the feed path fails (rate-limited for unauthenticated clients).
  */
 const fs = require('fs');
 const path = require('path');
 const {
-  parseVersion,
   isValidVersion,
   compareVersions,
   isNewerVersion,
@@ -13,6 +15,11 @@ const {
   readPackageJson,
   withGithubRetries,
 } = require('./githubReleaseUtils.cjs');
+
+const STAGING_RELEASE_MARKER = 'api-server-staging.yml';
+const CACHE_FILE = 'staging-prerelease-feed-cache.json';
+const CACHE_TTL_MS = 60 * 60 * 1000;
+const ATOM_TAG_SCAN_LIMIT = 25;
 
 function isStagingClient(app) {
   if (process.env.PBOOKS_CLIENT_STAGING === '1') return true;
@@ -32,7 +39,69 @@ function isStagingClient(app) {
   return false;
 }
 
-async function listPrereleaseTags(owner, repo) {
+function readFeedCache(app) {
+  if (!app || typeof app.getPath !== 'function') return null;
+  try {
+    const p = path.join(app.getPath('userData'), CACHE_FILE);
+    if (!fs.existsSync(p)) return null;
+    const data = JSON.parse(fs.readFileSync(p, 'utf8'));
+    if (!data || !data.tags || !Array.isArray(data.tags) || !data.resolvedAt) return null;
+    if (Date.now() - Number(data.resolvedAt) > CACHE_TTL_MS) return null;
+    return data.tags.filter((tag) => isValidVersion(tag));
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeFeedCache(app, tags) {
+  if (!app || typeof app.getPath !== 'function' || !tags.length) return;
+  try {
+    const p = path.join(app.getPath('userData'), CACHE_FILE);
+    fs.writeFileSync(p, JSON.stringify({ tags, resolvedAt: Date.now() }), 'utf8');
+  } catch (_) {
+    /* ignore */
+  }
+}
+
+function parseTagsFromAtom(xml) {
+  const tags = [];
+  const re = /releases\/tag\/(v[\d.]+)/gi;
+  let m;
+  while ((m = re.exec(xml))) {
+    const tag = m[1];
+    if (isValidVersion(tag) && !tags.includes(tag)) tags.push(tag);
+  }
+  return tags;
+}
+
+async function fetchAtomTags(owner, repo) {
+  const url = `https://github.com/${owner}/${repo}/releases.atom`;
+  const res = await fetch(url, { headers: { 'User-Agent': 'PBooksPro-Staging-Updater' } });
+  if (!res.ok) {
+    throw new Error(`GitHub releases feed failed (${res.status})`);
+  }
+  return parseTagsFromAtom(await res.text());
+}
+
+async function hasStagingReleaseMarker(owner, repo, tag) {
+  const url = `https://github.com/${owner}/${repo}/releases/download/${encodeURIComponent(tag)}/${STAGING_RELEASE_MARKER}`;
+  const res = await fetch(url, {
+    method: 'HEAD',
+    headers: { 'User-Agent': 'PBooksPro-Staging-Updater' },
+  });
+  return res.ok;
+}
+
+async function listStagingTagsFromAtom(owner, repo) {
+  const tags = (await fetchAtomTags(owner, repo)).slice(0, ATOM_TAG_SCAN_LIMIT);
+  const staging = [];
+  for (const tag of tags) {
+    if (await hasStagingReleaseMarker(owner, repo, tag)) staging.push(tag);
+  }
+  return staging.sort((a, b) => compareVersions(b, a));
+}
+
+async function listPrereleaseTagsFromApi(owner, repo) {
   const url = `https://api.github.com/repos/${owner}/${repo}/releases?per_page=40`;
   const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'PBooksPro-Staging-Updater' } });
   if (!res.ok) {
@@ -46,15 +115,39 @@ async function listPrereleaseTags(owner, repo) {
     .sort((a, b) => compareVersions(b, a));
 }
 
-async function resolveLatestPrereleaseTag(owner, repo, currentVersion) {
-  const tags = await listPrereleaseTags(owner, repo);
+async function listPrereleaseTags(owner, repo, app) {
+  const cached = readFeedCache(app);
+  if (cached && cached.length) return cached;
+
+  try {
+    const fromAtom = await listStagingTagsFromAtom(owner, repo);
+    if (fromAtom.length) {
+      writeFeedCache(app, fromAtom);
+      return fromAtom;
+    }
+  } catch (e) {
+    console.warn('[StagingUpdater] Atom feed resolution failed:', e && e.message ? e.message : e);
+  }
+
+  try {
+    const fromApi = await withGithubRetries(() => listPrereleaseTagsFromApi(owner, repo));
+    if (fromApi.length) writeFeedCache(app, fromApi);
+    return fromApi;
+  } catch (e) {
+    if (cached && cached.length) return cached;
+    throw e;
+  }
+}
+
+async function resolveLatestPrereleaseTag(owner, repo, currentVersion, app) {
+  const tags = await listPrereleaseTags(owner, repo, app);
   return tags.find((tag) => isNewerVersion(tag, currentVersion)) || null;
 }
 
-async function resolveStagingFeedTag(owner, repo, currentVersion) {
-  const newer = await resolveLatestPrereleaseTag(owner, repo, currentVersion);
+async function resolveStagingFeedTag(owner, repo, currentVersion, app) {
+  const newer = await resolveLatestPrereleaseTag(owner, repo, currentVersion, app);
   if (newer) return newer;
-  const tags = await listPrereleaseTags(owner, repo);
+  const tags = await listPrereleaseTags(owner, repo, app);
   return tags[0] || null;
 }
 
@@ -70,7 +163,7 @@ async function applyStagingPrereleaseFeed(autoUpdater, app, tag) {
   }
 
   const feedTag =
-    tag || (await resolveStagingFeedTag(slug.owner, slug.repo, app.getVersion()));
+    tag || (await resolveStagingFeedTag(slug.owner, slug.repo, app.getVersion(), app));
   if (!feedTag) return null;
 
   autoUpdater.allowPrerelease = true;
@@ -94,7 +187,7 @@ async function inspectStagingReleases(app) {
     throw new Error('Could not parse GitHub repository from package.json');
   }
   const currentVersion = app.getVersion();
-  const tags = await withGithubRetries(() => listPrereleaseTags(slug.owner, slug.repo));
+  const tags = await withGithubRetries(() => listPrereleaseTags(slug.owner, slug.repo, app));
   const latestTag = tags[0] || null;
   const newerTag = tags.find((t) => isNewerVersion(String(t).replace(/^v/i, ''), currentVersion)) || null;
   return {

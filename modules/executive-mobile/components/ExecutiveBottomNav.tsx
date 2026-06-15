@@ -24,8 +24,8 @@ export default function ExecutiveBottomNav() {
     { view: 'home', label: 'Dashboard', icon: ICONS.home },
     { view: 'approvals', label: 'Approvals', icon: ICONS.checkCircle, badge: approvalCount },
     { view: 'quickTransaction', label: 'Capture', icon: ICONS.plus, capture: true },
-    { view: 'reports', label: 'Reports', icon: ICONS.fileText },
-    { view: 'notifications', label: 'Alerts', icon: ICONS.bell, badge: notifCount },
+    { view: 'reports', label: 'Reports', icon: ICONS.barChart },
+    { view: 'inbox', label: 'Alerts', icon: ICONS.bell, badge: notifCount },
   ];
 
   const isActive = (itemView: ExecutiveView) => view === itemView;

@@ -250,7 +250,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 title: 'Construction',
                 items: [
                     { page: 'projectManagement', label: 'Project construction', icon: ICONS.archive },
-                    { page: 'vendorDirectory', label: 'Vendor directory', icon: ICONS.briefcase },
+                    { page: 'vendorDirectory', label: 'Procurement', icon: ICONS.briefcase },
                     { page: 'pmConfig', label: 'PM cycle', icon: ICONS.filter },
                 ]
             },

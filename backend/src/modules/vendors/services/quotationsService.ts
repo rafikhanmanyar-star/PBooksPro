@@ -270,6 +270,91 @@ export async function listQuotationsChangedSince(
   return new QuotationRepository(tenantId).listChangedSince(client, since);
 }
 
+type QuotationNumberFormat = { prefix: string; padding: number };
+
+async function loadQuotationNumberFormat(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<QuotationNumberFormat> {
+  const { getSettingByKey } = await import('../../app-settings/services/appSettingsService.js');
+  const raw = await getSettingByKey(client, tenantId, 'procurementSettings');
+  const settings = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+  const qns = settings.quotationNumberSettings;
+  if (qns && typeof qns === 'object') {
+    const o = qns as Record<string, unknown>;
+    const prefix = String(o.prefix ?? 'QTN-');
+    const padding = Number(o.padding ?? 4);
+    return { prefix, padding: Number.isFinite(padding) && padding > 0 ? Math.trunc(padding) : 4 };
+  }
+  return { prefix: 'QTN-', padding: 4 };
+}
+
+function isDuplicateQuotationNumberConstraint(e: unknown): boolean {
+  const msg =
+    e && typeof e === 'object' && 'message' in e && typeof (e as { message?: string }).message === 'string'
+      ? (e as { message: string }).message
+      : e instanceof Error
+        ? e.message
+        : String(e);
+  const lower = msg.toLowerCase();
+  const constraint =
+    e && typeof e === 'object' && 'constraint' in e
+      ? String((e as { constraint?: string }).constraint ?? '')
+      : '';
+  return constraint === 'idx_quotations_tenant_number_active' || lower.includes('idx_quotations_tenant_number_active');
+}
+
+async function allocateQuotationNumber(
+  client: pg.PoolClient,
+  tenantId: string,
+  requested: string | null | undefined,
+  excludeId?: string
+): Promise<string> {
+  const repo = new QuotationRepository(tenantId);
+  const format = await loadQuotationNumberFormat(client, tenantId);
+  const trimmed = requested?.trim() ?? '';
+  if (trimmed) {
+    const taken = await repo.quotationNumberExists(client, trimmed, excludeId);
+    if (!taken) return trimmed;
+  }
+  const maxSeq = await repo.getMaxQuotationSequence(client, format.prefix);
+  for (let offset = 1; offset <= 25; offset++) {
+    const candidate = QuotationRepository.formatQuotationNumber(
+      format.prefix,
+      format.padding,
+      maxSeq + offset
+    );
+    if (!(await repo.quotationNumberExists(client, candidate, excludeId))) return candidate;
+  }
+  throw new Error('Could not allocate a unique quotation number. Try again or enter a number manually.');
+}
+
+async function bumpProcurementQuotationNextNumber(
+  client: pg.PoolClient,
+  tenantId: string,
+  assignedNumber: string
+): Promise<void> {
+  const format = await loadQuotationNumberFormat(client, tenantId);
+  if (!assignedNumber.startsWith(format.prefix)) return;
+  const seq = parseInt(assignedNumber.slice(format.prefix.length), 10);
+  if (!Number.isFinite(seq) || seq < 1) return;
+
+  const { getSettingByKey, upsertSetting } = await import('../../app-settings/services/appSettingsService.js');
+  const raw = await getSettingByKey(client, tenantId, 'procurementSettings');
+  const settings =
+    raw && typeof raw === 'object' ? ({ ...(raw as Record<string, unknown>) } as Record<string, unknown>) : {};
+  const existingQns =
+    settings.quotationNumberSettings && typeof settings.quotationNumberSettings === 'object'
+      ? ({ ...(settings.quotationNumberSettings as Record<string, unknown>) } as Record<string, unknown>)
+      : { prefix: format.prefix, nextNumber: 1, padding: format.padding };
+  const currentNext = Number(existingQns.nextNumber ?? 1);
+  if (seq >= currentNext) {
+    existingQns.nextNumber = seq + 1;
+    settings.quotationNumberSettings = existingQns;
+    await upsertSetting(client, tenantId, 'procurementSettings', settings, { skipChangeLog: true });
+  }
+}
+
 function quotationWriteFields(p: ReturnType<typeof pickBody>): QuotationWriteFields {
   return {
     vendor_id: p.vendor_id,
@@ -377,24 +462,46 @@ async function insertQuotation(
   p: ReturnType<typeof pickBody>,
   actorUserId: string | null
 ): Promise<QuotationRow> {
-  const row = await new QuotationRepository(tenantId).insertQuotation(
-    client,
-    id,
-    quotationWriteFields(p),
-    p.user_id ?? actorUserId
-  );
-  await recordDomainMutation(client, {
-    tenantId,
-    userId: row.user_id,
-    module: 'quotations',
-    entityType: 'quotation',
-    entityId: row.id,
-    action: 'create',
-    summary: `Quotation ${row.name} created`,
-    newValue: rowToQuotationApi(row),
-    version: row.version,
-  });
-  return row;
+  const repo = new QuotationRepository(tenantId);
+  let fields = quotationWriteFields(p);
+  fields = {
+    ...fields,
+    quotation_number: await allocateQuotationNumber(client, tenantId, fields.quotation_number, id),
+  };
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      const row = await repo.insertQuotation(client, id, fields, p.user_id ?? actorUserId);
+      if (row.quotation_number) {
+        await bumpProcurementQuotationNextNumber(client, tenantId, row.quotation_number);
+      }
+      await recordDomainMutation(client, {
+        tenantId,
+        userId: row.user_id,
+        module: 'quotations',
+        entityType: 'quotation',
+        entityId: row.id,
+        action: 'create',
+        summary: `Quotation ${row.name} created`,
+        newValue: rowToQuotationApi(row),
+        version: row.version,
+      });
+      return row;
+    } catch (e) {
+      if (!isDuplicateQuotationNumberConstraint(e) || attempt >= 4) throw e;
+      const format = await loadQuotationNumberFormat(client, tenantId);
+      const maxSeq = await repo.getMaxQuotationSequence(client, format.prefix);
+      fields = {
+        ...fields,
+        quotation_number: QuotationRepository.formatQuotationNumber(
+          format.prefix,
+          format.padding,
+          maxSeq + attempt + 2
+        ),
+      };
+    }
+  }
+  throw new Error('Could not save quotation: duplicate quotation number.');
 }
 
 async function updateQuotationRow(
@@ -403,12 +510,17 @@ async function updateQuotationRow(
   id: string,
   p: ReturnType<typeof pickBody>
 ): Promise<QuotationRow> {
-  const row = await new QuotationRepository(tenantId).updateActive(
-    client,
-    id,
-    quotationWriteFields(p),
-    p.user_id ?? null
-  );
+  const repo = new QuotationRepository(tenantId);
+  let fields = quotationWriteFields(p);
+  if (fields.quotation_number) {
+    const taken = await repo.quotationNumberExists(client, fields.quotation_number, id);
+    if (taken) {
+      throw new Error(
+        `Quotation number "${fields.quotation_number}" is already used. Choose another number.`
+      );
+    }
+  }
+  const row = await repo.updateActive(client, id, fields, p.user_id ?? null);
   if (!row) throw new Error('Quotation not found.');
   return row;
 }

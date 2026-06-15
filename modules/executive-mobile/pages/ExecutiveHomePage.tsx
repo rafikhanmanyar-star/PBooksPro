@@ -1,266 +1,199 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { useMobileDashboard } from '../hooks/useMobileDashboard';
-import ExecutiveHomeKeyMetrics from '../components/ExecutiveHomeKeyMetrics';
-import ExecutiveModuleAccordion from '../components/ExecutiveModuleAccordion';
-import PullToRefresh from '../components/PullToRefresh';
 import { useAuth } from '../../../context/AuthContext';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
-import { useExecutiveModules } from '../hooks/useExecutiveModules';
+import { useMobileCommandCenter, MOBILE_COMMAND_CENTER_KEY } from '../hooks/useMobileCommandCenter';
 import { useMobileNotifications } from '../hooks/useMobileNotifications';
 import { useMobileApprovals } from '../hooks/useMobileApprovals';
-import { ICONS } from '../../../constants';
-import pbooksProLogo from '../../../pbookspro logo.png';
-
-
+import { bulkApproveMobileItems } from '../../../services/api/mobileCommandCenterApi';
+import { useNotification } from '../../../context/NotificationContext';
+import { formatApiErrorMessage } from '../../../utils/formatApiErrorMessage';
+import PullToRefresh from '../components/PullToRefresh';
+import ExecutiveCommandHeader from '../components/ExecutiveCommandHeader';
+import ExecutiveKpiTicker from '../components/ExecutiveKpiTicker';
+import ExecutiveQuickActionsPanel from '../components/ExecutiveQuickActionsPanel';
+import ExecutiveFinancialOverview from '../components/ExecutiveFinancialOverview';
+import ExecutiveProjectsOperations from '../components/ExecutiveProjectsOperations';
+import ExecutiveCollectionsHealth from '../components/ExecutiveCollectionsHealth';
+import ExecutiveRecentActivity from '../components/ExecutiveRecentActivity';
+import ExecutiveApprovalAnalyticsBanner from '../components/ExecutiveApprovalAnalyticsBanner';
+import ExecutiveModuleAccordion from '../components/ExecutiveModuleAccordion';
+import { useExecutiveModules } from '../hooks/useExecutiveModules';
+import type { QuickActionId } from '../../../types/executiveMobile.types';
+import { todayLocalYyyyMmDd } from '../../../utils/dateUtils';
 
 function greeting(): string {
-
   const h = new Date().getHours();
-
   if (h < 12) return 'Good Morning';
-
   if (h < 17) return 'Good Afternoon';
-
   return 'Good Evening';
-
 }
-
-
 
 export default function ExecutiveHomePage() {
-
-  const { tenant, user } = useAuth();
-
-  const { setView } = useExecutiveMode();
-
+  const { user } = useAuth();
+  const { setView, openModule } = useExecutiveMode();
   const { accordionSections } = useExecutiveModules();
-
-  const { data, isLoading, refetch, isFetching } = useMobileDashboard('dashboard');
-
+  const { data, isLoading, refetch, isFetching } = useMobileCommandCenter();
   const { data: notifications } = useMobileNotifications();
-
   const { data: approvals } = useMobileApprovals();
-
+  const { showToast } = useNotification();
   const queryClient = useQueryClient();
 
-
-
   const firstName = user?.name?.split(/\s+/)[0] ?? user?.name ?? 'there';
-
-  const companyLabel = (tenant?.companyName ?? tenant?.name ?? 'Organization').toUpperCase();
-  const userInitials = (user?.name ?? 'U').slice(0, 2).toUpperCase();
-
   const notifCount = notifications?.length ?? 0;
-
-  const approvalCount = approvals?.length ?? 0;
-
-
+  const todayLabel = useMemo(() => {
+    const d = new Date();
+    return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }, []);
 
   const handleRefresh = useCallback(async () => {
-
     await Promise.all([
-
       refetch(),
-
-      queryClient.invalidateQueries({ queryKey: ['mobile-dashboard'] }),
-
+      queryClient.invalidateQueries({ queryKey: MOBILE_COMMAND_CENTER_KEY }),
       queryClient.invalidateQueries({ queryKey: ['mobile-notifications'] }),
-
       queryClient.invalidateQueries({ queryKey: ['mobile-approvals'] }),
-
     ]);
-
   }, [refetch, queryClient]);
 
-
-
-  return (
-
-    <PullToRefresh onRefresh={handleRefresh} className="min-h-full executive-home-page">
-
-      <div className="pb-28">
-
-        {/* Header */}
-
-        <header className="px-4 pt-5 pb-2 flex items-center gap-3">
-          <img
-            src={pbooksProLogo}
-            alt="PBooks Pro"
-            className="executive-org-logo w-12 h-12 rounded-full object-cover shrink-0"
-          />
-
-          <div className="flex-1 min-w-0">
-
-            <p className="text-[10px] font-semibold tracking-[0.12em] text-app-muted truncate uppercase">
-
-              {companyLabel}
-
-            </p>
-
-            <h1 className="text-base font-bold text-app-text truncate leading-tight mt-0.5">
-
-              Main Branch
-
-            </h1>
-
-          </div>
-
-          <button
-
-            type="button"
-
-            onClick={() => setView('notifications')}
-
-            className="relative w-11 h-11 rounded-full border border-app-border/60 bg-app-card/80 text-app-muted touch-manipulation flex items-center justify-center active:scale-95 transition-transform"
-
-            aria-label="Notifications"
-
-          >
-
-            <span className="w-5 h-5">{ICONS.bell}</span>
-
-            {notifCount > 0 && (
-
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-pink-500 ring-2 ring-app-bg" />
-
-            )}
-
-          </button>
-
-          <button
-
-            type="button"
-
-            onClick={() => setView('profile')}
-
-            className="executive-user-avatar w-11 h-11 rounded-full text-xs font-bold flex items-center justify-center touch-manipulation shrink-0 active:scale-95 transition-transform"
-
-            aria-label="Profile"
-
-          >
-
-            {userInitials}
-
-          </button>
-
-        </header>
-
-
-
-        {/* Welcome */}
-
-        <section className="px-4 pb-5 pt-1">
-
-          <p className="text-sm text-app-muted">{greeting()},</p>
-
-          <h2 className="text-[1.75rem] font-bold text-app-text mt-0.5 leading-tight tracking-tight">
-
-            {firstName}
-
-          </h2>
-
-        </section>
-
-
-
-        {/* Summary cards */}
-
-        <section className="px-4 mb-6">
-
-          <div className="grid grid-cols-2 gap-3">
-
-            <button
-
-              type="button"
-
-              onClick={() => setView('approvals')}
-
-              className="executive-summary-card rounded-2xl border border-app-border/60 bg-app-card p-4 text-left touch-manipulation min-h-[4.5rem] active:scale-[0.98] transition-transform"
-
-            >
-
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">
-
-                Pending Approvals
-
-              </p>
-
-              <p className="text-2xl font-bold text-app-text tabular-nums mt-1">{approvalCount}</p>
-
-            </button>
-
-            <button
-
-              type="button"
-
-              onClick={() => setView('notifications')}
-
-              className="executive-summary-card rounded-2xl border border-app-border/60 bg-app-card p-4 text-left touch-manipulation min-h-[4.5rem] active:scale-[0.98] transition-transform"
-
-            >
-
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-app-muted">
-
-                Active Alerts
-
-              </p>
-
-              <p className="text-2xl font-bold text-app-text tabular-nums mt-1">{notifCount}</p>
-
-            </button>
-
-          </div>
-
-        </section>
-
-
-
-        {/* Key metrics */}
-
-        <section className="mb-6">
-
-          <div className="px-4 flex items-center justify-between mb-3">
-
-            <h3 className="text-base font-bold text-app-text">Key Metrics</h3>
-
-            <button
-
-              type="button"
-
-              onClick={() => void handleRefresh()}
-
-              disabled={isFetching}
-
-              className="text-sm font-semibold text-ds-primary touch-manipulation min-h-[44px] px-1 disabled:opacity-50"
-
-            >
-
-              {isFetching ? 'Updating…' : 'Live Update'}
-
-            </button>
-
-          </div>
-
-          <ExecutiveHomeKeyMetrics metrics={data?.metrics} loading={isLoading} />
-
-        </section>
-
-
-
-        {/* Module accordions */}
-
-        <section className="px-4">
-
-          <ExecutiveModuleAccordion sections={accordionSections} />
-
-        </section>
-
-      </div>
-
-    </PullToRefresh>
-
+  const handleKpiClick = useCallback(
+    (id: string) => {
+      if (id === 'pendingApprovals') setView('approvals');
+      else if (id === 'criticalAlerts') setView('inbox');
+      else if (id === 'projectsAtRisk') setView('constructionDashboard');
+      else if (id === 'collectionsToday') setView('reports');
+      else setView('cashPosition');
+    },
+    [setView]
   );
 
-}
+  const handleQuickAction = useCallback(
+    async (id: QuickActionId) => {
+      switch (id) {
+        case 'approve_all': {
+          const actionable = (approvals ?? []).filter((a) => a.canApprove && !a.requiresFullErp);
+          if (actionable.length === 0) {
+            showToast('No approvals ready for bulk action.', 'info');
+            return;
+          }
+          try {
+            const result = await bulkApproveMobileItems(
+              actionable.map((a) => ({ type: a.type, id: a.id }))
+            );
+            showToast(`Approved ${result.approved} item(s).`, 'success');
+            if (result.failed.length > 0) {
+              showToast(`${result.failed.length} could not be approved.`, 'error');
+            }
+            await handleRefresh();
+          } catch (e) {
+            showToast(formatApiErrorMessage(e), 'error');
+          }
+          break;
+        }
+        case 'review_contracts':
+          setView('approvals');
+          break;
+        case 'view_collections':
+          setView('reports');
+          break;
+        case 'review_vendor_bills':
+          setView('approvals');
+          break;
+        case 'retention_releases':
+          setView('constructionDashboard');
+          break;
+        case 'quick_capture':
+          setView('quickTransaction');
+          break;
+        case 'construction_health':
+          setView('constructionDashboard');
+          break;
+        default:
+          break;
+      }
+    },
+    [approvals, setView, showToast, handleRefresh]
+  );
 
+  return (
+    <PullToRefresh onRefresh={handleRefresh} className="min-h-full executive-home-page executive-v2-page">
+      <ExecutiveCommandHeader notifCount={notifCount} />
+
+      <div className="pb-28 space-y-5 pt-4">
+        <section className="px-4 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-bold text-app-text leading-tight">
+              {greeting()}, {firstName} 👋
+            </h1>
+            <p className="text-sm text-app-muted mt-1">Here&apos;s your business summary for today.</p>
+          </div>
+          <div
+            className="shrink-0 px-3 py-2 rounded-xl border border-app-border/60 bg-app-card text-xs font-medium text-app-muted flex items-center gap-1.5"
+            aria-label={`Summary date ${todayLabel}`}
+          >
+            <span aria-hidden>📅</span>
+            {todayLabel}
+          </div>
+        </section>
+
+        <ExecutiveKpiTicker
+          items={data?.ticker ?? []}
+          loading={isLoading}
+          onItemClick={handleKpiClick}
+        />
+
+        {data?.approvalAnalytics && (
+          <ExecutiveApprovalAnalyticsBanner analytics={data.approvalAnalytics} />
+        )}
+
+        <ExecutiveQuickActionsPanel onAction={handleQuickAction} />
+
+        {data && (
+          <>
+            <ExecutiveFinancialOverview
+              financial={data.financial}
+              onViewAll={() => setView('cashPosition')}
+            />
+            <ExecutiveProjectsOperations
+              projects={data.projects}
+              onViewAll={() => openModule('projects')}
+            />
+            <ExecutiveCollectionsHealth
+              collections={data.collections}
+              onViewAll={() => setView('reports')}
+            />
+            <ExecutiveRecentActivity
+              items={data.recentActivity}
+              onViewAll={() => setView('inbox')}
+            />
+          </>
+        )}
+
+        {isLoading && !data && (
+          <div className="px-4 space-y-3">
+            <div className="h-32 rounded-2xl bg-app-card animate-pulse" />
+            <div className="h-32 rounded-2xl bg-app-card animate-pulse" />
+          </div>
+        )}
+
+        <section className="px-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-app-text">Module Dashboards</h3>
+            <button
+              type="button"
+              onClick={() => void handleRefresh()}
+              disabled={isFetching}
+              className="text-xs font-semibold text-ds-primary touch-manipulation disabled:opacity-50"
+            >
+              {isFetching ? 'Updating…' : 'Live Update'}
+            </button>
+          </div>
+          <ExecutiveModuleAccordion sections={accordionSections} />
+        </section>
+
+        <p className="text-[10px] text-center text-app-muted px-4 pb-2">
+          Snapshot as of {data?.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : todayLocalYyyyMmDd()}
+        </p>
+      </div>
+    </PullToRefresh>
+  );
+}
