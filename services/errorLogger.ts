@@ -7,8 +7,8 @@
  * - localStorage (for persistence across sessions)
  */
 
-import { getDatabaseService } from './database/databaseService';
 import { isLocalOnlyMode } from '../config/apiUrl';
+import { getLegacyDatabaseService } from './legacySqliteLoader';
 import { ErrorLogEntry } from '../types';
 
 export interface ExtendedErrorLogEntry extends ErrorLogEntry {
@@ -44,7 +44,7 @@ class ErrorLogger {
             // Try to load from database if available (local-only; LAN/API has no SQLite error_log)
             if (isLocalOnlyMode()) {
                 try {
-                    const dbService = getDatabaseService();
+                    const dbService = await getLegacyDatabaseService();
                     if (dbService.isReady()) {
                         const results = dbService.query<{
                             id: number;
@@ -129,7 +129,7 @@ class ErrorLogger {
             // Save to database (if available, local-only)
             if (isLocalOnlyMode()) {
                 try {
-                    const dbService = getDatabaseService();
+                    const dbService = await getLegacyDatabaseService();
                     if (dbService.isReady()) {
                         dbService.execute(
                             'INSERT INTO error_log (message, stack, component_stack, timestamp) VALUES (?, ?, ?, ?)',
@@ -187,7 +187,7 @@ class ErrorLogger {
 
             // Clear from database (local-only)
             if (isLocalOnlyMode()) {
-                const dbService = getDatabaseService();
+                const dbService = await getLegacyDatabaseService();
                 if (dbService.isReady()) {
                     dbService.execute('DELETE FROM error_log');
                     dbService.save();

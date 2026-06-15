@@ -8,7 +8,7 @@
 import { useCallback, useMemo } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Transaction } from '../types';
-import { TransactionsRepository } from '../services/database/repositories';
+import { TransactionsRepository } from '../services/legacy-sqlite/repositories';
 import { useStateSelector } from './useSelectiveState';
 import { isMobileDevice } from '../utils/platformDetection';
 import { isLocalOnlyMode } from '../config/apiUrl';

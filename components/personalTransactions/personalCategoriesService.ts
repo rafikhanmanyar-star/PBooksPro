@@ -6,9 +6,9 @@
 import {
   PersonalCategoriesRepository,
   PersonalCategoryRow,
-} from '../../services/database/repositories';
-import { getDatabaseService } from '../../services/database/databaseService';
-import { AppSettingsRepository } from '../../services/database/repositories';
+} from '../../services/legacy-sqlite/repositories';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
+import { AppSettingsRepository } from '../../services/legacy-sqlite/repositories';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { _getAppState } from '../../context/AppContext';
 import { PersonalCategoriesApiRepository } from '../../services/api/repositories/personalCategoriesApi';

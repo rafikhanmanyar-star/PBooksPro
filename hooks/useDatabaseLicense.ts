@@ -5,8 +5,8 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { getDatabaseService } from '../services/database/databaseService';
-import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
+import { getDatabaseService } from '../services/legacy-sqlite/databaseService';
+import { getUnifiedDatabaseService } from '../services/legacy-sqlite/unifiedDatabaseService';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { isMobileDevice } from '../utils/platformDetection';
 

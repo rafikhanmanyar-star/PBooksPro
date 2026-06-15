@@ -25,9 +25,8 @@ import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } fr
 import { apiClient } from './services/api/client';
 import { resolveReachableApiBaseUrl } from './services/lanDiscovery';
 import { useCompanyOptional } from './context/CompanyContext';
-// Initialize Sync Service removed
+import { getLegacyUnifiedDatabaseService } from './services/legacySqliteLoader';
 import UpdateNotification from './components/ui/UpdateNotification';
-import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
 import {
   connectionMonitorStub as _connectionMonitor,
   syncManagerStub as _syncManager,
@@ -219,7 +218,7 @@ const App: React.FC = () => {
     }
     let mounted = true;
     (async () => {
-      const { fetchSchemaHealth } = await import('./services/database/schemaHealth');
+      const { fetchSchemaHealth } = await import('./services/legacy-sqlite/schemaHealth');
       const h = await fetchSchemaHealth();
       if (!mounted) return;
       if (h?.blocking) {
@@ -368,12 +367,12 @@ const App: React.FC = () => {
       try {
         devLogger.log('[App] Initializing database services...');
 
-        const [unifiedDb] = await Promise.all([
-          getUnifiedDatabaseService().initialize(),
-        ]);
-
-        if (!isMounted) return;
-        devLogger.log('[App] ✅ Unified database service initialized');
+        if (isLocalOnlyMode()) {
+          const unifiedDb = await getLegacyUnifiedDatabaseService();
+          await unifiedDb.initialize();
+          if (!isMounted) return;
+          devLogger.log('[App] ✅ Unified database service initialized');
+        }
 
         // Skip cloud/sync/WebSocket init when in local-only mode
         if (!isLocalOnlyMode()) {

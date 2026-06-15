@@ -7,18 +7,21 @@
 
 import React, { useState, useEffect, useCallback, Dispatch, SetStateAction } from 'react';
 import { AppState } from '../types';
-import { getDatabaseService } from '../services/database/databaseService';
-import { getUnifiedDatabaseService } from '../services/database/unifiedDatabaseService';
 import { isLocalOnlyMode } from '../config/apiUrl';
 import { isMobileDevice } from '../utils/platformDetection';
 import { _setAppDataLoading } from '../context/appStateStore';
+import {
+  getLegacyDatabaseService,
+  getLegacyUnifiedDatabaseService,
+  loadAppStateRepositoryModule,
+} from '../services/legacySqliteLoader';
 
 /** Local-only: no debounce — every state push schedules an immediate save (critical path uses saveNow anyway). */
 const PERSIST_DEBOUNCE_MS = isLocalOnlyMode() ? 0 : 2000;
-import { AppStateRepository } from '../services/database/repositories/appStateRepository';
 
-function getAppStateRepository() {
-    return new AppStateRepository();
+async function createAppStateRepository() {
+  const mod = await loadAppStateRepositoryModule();
+  return new mod.AppStateRepository();
 }
 
 let dbInitialized = false;
@@ -37,11 +40,11 @@ async function ensureDatabaseInitialized(): Promise<void> {
 
     initializationPromise = (async () => {
         try {
-            const unifiedService = getUnifiedDatabaseService();
+            const unifiedService = await getLegacyUnifiedDatabaseService();
             await unifiedService.initialize();
 
             if (!isMobileDevice()) {
-                const dbService = getDatabaseService();
+                const dbService = await getLegacyDatabaseService();
                 await dbService.initialize();
                 if (!dbService.isReady()) {
                     // No company DB open yet — silently skip; will retry on next call.
@@ -137,7 +140,7 @@ export function useDatabaseState<T extends AppState>(
                 }
 
                 // Skip load when no company DB is open (multi-company mode: avoids noisy warnings)
-                const dbService = getDatabaseService();
+                const dbService = await getLegacyDatabaseService();
                 if (!dbService.isReady()) {
                     if (isMounted && timeoutId) {
                         clearTimeout(timeoutId);
@@ -148,7 +151,7 @@ export function useDatabaseState<T extends AppState>(
                 }
 
                 try {
-                    const appStateRepo = getAppStateRepository();
+                    const appStateRepo = await createAppStateRepository();
                     const state = await appStateRepo.loadState();
 
                     if (isMounted && timeoutId) {
@@ -167,7 +170,7 @@ export function useDatabaseState<T extends AppState>(
                             if (valueToSave && valueToSave !== initialValue) {
                                 ensureDatabaseInitialized()
                                     .then(async () => {
-                                        const appStateRepo = getAppStateRepository();
+                                        const appStateRepo = await createAppStateRepository();
                                         await appStateRepo.saveState(valueToSave as AppState, true);
                                     })
                                     .catch(() => {});
@@ -247,7 +250,7 @@ export function useDatabaseState<T extends AppState>(
                         return; // Don't try to save if database isn't available
                     }
 
-                    const appStateRepo = getAppStateRepository();
+                    const appStateRepo = await createAppStateRepository();
                     await appStateRepo.saveState(valueToSave as AppState, false);
                     if (typeof localStorage !== 'undefined') localStorage.removeItem(DB_STATE_DIRTY_KEY);
                     pendingSaveRef.current = null;
@@ -290,14 +293,14 @@ export function useDatabaseState<T extends AppState>(
 
         try {
             await ensureDatabaseInitialized();
-            const dbService = getDatabaseService();
+            const dbService = await getLegacyDatabaseService();
             if (!dbService.isReady()) {
                 await dbService.initialize();
             }
             if (!dbService.isReady()) {
                 throw new Error('Cannot save: no company database is open. Your changes are only in memory until you open a company file.');
             }
-            const appStateRepo = getAppStateRepository();
+            const appStateRepo = await createAppStateRepository();
             await appStateRepo.saveState(valueToSave as AppState, options?.disableSyncQueueing ?? false);
             const eds = dbService as unknown as { commitAllPendingToDisk?: () => Promise<{ ok: boolean }> };
             if (typeof eds.commitAllPendingToDisk === 'function') {
@@ -328,7 +331,7 @@ export function useDatabaseState<T extends AppState>(
             if (!isLoading && hasSomethingToSave && hasLoadedFromDbRef.current && isLocalOnlyMode()) {
                 ensureDatabaseInitialized()
                     .then(async () => {
-                        const appStateRepo = getAppStateRepository();
+                        const appStateRepo = await createAppStateRepository();
                         await appStateRepo.saveState(valueToSave as AppState, true);
                     })
                     .catch((error) => {
@@ -359,7 +362,7 @@ export function useDatabaseState<T extends AppState>(
                     }
                     ensureDatabaseInitialized().then(async () => {
                         try {
-                            const appStateRepo = getAppStateRepository();
+                            const appStateRepo = await createAppStateRepository();
                             await appStateRepo.saveState(valueToSave as AppState, true);
                             if (typeof localStorage !== 'undefined') {
                                 localStorage.removeItem(DB_STATE_DIRTY_KEY);

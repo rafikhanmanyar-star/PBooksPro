@@ -4,8 +4,8 @@
  */
 
 import { usePersonalTransactions } from '../../hooks/useSelectiveState';
-import { PersonalTransactionsRepository, PersonalTransactionRow } from '../../services/database/repositories';
-import { getDatabaseService } from '../../services/database/databaseService';
+import { PersonalTransactionsRepository, PersonalTransactionRow } from '../../services/legacy-sqlite/repositories';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { PersonalTransactionsApiRepository } from '../../services/api/repositories/personalTransactionsApi';
 import { refreshPersonalStateFromApi } from './personalFinanceSync';

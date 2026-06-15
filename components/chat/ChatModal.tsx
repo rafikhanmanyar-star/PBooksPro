@@ -1,8 +1,8 @@
 import { useUsers, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
-import { ChatMessagesRepository } from '../../services/database/repositories';
-import { getDatabaseService } from '../../services/database/databaseService';
+import { ChatMessagesRepository } from '../../services/legacy-sqlite/repositories';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
 import { isLocalOnlyMode } from '../../config/apiUrl';

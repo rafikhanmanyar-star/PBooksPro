@@ -61,7 +61,7 @@ function getSchemaPath() {
   const fromCwd = path.join(process.cwd(), 'electron', 'schema.sql');
   if (fs.existsSync(fromCwd)) return fromCwd;
 
-  // Dev fallback: generate from services/database/schema.ts if present
+  // Dev fallback: generate from services/legacy-sqlite/schema.ts if present
   const schemaTsPath = path.join(process.cwd(), 'services', 'database', 'schema.ts');
   if (fs.existsSync(schemaTsPath)) {
     try {

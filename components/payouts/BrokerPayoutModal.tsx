@@ -15,7 +15,7 @@ import {
     useTransactions,
 } from '../../hooks/useSelectiveState';
 import { Contact, TransactionType, Transaction, AccountType, type AppState } from '../../types';
-import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
+import { flushAppStateToDatabase } from '../../services/legacy-sqlite/criticalPersistence';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';

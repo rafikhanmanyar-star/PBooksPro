@@ -7,7 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const schemaPath = path.join(__dirname, '../services/database/schema.ts');
+const schemaPath = path.join(__dirname, '../services/legacy-sqlite/schema.ts');
 const outPath = path.join(__dirname, '../electron/schema.sql');
 
 const content = fs.readFileSync(schemaPath, 'utf8');

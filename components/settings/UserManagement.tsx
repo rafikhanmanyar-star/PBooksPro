@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useCompanyOptional, CompanyDbUser } from '../../context/CompanyContext';
 import { apiClient } from '../../services/api/client';
-import { getDatabaseService } from '../../services/database/databaseService';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { UserRole } from '../../types';
 import { ASSIGNABLE_ROLES, ENTERPRISE_ROLE_LABELS, resolveEnterpriseRole } from '../../shared/rbac/permissions';

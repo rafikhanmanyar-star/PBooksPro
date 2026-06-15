@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getDatabaseService } from '../../services/database/databaseService';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
 import { useNotification } from '../../context/NotificationContext';

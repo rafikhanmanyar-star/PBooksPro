@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { generateBuildVersionMeta } from './scripts/generate-build-version.mjs'
+import { legacySqliteStubPlugin } from './scripts/vite-legacy-sqlite-stub-plugin.mjs'
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
@@ -36,6 +37,7 @@ const suppressSqlJsWarnings = () => {
 };
 
 const isElectronBuild = process.env.VITE_ELECTRON_BUILD === 'true';
+const isLegacySqliteBuild = process.env.VITE_LOCAL_ONLY === 'true';
 
 // Relative base so `dist/` loads from file:// in Electron when using `electron .` or loadFile().
 // Plain `npm run build` must not emit `/assets/...` (breaks file://). Use VITE_BASE=/ or VITE_BASE=/subpath/
@@ -63,7 +65,7 @@ export default defineConfig({
   },
   assetsInclude: isElectronBuild ? [] : ['**/*.wasm'],
   optimizeDeps: {
-    exclude: isElectronBuild ? [] : ['sql.js'],
+    exclude: isLegacySqliteBuild && !isElectronBuild ? [] : ['sql.js'],
     include: ['react', 'react-dom'],
     esbuildOptions: {
       define: {
@@ -72,22 +74,33 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': resolve(__dirname, './'),
-    },
+    alias: [
+      ...(isLegacySqliteBuild
+        ? []
+        : [
+            {
+              find: resolve(__dirname, 'services/legacy-sqlite'),
+              replacement: resolve(__dirname, 'services/legacy-sqlite-stubs'),
+            },
+          ]),
+      {
+        find: '@',
+        replacement: resolve(__dirname, './'),
+      },
+    ],
     dedupe: ['react', 'react-dom'],
   },
   build: {
     cssCodeSplit: true,
     commonjsOptions: {
-      include: isElectronBuild ? [/node_modules/] : [/sql\.js/, /node_modules/],
+      include: isLegacySqliteBuild ? [/sql\.js/, /node_modules/] : [/node_modules/],
       transformMixedEsModules: true,
       esmExternals: true
     },
     rollupOptions: {
       // In Electron builds, externalize sql.js (loaded separately). Do not externalize socket.io-client:
       // AppContext/useRecordLock import core/socket; a bare "socket.io-client" import breaks in the renderer.
-      external: isElectronBuild ? ['sql.js'] : [],
+      external: isElectronBuild && isLegacySqliteBuild ? ['sql.js'] : [],
       onwarn(warning, warn) {
         if (warning.code === 'UNUSED_EXTERNAL_IMPORT') return
         warn(warning)
@@ -108,7 +121,7 @@ export default defineConfig({
           }
           if (id.includes('node_modules')) {
             if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
-            if (!isElectronBuild && id.includes('sql.js')) return 'vendor-db';
+            if (isLegacySqliteBuild && id.includes('sql.js')) return 'vendor-db';
             if (id.includes('xlsx')) return 'vendor-xlsx';
             if (id.includes('google/genai')) return 'vendor-ai';
             return 'vendor-base';
@@ -121,8 +134,9 @@ export default defineConfig({
     },
   },
   plugins: [
+    legacySqliteStubPlugin(),
     react(),
-    ...(isElectronBuild ? [] : [suppressSqlJsWarnings()]),
+    ...(isLegacySqliteBuild ? [suppressSqlJsWarnings()] : []),
     {
       name: 'remove-external-resources',
       transformIndexHtml(html) {

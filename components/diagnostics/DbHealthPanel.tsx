@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { fetchSchemaHealth, SchemaHealthResult } from '../../services/database/schemaHealth';
-import { EXPECTED_SCHEMA_VERSION } from '../../services/database/expectedSchema';
+import { fetchSchemaHealth, SchemaHealthResult } from '../../services/legacy-sqlite/schemaHealth';
+import { EXPECTED_SCHEMA_VERSION } from '../../services/legacy-sqlite/expectedSchema';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 
 const badgeClass = (level: SchemaHealthResult['level']) => {

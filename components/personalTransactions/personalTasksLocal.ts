@@ -2,7 +2,7 @@
  * Personal tasks — local SQLite (Electron offline).
  */
 
-import { getDatabaseService } from '../../services/database/databaseService';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import type { PersonalTaskApi } from '../../services/api/repositories/personalTasksApiRepository';
 
 function todayYmd(): string {

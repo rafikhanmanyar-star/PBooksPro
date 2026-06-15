@@ -4,14 +4,10 @@ import { flushSync } from 'react-dom';
 import { AppState, AppAction, Transaction, TransactionType, Account, Category, AccountType, LoanSubtype, InvoiceStatus, TransactionLogEntry, Page, Contract, ContractStatus, User, UserRole, ProjectAgreementStatus, Bill, SalesReturn, SalesReturnStatus, SalesReturnReason, Contact, Vendor, Invoice, RecurringInvoiceTemplate, ProjectReceivedAsset, Budget, PMCycleAllocation, Project, InstallmentPlan, PlanAmenity, Unit, RentalAgreement } from '../types';
 import useDatabaseState from '../hooks/useDatabaseState';
 import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
-import { runAllMigrations, needsMigration } from '../services/database/migration';
-import { getDatabaseService } from '../services/database/databaseService';
-import { getPersistableStateFingerprint } from '../services/database/persistableStateFingerprint';
-import { useAuth } from './AuthContext';
-import { useCompanyOptional } from './CompanyContext';
-import { logger } from '../services/logger';
-import { MANDATORY_SYSTEM_ACCOUNTS } from '../services/database/mandatorySystemAccounts';
-import { MANDATORY_SYSTEM_CATEGORIES } from '../services/database/mandatorySystemCategories';
+import { getPersistableStateFingerprint } from '../services/state/persistableStateFingerprint';
+import { MANDATORY_SYSTEM_ACCOUNTS } from '../constants/mandatorySystemAccounts';
+import { MANDATORY_SYSTEM_CATEGORIES } from '../constants/mandatorySystemCategories';
+import { getLegacyDatabaseService, loadMigrationModule } from '../services/legacySqliteLoader';
 import { findSalesReturnCategory } from '../constants/salesReturnSystemCategories';
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
@@ -276,7 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (isLocalOnlyMode() && (isAppRelaunched || versionChanged)) {
             (async () => {
                 try {
-                    const dbService = getDatabaseService();
+                    const dbService = await getLegacyDatabaseService();
                     if (dbService.isReady()) {
                         const appStateRepo = await getAppStateRepository();
                         const currentState = await appStateRepo.loadState();
@@ -335,7 +331,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 setInitMessage('Checking for data migration...');
                 setInitProgress(5);
 
-                if (needsMigration()) {
+                let migrationNeeded = false;
+                if (isLocalOnlyMode()) {
+                    const migrationMod = await loadMigrationModule();
+                    migrationNeeded = migrationMod.needsMigration();
+                }
+
+                if (migrationNeeded) {
+                    const { runAllMigrations } = await loadMigrationModule();
                     setInitMessage('Migrating data from localStorage to SQL database...');
                     setInitProgress(10);
 
@@ -498,7 +501,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             }
 
                             try {
-                                const dbService = getDatabaseService();
+                                const dbService = await getLegacyDatabaseService();
                                 if (!dbService.isReady()) {
                                     setInitMessage('Initializing database...');
                                     setInitProgress(60);
@@ -551,7 +554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         // Load from local database (offline mode only)
                         // Try to initialize database (but don't fail if it doesn't work)
                         try {
-                            const dbService = getDatabaseService();
+                            const dbService = await getLegacyDatabaseService();
                             if (!dbService.isReady()) {
                                 setInitMessage('Initializing database...');
                                 setInitProgress(60);
@@ -2279,7 +2282,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                     return;
                 }
-                const dbService = getDatabaseService();
+                const dbService = await getLegacyDatabaseService();
                 if (!dbService.isReady()) return;
                 const appStateRepo = await getAppStateRepository();
                 const loadedState = await appStateRepo.loadState();
@@ -2459,7 +2462,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 fixButton.style.cursor = 'wait';
 
                                 try {
-                                    const { clearAllDatabaseStorage } = await import('../services/database/databaseService');
+                                    const { clearAllDatabaseStorage } = await import('../services/legacy-sqlite/databaseService');
                                     await clearAllDatabaseStorage();
 
                                     setTimeout(() => location.reload(), 500);
@@ -2498,7 +2501,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     logger.logCategory('database', '✅ State saved successfully before logout');
                     success = true;
                 } else {
-                    const dbService = getDatabaseService();
+                    const dbService = await getLegacyDatabaseService();
                     if (dbService.isReady()) {
                         const appStateRepo = await getAppStateRepository();
                         await appStateRepo.saveState(snapshot, true);

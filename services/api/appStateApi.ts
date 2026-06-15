@@ -600,7 +600,7 @@ export class AppStateApiService {
 
     try {
       const { isLocalOnlyMode } = await import('../../config/apiUrl');
-      const { getCurrentTenantId } = await import('../database/tenantUtils');
+      const { getCurrentTenantId } = await import('../legacy-sqlite/tenantUtils');
       if (!isLocalOnlyMode()) {
         const tid = getCurrentTenantId();
         if (tid && response.changeLog?.length) {
@@ -716,7 +716,7 @@ export class AppStateApiService {
 
     try {
       const { isLocalOnlyMode } = await import('../../config/apiUrl');
-      const { getCurrentTenantId } = await import('../database/tenantUtils');
+      const { getCurrentTenantId } = await import('../legacy-sqlite/tenantUtils');
       const { storageService } = await import('../../components/payroll/services/storageService');
       if (!isLocalOnlyMode()) {
         const tid = getCurrentTenantId();

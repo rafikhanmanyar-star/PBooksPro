@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AppState } from '../../../types';
-import { getPersistableStateFingerprint } from '../../../services/database/persistableStateFingerprint';
+import { getPersistableStateFingerprint } from '../../../services/state/persistableStateFingerprint';
 import {
     filterFundAvailabilityRows,
     getFundAvailabilityDetails,

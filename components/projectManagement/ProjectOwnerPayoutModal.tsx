@@ -3,7 +3,7 @@ import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelect
 import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
-import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
+import { flushAppStateToDatabase } from '../../services/legacy-sqlite/criticalPersistence';
 import { _getAppState } from '../../context/appStateStore';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';

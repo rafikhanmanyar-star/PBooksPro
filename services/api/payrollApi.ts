@@ -6,8 +6,7 @@
  */
 
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
-import { getCurrentTenantId } from '../database/tenantUtils';
-import { getCurrentUserId } from '../database/userUtils';
+import { getCurrentTenantId, getCurrentUserId } from '../sessionContext';
 import { apiClient } from './client';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import {

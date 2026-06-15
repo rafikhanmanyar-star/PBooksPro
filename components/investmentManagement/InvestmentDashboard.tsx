@@ -14,7 +14,7 @@ import { CURRENCY } from '../../constants';
 import { formatCurrency } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
 import { computeEquityBalances, getInvestorEquityAccounts, roundEquityBalance } from './equityMetrics';
-import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
+import { resolveProfitDistributionExpenseCategory } from '../../constants/profitDistributionCategory';
 import { CHART_COLORS, useChartTheme } from '../analytics/chartTheme';
 
 const InvestmentDashboard: React.FC = () => {

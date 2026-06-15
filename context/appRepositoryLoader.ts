@@ -6,7 +6,7 @@ let importPromise: Promise<any> | null = null;
 export async function getAppStateRepository() {
     if (!AppStateRepositoryClass) {
         if (!importPromise) {
-            importPromise = import('../services/database/repositories/appStateRepository').then(module => {
+            importPromise = import('../services/legacy-sqlite/repositories/appStateRepository').then(module => {
                 AppStateRepositoryClass = module.AppStateRepository;
                 return AppStateRepositoryClass;
             }).catch(error => {

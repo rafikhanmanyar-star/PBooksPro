@@ -7,8 +7,8 @@
  */
 
 export const SQLITE_ENTRY_MODULES = [
-  'services/database/repositories/appStateRepository.ts',
-  'services/database/repositories/baseRepository.ts',
+  'services/legacy-sqlite/repositories/appStateRepository.ts',
+  'services/legacy-sqlite/repositories/baseRepository.ts',
   'services/financialEngine/journalEngine.ts (local branch)',
   'hooks/useDatabaseState.ts (local branch)',
   'context/AppContext.tsx (local branch)',

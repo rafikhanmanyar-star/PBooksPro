@@ -2,8 +2,8 @@
 import React from 'react';
 import { AppAction, AppState, ContactType, TransactionType, AccountType, LoanSubtype, Project } from '../types';
 import { useProgress } from '../context/ProgressContext';
-import { getDatabaseService } from './database/databaseService';
-import { AppStateRepository } from './database/repositories/appStateRepository';
+import { getDatabaseService } from './legacy-sqlite/databaseService';
+import { AppStateRepository } from './legacy-sqlite/repositories/appStateRepository';
 import { migrateBackupData, CURRENT_DATA_VERSION } from './backupMigration';
 import { todayLocalYyyyMmDd } from '../utils/dateUtils';
 

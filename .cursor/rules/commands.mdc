@@ -255,10 +255,13 @@ npm run dev:backend:production
 | `npm run electron:offline:installer` | **Deprecated** — legacy offline SQLite NSIS installer |
 | `npm run icons:generate` | Regenerate app icons (ICO/ICNS/PNG) from `pbookspro logo.png` → `electron/assets/`, `public/` |
 | `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10) |
-| `npm run prepare-local-db` | **Deprecated** — rewrite tenant/user IDs in local SQLite DB |
-| `npm run clear-local-transactions` | **Deprecated** — clear transactions from local SQLite DB |
-| `npm run migrate:sqlite-to-postgres` | **Legacy** — import SQLite backup → PostgreSQL |
-| `npm run migrate:sqlite-to-postgres:transactions` | Re-import transactions only |
+| `npm run legacy:prepare-local-db` | **Deprecated** — rewrite tenant/user IDs in local SQLite DB (`tools/legacy/`) |
+| `npm run legacy:clear-local-transactions` | **Deprecated** — clear transactions from local SQLite DB |
+| `npm run legacy:migrate-sqlite-to-postgres` | **Legacy** — import SQLite backup → PostgreSQL |
+| `npm run legacy:migrate-sqlite-to-postgres:transactions` | Re-import transactions only |
+| `npm run prepare-local-db` | Alias → `legacy:prepare-local-db` |
+| `npm run clear-local-transactions` | Alias → `legacy:clear-local-transactions` |
+| `npm run migrate:sqlite-to-postgres` | Alias → `legacy:migrate-sqlite-to-postgres` |
 | `npm run repair:pg-categories` | Repair category_id from SQLite backup |
 
 ---

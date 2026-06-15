@@ -45,7 +45,7 @@ import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
-import { getDatabaseService } from '../../services/database/databaseService';
+import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useCompanyOptional } from '../../context/CompanyContext';
 import { useSpellCheckerOptional, SPELLCHECK_LANGUAGE_OPTIONS } from '../../context/SpellCheckerContext';

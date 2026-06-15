@@ -7,7 +7,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Transaction } from '../types';
-import { TransactionsRepository } from '../services/database/repositories';
+import { TransactionsRepository } from '../services/legacy-sqlite/repositories';
 
 interface UseNativeTransactionsOptions {
   projectId?: string | null;

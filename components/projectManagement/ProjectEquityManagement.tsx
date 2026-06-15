@@ -33,7 +33,7 @@ import {
     type EquityFlowLeg,
 } from '../investmentManagement/equityLedgerClassification';
 import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
-import { resolveProfitDistributionExpenseCategory } from '../../services/database/resolveProfitDistributionExpenseCategory';
+import { resolveProfitDistributionExpenseCategory } from '../../constants/profitDistributionCategory';
 import { computeProjectScopedBankCashBalance } from '../../services/accounting/accountingLedgerCore';
 import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
