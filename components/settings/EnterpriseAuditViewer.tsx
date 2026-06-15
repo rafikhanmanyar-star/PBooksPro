@@ -6,7 +6,6 @@ import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
 import { formatDateTime } from '../../utils/dateUtils';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 
 type UserOption = { id: string; name: string; username: string };
@@ -27,7 +26,6 @@ const EnterpriseAuditViewer: React.FC = () => {
   const [action, setAction] = useState('');
 
   const loadFilters = useCallback(async () => {
-    if (isLocalOnlyMode()) return;
     try {
       const [filterOpts, userRows] = await Promise.all([
         auditTrailApi.getFilterOptions(),
@@ -42,7 +40,7 @@ const EnterpriseAuditViewer: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode() || !tenant?.id) {
+    if (!tenant?.id) {
       setLoading(false);
       setItems([]);
       return;
@@ -80,14 +78,6 @@ const EnterpriseAuditViewer: React.FC = () => {
   }, [load, tenant?.id]);
 
   const rows = useMemo(() => items, [items]);
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
-        Enterprise audit trail is available in LAN / server mode. Local-only installs use the transaction log in Data Management.
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">

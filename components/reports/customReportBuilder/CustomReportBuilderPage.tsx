@@ -15,7 +15,6 @@ import { useNotification } from '../../../context/NotificationContext';
 import { usePrintReport } from '../../../hooks/usePrintReport';
 import ReportHeader from '../ReportHeader';
 import ReportFooter from '../ReportFooter';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
 import {
   CUSTOM_REPORT_MODULE_PROJECT_SELLING,
   CUSTOM_REPORT_MODULE_PROJECT_CONSTRUCTION,
@@ -196,7 +195,7 @@ export const CustomReportBuilderPage: React.FC<ReportDesignerPageProps> = ({
   const [printSnapshot, setPrintSnapshot] = useState<GeneratedReportResponse | null>(null);
   const [printLoading, setPrintLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  const localOnly = isLocalOnlyMode();
+  const localOnly = false;
 
   const metaQuery = useQuery({
     queryKey: ['customReportMetadata', moduleKey],

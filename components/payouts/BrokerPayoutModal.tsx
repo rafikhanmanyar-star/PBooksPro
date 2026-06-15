@@ -15,8 +15,6 @@ import {
     useTransactions,
 } from '../../hooks/useSelectiveState';
 import { Contact, TransactionType, Transaction, AccountType, type AppState } from '../../types';
-import { flushAppStateToDatabase } from '../../services/legacy-sqlite/criticalPersistence';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -386,19 +384,7 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
             });
         }
 
-        if (isLocalOnlyMode()) {
-            flushSync(() => {
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: newTransactions });
-            });
-            try {
-                await flushAppStateToDatabase(_getAppState());
-            } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                await showAlert(`Could not save payment to the database: ${msg}`);
-                return;
-            }
-        } else {
-            // LAN/API: save first (normalized rows + server version), then merge into state once — matches bulk bill / PM payout migration.
+        // LAN/API: save first (normalized rows + server version), then merge into state once — matches bulk bill / PM payout migration.
             try {
                 const api = getAppStateApiService();
                 const savedTransactions: Transaction[] = [];
@@ -418,7 +404,6 @@ const BrokerPayoutModal: React.FC<BrokerPayoutModalProps> = ({
                 await showAlert(`Failed to record commission payment: ${msg}`);
                 return;
             }
-        }
 
         setLastPaidAmount(totalToPay);
         setShowWhatsAppConfirm(true);

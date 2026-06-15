@@ -6,7 +6,6 @@
  * In local-only mode, uses only localStorage (no API calls).
  */
 
-import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { mapWithConcurrency } from '../../../utils/mapWithConcurrency';
 import { persistPayrollRunsToDb, persistPayrollToDbInOrder, deletePayslipFromDb, deletePayrollRunFromDb, persistPayrollDepartmentsToDb, persistPayrollGradesToDb, persistPayrollEmployeesToDb } from './payrollDb';
@@ -225,9 +224,6 @@ export const storageService = {
 
   // Async method to fetch employees from API with localStorage fallback
   async getEmployeesFromApi(tenantId: string): Promise<PayrollEmployee[]> {
-    if (isLocalOnlyMode()) {
-      return this.getEmployees(tenantId);
-    }
     const cached = this._employeesCache.get(tenantId);
     if (cached && (Date.now() - cached.timestamp) < this._employeesCacheTimeout) {
       return cached.data;
@@ -672,7 +668,6 @@ export const storageService = {
 
   /** Full list refresh from REST (used after incremental sync / realtime debounce). */
   async syncPayrollListsFromApi(tenantId: string): Promise<void> {
-    if (isLocalOnlyMode()) return;
     this.init(tenantId);
     try {
       const [employees, runs, departments, grades, et, dt] = await Promise.all([

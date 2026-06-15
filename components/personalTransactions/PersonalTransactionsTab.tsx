@@ -15,7 +15,6 @@ import {
   listPersonalTransactions,
   deletePersonalTransaction,
   type PersonalTransactionRow } from './personalTransactionsService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   getPersonalIncomeCategories,
   getPersonalExpenseCategories } from './personalCategoriesService';
@@ -197,7 +196,7 @@ const PersonalTransactionsTab: React.FC = () => {
         {
           dateFrom: getRolling12MonthsDateFrom(),
           limit: 10000 },
-        !isLocalOnlyMode() ? personalTransactions : undefined
+        personalTransactions
       ),
     [refreshKey, personalTransactions]
   );
@@ -237,7 +236,7 @@ const PersonalTransactionsTab: React.FC = () => {
           ...dateRange,
           categoryId: categoryFilterId || undefined,
           limit: 5000 },
-        !isLocalOnlyMode() ? personalTransactions : undefined
+        personalTransactions
       ),
     [dateRange.dateFrom, dateRange.dateTo, categoryFilterId, refreshKey, personalTransactions]
   );

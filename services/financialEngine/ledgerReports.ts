@@ -4,7 +4,6 @@
  */
 
 import { roundMoney } from './validation';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { journalApi } from '../api/journalApi';
 import {
   applyOpeningBalances,
@@ -272,8 +271,7 @@ export async function fetchTrialBalanceReport(
   if (scopeFilterId !== 'all' || options.costCenterId) {
     const scope = dimensionScopeFromFetchOptions(scopeFilterId, options.costCenterId);
     if (isDimensionScopeActive(scope)) {
-      if (!isLocalOnlyMode()) {
-        void tenantId;
+      void tenantId;
         const entity = entityScopeFromFilterId(scopeFilterId);
         const raw = await journalApi.getTrialBalanceCanonical({
           from,
@@ -284,7 +282,6 @@ export async function fetchTrialBalanceReport(
           costCenterId: options.costCenterId,
         });
         return mapApiToTrialBalanceResult(raw as Parameters<typeof mapApiToTrialBalanceResult>[0]);
-      }
 
       const journalResult = await fetchScopedTrialBalanceFromJournalLocal(tenantId, from, to, basis, scope);
       if (journalResult.accounts.length > 0) {
@@ -323,11 +320,9 @@ export async function fetchTrialBalanceReport(
     }
   }
 
-  if (!isLocalOnlyMode()) {
-    void tenantId;
+  void tenantId;
     const raw = await journalApi.getTrialBalanceCanonical({ from, to, basis });
     return mapApiToTrialBalanceResult(raw as Parameters<typeof mapApiToTrialBalanceResult>[0]);
-  }
 
   const bridge = getBridge();
   const tenantIds = ledgerTenantIdsForLocalQuery(tenantId);
@@ -532,8 +527,7 @@ export async function getGeneralLedger(
   tenantId: string,
   options?: { fromDate?: string; toDate?: string }
 ): Promise<{ accountType: string; accountName: string; rows: GeneralLedgerRow[] }> {
-  if (!isLocalOnlyMode()) {
-    void tenantId;
+  void tenantId;
     const data = await journalApi.getGeneralLedgerReport(accountId, {
       fromDate: options?.fromDate,
       toDate: options?.toDate,
@@ -553,7 +547,6 @@ export async function getGeneralLedger(
         is_brought_forward: Boolean((r as { is_brought_forward?: boolean }).is_brought_forward),
       })),
     };
-  }
 
   const bridge = getBridge();
   const acc = await bridge.query(

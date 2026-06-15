@@ -41,7 +41,6 @@ import {
     getOwnerPayoutModalPropertyBreakdown,
 } from './ownerPayoutBreakdown';
 import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
 
 // --- Types ---
@@ -74,7 +73,7 @@ const OwnerPayoutsPage: React.FC = () => {
     const { openChat } = useWhatsApp();
     const { showToast } = useNotification();
     const { isAuthenticated } = useAuth();
-    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
+    const useApiRollup = isAuthenticated;
     const {
         data: apiOwnerBalanceRows,
         isFetching: apiRollupFetching,

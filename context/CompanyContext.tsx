@@ -7,7 +7,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { isLocalOnlyMode, setSessionDataSource } from '../config/apiUrl';
+import { setSessionDataSource } from '../config/apiUrl';
 import { logger } from '../services/logger';
 import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
 
@@ -171,90 +171,15 @@ export const CompanyProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [forcePasswordChange, setForcePasswordChange] = useState(false);
   const [pendingCompanyId, setPendingCompanyId] = useState<string | null>(null);
 
-  // Initial load: check for active company or show selector
+  // Initial load: API mode skips company-bridge gating
   useEffect(() => {
-    if (!isLocalOnlyMode() || !hasBridge()) {
-      // Not local-only or no bridge: skip company management entirely
-      setScreen('app');
-      setIsLoading(false);
-      return;
-    }
-
-    (async () => {
-      try {
-        // Check if there's already an active company (e.g., migrated DB auto-opened by main process)
-        const activeResult = await window.companyBridge!.getActive();
-        if (activeResult.ok && activeResult.company) {
-          const company = activeResult.company;
-          setActiveCompany(company);
-          // Restore persisted user for this company (after reload following login)
-          try {
-            const stored = typeof localStorage !== 'undefined' && localStorage.getItem('pbooks_local_auth');
-            if (stored) {
-              const { companyId, user } = JSON.parse(stored);
-              if (companyId === company.id && user?.id && user?.username) {
-                setSessionDataSource('sqlite');
-                setAuthenticatedUser(user);
-                setIsLoading(false);
-                setScreen('app');
-                return;
-              }
-            }
-          } catch (_) {}
-          // No persisted user: check credentials and show login when company has users
-          const credResult = await window.companyBridge!.checkCredentials(company.id);
-          if (credResult.ok && credResult.users && credResult.users.length > 0) {
-            setLoginUsers(credResult.users);
-            setPendingCompanyId(company.id);
-            setScreen('login');
-          } else {
-            // No users (edge case): treat as default admin
-            setSessionDataSource('sqlite');
-            setAuthenticatedUser({
-              id: 'local-user',
-              username: 'admin',
-              name: 'Administrator',
-              role: 'SUPER_ADMIN',
-            });
-            setScreen('app');
-          }
-          setIsLoading(false);
-          return;
-        }
-
-        // No active company — load list from master_index and show selector
-        let list: CompanyInfo[] = [];
-        let listFailed = false;
-        try {
-          const listResult = await window.companyBridge!.list();
-          list = listResult.ok ? (listResult.companies || []) : [];
-          if (!listResult.ok) {
-            listFailed = true;
-            setError(listResult.error || 'Failed to load companies.');
-          }
-        } catch (listErr) {
-          listFailed = true;
-          console.error('[CompanyContext] company:list failed:', listErr);
-          setError(listErr instanceof Error ? listErr.message : String(listErr));
-        }
-        setCompanies(list);
-        // Show select screen when companies exist OR when listing failed (so user can browse/create).
-        // Only show 'create' for a truly fresh install with zero companies and no errors.
-        setScreen(list.length > 0 || listFailed ? 'select' : 'create');
-      } catch (err) {
-        console.error('[CompanyContext] Init error:', err);
-        setError(err instanceof Error ? err.message : String(err));
-        setScreen('select');
-      } finally {
-        setIsLoading(false);
-      }
-    })();
+    setScreen('app');
+    setIsLoading(false);
   }, []);
 
-  // Scope display timezone cache to this company user (local-only); apply server/SQLite value when present
+  // Display timezone is persisted via API in PostgreSQL mode
   useEffect(() => {
-    if (!isLocalOnlyMode() || !authenticatedUser?.id) return;
-    setDisplayTimeZoneUserContext(authenticatedUser.id);
+    if (!authenticatedUser?.id) return;
     if (authenticatedUser.displayTimezone !== undefined) {
       applyDisplayTimezoneFromProfile(authenticatedUser.displayTimezone);
     }

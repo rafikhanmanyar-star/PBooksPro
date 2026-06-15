@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { paymentsApi } from '../../services/api/payments';
 import { apiClient } from '../../services/api/client';
 import PaymentModal from './PaymentModal';
@@ -55,18 +54,7 @@ const LicenseManagement: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      if (isLocalOnlyMode()) {
-        setLicenseInfo({
-          licenseType: 'perpetual',
-          licenseStatus: 'active',
-          expiryDate: null,
-          daysRemaining: 999,
-          isExpired: false,
-          modules: ['real_estate', 'rental'],
-        });
-        return;
-      }
-      const response = await apiClient.get<LicenseInfo>('/tenants/license-status');
+            const response = await apiClient.get<LicenseInfo>('/tenants/license-status');
       setLicenseInfo(response);
     } catch (err: any) {
       console.error('Failed to load license status:', err);

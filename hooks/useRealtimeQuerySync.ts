@@ -10,7 +10,6 @@ import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getRealtimeSocket } from '../core/socket';
 import { useAuth } from '../context/AuthContext';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import {
   invalidateQueriesForEntityEvent,
   invalidateQueriesForFinancialPosted,
@@ -32,10 +31,8 @@ export function useRealtimeQuerySync(options: RealtimeQuerySyncOptions = {}): vo
   const { onEntityEvent, enabled = true } = options;
   const { user, isAuthenticated, tenant } = useAuth();
   const queryClient = useQueryClient();
-  const apiMode = !isLocalOnlyMode();
-
   useEffect(() => {
-    if (!enabled || !apiMode || !isAuthenticated) return;
+    if (!enabled || !isAuthenticated) return;
 
     const socket = getRealtimeSocket();
     if (!socket) return;

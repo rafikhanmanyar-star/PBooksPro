@@ -1,5 +1,4 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import { useAuth } from './AuthContext';
 import { useViewportOptional } from './ViewportContext';
 import { apiClient } from '../services/api/client';
@@ -42,7 +41,7 @@ function resolveExecutiveActive(
 export function ExecutiveModeProvider({ children }: { children: React.ReactNode }) {
   const { user, updateUserProfile } = useAuth();
   const viewport = useViewportOptional();
-  const cloudEligible = !isLocalOnlyMode();
+  const cloudEligible = true;
   const [sessionFullErp, setSessionFullErpState] = useState(false);
 
   const isExecutiveViewport = viewport?.isExecutiveViewport ?? false;

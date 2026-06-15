@@ -1,7 +1,6 @@
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MetricCard, ChartCard } from '../analytics';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchProcurementDashboardMetrics } from '../../services/quotationIntelligenceApi';
 import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import { CURRENCY } from '../../constants';
@@ -36,7 +35,7 @@ const ProcurementDashboardWidgets: React.FC = () => {
   const { data, isLoading } = useQuery({
     queryKey: ['procurement-dashboard'],
     queryFn: async () => {
-      if (!isLocalOnlyMode()) return fetchProcurementDashboardMetrics();
+      return fetchProcurementDashboardMetrics();
       return localMetrics(state);
     },
     staleTime: 60_000,

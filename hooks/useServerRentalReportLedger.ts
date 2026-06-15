@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { isLocalOnlyMode } from '../config/apiUrl';
 
 /**
- * LAN/API rental reports: server-computed ledger with optimistic local overlay while refreshing.
- * Local SQLite edition uses `localResult` only (instant).
+ * Rental reports: server-computed ledger with optimistic local overlay while refreshing.
  */
 export function useServerRentalReportLedger<T>(options: {
   localResult: T;
   fetchServer: () => Promise<T>;
   filterKey: string;
-  /** Shown before the first server response (API mode only). */
+  /** Shown before the first server response. */
   initialEmpty?: T;
 }): {
   localOnly: boolean;
@@ -21,7 +19,6 @@ export function useServerRentalReportLedger<T>(options: {
   requestRefresh: () => void;
 } {
   const { localResult, fetchServer, filterKey, initialEmpty } = options;
-  const localOnly = isLocalOnlyMode();
   const [serverResult, setServerResult] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -38,13 +35,6 @@ export function useServerRentalReportLedger<T>(options: {
   }, []);
 
   useEffect(() => {
-    if (localOnly) {
-      setServerResult(null);
-      setError(null);
-      setUpdating(false);
-      return;
-    }
-
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -69,16 +59,14 @@ export function useServerRentalReportLedger<T>(options: {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, refreshKey, filterKey, fetchServer]);
+  }, [refreshKey, filterKey, fetchServer]);
 
-  const result = localOnly
+  const result = updating
     ? localResult
-    : updating
-      ? localResult
-      : serverResult ?? (loading ? (initialEmpty ?? localResult) : localResult);
+    : serverResult ?? (loading ? (initialEmpty ?? localResult) : localResult);
 
   return {
-    localOnly,
+    localOnly: false,
     result,
     loading,
     updating,

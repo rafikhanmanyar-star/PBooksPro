@@ -3,7 +3,6 @@ import {
   subscriptionBillingApi,
   type BillingPortalSummary,
 } from '../../services/api/subscriptionBillingApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { UsageMeters, paymentStatusStyle } from './portal/BillingPortalShared';
 
@@ -12,11 +11,11 @@ const SubscriptionStatusWidget: React.FC = () => {
   const { canAccessBillingPortal } = usePermissions();
 
   useEffect(() => {
-    if (isLocalOnlyMode() || !canAccessBillingPortal) return;
+    if (!canAccessBillingPortal) return;
     void subscriptionBillingApi.getPortal().then(setPortal).catch(() => undefined);
   }, [canAccessBillingPortal]);
 
-  if (isLocalOnlyMode() || !canAccessBillingPortal || !portal) return null;
+  if (!canAccessBillingPortal || !portal) return null;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">

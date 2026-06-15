@@ -247,12 +247,9 @@ npm run dev:backend:production
 | `npm run start:backend` | Run compiled API (`node backend/dist/index.js`) |
 | `npm run dev` | Start Vite dev server (web client) |
 | `npm run build` | Build frontend only |
-| `npm run electron:dev` | Electron API client dev build (`VITE_LOCAL_ONLY=false`) |
+| `npm run electron:dev` | Electron API client dev build |
 | `npm run electron:local` | Electron API client — requires running API server |
 | `npm run electron:installer` | Build Desktop API client installer → `release/` (no publish) |
-| `npm run electron:offline:dev` | **Deprecated** — legacy offline SQLite dev build |
-| `npm run electron:offline:local` | **Deprecated** — legacy offline SQLite full build |
-| `npm run electron:offline:installer` | **Deprecated** — legacy offline SQLite NSIS installer |
 | `npm run icons:generate` | Regenerate app icons (ICO/ICNS/PNG) from `pbookspro logo.png` → `electron/assets/`, `public/` |
 | `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10) |
 | `npm run legacy:prepare-local-db` | **Deprecated** — rewrite tenant/user IDs in local SQLite DB (`tools/legacy/`) |
@@ -309,12 +306,12 @@ npm run start:backend:production  # production, compiled
 ### 5. Run the web client against the API
 
 ```powershell
-$env:VITE_LOCAL_ONLY="false"; npm run dev
+npm run dev
 ```
 
-For **Desktop Edition (PostgreSQL)**, use `npm run test:local-only` or `npm run test:staging` — not legacy offline SQLite scripts.
+For **Desktop Edition (PostgreSQL)**, use `npm run test:local-only` or `npm run test:staging`.
 
-Legacy offline SQLite (deprecated): `npm run electron:offline:local` — see `services/database/LEGACY.md`.
+One-off SQLite migration scripts remain under `tools/legacy/` — see `tools/legacy/README.md`.
 
 ---
 

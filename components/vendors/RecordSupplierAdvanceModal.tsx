@@ -9,7 +9,6 @@ import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi } from '../../services/api/contractorApi';
 import { apiClient, formatApiErrorMessage } from '../../services/api/client';
 import { normalizeAccountFromApi } from '../../services/api/appStateApi';
@@ -89,9 +88,6 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
 
     /** Merged chart: AppContext + fresh API list (by id) so nothing is dropped when one source is partial. */
     const chartAccountRows = useMemo((): AccountJsonRow[] => {
-        if (isLocalOnlyMode()) {
-            return accounts.map((a) => ({ ...(a as unknown as AccountJsonRow) }));
-        }
         const byId = new Map<string, AccountJsonRow>();
         for (const a of accounts) {
             const id = String(a.id ?? '').trim();
@@ -178,29 +174,26 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
         setSubmitting(false);
         setAccountsLoadError(null);
 
-        if (!isLocalOnlyMode()) {
-            let cancelled = false;
-            void apiClient
-                .get<unknown[]>('/accounts')
-                .then((rows) => {
-                    if (cancelled) return;
-                    if (!Array.isArray(rows)) {
-                        setFetchedAccountRows([]);
-                        setAccountsLoadError('Could not load chart of accounts.');
-                        return;
-                    }
-                    setFetchedAccountRows(rows as AccountJsonRow[]);
-                })
-                .catch(() => {
-                    if (cancelled) return;
+        let cancelled = false;
+        void apiClient
+            .get<unknown[]>('/accounts')
+            .then((rows) => {
+                if (cancelled) return;
+                if (!Array.isArray(rows)) {
                     setFetchedAccountRows([]);
-                    setAccountsLoadError('Failed to load chart of accounts. Check your connection and try again.');
-                });
-            return () => {
-                cancelled = true;
-            };
-        }
-        setFetchedAccountRows([]);
+                    setAccountsLoadError('Could not load chart of accounts.');
+                    return;
+                }
+                setFetchedAccountRows(rows as AccountJsonRow[]);
+            })
+            .catch(() => {
+                if (cancelled) return;
+                setFetchedAccountRows([]);
+                setAccountsLoadError('Failed to load chart of accounts. Check your connection and try again.');
+            });
+        return () => {
+            cancelled = true;
+        };
     }, [isOpen, vendor.id, defaultProjectId]);
 
     useEffect(() => {
@@ -214,10 +207,6 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     }, [isOpen, payFromAccounts, assetAccounts]);
 
     const handleSubmit = async () => {
-        if (isLocalOnlyMode()) {
-            await showAlert('Recording supplier advances requires the PostgreSQL API (not offline local DB mode).');
-            return;
-        }
         const amt = parseFloat(amountStr);
         if (!Number.isFinite(amt) || amt <= 0) {
             await showAlert(`Enter a valid advance amount (${CURRENCY}).`);
@@ -261,7 +250,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
         }
     };
 
-    const localBlocked = isLocalOnlyMode();
+    const localBlocked = false;
 
     return (
         <Modal isOpen={isOpen} onClose={() => !submitting && onClose()} title={`Record supplier advance — ${vendor.name}`} size="lg">

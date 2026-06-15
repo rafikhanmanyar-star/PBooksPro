@@ -7,7 +7,6 @@ import {
     getEffectiveBillPaymentDisplay,
     getPaymentTransactionsForRentalBill,
 } from '../../utils/rentalBillPayments';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi, type VendorBillSettlementRow } from '../../services/api/contractorApi';
 import { parsePrepaidAdvanceAmountsFromBillDescription } from '../../utils/supplierPrepaidPl';
 
@@ -158,13 +157,12 @@ const BillSummarySidePanel: React.FC<BillSummarySidePanelProps> = ({
     );
 
     const [apiSettlements, setApiSettlements] = useState<VendorBillSettlementRow[] | null>(() =>
-        isLocalOnlyMode() ? [] : null
+        null
     );
 
     useEffect(() => {
-        if (!billId || isLocalOnlyMode()) {
-            if (isLocalOnlyMode()) setApiSettlements([]);
-            return;
+        if (!billId ) {
+                        return;
         }
         let cancelled = false;
         setApiSettlements(null);
@@ -209,9 +207,6 @@ const BillSummarySidePanel: React.FC<BillSummarySidePanelProps> = ({
 
     const prepaidAppliedLines = useMemo((): PrepaidAppliedLine[] => {
         if (!savedBill) return [];
-        if (isLocalOnlyMode()) {
-            return prepaidLinesFromDescription(savedBill);
-        }
         if (apiSettlements === null) {
             return [];
         }
@@ -272,7 +267,7 @@ const BillSummarySidePanel: React.FC<BillSummarySidePanelProps> = ({
         accounts.find((a) => a.id === accountId)?.name ?? 'Account';
 
     const isPreview = !billId;
-    const settlementsLoading = !isLocalOnlyMode() && billId != null && apiSettlements === null;
+    const settlementsLoading = billId != null && apiSettlements === null;
 
     const statusTone =
         display.status === 'Paid'

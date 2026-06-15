@@ -6,7 +6,6 @@ import ComboBox from '../ui/ComboBox';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchVendorPriceHistory } from '../../services/quotationIntelligenceApi';
 import type { VendorPriceHistoryEntry } from '../../types';
 import { formatDate } from '../../utils/dateUtils';
@@ -67,14 +66,12 @@ const VendorPriceHistoryPage: React.FC = () => {
         itemName: itemName || undefined,
         projectId: projectId || undefined,
       };
-      if (!isLocalOnlyMode()) {
-        const rows = await fetchVendorPriceHistory(filters);
+      const rows = await fetchVendorPriceHistory(filters);
         return rows.map((r) => ({
           ...r,
           vendorName: vendors?.find((v) => v.id === r.vendorId)?.name,
           projectName: projects?.find((p) => p.id === r.projectId)?.name,
         }));
-      }
       return localPriceHistory(state.quotations, state.vendors, state.projects, filters);
     },
     staleTime: 30_000,

@@ -6,7 +6,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Building2, PenLine, PenTool, Megaphone, Plus, Pencil } from 'lucide-react';
 import { storageService } from './services/storageService';
 import { syncPayrollFromServer } from './services/payrollSync';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 import { Department, GradeLevel, PayrollEmployee, EmploymentStatus } from './types';
 import DepartmentConfigModal from './modals/DepartmentConfigModal';
@@ -77,9 +76,7 @@ const PayrollSettingsPage: React.FC = () => {
   useEffect(() => {
     if (!tenantId) return;
     const load = async () => {
-      if (!isLocalOnlyMode()) {
-        await syncPayrollFromServer(tenantId);
-      }
+              await syncPayrollFromServer(tenantId);
       loadData();
     };
     void load();

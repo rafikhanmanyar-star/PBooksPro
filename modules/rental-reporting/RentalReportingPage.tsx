@@ -4,7 +4,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useBuildings, useContacts, useProperties, useRentalAgreements } from '../../hooks/useSelectiveState';
 import { ContactType, RentalAgreementStatus } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import { exportJsonToExcel } from '../../services/exportService';
 import { downloadCustomReportExport, CUSTOM_REPORT_MODULE_RENTAL_AGREEMENTS } from '../../services/api/customReportsApi';
@@ -42,8 +41,7 @@ const QUICK_REPORTS = [
 const RentalReportingPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { showToast, showAlert } = useNotification();
-  const localOnly = isLocalOnlyMode();
-  const printReport = usePrintReport();
+    const printReport = usePrintReport();
 
   const filters = useRentalReportingFiltersStore((s) => s.filters);
   const activeTab = useRentalReportingFiltersStore((s) => s.activeTab);
@@ -61,7 +59,7 @@ const RentalReportingPage: React.FC = () => {
   const pageSize = 50;
   const [drawerId, setDrawerId] = useState<string | null>(null);
 
-  const enabled = isAuthenticated && !localOnly && generated;
+  const enabled = isAuthenticated && generated;
   const summaryQuery = useRentalReportingSummary(filters, enabled);
   const tabQuery = useRentalReportTab(activeTab, filters, page, pageSize, enabled);
 
@@ -101,13 +99,9 @@ const RentalReportingPage: React.FC = () => {
   const selectClass = 'text-xs rounded-lg border border-app-border bg-app-toolbar px-2 py-1.5 text-app-text max-w-[160px]';
 
   const handleGenerate = useCallback(() => {
-    if (localOnly) {
-      void showAlert('Tenant Reporting Center requires LAN/API mode.', { title: 'API mode required' });
-      return;
-    }
     setPage(1);
     setGenerated(true);
-  }, [localOnly, setGenerated, showAlert]);
+  }, [setGenerated, showAlert]);
 
   const handleQuickReport = useCallback(async (label: string) => {
     const tabMap: Record<string, RentalReportTab> = {
@@ -116,7 +110,7 @@ const RentalReportingPage: React.FC = () => {
     };
     if (tabMap[label]) setActiveTab(tabMap[label]);
     setGenerated(true);
-    if (!localOnly && label !== 'Tenant Ledger') {
+    if (label !== 'Tenant Ledger') {
       try {
         await downloadCustomReportExport({
           body: {
@@ -132,7 +126,7 @@ const RentalReportingPage: React.FC = () => {
         showToast(e instanceof Error ? e.message : 'Export failed', 'error');
       }
     }
-  }, [localOnly, setActiveTab, setGenerated, showToast]);
+  }, [setActiveTab, setGenerated, showToast]);
 
   const handleExportExcel = useCallback(() => {
     if (!tabRows.length) { showToast('Generate a report first', 'warning'); return; }
@@ -192,13 +186,7 @@ const RentalReportingPage: React.FC = () => {
         />
       </div>
 
-      {localOnly && (
-        <div className="rounded-xl border border-ds-warning/30 bg-app-highlight p-3 text-sm no-print">
-          Connect to the API server for full Tenant Reporting Center features.
-        </div>
-      )}
-
-      {generated && !localOnly && (
+      {generated && (
         <>
           <div className="no-print space-y-4">
             <ReportingKpiStrip kpis={summaryQuery.data?.kpis} loading={summaryQuery.isLoading} />

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useCompanyOptional } from '../context/CompanyContext';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import { isDemoModeActive } from '../config/demoEnvironment';
 import {
   onboardingApi,
@@ -68,7 +66,6 @@ function defaultState(tenantId: string, trialFlow = false): OnboardingState {
 
 export function useOnboarding() {
   const { isAuthenticated, tenant } = useAuth();
-  const companyCtx = useCompanyOptional();
   const perms = usePermissions();
   const [state, setState] = useState<OnboardingState | null>(null);
   const [loading, setLoading] = useState(true);
@@ -76,9 +73,8 @@ export function useOnboarding() {
   const [error, setError] = useState<string | null>(null);
 
   const storageId = useMemo(() => {
-    if (!isLocalOnlyMode()) return tenant?.id ?? localStorage.getItem('tenant_id') ?? '';
-    return companyCtx?.activeCompany?.id ?? 'local';
-  }, [tenant?.id, companyCtx?.activeCompany?.id]);
+    return tenant?.id ?? localStorage.getItem('tenant_id') ?? '';
+  }, [tenant?.id]);
 
   const canManage = perms.canManageUsers;
   const canAccessOnboarding =
@@ -92,10 +88,7 @@ export function useOnboarding() {
     setLoading(true);
     setError(null);
     try {
-      if (isLocalOnlyMode()) {
-        const local = loadLocalOnboarding(storageId) ?? defaultState(storageId);
-        setState(local);
-      } else if (isAuthenticated && canAccessOnboarding) {
+      if (isAuthenticated && canAccessOnboarding) {
         const remote = await onboardingApi.get();
         setState(remote);
         saveLocalOnboarding(storageId, remote);
@@ -123,7 +116,7 @@ export function useOnboarding() {
     async (next: OnboardingState) => {
       setState(next);
       if (storageId) saveLocalOnboarding(storageId, next);
-      if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
+      if (isAuthenticated && canAccessOnboarding) {
         try {
           const remote = await onboardingApi.save({
             currentStep: next.currentStep,
@@ -143,7 +136,7 @@ export function useOnboarding() {
   const completeStep = useCallback(
     async (stepId: OnboardingStepId, stepData?: Record<string, unknown>) => {
       if (!state) return;
-      if (isLocalOnlyMode() || !isAuthenticated || !canAccessOnboarding) {
+      if (!isAuthenticated || !canAccessOnboarding) {
         const next = advanceOnboardingStepLocally(state, stepId, stepData);
         await persist(next);
         return next;
@@ -166,7 +159,7 @@ export function useOnboarding() {
   );
 
   const skipAll = useCallback(async () => {
-    if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
+    if (isAuthenticated && canAccessOnboarding) {
       const remote = await onboardingApi.skip();
       setState(remote);
       if (storageId) saveLocalOnboarding(storageId, remote);
@@ -192,7 +185,7 @@ export function useOnboarding() {
   }, []);
 
   const restart = useCallback(async () => {
-    if (!isLocalOnlyMode() && isAuthenticated && canAccessOnboarding) {
+    if (isAuthenticated && canAccessOnboarding) {
       const remote = await onboardingApi.restart();
       setState(remote);
       if (storageId) saveLocalOnboarding(storageId, remote);

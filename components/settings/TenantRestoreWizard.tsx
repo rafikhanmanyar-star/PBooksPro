@@ -8,7 +8,6 @@ import {
   RotateCcw,
   Building2,
 } from 'lucide-react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -153,16 +152,6 @@ const TenantRestoreWizard: React.FC = () => {
       setLoading(false);
     }
   };
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
-          Tenant restore is available in LAN / server mode. Use company backup for local SQLite installs.
-        </div>
-      </div>
-    );
-  }
 
   if (!canRead) {
     return (

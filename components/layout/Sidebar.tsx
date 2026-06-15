@@ -7,14 +7,10 @@ import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState
 import { useAuth } from '../../context/AuthContext';
 import { useLicense } from '../../context/LicenseContext';
 import { apiClient } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
-import { useCompanyOptional } from '../../context/CompanyContext';
 import { useUpdate } from '../../context/UpdateContext';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
 import { connectRealtimeSocket } from '../../core/socket';
-import { ChatMessagesRepository } from '../../services/legacy-sqlite/repositories';
-import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { getInMemoryUnreadCount, subscribeInMemoryChat } from '../../services/chat/inMemoryChatStore';
 import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -60,7 +56,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const currentUser = useStateSelector(s => s.currentUser);
     const { logout, tenant, user } = useAuth();
     const { hasModule } = useLicense();
-    const companyCtx = useCompanyOptional();
     const { appVersion, isElectronUpdate } = useUpdate();
     const displayVersion = isElectronUpdate ? (appVersion ?? '...') : packageJson.version;
     const [isLicenseModalOpen, setIsLicenseModalOpen] = useState(false);
@@ -82,9 +77,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const organizationName = tenant?.companyName || tenant?.name || '';
     const currentUserId = user?.id || currentUser?.id || '';
 
-    const chatRepo = new ChatMessagesRepository();
-
-    // Fetch license status (skip in local-only)
+    // Fetch license status
     useEffect(() => {
         const fetchLicenseStatus = async () => {
             if (!apiClient.getToken()) return;
@@ -100,7 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             }
         };
 
-        if (!isLocalOnlyMode() && (user || currentUser)) {
+        if (user || currentUser) {
             fetchLicenseStatus();
             const interval = setInterval(fetchLicenseStatus, 300000);
             return () => clearInterval(interval);
@@ -133,7 +126,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Poll online user count only (lightweight; list loads when chat opens).
     useEffect(() => {
-        if (!isLocalOnlyMode() && (user || currentUser)) {
+        if (user || currentUser) {
             void fetchOnlineUsersCount();
             const interval = setInterval(() => {
                 void fetchOnlineUsersCount();
@@ -143,7 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     }, [user, currentUser, fetchOnlineUsersCount]);
 
     useEffect(() => {
-        if (isChatModalOpen && !isLocalOnlyMode()) {
+        if (isChatModalOpen) {
             void fetchOnlineUsersList();
         }
     }, [isChatModalOpen, fetchOnlineUsersList]);
@@ -152,23 +145,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const checkUnreadMessages = useCallback(() => {
         if (!currentUserId) return;
         try {
-            if (!isLocalOnlyMode()) {
-                setUnreadMessageCount(getInMemoryUnreadCount(currentUserId));
-                return;
-            }
-            const dbService = getDatabaseService();
-            if (!dbService.isReady()) {
-                return;
-            }
-            const count = chatRepo.getUnreadCount(currentUserId);
-            setUnreadMessageCount(count);
+            setUnreadMessageCount(getInMemoryUnreadCount(currentUserId));
         } catch (error) {
             console.error('Error checking unread messages:', error);
         }
     }, [currentUserId]);
 
     useEffect(() => {
-        if (isLocalOnlyMode()) return;
         return subscribeInMemoryChat(() => {
             if (currentUserId) {
                 setUnreadMessageCount(getInMemoryUnreadCount(currentUserId));
@@ -178,7 +161,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
     // Listen for incoming chat messages via Socket.IO (same connection as AppContext entity sync)
     useEffect(() => {
-        if (isLocalOnlyMode() || !currentUserId) return;
+        if (!currentUserId) return;
 
         const token = apiClient.getToken();
         if (!token) return;
@@ -224,11 +207,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const isSalesFocusedUser = enterpriseRole === 'sales_user';
     const canAccessProjectSellingNav = canReadProjectSelling;
 
-    /** Show count below the user card: LAN/API when server count loaded; local-only = single session. */
-    const showLoggedInUsersRow =
-        (isLocalOnlyMode() && !!(user || currentUser)) ||
-        (!isLocalOnlyMode() && onlineUsers !== null);
-    const loggedInUsersCount = isLocalOnlyMode() ? 1 : (onlineUsers ?? 0);
+    const showLoggedInUsersRow = onlineUsers !== null;
+    const loggedInUsersCount = onlineUsers ?? 0;
 
     // Persisted state for collapsible groups
     const [collapsedGroups, setCollapsedGroups] = useLocalStorage<Record<string, boolean>>('sidebar_collapsed_groups', {});
@@ -376,17 +356,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
     const handleLogout = async () => {
         if (confirm('Are you sure you want to logout?')) {
             try {
-                if (isLocalOnlyMode() && companyCtx) {
-                    // Local-only: save company DB, close it, then show company select/create screen
-                    await companyCtx.logoutCompany();
-                    dispatch({ type: 'LOGOUT' });
-                    localStorage.removeItem('last_tenant_id');
-                    localStorage.removeItem('last_identifier');
-                } else {
-                    await logout();
-                    dispatch({ type: 'LOGOUT' });
-                    // Keep last_tenant_id / last_identifier so API login can preselect the last organization and username.
-                }
+                await logout();
+                dispatch({ type: 'LOGOUT' });
             } catch (error) {
                 console.error('Logout error:', error);
                 dispatch({ type: 'LOGOUT' });
@@ -525,19 +496,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </button>
                             )}
 
-                            {/* Switch Company (local-only multi-company) */}
-                            {isLocalOnlyMode() && companyCtx?.activeCompany && (
-                                <button
-                                    onClick={() => companyCtx.switchCompany()}
-                                    className="w-full flex items-center gap-2 p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/70 border border-slate-700/50 transition-colors text-xs"
-                                    title="Switch to another company"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-                                    <span className="truncate">{companyCtx.activeCompany.company_name}</span>
-                                    <span className="text-slate-500 ml-auto text-[10px]">Switch</span>
-                                </button>
-                            )}
-
                             {/* User Info with logout */}
                             <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
                                 <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
@@ -571,20 +529,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             {showLoggedInUsersRow && (
                                 <div
                                     className="mt-2 px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
-                                    title={isLocalOnlyMode() ? 'Active sessions on this device' : 'Users currently signed in'}
+                                    title="Users currently signed in"
                                 >
                                     <div className="flex items-center justify-between gap-2">
                                         <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
                                         <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
                                     </div>
-                                    {isLocalOnlyMode() && (
-                                        <div className="text-[10px] text-slate-500 mt-0.5">This device</div>
-                                    )}
                                 </div>
                             )}
 
-                            {/* Chat when multiple users online (LAN/API) */}
-                            {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
+                            {onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     onClick={() => {
                                         void fetchOnlineUsersList();
@@ -678,17 +632,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                                 </button>
                             )}
-                            {isLocalOnlyMode() && companyCtx?.activeCompany && (
-                                <button
-                                    type="button"
-                                    onClick={() => companyCtx.switchCompany()}
-                                    className="w-full flex items-center justify-center p-2 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 border border-slate-700/50"
-                                    title={`Switch company (${companyCtx.activeCompany.company_name})`}
-                                    aria-label="Switch company"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" /></svg>
-                                </button>
-                            )}
                             <div className="flex flex-col items-center gap-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
                                 <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold" title={userName}>
                                     {userName.charAt(0).toUpperCase()}
@@ -708,7 +651,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                     {loggedInUsersCount}
                                 </div>
                             )}
-                            {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
+                            {onlineUsers !== null && onlineUsers > 1 && (
                                 <button
                                     type="button"
                                     onClick={() => {
@@ -826,19 +769,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             )}
 
                             <div className="space-y-2">
-                                {isLocalOnlyMode() && companyCtx?.activeCompany && (
-                                    <button
-                                        type="button"
-                                        onClick={() => companyCtx.switchCompany()}
-                                        className="w-full flex items-center gap-2 p-2.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/70 border border-slate-700/50 transition-colors text-xs min-w-0"
-                                        title="Switch to another company"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" /><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" /><path d="M16 16h5v5" /></svg>
-                                        <span className="truncate">{companyCtx.activeCompany.company_name}</span>
-                                        <span className="text-slate-500 ml-auto text-[10px] shrink-0">Switch</span>
-                                    </button>
-                                )}
-
                                 <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
                                     <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
                                         {userName.charAt(0).toUpperCase()}
@@ -871,19 +801,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 {showLoggedInUsersRow && (
                                     <div
                                         className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
-                                        title={isLocalOnlyMode() ? 'Active sessions on this device' : 'Users currently signed in'}
+                                        title="Users currently signed in"
                                     >
                                         <div className="flex items-center justify-between gap-2">
                                             <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
                                             <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
                                         </div>
-                                        {isLocalOnlyMode() && (
-                                            <div className="text-[10px] text-slate-500 mt-0.5">This device</div>
-                                        )}
                                     </div>
                                 )}
 
-                                {!isLocalOnlyMode() && onlineUsers !== null && onlineUsers > 1 && (
+                                {onlineUsers !== null && onlineUsers > 1 && (
                                     <button
                                         type="button"
                                         onClick={() => {

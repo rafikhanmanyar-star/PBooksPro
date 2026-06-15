@@ -14,7 +14,6 @@ import ContactForm from '../settings/ContactForm';
 import { CURRENCY, ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
 import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
@@ -42,7 +41,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
     const recordLock = useRecordLock({
         recordType: 'rental',
         recordId: agreementToEdit?.id,
-        enabled: Boolean(agreementToEdit?.id) && !isLocalOnlyMode(),
+        enabled: Boolean(agreementToEdit?.id),
         currentUserId: currentUser?.id,
         currentUserName: currentUser?.name,
         userRole: currentUser?.role,
@@ -362,13 +361,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
 
         let agreementIdForInvoices: string;
 
-        if (isLocalOnlyMode()) {
-            const id = Date.now().toString();
-            const newAgreement: RentalAgreement = { id, agreementNumber, ...agreementData };
-            dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
-            agreementIdForInvoices = id;
-        } else {
-            try {
+        try {
                 const rentalApi = new RentalAgreementsApiRepository();
                 const id = Date.now().toString();
                 const newAgreement = await rentalApi.create({
@@ -400,7 +393,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 await showAlert(msg);
                 return;
             }
-        }
 
         // Show invoice generation prompt only after step 3 (Broker & Review) is complete
         const shouldGenerate = await showConfirm(
@@ -524,10 +516,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     return;
                 }
             }
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: { ...agreementToEdit, ...agreementData } });
-            } else {
-                try {
+            try {
                     const rentalApi = new RentalAgreementsApiRepository();
                     const updated = await rentalApi.update(agreementToEdit.id, {
                         ...agreementToEdit,
@@ -550,7 +539,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     await showAlert(msg);
                     return;
                 }
-            }
             showToast("Agreement updated.");
         }
         onClose();
@@ -571,10 +559,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
             return;
         }
         if (await showConfirm("Are you sure you want to delete this agreement?")) {
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'DELETE_RENTAL_AGREEMENT', payload: agreementToEdit.id });
-            } else {
-                try {
+            try {
                     const rentalApi = new RentalAgreementsApiRepository();
                     await rentalApi.delete(agreementToEdit.id, agreementToEdit.version);
                     dispatch({ type: 'DELETE_RENTAL_AGREEMENT', payload: agreementToEdit.id });
@@ -588,7 +573,6 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     await showAlert(msg);
                     return;
                 }
-            }
             showToast("Agreement deleted.");
             onClose();
         }
@@ -777,15 +761,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 <Modal isOpen={showAddTenantModal} onClose={() => { setShowAddTenantModal(false); setNewTenantInitialName(''); }} title="Add New Tenant" size="md">
                     <ContactForm
                         onSubmit={async (data) => {
-                            if (isLocalOnlyMode()) {
-                                const newId = Date.now().toString();
-                                const payload = { ...data, id: newId, type: ContactType.TENANT };
-                                dispatch({ type: 'ADD_CONTACT', payload });
-                                setContactId(newId);
-                                setShowAddTenantModal(false);
-                                setNewTenantInitialName('');
-                                return;
-                            }
+                            
                             try {
                                 const contactsApi = new ContactsApiRepository();
                                 const created = await contactsApi.create({ ...data, type: ContactType.TENANT });
@@ -826,10 +802,10 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                 onForceEdit={handleForceRecordLock}
                 onDismiss={recordLock.dismissModal}
             />
-            {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+            {agreementToEdit?.id && recordLock.bannerMode === 'self' && (
                 <RecordLockBanner mode="self" currentUserName={currentUser?.name} />
             )}
-            {agreementToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+            {agreementToEdit?.id && recordLock.bannerMode === 'other' && (
                 <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
             )}
             <div className={`flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[5fr_3fr] gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden${recordLock.viewOnly ? ' pointer-events-none opacity-[0.88]' : ''}`}>

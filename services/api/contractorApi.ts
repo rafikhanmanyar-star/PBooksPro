@@ -2,7 +2,6 @@
  * Contractor advances / bills API (PostgreSQL-backed). No-op stubs in local-only mode.
  */
 
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { apiClient } from './client';
 import type { Bill } from '../../types';
 
@@ -103,7 +102,6 @@ export type SupplierAdvanceCreated = {
 
 export const contractorApi = {
   async getContractorLedger(contactId: string): Promise<ContractorLedgerPayload | null> {
-    if (isLocalOnlyMode()) return null;
     try {
       return await apiClient.get<ContractorLedgerPayload>(`/contractor/${encodeURIComponent(contactId)}/ledger`);
     } catch (e) {
@@ -113,7 +111,6 @@ export const contractorApi = {
   },
 
   async getAdvances(contactId: string): Promise<ContractorLedgerAdvance[]> {
-    if (isLocalOnlyMode()) return [];
     try {
       return await apiClient.get<ContractorLedgerAdvance[]>(
         `/contractor/${encodeURIComponent(contactId)}/advances`
@@ -128,14 +125,10 @@ export const contractorApi = {
    * Settle unpaid vendor/service bills via prepaid advances (journal) + remaining bank leg.
    */
   async settleBillsWithAdvances(body: VendorBillSettleRequestPayload): Promise<VendorBillSettleResponsePayload> {
-    if (isLocalOnlyMode()) {
-      throw new Error('Advance settlement is only available when using the PostgreSQL API.');
-    }
     return apiClient.post<VendorBillSettleResponsePayload>('/bills/settle-with-advances', body);
   },
 
   async listVendorBillSettlements(billIds: string[]): Promise<VendorBillSettlementRow[]> {
-    if (isLocalOnlyMode()) return [];
     const ids = billIds.filter(Boolean);
     if (ids.length === 0) return [];
     return apiClient.get<VendorBillSettlementRow[]>(
@@ -159,9 +152,6 @@ export const contractorApi = {
     journalEntries: { billId: string; journalEntryId: string }[];
     transactions?: Record<string, unknown>[];
   }> {
-    if (isLocalOnlyMode()) {
-      throw new Error('Settlement replace requires the PostgreSQL API.');
-    }
     return apiClient.post('/bills/vendor-settlement/replace', body);
   },
 
@@ -171,17 +161,11 @@ export const contractorApi = {
     touchedAdvanceIds: string[];
     deletedTransactionIds: string[];
   }> {
-    if (isLocalOnlyMode()) {
-      throw new Error('Settlement reversal requires the PostgreSQL API.');
-    }
     return apiClient.post('/bills/vendor-settlement/reverse', body);
   },
 
   /** Record prepaid funds to a supplier (journal: Dr advance asset, Cr bank/cash). */
   async createSupplierAdvance(body: CreateSupplierAdvancePayload): Promise<SupplierAdvanceCreated> {
-    if (isLocalOnlyMode()) {
-      throw new Error('Supplier advances require the PostgreSQL API.');
-    }
     return apiClient.post<SupplierAdvanceCreated>('/contractor/advance', body);
   },
 };

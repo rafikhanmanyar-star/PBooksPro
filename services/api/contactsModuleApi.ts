@@ -1,6 +1,6 @@
 /**
  * Contacts module API facade (LAN / PostgreSQL backend).
- * Prefer this over direct SQLite when `isLocalOnlyMode()` is false.
+ * Prefer this over direct SQLite in API mode.
  *
  * Implementation: {@link ContactsApiRepository} → GET/POST/PUT/DELETE `/api/contacts`.
  */

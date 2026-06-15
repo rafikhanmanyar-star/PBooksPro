@@ -38,7 +38,6 @@ import {
 } from '../payouts/ownerPayoutBreakdown';
 import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
 
 /** Keep Electron watchdog alive during long synchronous layout passes. */
@@ -189,7 +188,7 @@ const PropertyLayoutReport: React.FC = () => {
     const projectAgreements = useStateSelector((s) => s.projectAgreements);
     const queryClient = useQueryClient();
     const { isAuthenticated } = useAuth();
-    const useApiRollup = !isLocalOnlyMode() && isAuthenticated;
+    const useApiRollup = isAuthenticated;
     const {
         data: apiOwnerBalanceRows,
         isSuccess: apiRollupSuccess,

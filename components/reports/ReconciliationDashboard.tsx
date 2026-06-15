@@ -6,7 +6,6 @@ import {
   type CertificationStatus,
 } from '../../services/api/financialReconciliationApi';
 import { formatApiErrorMessage } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 
 function statusColor(status: CertificationStatus): string {
   switch (status) {
@@ -43,11 +42,7 @@ const ReconciliationDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode()) {
-      setError('Reconciliation certification requires API mode with PostgreSQL journal data.');
-      return;
-    }
-    setLoading(true);
+        setLoading(true);
     setError(null);
     try {
       setData(await financialReconciliationApi.getCertification({ from, to }));
@@ -67,15 +62,6 @@ const ReconciliationDashboard: React.FC = () => {
     () => data?.reportSources.filter((r) => r.status === 'unified').length ?? 0,
     [data]
   );
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-6 text-sm text-app-muted">
-        Financial Reconciliation Certification is available in API / PostgreSQL mode where journal entries are stored
-        on the server.
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 p-4 sm:p-6">

@@ -10,7 +10,6 @@ import React, {
 import packageJson from '../package.json';
 import {
   PBOOKS_SESSION_DATA_SOURCE_KEY,
-  isLocalOnlyMode,
 } from '../config/apiUrl';
 import { useAuth } from './AuthContext';
 import { systemApi } from '../services/api/systemApi';
@@ -69,13 +68,7 @@ function shouldFetchSystemInfoFromApi(): boolean {
   const token = localStorage.getItem('auth_token');
   if (!token) return false;
 
-  if (!isLocalOnlyMode()) return true;
-
-  const dataSource = localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY);
-  if (dataSource === 'postgres_api') return true;
-
-  const tenantId = localStorage.getItem('tenant_id');
-  return !!(tenantId && tenantId !== 'local');
+  return true;
 }
 
 function getOfflineDesktopSystemInfo(): SystemInfo {

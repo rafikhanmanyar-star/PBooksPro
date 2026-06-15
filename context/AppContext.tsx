@@ -7,12 +7,11 @@ import { useDatabaseStateFallback } from '../hooks/useDatabaseStateFallback';
 import { getPersistableStateFingerprint } from '../services/state/persistableStateFingerprint';
 import { MANDATORY_SYSTEM_ACCOUNTS } from '../constants/mandatorySystemAccounts';
 import { MANDATORY_SYSTEM_CATEGORIES } from '../constants/mandatorySystemCategories';
-import { getLegacyDatabaseService, loadMigrationModule } from '../services/legacySqliteLoader';
 import { findSalesReturnCategory } from '../constants/salesReturnSystemCategories';
 import { resolveSystemCategoryId } from '../services/systemEntityIds';
 import packageJson from '../package.json';
 import { roleHasPermission } from '../shared/rbac/permissions';
-import { isLocalOnlyMode, isAccountingBackedByRemoteApi } from '../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../config/apiUrl';
 import { notifyDatabaseError } from '../services/dbErrorNotification';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
@@ -40,7 +39,6 @@ import {
 import { syncPayslipsAfterTransactionAction, getTenantIdForPayroll, type TransactionPayslipSyncInput } from '../components/payroll/services/payrollRevert';
 import { maybeQueueTransactionLogSync } from './syncTransactionLogToApi';
 import InitializationScreen from '../components/InitializationScreen';
-import { syncQueueStub as getSyncQueue } from '../services/sync/localOnlyStubs';
 import {
   applyTxToInvoiceCopy,
   applyTxToBillCopy,
@@ -49,7 +47,6 @@ import {
 } from './reducers/appReducerEffects';
 
 import { initialState } from './appInitialState';
-import { getAppStateRepository } from './appRepositoryLoader';
 import {
   _getAppState,
   _getAppDispatch,
@@ -71,6 +68,8 @@ import {
   mergeTenantSettingsFromAction,
   mergePartialStateIntoBaseline,
 } from './reducers/appStateMerge';
+import { useAuth } from './AuthContext';
+import { useCompanyOptional } from './CompanyContext';
 
 /** Normalize API / WebSocket transaction payloads (camelCase or snake_case) for reducer merge. */
 function normalizeRemoteTransactionRow(raw: Record<string, unknown>): Transaction {
@@ -167,8 +166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // AuthProvider wraps AppProvider in index.tsx, so this should work
     const auth = useAuth();
     const companyOpt = useCompanyOptional();
-    /** Local-only: pass active company id so useDatabaseState loads SQLite and enables saveNow (otherwise payments are never persisted). */
-    const companyDbReloadTrigger = isLocalOnlyMode() ? (companyOpt?.activeCompany?.id ?? undefined) : undefined;
+    const companyDbReloadTrigger = undefined;
 
     // Track previous auth state to detect when user re-authenticates
     const prevAuthRef = React.useRef<boolean>(false);
@@ -177,9 +175,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Track tenant ID to detect tenant switches (prevents cross-org data leaks).
     // Must follow auth.tenant.id — localStorage alone does not re-render when org changes in-session (e.g. live demo).
     const currentTenantId = React.useMemo(() => {
-        if (isLocalOnlyMode()) {
-            return companyOpt?.activeCompany?.id ?? 'local';
-        }
         const fromAuth = auth.tenant?.id?.trim();
         if (fromAuth) return fromAuth;
         try {
@@ -268,26 +263,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return prev;
         });
 
-        // Also clear from local SQLite if needed (LAN/API does not persist auth user in SQLite)
-        if (isLocalOnlyMode() && (isAppRelaunched || versionChanged)) {
-            (async () => {
-                try {
-                    const dbService = await getLegacyDatabaseService();
-                    if (dbService.isReady()) {
-                        const appStateRepo = await getAppStateRepository();
-                        const currentState = await appStateRepo.loadState();
-                        if (currentState.currentUser) {
-                            currentState.currentUser = null;
-                            await appStateRepo.saveState(currentState, true);
-                            logger.logCategory('database', '✅ Cleared user from database');
-                        }
-                    }
-                } catch (error) {
-                    logger.warnCategory('database', '⚠️ Could not clear user from database:', error);
-                }
-            })();
-        }
-
         // Set session flag to indicate app is running
         sessionStorage.setItem(SESSION_FLAG_KEY, 'true');
 
@@ -328,283 +303,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     }
                 }, 45000);
 
-                setInitMessage('Checking for data migration...');
-                setInitProgress(5);
+                setInitMessage('Loading application data...');
+                setInitProgress(50);
 
-                let migrationNeeded = false;
-                if (isLocalOnlyMode()) {
-                    const migrationMod = await loadMigrationModule();
-                    migrationNeeded = migrationMod.needsMigration();
-                }
-
-                if (migrationNeeded) {
-                    const { runAllMigrations } = await loadMigrationModule();
-                    setInitMessage('Migrating data from localStorage to SQL database...');
-                    setInitProgress(10);
-
-                    const result = await runAllMigrations((progress, message) => {
+                if (isAuthenticated) {
+                    try {
+                        setInitMessage('Loading application data from server...');
+                        setInitProgress(60);
+                        const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
+                        const partial = await getAppStateApiService().loadStateBulkChunked(
+                            (loaded, total) => {
+                                if (isMounted && total > 0) {
+                                    const pct = Math.min(95, 60 + Math.floor((loaded / total) * 35));
+                                    setInitProgress(pct);
+                                }
+                            }
+                        );
                         if (isMounted) {
-                            setInitProgress(progress);
-                            setInitMessage(message);
+                            const mergedInit = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) } as AppState;
+                            setStoredState(mergedInit);
+                            if (typeof sessionStorage !== 'undefined') {
+                                sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
+                                if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
+                            }
+                            markDbLoadCompleteRef.current?.();
+                            logger.logCategory('sync', '✅ Application state loaded from API');
                         }
-                    });
-
+                    } catch (apiErr) {
+                        logger.warnCategory(
+                            'sync',
+                            'API load failed — not using local database (no offline fallback to SQLite in API mode):',
+                            apiErr
+                        );
+                        const msg =
+                            apiErr instanceof Error
+                                ? apiErr.message
+                                : typeof apiErr === 'string'
+                                  ? apiErr
+                                  : 'Could not reach the server or load your data.';
+                        if (!isMounted) return;
+                        if (timeoutId) clearTimeout(timeoutId);
+                        if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                        setInitError(msg);
+                        setInitMessage('Could not load data from the server.');
+                        setInitProgress(100);
+                        setApiStateLoadFailed(true);
+                        setIsInitializing(false);
+                        return;
+                    }
                     if (!isMounted) return;
                     if (timeoutId) clearTimeout(timeoutId);
                     if (forceTimeoutId) clearTimeout(forceTimeoutId);
-
-                    if (!result.success) {
-                        const errorMsg = result.error || 'Migration failed';
-                        setInitMessage(`Migration error: ${errorMsg}`);
-                        console.error('Migration failed:', result.error);
-                        // Still continue - user can retry later
-                        setTimeout(() => {
-                            if (isMounted) setIsInitializing(false);
-                        }, 2000);
-                    } else if (result.migrated) {
-                        const recordCount = Object.values(result.recordCounts || {}).reduce((a, b) => a + b, 0);
-
-                        // Reload state after migration
-                        setInitMessage(`Loading migrated data (${recordCount} records)...`);
-                        setInitProgress(95);
-                        const appStateRepo = await getAppStateRepository();
-                        const migratedState = await appStateRepo.loadState();
-
-                        if (isMounted) {
-                            setStoredState(migratedState as AppState);
-                            markDbLoadCompleteRef.current?.();
-                            setInitProgress(100);
-                            setInitMessage('Migration completed successfully!');
-                            setTimeout(() => setIsInitializing(false), 800);
-                        }
-                    } else {
-                        // No migration needed
-                        setInitProgress(100);
-                        setInitMessage('Ready!');
-                        setTimeout(() => {
-                            if (isMounted) setIsInitializing(false);
-                        }, 300);
-                    }
+                    setInitProgress(100);
+                    setInitMessage('Ready!');
+                    setTimeout(() => {
+                        if (isMounted) setIsInitializing(false);
+                    }, 300);
                 } else {
-                    // No migration needed, just loading
-                    setInitMessage('Loading application data...');
-                    setInitProgress(50);
-
-                    // Check if user is authenticated (cloud / LAN API vs local SQLite)
-                    if (isAuthenticated) {
-                        // LAN / API: load state from server (PostgreSQL-backed API)
-                        if (!isLocalOnlyMode()) {
-                            try {
-                                setInitMessage('Loading application data from server...');
-                                setInitProgress(60);
-                                const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
-                                const partial = await getAppStateApiService().loadStateBulkChunked(
-                                    (loaded, total) => {
-                                        if (isMounted && total > 0) {
-                                            const pct = Math.min(95, 60 + Math.floor((loaded / total) * 35));
-                                            setInitProgress(pct);
-                                        }
-                                    }
-                                );
-                                if (isMounted) {
-                                    const mergedInit = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) } as AppState;
-                                    setStoredState(mergedInit);
-                                    if (typeof sessionStorage !== 'undefined') {
-                                        sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
-                                        if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
-                                    }
-                                    markDbLoadCompleteRef.current?.();
-                                    logger.logCategory('sync', '✅ Application state loaded from API');
-                                }
-                            } catch (apiErr) {
-                                logger.warnCategory(
-                                    'sync',
-                                    'API load failed — not using local database (no offline fallback to SQLite in API mode):',
-                                    apiErr
-                                );
-                                const msg =
-                                    apiErr instanceof Error
-                                        ? apiErr.message
-                                        : typeof apiErr === 'string'
-                                          ? apiErr
-                                          : 'Could not reach the server or load your data.';
-                                if (!isMounted) return;
-                                if (timeoutId) clearTimeout(timeoutId);
-                                if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                                setInitError(msg);
-                                setInitMessage('Could not load data from the server.');
-                                setInitProgress(100);
-                                setApiStateLoadFailed(true);
-                                setIsInitializing(false);
-                                return;
-                            }
-                            if (!isMounted) return;
-                            if (timeoutId) clearTimeout(timeoutId);
-                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                            setInitProgress(100);
-                            setInitMessage('Ready!');
-                            setTimeout(() => {
-                                if (isMounted) setIsInitializing(false);
-                            }, 300);
-                        } else {
-                        // Authenticated + local-only: offline-first SQLite
-                        try {
-                            const { apiClient } = await import('../services/api/client');
-                            const currentTenantId = apiClient.getTenantId();
-
-                            let offlineTransactions: Transaction[] = [];
-                            let offlineContacts: Contact[] = [];
-                            let offlineInvoices: Invoice[] = [];
-                            let offlineBills: Bill[] = [];
-                            let offlineAccounts: Account[] = [];
-                            let offlineCategories: Category[] = [];
-                            let offlineVendors: Vendor[] = [];
-                            let offlineRecurringTemplates: RecurringInvoiceTemplate[] = [];
-
-                            try {
-                                const syncQueue = getSyncQueue;
-                                if (currentTenantId) {
-                                    const pendingItems = await syncQueue.getPendingItems(currentTenantId);
-                                    logger.logCategory('sync', `📦 Found ${pendingItems.length} pending sync items to restore`);
-                                    for (const item of pendingItems) {
-                                        if (item.type === 'transaction' && item.action === 'create') {
-                                            offlineTransactions.push(item.data as Transaction);
-                                        } else if (item.type === 'contact' && item.action === 'create') {
-                                            offlineContacts.push(item.data as Contact);
-                                        } else if (item.type === 'invoice' && item.action === 'create') {
-                                            offlineInvoices.push(item.data as Invoice);
-                                        } else if (item.type === 'bill' && item.action === 'create') {
-                                            offlineBills.push(item.data as Bill);
-                                        } else if (item.type === 'account' && item.action === 'create') {
-                                            offlineAccounts.push(item.data as Account);
-                                        } else if (item.type === 'category' && item.action === 'create') {
-                                            offlineCategories.push(item.data as Category);
-                                        } else if (item.type === 'vendor' && item.action === 'create') {
-                                            offlineVendors.push(item.data as Vendor);
-                                        } else if (item.type === 'recurring_invoice_template' && item.action === 'create') {
-                                            offlineRecurringTemplates.push(item.data as RecurringInvoiceTemplate);
-                                        }
-                                    }
-                                    logger.logCategory('sync', `✅ Extracted offline data from sync queue:`, {
-                                        transactions: offlineTransactions.length,
-                                        contacts: offlineContacts.length,
-                                        invoices: offlineInvoices.length,
-                                        bills: offlineBills.length,
-                                        accounts: offlineAccounts.length,
-                                        categories: offlineCategories.length,
-                                        vendors: offlineVendors.length,
-                                        recurringTemplates: offlineRecurringTemplates.length
-                                    });
-                                }
-                            } catch (syncQueueError) {
-                                logger.warnCategory('sync', '⚠️ Could not load sync queue items:', syncQueueError);
-                            }
-
-                            try {
-                                const dbService = await getLegacyDatabaseService();
-                                if (!dbService.isReady()) {
-                                    setInitMessage('Initializing database...');
-                                    setInitProgress(60);
-                                    await dbService.initialize();
-                                    logger.logCategory('database', '✅ Database ready');
-                                }
-                            } catch (dbError) {
-                                logger.warnCategory('database', '⚠️ Database initialization failed, using localStorage fallback:', dbError);
-                                setUseFallback(true);
-                                setInitMessage('Using localStorage (database unavailable)...');
-                            }
-
-                            setInitMessage('Loading application data from database...');
-                            setInitProgress(70);
-                            try {
-                                const appStateRepo = await getAppStateRepository();
-                                const loadedState = await appStateRepo.loadState();
-                                if (isMounted) {
-                                    setStoredState(loadedState as AppState);
-                                    markDbLoadCompleteRef.current?.();
-                                    logger.logCategory('database', '✅ Database state loaded (offline-first), UI will show from local');
-                                }
-                            } catch (loadErr) {
-                                logger.warnCategory('database', '⚠️ Load from local failed, continuing with current state:', loadErr);
-                            }
-
-                            if (!isMounted) return;
-                            if (timeoutId) clearTimeout(timeoutId);
-                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                            setInitProgress(100);
-                            setInitMessage('Ready!');
-                            setTimeout(() => {
-                                if (isMounted) setIsInitializing(false);
-                            }, 300);
-
-                        } catch (initError) {
-                            console.error('⚠️ Authenticated init error:', initError);
-                            setInitMessage('Using local data...');
-                            if (!isMounted) return;
-                            if (timeoutId) clearTimeout(timeoutId);
-                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                            setInitProgress(100);
-                            setInitMessage('Ready!');
-                            setTimeout(() => {
-                                if (isMounted) setIsInitializing(false);
-                            }, 300);
-                        }
-                        }
-                    } else if (isLocalOnlyMode()) {
-                        // Load from local database (offline mode only)
-                        // Try to initialize database (but don't fail if it doesn't work)
-                        try {
-                            const dbService = await getLegacyDatabaseService();
-                            if (!dbService.isReady()) {
-                                setInitMessage('Initializing database...');
-                                setInitProgress(60);
-                                await dbService.initialize();
-                                logger.logCategory('database', '✅ Database ready');
-                            }
-                        } catch (dbError) {
-                            logger.warnCategory('database', '⚠️ Database initialization failed, using localStorage fallback:', dbError);
-                            setUseFallback(true);
-                            setInitMessage('Using localStorage (database unavailable)...');
-                            // Continue anyway - app can work without database
-                        }
-
-                        // Load state from database explicitly so we know it's in React before finishing init.
-                        // (Previously we only checked dbService.isReady(), so UI could show empty state briefly.)
-                        setInitMessage('Loading application data from database...');
-                        setInitProgress(70);
-
-                        try {
-                            const appStateRepo = await getAppStateRepository();
-                            const loadedState = await appStateRepo.loadState();
-                            if (isMounted) {
-                                setStoredState(loadedState as AppState);
-                                markDbLoadCompleteRef.current?.();
-                                logger.logCategory('database', '✅ Database state loaded for offline init');
-                            }
-                        } catch (loadErr) {
-                            logger.warnCategory('database', '⚠️ Offline path loadState failed, continuing:', loadErr);
-                        }
-
-                        if (!isMounted) return;
-                        if (timeoutId) clearTimeout(timeoutId);
-                        if (forceTimeoutId) clearTimeout(forceTimeoutId);
-
-                        setInitProgress(100);
-                        setInitMessage('Ready!');
-                        setTimeout(() => {
-                            if (isMounted) setIsInitializing(false);
-                        }, 300);
-                    } else {
-                        // LAN/PostgreSQL API: not logged in yet — do not read SQLite into app state (wrong tenant / stale).
-                        if (!isMounted) return;
-                        if (timeoutId) clearTimeout(timeoutId);
-                        if (forceTimeoutId) clearTimeout(forceTimeoutId);
-                        setInitProgress(100);
-                        setInitMessage('Ready!');
-                        setTimeout(() => {
-                            if (isMounted) setIsInitializing(false);
-                        }, 300);
-                    }
+                    if (!isMounted) return;
+                    if (timeoutId) clearTimeout(timeoutId);
+                    if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                    setInitProgress(100);
+                    setInitMessage('Ready!');
+                    setTimeout(() => {
+                        if (isMounted) setIsInitializing(false);
+                    }, 300);
                 }
             } catch (error) {
                 if (!isMounted) return;
@@ -1815,47 +1578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     useEffect(() => {
         // Wait for initialization to complete and storedState to be ready
         if (!isInitializing && !apiStateLoadFailed && storedStateRef.current) {
-            // API/LAN mode: server is the source of truth. Never let a stale local SQLite
-            // cache overwrite the API-loaded state (prevents cross-tenant data leaks when
-            // switching organizations).
-            if (!isLocalOnlyMode()) {
-                reducerInitializedRef.current = true;
-                return;
-            }
-
-            // Use ref to access storedState to avoid dependency issues
-            const currentStoredState = storedStateRef.current;
-
-            // Check if storedState has more data than current state (database loaded)
-            const storedHasMoreData = currentStoredState.contacts.length > state.contacts.length ||
-                currentStoredState.transactions.length > state.transactions.length ||
-                currentStoredState.invoices.length > state.invoices.length ||
-                currentStoredState.accounts.length > state.accounts.length ||
-                (currentStoredState.projectAgreements?.length ?? 0) > (state.projectAgreements?.length ?? 0) ||
-                (currentStoredState.installmentPlans?.length ?? 0) > (state.installmentPlans?.length ?? 0);
-
-            // Check if storedState has any user data (not just system defaults)
-            const storedHasUserData = currentStoredState.contacts.length > 0 ||
-                currentStoredState.transactions.length > 0 ||
-                currentStoredState.invoices.length > 0 ||
-                currentStoredState.bills.length > 0 ||
-                (currentStoredState.projectAgreements?.length ?? 0) > 0 ||
-                (currentStoredState.installmentPlans?.length ?? 0) > 0;
-
-            const currentHasUserData = state.contacts.length > 0 ||
-                state.transactions.length > 0 ||
-                state.invoices.length > 0 ||
-                state.bills.length > 0;
-
-            // Sync if database has more data or has user data when current doesn't
-            // Only sync once during initialization to avoid infinite loops
-            if ((storedHasMoreData || (storedHasUserData && !currentHasUserData)) && !reducerInitializedRef.current) {
-                dispatch({ type: 'SET_STATE', payload: currentStoredState, _isRemote: true } as any);
-                reducerInitializedRef.current = true;
-            } else if (storedHasUserData && currentHasUserData) {
-                // Mark as initialized if both have data (already synced)
-                reducerInitializedRef.current = true;
-            }
+            reducerInitializedRef.current = true;
+            return;
         }
         // Only depend on isInitializing/apiStateLoadFailed to avoid running on every state change.
         // The ref guard (reducerInitializedRef) ensures this dispatches at most once; state
@@ -1876,8 +1600,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (
             currentTenantId &&
             prevTenantId &&
-            currentTenantId !== prevTenantId &&
-            !isLocalOnlyMode()
+            currentTenantId !== prevTenantId
         ) {
             logger.logCategory('sync', `🔒 Tenant switched (${prevTenantId} → ${currentTenantId}), clearing previous tenant state`);
             if (typeof sessionStorage !== 'undefined') {
@@ -1897,7 +1620,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * Required so User B sees projects/units created by User A without reloading the app.
      */
     const refreshFromApi = useCallback(async (_onCriticalLoaded?: () => void) => {
-        if (!isAuthenticated || isLocalOnlyMode()) return;
+        if (!isAuthenticated) return;
         let hydrationStarted = false;
         try {
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
@@ -2048,7 +1771,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             didPostAuthApiMergeRef.current = false;
             return;
         }
-        if (isInitializing || isLocalOnlyMode() || apiStateLoadFailed) return;
+        if (isInitializing || apiStateLoadFailed) return;
         if (didPostAuthApiMergeRef.current) return;
         didPostAuthApiMergeRef.current = true;
         void refreshFromApi();
@@ -2056,7 +1779,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     /** Socket.IO: merge server state when another user mutates data (tenant-scoped rooms on API). */
     useEffect(() => {
-        if (!isAuthenticated || isLocalOnlyMode() || apiStateLoadFailed) {
+        if (!isAuthenticated || apiStateLoadFailed) {
             disconnectRealtimeSocket();
             return;
         }
@@ -2230,7 +1953,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     /** When user returns to the tab, refresh from API so multi-user changes (e.g. new projects) appear. */
     useEffect(() => {
-        if (!isAuthenticated || isLocalOnlyMode() || apiStateLoadFailed) return;
+        if (!isAuthenticated || apiStateLoadFailed) return;
         let debounce: ReturnType<typeof setTimeout> | null = null;
         const onVisibility = () => {
             if (document.visibilityState !== 'visible') return;
@@ -2248,44 +1971,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [isAuthenticated, apiStateLoadFailed]);
 
 
-    // Reload AppContext from local DB when bidirectional sync completes (sync writes to DB but does not update React state)
+    // Reload AppContext from API when bidirectional sync completes
     useEffect(() => {
         const handleBidirDownstreamComplete = async () => {
+            if (!isAuthenticated) return;
             try {
-                // API mode: server is the sole source of truth. Load everything from API
-                // instead of mixing SQLite (which may contain stale data from a different
-                // tenant) with server data.
-                if (!isLocalOnlyMode() && isAuthenticated) {
-                    try {
-                        const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
-                        const partial = await getAppStateApiService().loadStateForSyncRefresh();
-                        const loadedState = mergePartialStateIntoBaseline(
-                            initialState,
-                            partial,
-                            pickTenantSettingsPartial(partial)
-                        );
-                        if (
-                            loadedState &&
-                            (loadedState.transactions?.length > 0 ||
-                                loadedState.contacts?.length > 0 ||
-                                loadedState.invoices?.length > 0 ||
-                                loadedState.accounts?.length > 0 ||
-                                (loadedState.rentalAgreements?.length ?? 0) > 0)
-                        ) {
-                            dispatch({ type: 'SET_STATE', payload: loadedState, _isRemote: true } as any);
-                            setStoredState(loadedState as AppState);
-                            markDbLoadCompleteRef.current?.();
-                            logger.logCategory('sync', '✅ Reloaded AppContext from API after bidirectional sync');
-                        }
-                    } catch (apiErr) {
-                        logger.warnCategory('sync', '⚠️ Bidir reload: could not load from API:', apiErr);
-                    }
-                    return;
-                }
-                const dbService = await getLegacyDatabaseService();
-                if (!dbService.isReady()) return;
-                const appStateRepo = await getAppStateRepository();
-                const loadedState = await appStateRepo.loadState();
+                const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
+                const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                const loadedState = mergePartialStateIntoBaseline(
+                    initialState,
+                    partial,
+                    pickTenantSettingsPartial(partial)
+                );
                 if (
                     loadedState &&
                     (loadedState.transactions?.length > 0 ||
@@ -2297,20 +1994,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     dispatch({ type: 'SET_STATE', payload: loadedState, _isRemote: true } as any);
                     setStoredState(loadedState as AppState);
                     markDbLoadCompleteRef.current?.();
-                    logger.logCategory('sync', '✅ Reloaded AppContext from DB after bidirectional sync', {
-                        transactions: loadedState.transactions?.length ?? 0,
-                        contacts: loadedState.contacts?.length ?? 0,
-                        projects: loadedState.projects?.length ?? 0,
-                        vendors: loadedState.vendors?.length ?? 0,
-                    });
+                    logger.logCategory('sync', '✅ Reloaded AppContext from API after bidirectional sync');
                 }
-            } catch (err) {
-                logger.warnCategory('sync', '⚠️ Failed to reload state after bidir sync:', err);
+            } catch (apiErr) {
+                logger.warnCategory('sync', '⚠️ Bidir reload: could not load from API:', apiErr);
             }
         };
         window.addEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
         return () => window.removeEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
-    }, [dispatch, setStoredState, isAuthenticated, isLocalOnlyMode]);
+    }, [dispatch, setStoredState, isAuthenticated]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
@@ -2462,9 +2154,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 fixButton.style.cursor = 'wait';
 
                                 try {
-                                    const { clearAllDatabaseStorage } = await import('../services/legacy-sqlite/databaseService');
-                                    await clearAllDatabaseStorage();
-
                                     setTimeout(() => location.reload(), 500);
                                 } catch (error) {
                                     console.error('Error during fix:', error);
@@ -2501,16 +2190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     logger.logCategory('database', '✅ State saved successfully before logout');
                     success = true;
                 } else {
-                    const dbService = await getLegacyDatabaseService();
-                    if (dbService.isReady()) {
-                        const appStateRepo = await getAppStateRepository();
-                        await appStateRepo.saveState(snapshot, true);
-                        logger.logCategory('database', '✅ State saved successfully before logout');
-                        success = true;
-                    } else {
-                        logger.warnCategory('database', '⚠️ Database not ready, skipping save before logout');
-                        success = false;
-                    }
+                    success = true;
                 }
             } catch (error) {
                 logger.errorCategory('database', '❌ Failed to save state before logout:', error);
@@ -2575,7 +2255,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (
             isAuthenticated &&
             !isInitializing &&
-            !isLocalOnlyMode() &&
             !apiStateLoadFailed &&
             !sessionRestoreRefreshDoneRef.current
         ) {

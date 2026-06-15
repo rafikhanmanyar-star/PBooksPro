@@ -30,7 +30,6 @@ import {
     X,
 } from 'lucide-react';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { formatApiErrorMessage } from '../../services/api/client';
 import { ProjectAgreementsApiRepository } from '../../services/api/repositories/projectAgreementsApi';
 import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
@@ -158,7 +157,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const recordLock = useRecordLock({
         recordType: 'agreement',
         recordId: agreementToEdit?.id,
-        enabled: Boolean(agreementToEdit?.id) && !isLocalOnlyMode(),
+        enabled: Boolean(agreementToEdit?.id),
         currentUserId: state.currentUser?.id,
         currentUserName: state.currentUser?.name,
         userRole: state.currentUser?.role,
@@ -487,8 +486,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             // In API mode, client state may omit invoices that exist in PostgreSQL (import, other sessions).
             // Merge server list with local state so numeric suffixes never collide with (tenant_id, invoice_number).
             let invoicesForNumberScan: Invoice[] = state.invoices || [];
-            if (!isLocalOnlyMode()) {
-                try {
+            try {
                     const { InvoicesApiRepository } = await import('../../services/api/repositories/invoicesApi');
                     const serverInvoices = await new InvoicesApiRepository().findAll({ includeDeleted: true });
                     const byId = new Map<string, Invoice>();
@@ -502,7 +500,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 } catch (fetchErr) {
                     console.warn('Could not load invoices from API for number scan; using local state only.', fetchErr);
                 }
-            }
             
             // Scan to ensure we don't duplicate if settings are lagging
             if (invoicesForNumberScan && Array.isArray(invoicesForNumberScan)) {
@@ -611,10 +608,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 return false;
             }
 
-            if (isLocalOnlyMode()) {
-                invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
-            } else {
-                const { getAppStateApiService } = await import('../../services/api/appStateApi');
+            const { getAppStateApiService } = await import('../../services/api/appStateApi');
                 const api = getAppStateApiService();
                 for (const inv of invoices) {
                     const saved = await api.saveInvoice(inv);
@@ -623,7 +617,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                     }
                     dispatch({ type: 'ADD_INVOICE', payload: saved, _isRemote: true } as any);
                 }
-            }
 
             // Update settings to reflect the consumed numbers
             if (nextInvNum > (settings.nextNumber || 1) && projectInvoiceSettings) {
@@ -638,14 +631,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 });
             }
 
-            if (isLocalOnlyMode()) {
-                showToast(
-                    `Saved ${invoices.length} invoice(s) to the local database on this device. They are not written to PostgreSQL. For API/Postgres, set VITE_LOCAL_ONLY=false, run the backend, and sign in.`,
-                    'success'
-                );
-            } else {
-                showToast(`Created ${invoices.length} installment invoice(s) on the server.`, 'success');
-            }
+            showToast(`Created ${invoices.length} installment invoice(s) on the server.`, 'success');
             return true;
         } catch (error) {
             console.error('Error generating invoices:', error);
@@ -770,10 +756,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
 
             const updatedAgreement = { ...agreementToEdit, ...agreementData };
 
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'UPDATE_PROJECT_AGREEMENT', payload: updatedAgreement });
-            } else {
-                try {
+            try {
                     const projectApi = new ProjectAgreementsApiRepository();
                     const saved = await projectApi.update(agreementToEdit.id, {
                         ...updatedAgreement,
@@ -797,7 +780,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                     await showAlert(msg);
                     return;
                 }
-            }
         } else {
             // Check for installment plan configured for this agreement
             if (!skipConfigCheck && !installmentPlan) {
@@ -808,18 +790,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             const id = Date.now().toString();
             let newAgreement: ProjectAgreement;
 
-            if (isLocalOnlyMode()) {
-                newAgreement = {
-                    ...agreementData,
-                    id,
-                    status: ProjectAgreementStatus.ACTIVE,
-                };
-                dispatch({
-                    type: 'ADD_PROJECT_AGREEMENT',
-                    payload: newAgreement,
-                });
-            } else {
-                try {
+            try {
                     const projectApi = new ProjectAgreementsApiRepository();
                     newAgreement = await projectApi.create({
                         id,
@@ -841,7 +812,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                     await showAlert(msg);
                     return;
                 }
-            }
 
             // Update Next Number in Settings if this number pushes the counter forward
             if (projectAgreementSettings && agreementNumber && agreementNumber.startsWith(projectAgreementSettings.prefix)) {
@@ -956,10 +926,7 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
         }
         const confirmed = await showConfirm('Are you sure you want to delete this agreement?');
         if (confirmed) {
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'DELETE_PROJECT_AGREEMENT', payload: agreementToEdit.id });
-            } else {
-                try {
+            try {
                     const projectApi = new ProjectAgreementsApiRepository();
                     await projectApi.delete(agreementToEdit.id, agreementToEdit.version);
                     dispatch({ type: 'DELETE_PROJECT_AGREEMENT', payload: agreementToEdit.id });
@@ -973,7 +940,6 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                     await showAlert(msg);
                     return;
                 }
-            }
             onClose();
         }
     };

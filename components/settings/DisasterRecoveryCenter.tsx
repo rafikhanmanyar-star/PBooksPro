@@ -12,7 +12,6 @@ import {
   Activity,
   Database,
 } from 'lucide-react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -98,7 +97,7 @@ const DisasterRecoveryCenter: React.FC = () => {
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode() || !canRead) {
+    if (!canRead) {
       setLoading(false);
       return;
     }
@@ -141,14 +140,6 @@ const DisasterRecoveryCenter: React.FC = () => {
       setBusy(null);
     }
   };
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-6 text-center text-app-muted">
-        Disaster Recovery Center requires the API server (PostgreSQL mode).
-      </div>
-    );
-  }
 
   if (!canRead) {
     return (

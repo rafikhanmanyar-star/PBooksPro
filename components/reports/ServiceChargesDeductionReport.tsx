@@ -24,7 +24,6 @@ import {
     type ServiceChargeDeductionRow,
     type ServiceChargeDeductionSortKey,
 } from './serviceChargesDeductionReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { formatApiErrorMessage } from '../../services/api/client';
 import { fetchServiceChargesDeductionReport } from '../../services/api/rentalReportsApi';
 
@@ -38,8 +37,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
     const dispatch = useDispatchOnly();
     const { showToast, showAlert } = useNotification();
     const { print: triggerPrint } = usePrintContext();
-    const localOnly = isLocalOnlyMode();
-    
+        
     // Filters State
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
@@ -107,7 +105,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         /^\d{4}-\d{2}-\d{2}$/.test(startDate) && /^\d{4}-\d{2}-\d{2}$/.test(endDate);
 
     useEffect(() => {
-        if (localOnly || !hasValidDateRange) {
+        if (!hasValidDateRange) {
             setServerRows(null);
             setFetchError(null);
             return;
@@ -137,7 +135,6 @@ const ServiceChargesDeductionReport: React.FC = () => {
             cancelled = true;
         };
     }, [
-        localOnly,
         hasValidDateRange,
         startDate,
         endDate,
@@ -161,7 +158,7 @@ const ServiceChargesDeductionReport: React.FC = () => {
         [rentalState, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery, sortConfig]
     );
 
-    const reportData = localOnly ? localReportData : (serverRows ?? localReportData);
+    const reportData = (serverRows ?? localReportData);
 
     const totalAmount = useMemo(() => reportData.reduce((sum, r) => sum + r.amount, 0), [reportData]);
 
@@ -318,10 +315,10 @@ const ServiceChargesDeductionReport: React.FC = () => {
                 </div>
             </div>
 
-            {!localOnly && loading && (
+            {loading && (
                 <p className="text-sm text-app-muted px-1">Loading report from server…</p>
             )}
-            {!localOnly && fetchError && (
+            {fetchError && (
                 <p className="text-sm text-rose-600 px-1">Server report failed: {fetchError}. Showing local data.</p>
             )}
 

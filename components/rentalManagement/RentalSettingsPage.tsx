@@ -18,7 +18,6 @@ import PropertyForm from '../settings/PropertyForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType, Building, Property, Contact } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import RentalAgreementContactRepairCard from './RentalAgreementContactRepairCard';
 import { parseApiEntityVersion } from '../../utils/parseApiVersion';
 
@@ -86,7 +85,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
             const id = isEdit ? editingItem.item.id : Date.now().toString();
             payload = { ...data, id };
 
-            if (!isLocalOnlyMode() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
                     const api = getAppStateApiService();
                     if (editingItem.type === 'buildings') {
@@ -170,7 +169,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
             }
         } else if (editingItem.type === 'tenants' || editingItem.type === 'owners' || editingItem.type === 'brokers') {
             const contactType = editingItem.type === 'tenants' ? ContactType.TENANT : editingItem.type === 'owners' ? ContactType.OWNER : ContactType.BROKER;
-            if (!isLocalOnlyMode() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
                     const api = getAppStateApiService();
                     if (isEdit) {
@@ -229,7 +228,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
         if (!confirmed) return;
 
         const itemId = editingItem.item.id;
-        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
+        if (isAuthenticated && (editingItem.type === 'buildings' || editingItem.type === 'properties')) {
             try {
                 const api = getAppStateApiService();
                 if (editingItem.type === 'buildings') await api.deleteBuilding(itemId);
@@ -241,7 +240,7 @@ const RentalSettingsPage: React.FC<RentalSettingsPageProps> = ({ embeddedInRenta
                 }
             }
         }
-        if (!isLocalOnlyMode() && isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners' || editingItem.type === 'brokers')) {
+        if (isAuthenticated && (editingItem.type === 'tenants' || editingItem.type === 'owners' || editingItem.type === 'brokers')) {
             try {
                 await getAppStateApiService().deleteContact(itemId);
             } catch (err: any) {

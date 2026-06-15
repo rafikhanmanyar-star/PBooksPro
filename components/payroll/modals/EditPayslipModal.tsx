@@ -6,7 +6,6 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Trash2 } from 'lucide-react';
 import { Payslip, PayrollEmployee, normalizePayslip } from '../types';
 import { storageService } from '../services/storageService';
-import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 import { useStateSelector } from '../../../hooks/useSelectiveState';
@@ -70,7 +69,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
 
   const handleSave = async () => {
     if (!payslip) return;
-    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
+    if (!recordLock.viewOnly) return;
     setIsSaving(true);
     try {
       const updated: Payslip = {
@@ -83,10 +82,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
         net_pay: computedNet,
         updated_at: new Date().toISOString()
       };
-      if (isLocalOnlyMode()) {
-        storageService.updatePayslip(tenantId, updated, userId);
-      } else {
-        const row = await payrollApi.updatePayslip(payslip.id, {
+      const row = await payrollApi.updatePayslip(payslip.id, {
           basic_pay: basicPay,
           total_allowances: totalAllowances,
           total_deductions: totalDeductions,
@@ -102,7 +98,6 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           storageService.updatePayslip(tenantId, norm, userId);
         }
         await syncPayrollFromServer(tenantId);
-      }
       onSaved();
       onClose();
     } finally {
@@ -112,7 +107,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
 
   const handleDelete = async () => {
     if (!payslip) return;
-    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
+    if (!recordLock.viewOnly) return;
     setIsDeleting(true);
     try {
       let deleted: boolean;

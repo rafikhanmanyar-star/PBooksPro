@@ -4,7 +4,6 @@ import {
   subscriptionBillingApi,
   type BillingPortalSummary,
 } from '../../services/api/subscriptionBillingApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useDispatchOnly } from '../../hooks/useSelectiveState';
 
@@ -25,11 +24,11 @@ const TrialUpgradeBanner: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (isLocalOnlyMode() || !canAccessBillingPortal) return;
+    if (!canAccessBillingPortal) return;
     void subscriptionBillingApi.getPortal().then(setPortal).catch(() => undefined);
   }, [canAccessBillingPortal]);
 
-  if (isLocalOnlyMode() || !canAccessBillingPortal || dismissed || !portal) return null;
+  if (!canAccessBillingPortal || dismissed || !portal) return null;
   if (portal.paymentStatus !== 'trialing') return null;
 
   const daysRaw = portal.daysRemaining;

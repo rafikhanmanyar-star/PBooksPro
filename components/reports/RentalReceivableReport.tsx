@@ -21,7 +21,6 @@ import {
     computeRentalReceivableReport,
     type PropertyReceivable,
 } from './rentalReceivableReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchRentalReceivableReport } from '../../services/api/rentalReportsApi';
 
 export type { DueLine, PropertyReceivable } from './rentalReceivableReportEngine';
@@ -34,17 +33,11 @@ const RentalReceivableReport: React.FC = () => {
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [searchQuery, setSearchQuery] = useState('');
 
-    const localOnly = isLocalOnlyMode();
-    const [serverReceivables, setServerReceivables] = useState<PropertyReceivable[] | null>(null);
+        const [serverReceivables, setServerReceivables] = useState<PropertyReceivable[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerReceivables(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -61,7 +54,7 @@ const RentalReceivableReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, selectedBuildingId]);
+    }, [selectedBuildingId]);
 
     const buildings = useMemo(() => [{ id: 'all', name: 'All Buildings' }, ...allBuildings], [allBuildings]);
 
@@ -74,9 +67,7 @@ const RentalReceivableReport: React.FC = () => {
         [invoices, properties, allBuildings, contacts, selectedBuildingId]
     );
 
-    const propertyReceivables = localOnly
-        ? localPropertyReceivables
-        : (serverReceivables ?? localPropertyReceivables);
+    const propertyReceivables = (serverReceivables ?? localPropertyReceivables);
 
     const filteredData = useMemo(() => {
         if (!searchQuery.trim()) return propertyReceivables;
@@ -158,10 +149,10 @@ const RentalReceivableReport: React.FC = () => {
                         />
                     </div>
                 </div>
-                {!localOnly && loading && (
+                {loading && (
                     <p className="text-sm text-app-muted mt-2">Loading receivables from server…</p>
                 )}
-                {!localOnly && fetchError && (
+                {fetchError && (
                     <p className="text-sm text-danger mt-2">Failed to load report: {fetchError}</p>
                 )}
             </div>

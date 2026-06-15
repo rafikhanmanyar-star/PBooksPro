@@ -14,4 +14,4 @@ One-off migration and maintenance scripts for the **deprecated offline SQLite** 
 | `dedupe-local-db.cjs` | `npm run legacy:dedupe-local-db` | Deduplicate local SQLite rows |
 | `copy-tenant-from-production.cjs` | `npm run legacy:copy-tenant-from-production` | Copy tenant from production SQLite export |
 
-Requires `better-sqlite3` and/or `sql.js` (optional dependencies). Offline Electron builds: `npm run electron:offline:local`.
+Requires `sql.js` in devDependencies for one-off migrations. `better-sqlite3` was removed from the app package — legacy scripts use sql.js only.

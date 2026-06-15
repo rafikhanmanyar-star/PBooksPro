@@ -43,7 +43,6 @@ import {
     type SecurityDepositReportRow,
     type SecurityDepositSortKey,
 } from './ownerSecurityDepositReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchOwnerSecurityDepositReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'total' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -333,17 +332,11 @@ const OwnerSecurityDepositReport: React.FC = () => {
         return { buildingName, ownerName, unitName };
     }, [selectedBuildingId, selectedOwnerId, selectedUnitId, rentalState.buildings, rentalState.contacts, rentalState.properties]);
 
-    const localOnly = isLocalOnlyMode();
-    const [serverRows, setServerRows] = useState<SecurityDepositReportRow[] | null>(null);
+        const [serverRows, setServerRows] = useState<SecurityDepositReportRow[] | null>(null);
     const [reportLoading, setReportLoading] = useState(false);
     const [reportFetchError, setReportFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerRows(null);
-            setReportFetchError(null);
-            return;
-        }
         let cancelled = false;
         setReportLoading(true);
         setReportFetchError(null);
@@ -370,7 +363,6 @@ const OwnerSecurityDepositReport: React.FC = () => {
             cancelled = true;
         };
     }, [
-        localOnly,
         startDate,
         endDate,
         selectedBuildingId,
@@ -403,7 +395,7 @@ const OwnerSecurityDepositReport: React.FC = () => {
         ]
     );
 
-    const reportData = localOnly ? localReportData : (serverRows ?? localReportData);
+    const reportData = (serverRows ?? localReportData);
 
     const totals = useMemo(() => {
         return reportData.reduce(
@@ -704,10 +696,10 @@ const OwnerSecurityDepositReport: React.FC = () => {
                                 />
                             </div>
                         </div>
-                        {!localOnly && reportLoading && (
+                        {reportLoading && (
                             <p className="text-sm text-app-muted mt-2">Loading security deposit report from server…</p>
                         )}
-                        {!localOnly && reportFetchError && (
+                        {reportFetchError && (
                             <p className="text-sm text-danger mt-2">Failed to load report: {reportFetchError}</p>
                         )}
                     </div>

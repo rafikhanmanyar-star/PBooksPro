@@ -21,7 +21,6 @@ import {
   type BalanceSheetCompareMode,
 } from './balanceSheetEngine';
 import { computeProjectFinancialPosition } from './projectFinancialPositionEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchBalanceSheetReport } from '../../services/api/financialReportsApi';
 import { useReportTenantId } from '../../hooks/useReportTenantId';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
@@ -78,8 +77,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
   const [debugOpen, setDebugOpen] = useState(false);
   const [compareMode, setCompareMode] = useState<BalanceSheetCompareMode>('none');
   const [includeProjectAnalysis, setIncludeProjectAnalysis] = useState(false);
-  const localOnly = isLocalOnlyMode();
-  const tenantId = useReportTenantId();
+    const tenantId = useReportTenantId();
   const [serverReport, setServerReport] = useState<BalanceSheetReportResult | null>(null);
   const [serverPreviousReport, setServerPreviousReport] = useState<BalanceSheetReportResult | null>(null);
   const [serverPreviousDate, setServerPreviousDate] = useState<string | null>(null);
@@ -109,7 +107,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
   );
 
   useEffect(() => {
-    if (localOnly || !tenantId) {
+    if (!tenantId) {
       setServerReport(null);
       setServerPreviousReport(null);
       setServerPreviousDate(null);
@@ -157,7 +155,7 @@ const ProjectBalanceSheetReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, asOfDate, compareMode, selectedProjectId]);
+  }, [tenantId, asOfDate, compareMode, selectedProjectId]);
 
   const clientResult = useMemo(() => {
     if (compareMode === 'none') {
@@ -169,21 +167,18 @@ const ProjectBalanceSheetReport: React.FC = () => {
     });
   }, [reportState, engineOptions, compareMode]);
 
-  const report: BalanceSheetReportResult | null = !localOnly
-    ? serverReport
-    : isComparativeResult(clientResult)
+  const report: BalanceSheetReportResult | null = serverReport
+    
       ? clientResult.current
       : clientResult;
 
-  const previousReport: BalanceSheetReportResult | null = !localOnly
-    ? serverPreviousReport
-    : isComparativeResult(clientResult)
+  const previousReport: BalanceSheetReportResult | null = serverPreviousReport
+    
       ? clientResult.previous
       : null;
 
-  const previousAsOfDate: string | null = !localOnly
-    ? serverPreviousDate
-    : isComparativeResult(clientResult)
+  const previousAsOfDate: string | null = serverPreviousDate
+    
       ? clientResult.previousAsOfDate
       : null;
 
@@ -455,10 +450,10 @@ const ProjectBalanceSheetReport: React.FC = () => {
                 Compared with {formatDate(previousAsOfDate)}
               </p>
             )}
-            {!localOnly && loading && <p className="text-xs text-app-muted mt-1">Loading from server…</p>}
+            {loading && <p className="text-xs text-app-muted mt-1">Loading from server…</p>}
           </div>
 
-          {!localOnly && !report ? (
+          {!report ? (
             <p className="text-center text-sm text-app-muted py-8">
               {loading ? 'Loading balance sheet…' : 'Could not load balance sheet from the server.'}
             </p>

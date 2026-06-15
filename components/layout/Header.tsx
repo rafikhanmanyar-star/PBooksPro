@@ -12,7 +12,7 @@ import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
-import { isStagingEnvironment, isLocalOnlyMode } from '../../config/apiUrl';
+import { isStagingEnvironment } from '../../config/apiUrl';
 import { useExecutiveModeOptional } from '../../context/ExecutiveModeContext';
 import { useViewport } from '../../context/ViewportContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -46,7 +46,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const executiveMode = useExecutiveModeOptional();
   const showExecutiveViewLink =
     isAuthenticated &&
-    !isLocalOnlyMode() &&
     isMobileViewport &&
     executiveMode?.isCloudEligible &&
     !executiveMode.isExecutiveMobileActive;
@@ -98,7 +97,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     | { type: 'unposted'; transactionId?: string };
   };
 
-  const { data: apiNotifications = [] } = useUserNotifications(isAuthenticated && !isLocalOnlyMode());
+  const { data: apiNotifications = [] } = useUserNotifications(isAuthenticated);
   const dismissApiNotification = useDismissUserNotification();
 
   // Load dismissed notifications from localStorage on mount
@@ -518,10 +517,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, [isAuthenticated, currentUser?.id, isPersonalFinanceAdmin]);
 
   useEffect(() => {
-    if (isLocalOnlyMode()) {
-      setOrgUsers([]);
-      return;
-    }
     if (!isAuthenticated || !canReadUsers) {
       setOrgUsers([]);
       return;
@@ -565,13 +560,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   }, []);
 
   useEffect(() => {
-    // Skip if local-only (no cloud/WhatsApp API)
-    if (isLocalOnlyMode()) {
-      setWhatsappUnreadCount(0);
-      setUnreadConversations([]);
-      return;
-    }
-    // Skip if not authenticated to prevent 401 errors
     if (!isAuthenticated) {
       setWhatsappUnreadCount(0);
       setUnreadConversations([]);
@@ -790,7 +778,7 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
           {/* Right: Actions */}
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
 
-            {isAuthenticated && !isLocalOnlyMode() && tenant && (
+            {isAuthenticated && tenant && (
               <button
                 type="button"
                 onClick={() => void startCompanySwitch()}

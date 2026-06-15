@@ -1,14 +1,12 @@
 import { useDispatchOnly, useImportExportState } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useCallback } from 'react';
-import { getApiBaseUrl, isLocalOnlyMode } from '../../config/apiUrl';
+import { getApiBaseUrl } from '../../config/apiUrl';
 import { useProgress } from '../../context/ProgressContext';
 import { ICONS } from '../../constants';
 import Button from '../ui/Button';
 import Tabs from '../ui/Tabs';
 import { apiClient } from '../../services/api/client';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { exportToExcel } from '../../services/exportService';
-import { importFromExcel, runImportProcess, generateImportTemplate } from '../../services/importService';
 import { ImportType, ImportLogEntry } from '../../types';
 import { toLocalDateString } from '../../utils/dateUtils';
 
@@ -248,54 +246,6 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
   const handleDownloadTemplate = async (sheetName?: string) => {
     try {
       setIsLoading(true);
-      if (isLocalOnlyMode()) {
-        if (sheetName === 'Vendors') {
-          generateImportTemplate(ImportType.VENDORS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'RentalAgreements') {
-          generateImportTemplate(ImportType.RENTAL_AGREEMENTS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'RentalInvoices') {
-          generateImportTemplate(ImportType.RENTAL_INVOICES);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'RentalInvoicePayments') {
-          generateImportTemplate(ImportType.RENTAL_INVOICE_PAYMENTS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'Contracts') {
-          generateImportTemplate(ImportType.CONTRACTS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'ProjectBills') {
-          generateImportTemplate(ImportType.PROJECT_BILLS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'ProjectBillPayments') {
-          generateImportTemplate(ImportType.PROJECT_BILL_PAYMENTS);
-          setIsLoading(false);
-          return;
-        }
-        if (sheetName === 'Budgets') {
-          generateImportTemplate(ImportType.BUDGETS);
-          setIsLoading(false);
-          return;
-        }
-        const filename = sheetName
-          ? `import-template-${sheetName.toLowerCase()}.xlsx`
-          : `import-template-${toLocalDateString(new Date())}.xlsx`;
-        exportToExcel(state, filename, progress, dispatch);
-        setIsLoading(false);
-        return;
-      }
       // Use same host as app so works when opened from another PC
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
@@ -360,13 +310,6 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
   const handleExportData = async () => {
     try {
       setIsLoading(true);
-      if (isLocalOnlyMode()) {
-        const filename = `export-data-${toLocalDateString(new Date())}.xlsx`;
-        exportToExcel(state, filename, progress, dispatch);
-        setIsLoading(false);
-        return;
-      }
-      // Use same host as app so works when opened from another PC
       const baseUrl = getApiBaseUrl();
       const token = localStorage.getItem('auth_token') || '';
       const tenantId = localStorage.getItem('tenant_id') || '';
@@ -476,149 +419,6 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
     try {
       setIsLoading(true);
 
-      if (isLocalOnlyMode()) {
-        // Local-only mode: Import directly from Excel file
-        progress.startProgress(`Importing ${selectedSheet}...`);
-        
-        try {
-          // Read Excel file
-          progress.updateProgress(10, 'Reading Excel file...');
-          const sheets = await importFromExcel(selectedFile);
-          
-          // Get the selected sheet data
-          const sheetData = sheets[selectedSheet];
-          if (!sheetData || sheetData.length === 0) {
-            throw new Error(`Sheet "${selectedSheet}" not found or is empty in the Excel file.`);
-          }
-          
-          // Map sheet name to ImportType
-          const importType = SHEET_TO_IMPORT_TYPE[selectedSheet];
-          if (!importType) {
-            throw new Error(`Import type not supported for sheet "${selectedSheet}".`);
-          }
-          
-          // Filter sheets to only include the selected sheet
-          const filteredSheets: { [key: string]: any[] } = {};
-          filteredSheets[selectedSheet] = sheetData;
-          
-          // Create import log callback
-          const importLogs: ImportLogEntry[] = [];
-          const onLog = (entry: ImportLogEntry) => {
-            importLogs.push(entry);
-            const progressMsg = entry.status === 'Success' 
-              ? `Imported row ${entry.row}...`
-              : entry.status === 'Error'
-              ? `Error at row ${entry.row}: ${entry.message}`
-              : `Skipped row ${entry.row}...`;
-            progress.updateProgress(30 + (importLogs.length / sheetData.length) * 60, progressMsg);
-          };
-          
-          // Run import process
-          progress.updateProgress(30, 'Processing data...');
-          const result = await runImportProcess(
-            filteredSheets,
-            state,
-            dispatch,
-            progress,
-            onLog,
-            importType
-          );
-          
-          // Format result to match API response format
-          const formattedResult: ImportResult = {
-            success: result.success > 0,
-            canProceed: result.errors === 0,
-            validationErrors: importLogs
-              .filter(log => log.status === 'Error')
-              .map(log => ({
-                sheet: log.sheet,
-                row: log.row,
-                field: '',
-                value: '',
-                message: log.message || 'Unknown error'
-              })),
-            duplicates: importLogs
-              .filter(log => log.status === 'Skipped')
-              .map(log => ({
-                sheet: log.sheet,
-                row: log.row,
-                name: '',
-                reason: log.message || 'Duplicate or skipped'
-              })),
-            imported: {
-              contacts: { count: (selectedSheet === 'Contacts' || selectedSheet === 'Vendors') ? result.success : 0, skipped: (selectedSheet === 'Contacts' || selectedSheet === 'Vendors') ? result.skipped : 0 },
-              projects: { count: selectedSheet === 'Projects' ? result.success : 0, skipped: selectedSheet === 'Projects' ? result.skipped : 0 },
-              buildings: { count: selectedSheet === 'Buildings' ? result.success : 0, skipped: selectedSheet === 'Buildings' ? result.skipped : 0 },
-              properties: { count: selectedSheet === 'Properties' ? result.success : 0, skipped: selectedSheet === 'Properties' ? result.skipped : 0 },
-              units: { count: selectedSheet === 'Units' ? result.success : 0, skipped: selectedSheet === 'Units' ? result.skipped : 0 },
-              categories: { count: selectedSheet === 'Categories' ? result.success : 0, skipped: selectedSheet === 'Categories' ? result.skipped : 0 },
-              accounts: { count: selectedSheet === 'Accounts' ? result.success : 0, skipped: selectedSheet === 'Accounts' ? result.skipped : 0 },
-              vendors: { count: selectedSheet === 'Vendors' ? result.success : 0, skipped: selectedSheet === 'Vendors' ? result.skipped : 0 },
-              invoices: { count: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.success : 0, skipped: (selectedSheet === 'RentalInvoices' || selectedSheet === 'Invoices') ? result.skipped : 0 },
-              rentalInvoicePayments: { count: selectedSheet === 'RentalInvoicePayments' ? result.success : 0, skipped: selectedSheet === 'RentalInvoicePayments' ? result.skipped : 0 },
-              contracts: { count: selectedSheet === 'Contracts' ? result.success : 0, skipped: selectedSheet === 'Contracts' ? result.skipped : 0 },
-              projectBills: { count: selectedSheet === 'ProjectBills' ? result.success : 0, skipped: selectedSheet === 'ProjectBills' ? result.skipped : 0 },
-              projectBillPayments: { count: selectedSheet === 'ProjectBillPayments' ? result.success : 0, skipped: selectedSheet === 'ProjectBillPayments' ? result.skipped : 0 },
-              budgets: { count: selectedSheet === 'Budgets' ? result.success : 0, skipped: selectedSheet === 'Budgets' ? result.skipped : 0 } },
-            summary: {
-              totalRows: sheetData.length,
-              validRows: result.success,
-              errorRows: result.errors,
-              duplicateRows: result.skipped,
-              importedRows: result.success
-            }
-          };
-          
-          setImportResult(formattedResult);
-          
-          // Reload state from database to ensure UI reflects saved data
-          if (formattedResult.success && formattedResult.canProceed) {
-            progress.updateProgress(99, 'Reloading data from database...');
-            try {
-              const { AppStateRepository } = await import('../../services/legacy-sqlite/repositories/appStateRepository');
-              const appStateRepo = new AppStateRepository();
-              const reloadedState = await appStateRepo.loadState();
-              dispatch({ type: 'SET_STATE', payload: reloadedState });
-              console.log('[Import] Reloaded state from database after import:', {
-                contacts: reloadedState.contacts?.length || 0,
-                accounts: reloadedState.accounts?.length || 0,
-                transactions: reloadedState.transactions?.length || 0
-              });
-            } catch (reloadError) {
-              console.error('[Import] Failed to reload state from database:', reloadError);
-              // Continue anyway - the dispatch in runImportProcess should have updated the UI
-            }
-          }
-          
-          progress.finishProgress('Import completed successfully');
-          
-          // If successful, mark sheet as imported
-          if (formattedResult.success && formattedResult.canProceed) {
-            setImportedSheets(prev => new Set([...prev, currentSheet.name]));
-            
-            // Clear selection and file, show success
-            setSelectedFile(null);
-            setFileName('');
-            if (fileInputRef.current) {
-              fileInputRef.current.value = '';
-            }
-            alert(`✅ ${currentSheet.name} imported successfully! ${result.success} rows imported, ${result.skipped} skipped, ${result.errors} errors.`);
-            goToStep('results');
-          } else {
-            // Show errors
-            goToStep('results');
-          }
-        } catch (error: any) {
-          progress.errorProgress(error.message || 'Import failed');
-          throw error;
-        }
-        
-        setIsLoading(false);
-        return;
-      }
-
-      // Cloud mode: Use API
-      // Convert file to base64
       const base64Data = await convertFileToBase64(selectedFile);
 
       // Send to API with sheet name

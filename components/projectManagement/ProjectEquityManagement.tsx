@@ -35,7 +35,6 @@ import {
 import { computeProjectProfitLossTotals } from '../reports/projectProfitLossComputation';
 import { resolveProfitDistributionExpenseCategory } from '../../constants/profitDistributionCategory';
 import { computeProjectScopedBankCashBalance } from '../../services/accounting/accountingLedgerCore';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { investorJournalApi } from '../../services/api/investorJournalApi';
 
@@ -924,32 +923,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         const desc = `Investment in ${state.projects.find((p) => p.id === formProjectId)?.name}`;
         const entryDate = parseFlexibleDateToYyyyMmDd(formDate);
 
-        if (isLocalOnlyMode()) {
-            setIsRecordingInvestment(true);
-            try {
-            const fromId = formInvestorId;
-            const toId = formBankAccountId;
-            const tx: Transaction = {
-                id: `eq-tx-${Date.now()}`,
-                type: TransactionType.TRANSFER,
-                subtype: EquityLedgerSubtype.INVESTMENT,
-                amount,
-                date: entryDate,
-                description: formDescription || desc,
-                fromAccountId: fromId,
-                toAccountId: toId,
-                accountId: fromId,
-                projectId: formProjectId,
-            };
-            dispatch({ type: 'ADD_TRANSACTION', payload: tx });
-            showToast("Transaction recorded successfully.", "success");
-            setIsActionModalOpen(false);
-            } finally {
-                setIsRecordingInvestment(false);
-            }
-            return;
-        }
-
         setIsRecordingInvestment(true);
         try {
             await investorJournalApi.postContribution({
@@ -1009,7 +982,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         exportJsonToExcel(data, 'investor-ledger.xlsx', 'Ledger');
     };
 
-    // Cycle Manager Logic
     const projectFinancials = useMemo(() => {
         if (!distProjectId) return { income: 0, expense: 0, netOperating: 0, distributed: 0, available: 0, investedCapital: 0 };
         const { totalIncome, totalExpense, netProfit } = computeProjectProfitLossTotals(
@@ -1048,8 +1020,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
 
     const handleCalculateDistShares = () => {
         if (!distProjectId) return;
-        // Use the same per-project investor stakes as the equity tree (computeEquityBalances / invProjBal).
-        // The old TRANSFER-only sum missed equity built via profit credits, clearing batches, and other flows.
         const projInv = balances.invProjBal[distProjectId] || {};
         const investorIds = new Set(investorAccounts.map((a) => a.id));
         const investorCapital: Record<string, number> = {};
@@ -1070,7 +1040,6 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 const acc = state.accounts.find(a => a.id === investorId);
                 const share = amount / totalCapital;
                 const profit = profitToDistribute * share;
-                // newEquityBalance shows the new project-specific equity after distribution (principal + new profit)
                 const newEquityBalance = amount + profit;
                 return { investorId, investorName: acc?.name || 'Unknown', principal: amount, sharePercentage: share, profitShare: profit, newEquityBalance };
             });
@@ -1128,10 +1097,9 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
         setDistStep(1); setDistProfit(''); setDistributions([]);
     };
 
-    // Equity Transfer Logic
     const handleCalculateTransferData = () => {
         if (!sourceProjectId) return;
-        const balances: Record<string, number> = {};
+        const equityBalances: Record<string, number> = {};
         state.transactions.forEach(tx => {
             if (tx.projectId !== sourceProjectId) return;
             if (tx.type === TransactionType.TRANSFER) {
@@ -1142,17 +1110,17 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 const isDivestment = tx.description && tx.description.includes('Equity Move out');
                 
                 if (fromEquity && !toEquity) {
-                    balances[fromEquity.id] = (balances[fromEquity.id] || 0) + tx.amount;
+                    equityBalances[fromEquity.id] = (equityBalances[fromEquity.id] || 0) + tx.amount;
                 } else if (toEquity && !fromEquity) { 
                     if (isFromClearing && !isDivestment) {
-                         balances[toEquity.id] = (balances[toEquity.id] || 0) + tx.amount;
+                         equityBalances[toEquity.id] = (equityBalances[toEquity.id] || 0) + tx.amount;
                     } else {
-                         balances[toEquity.id] = (balances[toEquity.id] || 0) - tx.amount;
+                         equityBalances[toEquity.id] = (equityBalances[toEquity.id] || 0) - tx.amount;
                     }
                 }
             }
         });
-        const rows: TransferRow[] = Object.entries(balances)
+        const rows: TransferRow[] = Object.entries(equityBalances)
             .filter(([_, bal]) => bal > 0)
             .map(([id, bal]) => ({
                 investorId: id,

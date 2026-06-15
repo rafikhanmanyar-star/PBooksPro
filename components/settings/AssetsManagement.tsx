@@ -4,7 +4,6 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
@@ -307,7 +306,7 @@ const AssetsManagement: React.FC = () => {
             const pid = editingEntity ? editingEntity.id : Date.now().toString();
             let projectPayload: Project = { ...projectData, id: pid };
 
-            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+            if ((isAuthenticated || hasAuthToken)) {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
@@ -351,7 +350,7 @@ const AssetsManagement: React.FC = () => {
             const bid = editingEntity ? editingEntity.id : Date.now().toString();
             let buildingPayload: Building & { version?: number } = { ...buildingData, id: bid };
 
-            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+            if ((isAuthenticated || hasAuthToken)) {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
@@ -397,7 +396,7 @@ const AssetsManagement: React.FC = () => {
             const pid = editingEntity ? editingEntity.id : Date.now().toString();
             let propertyPayload: Property & { version?: number } = { ...propertyData, id: pid };
 
-            if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken)) {
+            if ((isAuthenticated || hasAuthToken)) {
                 try {
                     const api = getAppStateApiService();
                     if (editingEntity) {
@@ -613,7 +612,7 @@ const AssetsManagement: React.FC = () => {
         const typeLabel = getTypeConfig(entityType).label;
 
         // In local-only mode skip API; only dispatch local delete to avoid "cannot reach API" and re-renders that can block form input.
-        const skipApiDelete = isLocalOnlyMode();
+        const skipApiDelete = false;
         if (!skipApiDelete) {
             const hasToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
             if (isAuthenticated || hasToken) {

@@ -54,9 +54,14 @@ Files **removed** from `electron-builder-api-client.yml` and `electron-builder-a
 
 ## Optional follow-up
 
-1. **Collapse remaining `isLocalOnlyMode()` UI branches** in lazy-loaded components (dead code cleanup)
-2. **Remove `optionalDependencies.better-sqlite3`** once `tools/legacy/` migration scripts are archived
-3. **Replace stub imports** with API hooks in personal transactions, chat, backup, etc.
+| Item | Status |
+|------|--------|
+| Collapse `isLocalOnlyMode()` in `App.tsx` + `AppContext.tsx` | Done |
+| Collapse `isLocalOnlyMode()` in `SettingsPage.tsx` + `Sidebar.tsx` | Done |
+| Collapse `isLocalOnlyMode()` in AuthContext, Header, ImportExportWizard, personal tx | Done |
+| Collapse remaining `isLocalOnlyMode()` UI branches (~100 files) | Done |
+| Replace stub imports with API hooks (personal tx, chat, backup) | Done |
+| Remove `optionalDependencies.better-sqlite3` once legacy tools archived | Done |
 
 ## Legacy tooling
 

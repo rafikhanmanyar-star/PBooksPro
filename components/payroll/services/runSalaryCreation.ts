@@ -6,7 +6,6 @@
  */
 
 import { PayrollRun, Payslip, PayrollStatus, normalizePayrollRun, normalizePayslip } from '../types';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { storageService } from './storageService';
 import { persistPayrollToDbInOrder } from './payrollDb';
@@ -120,10 +119,6 @@ export async function runSalaryCreationForPeriodAsync(
   month: number,
   employeeId?: string
 ): Promise<RunSalaryCreationResult> {
-  if (isLocalOnlyMode()) {
-    return runSalaryCreationForPeriod(tenantId, userId, year, month, employeeId);
-  }
-
   const monthLabel = getMonthName(month);
   if (!monthLabel) {
     throw new Error('Invalid month.');

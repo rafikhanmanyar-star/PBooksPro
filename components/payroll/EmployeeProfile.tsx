@@ -60,7 +60,6 @@ import ReportFooter from '../reports/ReportFooter';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { mapAppProjectsToPayroll } from './utils/projectUtils';
 import { formatDate, formatDateLong, formatCurrency, calculateAmount, roundToTwo } from './utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid } from './utils/payslipPaymentState';
@@ -138,7 +137,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
 
   // In local-only mode, use projects from AppContext (Settings → Assets → Projects)
   useEffect(() => {
-    if (!isLocalOnlyMode() || !projects) return;
+    if (! !projects) return;
     const payrollProjects = mapAppProjectsToPayroll(projects, tenantId);
     const activeProjects = payrollProjects.filter(p => p.status === 'ACTIVE');
     setGlobalProjects(activeProjects);
@@ -167,8 +166,7 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
       }
       
       // When not local-only, fetch projects from main application API
-      if (!isLocalOnlyMode()) {
-        try {
+      try {
           const projects = await payrollApi.getMainAppProjects();
           if (projects.length > 0) {
             const activeProjects = projects.filter(p => p.status === 'ACTIVE');
@@ -181,7 +179,6 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
           console.error('Error fetching projects:', error);
           setGlobalProjects(storageService.getProjects(tenantId).filter(p => p.status === 'ACTIVE'));
         }
-      }
     };
     
     fetchData();

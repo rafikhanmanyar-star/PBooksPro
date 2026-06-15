@@ -11,7 +11,6 @@ import {
   Cloud,
   CloudUpload,
 } from 'lucide-react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -79,7 +78,7 @@ const BackupHistoryPage: React.FC = () => {
   const [cloudActionRunId, setCloudActionRunId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode() || !canRead) {
+    if (!canRead) {
       setLoading(false);
       return;
     }
@@ -217,16 +216,6 @@ const BackupHistoryPage: React.FC = () => {
       setRetryingRunId(null);
     }
   };
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-4 sm:p-6">
-        <div className="max-w-4xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
-          Automated backup history is available in LAN / server mode with PostgreSQL.
-        </div>
-      </div>
-    );
-  }
 
   if (!canRead) {
     return (

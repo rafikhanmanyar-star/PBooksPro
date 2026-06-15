@@ -13,7 +13,6 @@ import UnitForm from '../settings/UnitForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType, Project, Unit } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import InstallmentConfigForm, { type InstallmentConfig } from '../settings/InstallmentConfigForm';
 import { ImportType } from '../../services/importService';
 
@@ -60,7 +59,7 @@ const ProjectSettingsPage: React.FC = () => {
         const id = isEdit ? editingItem.item.id : Date.now().toString();
         let payload: any = { ...data, id };
 
-        if (!isLocalOnlyMode() && (isAuthenticated || hasAuthToken) && editingItem.type === 'projects') {
+        if ((isAuthenticated || hasAuthToken) && editingItem.type === 'projects') {
             try {
                 const api = getAppStateApiService();
                 if (isEdit) {

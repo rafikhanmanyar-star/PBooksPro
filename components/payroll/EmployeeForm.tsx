@@ -32,7 +32,6 @@ import {
   PayrollProject,
   EmployeeFormProps } from './types';
 import { storageService } from './services/storageService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { useAuth } from '../../context/AuthContext';
 import { useProjects, useBuildings } from '../../hooks/useSelectiveState';
@@ -94,7 +93,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
   // In local-only mode, use projects from AppContext (same as Settings → Assets → Projects)
   useEffect(() => {
-    if (!isLocalOnlyMode() || !projects) return;
+    if (!!projects) return;
     const payrollProjects = mapAppProjectsToPayroll(projects, tenantId);
     const activeProjects = payrollProjects.filter(p => p.status === 'ACTIVE');
     setGlobalProjects(activeProjects);
@@ -105,7 +104,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
   // When not local-only, fetch projects from main application API
   useEffect(() => {
-    if (isLocalOnlyMode() || !tenantId) return;
+    if (!tenantId) return;
     const fetchProjects = async () => {
       setIsLoadingProjects(true);
       try {
@@ -357,9 +356,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           const createdEmployee = await payrollApi.createEmployee(createData as any);
           if (createdEmployee) {
             // Update localStorage cache only when using API (in local-only, createEmployee already added to storage)
-            if (!isLocalOnlyMode()) {
-              storageService.addEmployee(tenantId, createdEmployee, userId);
-            }
+                          storageService.addEmployee(tenantId, createdEmployee, userId);
           }
         } catch (apiError) {
           console.warn('API create failed, falling back to localStorage:', apiError);

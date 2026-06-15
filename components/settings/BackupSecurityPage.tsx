@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Shield, Key, Lock, RefreshCw, CheckCircle, AlertTriangle } from 'lucide-react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -25,7 +24,7 @@ const BackupSecurityPage: React.FC = () => {
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode() || !canRead) {
+    if (!canRead) {
       setLoading(false);
       return;
     }
@@ -88,14 +87,6 @@ const BackupSecurityPage: React.FC = () => {
       setBusy(false);
     }
   };
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-6 text-center text-app-muted">
-        Backup Security requires the API server (PostgreSQL mode).
-      </div>
-    );
-  }
 
   if (!canRead) {
     return (

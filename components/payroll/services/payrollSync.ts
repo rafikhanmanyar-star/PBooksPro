@@ -3,7 +3,6 @@
  * payroll UI (storageService) works unchanged in API mode.
  */
 
-import { isLocalOnlyMode } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { mapWithConcurrency } from '../../../utils/mapWithConcurrency';
 import { storageService } from './storageService';
@@ -15,7 +14,7 @@ export type SyncPayrollFromServerOptions = {
 };
 
 export async function syncPayrollFromServer(tenantId: string, options?: SyncPayrollFromServerOptions): Promise<void> {
-  if (isLocalOnlyMode() || !tenantId) return;
+  if (!tenantId) return;
 
   storageService.init(tenantId);
 

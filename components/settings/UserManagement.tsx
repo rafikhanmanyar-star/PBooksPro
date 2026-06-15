@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useCompanyOptional, CompanyDbUser } from '../../context/CompanyContext';
+import { useCompanyOptional } from '../../context/CompanyContext';
 import { apiClient } from '../../services/api/client';
-import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { UserRole } from '../../types';
 import { ASSIGNABLE_ROLES, ENTERPRISE_ROLE_LABELS, resolveEnterpriseRole } from '../../shared/rbac/permissions';
 import Button from '../ui/Button';
@@ -53,49 +51,22 @@ const UserManagement: React.FC = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [role, setRole] = useState<UserRole>('Accounts');
 
-    const useCompanyBridge = isLocalOnlyMode() && !!companyCtx;
-
     const loadUsers = useCallback(async () => {
         try {
             setLoading(true);
-            if (useCompanyBridge) {
-                const rows = await companyCtx!.listUsers();
-                setUsers(rows.map((r: CompanyDbUser) => ({
-                    id: r.id,
-                    username: r.username,
-                    name: r.name,
-                    role: r.role as UserRole,
-                    email: r.email || undefined,
-                    is_active: r.is_active !== 0,
-                    force_password_change: r.force_password_change,
-                    created_at: r.created_at,
-                })));
-            } else if (isLocalOnlyMode()) {
-                const db = getDatabaseService();
-                if (!db.isReady()) { setUsers([]); return; }
-                const rows = db.query<{ id: string; username: string; name: string; role: string; email?: string; is_active?: number }>(
-                    'SELECT id, username, name, role, email, is_active FROM users ORDER BY username'
-                );
-                setUsers(rows.map(r => ({
-                    id: r.id, username: r.username, name: r.name,
-                    role: r.role as UserRole, email: r.email || undefined,
-                    is_active: r.is_active !== 0
-                })));
-            } else {
-                if (!isAuthenticated) {
-                    setUsers([]);
-                    return;
-                }
-                const raw = await apiClient.get<unknown>('/users');
-                setUsers(normalizeUsersApiPayload(raw));
+            if (!isAuthenticated) {
+                setUsers([]);
+                return;
             }
+            const raw = await apiClient.get<unknown>('/users');
+            setUsers(normalizeUsersApiPayload(raw));
         } catch (error: any) {
             console.error('Error loading users:', error);
             await showAlert(error.message || 'Failed to load users');
         } finally {
             setLoading(false);
         }
-    }, [useCompanyBridge, isAuthenticated]);
+    }, [isAuthenticated, showAlert]);
 
     useEffect(() => {
         void loadUsers();
@@ -128,36 +99,12 @@ const UserManagement: React.FC = () => {
 
         if (await showConfirm(`Are you sure you want to delete user "${user.username}"?`)) {
             try {
-                if (useCompanyBridge) {
-                    const result = await companyCtx!.deleteUser(user.id);
-                    if (!result.ok) { await showAlert(result.error || 'Failed to delete user'); return; }
-                    showToast('User deleted successfully.');
-                } else if (isLocalOnlyMode()) {
-                    const db = getDatabaseService();
-                    if (db.isReady()) db.execute('DELETE FROM users WHERE id = ?', [user.id]);
-                    showToast('User deleted successfully.');
-                } else {
-                    await apiClient.delete(`/users/${user.id}`);
-                    showToast('User deleted successfully.');
-                }
+                await apiClient.delete(`/users/${user.id}`);
+                showToast('User deleted successfully.');
                 await loadUsers();
             } catch (error: any) {
                 console.error('Error deleting user:', error);
                 await showAlert(error.message || 'Failed to delete user');
-            }
-        }
-    };
-
-    const handleResetPassword = async (user: User) => {
-        if (!useCompanyBridge) return;
-        if (await showConfirm(`Reset password for "${user.username}"? They will be prompted to set a new password on next login.`)) {
-            try {
-                const result = await companyCtx!.resetUserPassword(user.id);
-                if (!result.ok) { await showAlert(result.error || 'Failed to reset password'); return; }
-                showToast('Password reset successfully. User will set a new password on next login.');
-                await loadUsers();
-            } catch (error: any) {
-                await showAlert(error.message || 'Failed to reset password');
             }
         }
     };
@@ -193,75 +140,32 @@ const UserManagement: React.FC = () => {
         }
         const resolvedUsername = username.trim() || normalizedEmail.split('@')[0] || 'user';
 
-        if (!userToEdit && !password && !useCompanyBridge) {
+        if (!userToEdit && !password) {
             await showAlert("Password is required for new users.");
             return;
         }
 
         setIsSubmitting(true);
         try {
-            if (useCompanyBridge) {
-                if (userToEdit) {
-                    const result = await companyCtx!.updateUser(userToEdit.id, {
-                        username: resolvedUsername, name, role, email: normalizedEmail,
-                        password: password || undefined,
-                    });
-                    if (!result.ok) { await showAlert(result.error || 'Failed to update user'); return; }
-                    showToast('User updated successfully.');
-                } else {
-                    const result = await companyCtx!.createUser({
-                        username: resolvedUsername, name, role, email: normalizedEmail,
-                        password: password || undefined,
-                    });
-                    if (!result.ok) { await showAlert(result.error || 'Failed to create user'); return; }
-                    showToast('User created successfully.');
-                }
-            } else if (isLocalOnlyMode()) {
-                const db = getDatabaseService();
-                if (!db.isReady()) { await showAlert('Local database is not ready.'); return; }
-                const tenantId = (typeof window !== 'undefined' && localStorage.getItem('tenant_id')) || '';
-                if (userToEdit) {
-                    if (password) {
-                        db.execute(
-                            'UPDATE users SET username = ?, name = ?, email = ?, role = ?, password = ?, updated_at = datetime(\'now\') WHERE id = ?',
-                            [resolvedUsername, name, normalizedEmail, role, password, userToEdit.id]
-                        );
-                    } else {
-                        db.execute(
-                            'UPDATE users SET username = ?, name = ?, email = ?, role = ?, updated_at = datetime(\'now\') WHERE id = ?',
-                            [resolvedUsername, name, normalizedEmail, role, userToEdit.id]
-                        );
-                    }
-                    showToast('User updated successfully.');
-                } else {
-                    const id = `user-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-                    db.execute(
-                        'INSERT INTO users (id, tenant_id, username, name, role, password, email, is_active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, datetime(\'now\'), datetime(\'now\'))',
-                        [id, tenantId, resolvedUsername, name, role, password, normalizedEmail]
-                    );
-                    showToast('User created successfully.');
-                }
+            if (userToEdit) {
+                const updateData: any = { username: resolvedUsername, name, email: normalizedEmail, role };
+                if (password) updateData.password = password;
+                await apiClient.put(`/users/${userToEdit.id}`, updateData);
+                showToast('User updated successfully.');
             } else {
-                if (userToEdit) {
-                    const updateData: any = { username: resolvedUsername, name, email: normalizedEmail, role };
-                    if (password) updateData.password = password;
-                    await apiClient.put(`/users/${userToEdit.id}`, updateData);
-                    showToast('User updated successfully.');
-                } else {
-                    const created = await apiClient.post<User>('/users', { username: resolvedUsername, name, email: normalizedEmail, password, role });
-                    showToast('User created successfully.');
-                    setUsers(prev => {
-                        const map = new Map(prev.map(u => [u.id, u]));
-                        map.set(created.id, {
-                            ...created,
-                            role: created.role as UserRole,
-                            is_active: created.is_active !== false,
-                        });
-                        return Array.from(map.values()).sort((a, b) =>
-                            a.username.localeCompare(b.username, undefined, { sensitivity: 'base' })
-                        );
+                const created = await apiClient.post<User>('/users', { username: resolvedUsername, name, email: normalizedEmail, password, role });
+                showToast('User created successfully.');
+                setUsers(prev => {
+                    const map = new Map(prev.map(u => [u.id, u]));
+                    map.set(created.id, {
+                        ...created,
+                        role: created.role as UserRole,
+                        is_active: created.is_active !== false,
                     });
-                }
+                    return Array.from(map.values()).sort((a, b) =>
+                        a.username.localeCompare(b.username, undefined, { sensitivity: 'base' })
+                    );
+                });
             }
             setIsModalOpen(false);
             await loadUsers();
@@ -292,7 +196,6 @@ const UserManagement: React.FC = () => {
                     </h3>
                     <p className="text-sm text-app-muted">
                         Manage users and assign roles.
-                        {useCompanyBridge && ' Passwords are securely hashed.'}
                     </p>
                 </div>
                 <Button onClick={() => openModal()}>
@@ -355,15 +258,6 @@ const UserManagement: React.FC = () => {
                                             >
                                                 <div className="w-4 h-4">{ICONS.edit}</div>
                                             </button>
-                                            {useCompanyBridge && (
-                                                <button
-                                                    onClick={() => handleResetPassword(user)}
-                                                    className="p-1 text-app-muted hover:text-ds-warning transition-colors"
-                                                    title="Reset Password"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                                </button>
-                                            )}
                                             {currentUser && user.id !== currentUser.id && (
                                                 <button
                                                     onClick={() => handleDelete(user)}
@@ -406,23 +300,18 @@ const UserManagement: React.FC = () => {
 
                     <div>
                         <label className="block text-sm font-medium text-app-text mb-1">
-                            {userToEdit ? 'New Password (Optional)' : useCompanyBridge ? 'Password (Optional)' : 'Password'}
+                            {userToEdit ? 'New Password (Optional)' : 'Password'}
                         </label>
                         <input
                             type="password"
                             className="block w-full px-3 py-2 border border-app-border rounded-lg shadow-ds-card focus:outline-none focus:ring-2 focus:ring-accent/50 sm:text-sm"
                             value={password}
                             onChange={e => setPassword(e.target.value)}
-                            placeholder={userToEdit ? "Leave blank to keep current" : useCompanyBridge ? "Leave blank — user sets on first login" : ""}
-                            required={!userToEdit && !useCompanyBridge}
+                            placeholder={userToEdit ? "Leave blank to keep current" : ""}
+                            required={!userToEdit}
                             autoComplete="off"
                             data-form-type="other"
                         />
-                        {useCompanyBridge && !userToEdit && !password && (
-                            <p className="text-xs text-app-muted mt-1">
-                                If left blank, the user will be prompted to set a password on their first login.
-                            </p>
-                        )}
                     </div>
 
                     <Select

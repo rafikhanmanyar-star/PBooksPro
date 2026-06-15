@@ -1,11 +1,8 @@
 import { useUsers, useCurrentUser } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from '../ui/Modal';
-import { ChatMessagesRepository } from '../../services/legacy-sqlite/repositories';
-import { getDatabaseService } from '../../services/legacy-sqlite/databaseService';
 import { useAuth } from '../../context/AuthContext';
 import { apiClient } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
     appendInMemoryChatMessage,
     getInMemoryConversation,
@@ -52,110 +49,23 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const [newMessage, setNewMessage] = useState('');
     const [conversations, setConversations] = useState<any[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const chatRepo = new ChatMessagesRepository();
 
-    const ensureChatDbReady = async (): Promise<boolean> => {
-        if (!isLocalOnlyMode()) {
-            return true;
-        }
-        try {
-            console.log(`📝 [ChatModal] ensureChatDbReady called`);
-            const dbService = getDatabaseService();
-            console.log(`📝 [ChatModal] Database ready: ${dbService.isReady()}`);
-            
-            if (!dbService.isReady()) {
-                console.log(`📝 [ChatModal] Initializing database...`);
-                await dbService.initialize();
-                console.log(`📝 [ChatModal] Database initialized. Ready: ${dbService.isReady()}`);
-            }
-            
-            // Note: ensureAllTablesExist is now safe to call even if tenant_id columns
-            // haven't been added yet - it handles index creation failures gracefully
-            console.log(`📝 [ChatModal] Ensuring all tables exist...`);
-            dbService.ensureAllTablesExist();
-            
-            // Verify chat_messages table exists
-            const tableExists = dbService.query<{ name: string }>(
-                `SELECT name FROM sqlite_master WHERE type='table' AND name=?`,
-                ['chat_messages']
-            );
-            console.log(`📝 [ChatModal] chat_messages table exists: ${tableExists.length > 0}`);
-            
-            if (tableExists.length === 0) {
-                console.error(`❌ [ChatModal] chat_messages table does not exist after ensureAllTablesExist()`);
-                return false;
-            }
-            
-            // Verify table has columns
-            const columns = dbService.query<{ name: string }>(`PRAGMA table_info(chat_messages)`);
-            console.log(`📝 [ChatModal] chat_messages table columns:`, columns.map(c => c.name));
-            
-            if (columns.length === 0) {
-                console.error(`❌ [ChatModal] chat_messages table has no columns`);
-                return false;
-            }
-            
-            console.log(`✅ [ChatModal] Chat database is ready`);
-            return true;
-        } catch (error) {
-            console.error('❌ [ChatModal] Error initializing chat database:', error);
-            return false;
-        }
-    };
-
-    // Socket.IO: internal chat (LAN / API mode — same server as entity sync)
     useEffect(() => {
-        if (isLocalOnlyMode()) return;
         const token = apiClient.getToken();
         if (!token) return;
         const socket = connectRealtimeSocket(token);
 
         const handleChatMessage = async (data: ChatMessage) => {
-            console.log(`📝 [ChatModal] WebSocket message received:`, data);
-            
-            // Ignore WhatsApp messages (they have different structure)
             if ((data as any).phoneNumber || (data as any).direction || !data.senderId) {
-                console.log(`📝 [ChatModal] Message appears to be WhatsApp message, ignoring (ChatModal is for internal chat only)`);
                 return;
             }
             
-            // Only process messages for current user
             if (data.recipientId === currentUserId || data.senderId === currentUserId) {
-                try {
-                    console.log(`📝 [ChatModal] Processing message for current user`);
-                    if (!isLocalOnlyMode()) {
-                        appendInMemoryChatMessage(data as InMemoryChatMessage);
-                        if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
-                            setMessages(getInMemoryConversation(currentUserId, selectedUserId) as ChatMessage[]);
-                        }
-                        setConversations(getInMemoryConversationsForUser(currentUserId));
-                        return;
-                    }
-                    const ready = await ensureChatDbReady();
-                    console.log(`📝 [ChatModal] Database ready for incoming message: ${ready}`);
-                    if (!ready) {
-                        console.warn(`⚠️ [ChatModal] Database not ready, skipping message save`);
-                        return;
-                    }
-                    // Save message locally
-                    console.log(`📝 [ChatModal] Saving incoming message locally...`);
-                    chatRepo.insert(data);
-                    console.log(`✅ [ChatModal] Incoming message saved successfully`);
-                    
-                    // If this message is for the currently selected conversation, update UI
-                    if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
-                        console.log(`📝 [ChatModal] Message is for selected conversation, reloading messages`);
-                        loadMessages(selectedUserId);
-                    }
-                    
-                    // Refresh conversations list
-                    console.log(`📝 [ChatModal] Refreshing conversations list`);
-                    await loadConversations();
-                } catch (error) {
-                    console.error('❌ [ChatModal] Error saving incoming message:', error);
+                appendInMemoryChatMessage(data as InMemoryChatMessage);
+                if (selectedUserId && (data.senderId === selectedUserId || data.recipientId === selectedUserId)) {
+                    setMessages(getInMemoryConversation(currentUserId, selectedUserId) as ChatMessage[]);
                 }
-            } else {
-                console.log(`📝 [ChatModal] Message not for current user, ignoring`);
+                setConversations(getInMemoryConversationsForUser(currentUserId));
             }
         };
 
@@ -166,35 +76,25 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         };
     }, [currentUserId, selectedUserId]);
 
-    // Load conversations on mount
     useEffect(() => {
         if (isOpen && currentUserId) {
             loadConversations();
         }
     }, [isOpen, currentUserId]);
 
-    // Load messages when user is selected
     useEffect(() => {
         if (selectedUserId && currentUserId) {
             loadMessages(selectedUserId);
         }
     }, [selectedUserId, currentUserId]);
 
-    // Auto-scroll to bottom when new messages arrive
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
 
     const loadConversations = async () => {
         try {
-            if (!isLocalOnlyMode()) {
-                setConversations(getInMemoryConversationsForUser(currentUserId));
-                return;
-            }
-            const ready = await ensureChatDbReady();
-            if (!ready) return;
-            const convos = chatRepo.getConversationsForUser(currentUserId);
-            setConversations(convos);
+            setConversations(getInMemoryConversationsForUser(currentUserId));
         } catch (error) {
             console.error('Error loading conversations:', error);
         }
@@ -202,28 +102,19 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 
     const loadMessages = async (otherUserId: string) => {
         try {
-            if (!isLocalOnlyMode()) {
-                const token = apiClient.getToken();
-                if (!token) {
-                    setMessages(getInMemoryConversation(currentUserId, otherUserId) as ChatMessage[]);
-                    return;
-                }
-                const { messages: list } = await apiClient.get<{ messages: ChatMessage[] }>(
-                    `/tenants/chat/messages?withUserId=${encodeURIComponent(otherUserId)}`
-                );
-                for (const m of list || []) {
-                    appendInMemoryChatMessage(m as InMemoryChatMessage);
-                }
-                setMessages((list || []) as ChatMessage[]);
-                markInMemoryChatRead(otherUserId, currentUserId);
+            const token = apiClient.getToken();
+            if (!token) {
+                setMessages(getInMemoryConversation(currentUserId, otherUserId) as ChatMessage[]);
                 return;
             }
-            const ready = await ensureChatDbReady();
-            if (!ready) return;
-            const msgs = chatRepo.getConversation(currentUserId, otherUserId);
-            setMessages(msgs);
-            // Mark messages as read after loading
-            chatRepo.markAsRead(otherUserId, currentUserId);
+            const { messages: list } = await apiClient.get<{ messages: ChatMessage[] }>(
+                `/tenants/chat/messages?withUserId=${encodeURIComponent(otherUserId)}`
+            );
+            for (const m of list || []) {
+                appendInMemoryChatMessage(m as InMemoryChatMessage);
+            }
+            setMessages((list || []) as ChatMessage[]);
+            markInMemoryChatRead(otherUserId, currentUserId);
         } catch (error) {
             console.error('Error loading messages:', error);
         }
@@ -240,45 +131,23 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
         if (!selectedUser) return;
 
         const messageText = newMessage.trim();
-        setNewMessage(''); // Clear input immediately for better UX
+        setNewMessage('');
 
         try {
-            console.log(`📝 [ChatModal] handleSendMessage called`);
-            console.log(`📝 [ChatModal] Message text: ${messageText}`);
-            console.log(`📝 [ChatModal] Selected user ID: ${selectedUserId}`);
-            console.log(`📝 [ChatModal] Current user ID: ${currentUserId}`);
-            
-            if (isLocalOnlyMode()) {
-                const ready = await ensureChatDbReady();
-                console.log(`📝 [ChatModal] Database ready: ${ready}`);
-                if (!ready) throw new Error('Chat database not ready');
-            }
-
-            // Send message via API (which will broadcast via WebSocket)
-            console.log(`📝 [ChatModal] Sending message via API...`);
             const response = await apiClient.post<{ message?: InMemoryChatMessage }>('/tenants/chat/send', {
                 recipientId: selectedUserId,
                 message: messageText
             });
-            console.log(`📝 [ChatModal] API response received:`, response);
 
             if (response.message) {
-                if (isLocalOnlyMode()) {
-                    console.log(`📝 [ChatModal] Saving message locally:`, response.message);
-                    chatRepo.insert(response.message);
-                    console.log(`✅ [ChatModal] Message saved locally`);
-                } else {
-                    appendInMemoryChatMessage(response.message as InMemoryChatMessage);
-                }
+                appendInMemoryChatMessage(response.message as InMemoryChatMessage);
                 setMessages((prev) => [...prev, response.message!]);
                 await loadConversations();
-            } else {
-                console.warn(`⚠️ [ChatModal] API response did not include message`);
             }
         } catch (error) {
-            console.error('❌ [ChatModal] Error sending message:', error);
+            console.error('Error sending message:', error);
             alert('Failed to send message. Please try again.');
-            setNewMessage(messageText); // Restore message on error
+            setNewMessage(messageText);
         }
     };
 
@@ -450,4 +319,3 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
 };
 
 export default ChatModal;
-

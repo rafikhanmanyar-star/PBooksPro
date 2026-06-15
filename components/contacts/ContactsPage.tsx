@@ -3,7 +3,6 @@ import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react'
 import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
@@ -363,7 +362,7 @@ const ContactsPage: React.FC = () => {
                 if (contactToEdit) {
                     if (contactToEdit.type === ContactType.VENDOR) {
                         let payload = { ...contactToEdit, ...contactData } as Vendor;
-                        if (!isLocalOnlyMode() && isAuthenticated) {
+                        if (isAuthenticated) {
                             const merged = await getAppStateApiService().updateVendor(payload.id, {
                                 ...payload,
                                 version: (contactToEdit as Vendor).version,
@@ -372,7 +371,7 @@ const ContactsPage: React.FC = () => {
                         }
                         dispatch({ type: 'UPDATE_VENDOR', payload });
                     } else {
-                        if (!isLocalOnlyMode() && isAuthenticated) {
+                        if (isAuthenticated) {
                             await getAppStateApiService().saveContact({
                                 ...contactToEdit,
                                 ...contactData,
@@ -385,7 +384,7 @@ const ContactsPage: React.FC = () => {
                         const vendorId = `vendor_${Date.now()}`;
                         let payload = { ...contactData, id: vendorId, type: ContactType.VENDOR } as Vendor;
                         addOptimistic(payload as unknown as Contact);
-                        if (!isLocalOnlyMode() && isAuthenticated) {
+                        if (isAuthenticated) {
                             try {
                                 const merged = await getAppStateApiService().saveVendor({
                                     ...payload,
@@ -405,7 +404,7 @@ const ContactsPage: React.FC = () => {
                         const contactId = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                         const optimistic = { ...contactData, id: contactId } as Contact;
                         addOptimistic(optimistic);
-                        if (!isLocalOnlyMode() && isAuthenticated) {
+                        if (isAuthenticated) {
                             try {
                                 await getAppStateApiService().saveContact(optimistic);
                                 markSaved(contactId);
@@ -431,7 +430,7 @@ const ContactsPage: React.FC = () => {
         const confirmed = await showConfirm(`Are you sure you want to delete "${contactToEdit.name}"? This cannot be undone.`);
         if (confirmed) {
             if (contactToEdit.type === ContactType.VENDOR) {
-                if (!isLocalOnlyMode() && isAuthenticated) {
+                if (isAuthenticated) {
                     try {
                         await getAppStateApiService().deleteVendor(
                             contactToEdit.id,
@@ -446,7 +445,7 @@ const ContactsPage: React.FC = () => {
                 }
                 dispatch({ type: 'DELETE_VENDOR', payload: contactToEdit.id });
             } else {
-                if (!isLocalOnlyMode() && isAuthenticated) {
+                if (isAuthenticated) {
                     try {
                         await getAppStateApiService().deleteContact(contactToEdit.id);
                     } catch (err: any) {

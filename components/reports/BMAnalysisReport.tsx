@@ -21,7 +21,6 @@ import {
     type BMDetailLine,
     type BmAnalysisSortKey,
 } from './bmAnalysisReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchBmAnalysisReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -30,8 +29,7 @@ type SortKey = BmAnalysisSortKey;
 const BMAnalysisReport: React.FC = () => {
     const rentalState = useRentalReportAppState();
     const { buildings: allBuildings } = rentalState;
-    const localOnly = isLocalOnlyMode();
-    const [dateRange, setDateRange] = useState<DateRangeOption>('all');
+        const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
     const [endDate, setEndDate] = useState('2100-12-31');
     const [searchQuery, setSearchQuery] = useState('');
@@ -78,11 +76,6 @@ const BMAnalysisReport: React.FC = () => {
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerPayload(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -106,7 +99,7 @@ const BMAnalysisReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
+    }, [startDate, endDate, selectedBuildingId, searchQuery, sortConfig]);
 
     const localResult = useMemo(
         () =>
@@ -121,10 +114,8 @@ const BMAnalysisReport: React.FC = () => {
         [rentalState, startDate, endDate, selectedBuildingId, searchQuery, sortConfig]
     );
 
-    const reportData = localOnly ? localResult.reportData : (serverPayload?.reportData ?? localResult.reportData);
-    const bmDetailsByBuilding = localOnly
-        ? localResult.bmDetailsByBuilding
-        : (serverPayload?.bmDetailsByBuilding ?? localResult.bmDetailsByBuilding);
+    const reportData = (serverPayload?.reportData ?? localResult.reportData);
+    const bmDetailsByBuilding = (serverPayload?.bmDetailsByBuilding ?? localResult.bmDetailsByBuilding);
 
     const activeDetail = detailBuildingId ? bmDetailsByBuilding[detailBuildingId] : null;
 
@@ -132,7 +123,7 @@ const BMAnalysisReport: React.FC = () => {
         [...lines].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     const totals = useMemo(() => {
-        if (!localOnly && serverPayload?.totals) {
+        if (serverPayload?.totals) {
             return serverPayload.totals;
         }
         return reportData.reduce((acc, curr) => ({
@@ -141,7 +132,7 @@ const BMAnalysisReport: React.FC = () => {
             expenses: acc.expenses + curr.expenses,
             net: acc.net + curr.net
         }), { collected: 0, receivable: 0, expenses: 0, net: 0 });
-    }, [localOnly, serverPayload, reportData]);
+    }, [serverPayload, reportData]);
 
     const handleExport = () => {
         const data = reportData.map(r => ({
@@ -242,10 +233,10 @@ const BMAnalysisReport: React.FC = () => {
                 </div>
             </div>
 
-            {!localOnly && loading && (
+            {loading && (
                 <p className="text-sm text-app-muted px-1 no-print">Loading report from server…</p>
             )}
-            {!localOnly && fetchError && (
+            {fetchError && (
                 <p className="text-sm text-rose-600 px-1 no-print">Server report failed: {fetchError}. Showing local data.</p>
             )}
 
