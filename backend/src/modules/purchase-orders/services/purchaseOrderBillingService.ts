@@ -3,11 +3,68 @@ import {
   computePoBillingStatus,
   validateBillAgainstPurchaseOrderWithReceipt,
 } from '../../../procurement/purchaseOrderBillingCore.js';
-import {
-  PurchaseOrderRepository,
-} from '../repositories/PurchaseOrderRepository.js';
+import { PurchaseOrderRepository } from '../repositories/PurchaseOrderRepository.js';
 import { rowToPurchaseOrderApi } from './purchaseOrderService.js';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
+import { listPoBillingLines } from './purchaseOrderLineBillingService.js';
+
+export async function getPurchaseOrderBillingContext(
+  client: pg.PoolClient,
+  tenantId: string,
+  purchaseOrderId: string,
+  excludeBillId?: string
+) {
+  const repo = new PurchaseOrderRepository(tenantId);
+  const po = await repo.getById(client, purchaseOrderId);
+  if (!po) return null;
+
+  const billedAmount = await repo.sumBilledAmount(client, purchaseOrderId, excludeBillId);
+  const receivedAmount = Number(po.received_amount ?? 0);
+  const totalAmount = Number(po.total_amount);
+  const billableRemaining = Math.max(0, receivedAmount - billedAmount);
+  const poRemaining = Math.max(0, totalAmount - billedAmount);
+
+  const grnRows = await client.query<{
+    id: string;
+    grn_number: string;
+    status: string;
+    received_date: Date;
+    line_total: string;
+  }>(
+    `SELECT gr.id, gr.grn_number, gr.status, gr.received_date,
+            COALESCE(SUM(gl.line_total), 0)::text AS line_total
+     FROM goods_receipts gr
+     LEFT JOIN goods_receipt_lines gl ON gl.goods_receipt_id = gr.id AND gl.tenant_id = gr.tenant_id
+     WHERE gr.tenant_id = $1 AND gr.purchase_order_id = $2
+       AND gr.deleted_at IS NULL AND gr.status IN ('Posted', 'Closed')
+     GROUP BY gr.id, gr.grn_number, gr.status, gr.received_date
+     ORDER BY gr.received_date DESC`,
+    [tenantId, purchaseOrderId]
+  );
+
+  const lines = await listPoBillingLines(client, tenantId, purchaseOrderId, excludeBillId);
+
+  return {
+    purchaseOrderId: po.id,
+    poNumber: po.po_number,
+    vendorId: po.vendor_id,
+    projectId: po.project_id ?? undefined,
+    status: po.status,
+    totalAmount,
+    receivedAmount,
+    billedAmount,
+    billableRemaining,
+    poRemainingAmount: poRemaining,
+    postedGoodsReceipts: grnRows.rows.map((r) => ({
+      id: r.id,
+      grnNumber: r.grn_number,
+      status: r.status,
+      receivedDate: r.received_date,
+      lineTotal: Number(r.line_total),
+    })),
+    lines,
+  };
+}
 
 export async function assertBillAllowedAgainstPurchaseOrder(
   client: pg.PoolClient,

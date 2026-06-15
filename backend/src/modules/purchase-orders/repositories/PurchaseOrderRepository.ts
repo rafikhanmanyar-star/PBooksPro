@@ -231,7 +231,8 @@ export class PurchaseOrderRepository extends TenantRepository {
     const r = await client.query<{ total: string }>(
       `SELECT COALESCE(SUM(amount), 0)::text AS total
        FROM bills
-       WHERE tenant_id = $1 AND purchase_order_id = $2 AND deleted_at IS NULL${excludeClause}`,
+       WHERE tenant_id = $1 AND purchase_order_id = $2 AND deleted_at IS NULL
+         AND COALESCE(approval_status, 'Approved') = 'Approved'${excludeClause}`,
       params
     );
     return Number(r.rows[0]?.total ?? 0);
@@ -376,10 +377,11 @@ export class PurchaseOrderLineRepository extends TenantRepository {
       description: string | null;
       quantity: string;
       received_qty: string;
+      billed_qty: string;
       unit_rate: string;
     }>(
       `SELECT id, purchase_order_id, item_id, item_name, description,
-              quantity::text, received_qty::text, unit_rate::text
+              quantity::text, received_qty::text, billed_qty::text, unit_rate::text
        FROM purchase_order_lines
        WHERE tenant_id = $1 AND id = $2`,
       [this.tenantId, lineId]

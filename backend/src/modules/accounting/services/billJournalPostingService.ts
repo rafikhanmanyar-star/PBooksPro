@@ -22,8 +22,12 @@ function billDateYmd(row: BillRow): string {
   return formatPgDateToYyyyMmDd(row.issue_date as Date | string);
 }
 
-export function shouldSkipBillJournalMirror(row: Pick<BillRow, 'status' | 'description' | 'amount' | 'deleted_at'>): boolean {
+export function shouldSkipBillJournalMirror(
+  row: Pick<BillRow, 'status' | 'description' | 'amount' | 'deleted_at'> & { approval_status?: string | null }
+): boolean {
   if (row.deleted_at) return true;
+  const approval = String(row.approval_status ?? 'Approved').trim();
+  if (approval !== 'Approved') return true;
   if (String(row.status ?? '').trim() === 'Draft') return true;
   const desc = String(row.description ?? '');
   if (desc.includes('VOIDED')) return true;

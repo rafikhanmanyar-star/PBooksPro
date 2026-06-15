@@ -5,16 +5,17 @@ import { getPool, withTransaction } from '../../../db/pool.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import {
-  approvePurchaseOrder,
-  cancelPurchaseOrder,
   getPurchaseOrderById,
   listPurchaseOrders,
   rowToPurchaseOrderApi,
   softDeletePurchaseOrder,
   submitPurchaseOrder,
   upsertPurchaseOrder,
+  approvePurchaseOrder,
+  cancelPurchaseOrder,
 } from '../services/purchaseOrderService.js';
 import { getPurchaseOrderReportSummary } from '../services/purchaseOrderReportService.js';
+import { getPurchaseOrderBillingContext } from '../services/purchaseOrderBillingService.js';
 
 export const purchaseOrdersRouter = Router();
 
@@ -84,6 +85,31 @@ purchaseOrdersRouter.get('/purchase-orders/:id', requireView, async (req: Authed
         return;
       }
       sendSuccess(res, po);
+    } finally {
+      client.release();
+    }
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+purchaseOrdersRouter.get('/purchase-orders/:id/billing-context', requireView, async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const excludeBillId = typeof req.query.excludeBillId === 'string' ? req.query.excludeBillId : undefined;
+  try {
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      const ctx = await getPurchaseOrderBillingContext(client, tenantId, req.params.id, excludeBillId);
+      if (!ctx) {
+        sendFailure(res, 404, 'NOT_FOUND', 'Purchase order not found');
+        return;
+      }
+      sendSuccess(res, ctx);
     } finally {
       client.release();
     }

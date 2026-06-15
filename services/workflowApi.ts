@@ -85,3 +85,15 @@ export async function submitEntityForApproval(body: {
 }): Promise<{ mode: string; request?: ApprovalRequest }> {
   return apiClient.post('/workflow/submit', body);
 }
+
+export async function submitBillForApproval(id: string, version?: number) {
+  return apiClient.post<Record<string, unknown>>(`/bills/${id}/submit`, { version });
+}
+
+export async function submitContractForApproval(id: string, version?: number) {
+  return apiClient.post<Record<string, unknown>>(`/contracts/${id}/submit`, { version });
+}
+
+export async function submitPaymentForApproval(id: string, version?: number) {
+  return apiClient.post<Record<string, unknown>>(`/transactions/${id}/submit`, { version });
+}

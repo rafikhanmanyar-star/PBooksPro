@@ -116,6 +116,11 @@ export type TransactionRow = {
   project_asset_id: string | null;
   owner_id: string | null;
   is_system: boolean;
+  approval_status: string;
+  submitted_at: Date | null;
+  submitted_by: string | null;
+  approved_at: Date | null;
+  approved_by: string | null;
   version: number;
   deleted_at: Date | null;
   created_at: Date;
@@ -170,6 +175,7 @@ export function rowToTransactionApi(row: TransactionRow): Record<string, unknown
     batchId: row.batch_id ?? undefined,
     projectAssetId: row.project_asset_id ?? undefined,
     ownerId: row.owner_id ?? undefined,
+    approvalStatus: row.approval_status ?? 'Approved',
     isSystem: row.is_system,
     userId: row.user_id ?? undefined,
     version: row.version,
@@ -370,7 +376,7 @@ export async function createTransaction(
   options?: CreateTransactionOptions | null
 ): Promise<TransactionRow> {
   const expenseCashBatchCtx = options?.expenseCashBatchCtx ?? null;
-  const skipJournalMirror = options?.skipJournalMirror === true;
+  let skipJournalMirror = options?.skipJournalMirror === true;
   const p = pickBody(body);
   if (!p.type) throw new Error('type is required.');
   if (!p.account_id) throw new Error('accountId is required.');
@@ -404,6 +410,17 @@ export async function createTransaction(
 
   await assertAccountingPeriodOpen(client, tenantId, p.date);
 
+  const { isApprovalWorkflowEnabled } = await import('../../workflow/services/workflowSettingsService.js');
+  const workflowEnabled = await isApprovalWorkflowEnabled(client, tenantId);
+  const pendingPaymentApproval =
+    workflowEnabled &&
+    p.type === 'Expense' &&
+    Boolean(p.bill_id?.trim() || p.vendor_id?.trim()) &&
+    !p.is_system;
+  if (pendingPaymentApproval) {
+    skipJournalMirror = true;
+  }
+
   const row = await new TransactionRepository(tenantId).insertTransaction(
     client,
     id,
@@ -413,29 +430,48 @@ export async function createTransaction(
   if (expenseCashBatchCtx && row.project_id && row.type === 'Expense') {
     expenseCashBatchCtx.recordInsertedTransaction(rowToProjectCashTxRow(row));
   }
-  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
-  await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
-  if (!skipJournalMirror) {
-    await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
+
+  let effectiveRow = row;
+  if (pendingPaymentApproval) {
+    const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+    await setApprovalLifecycleStatus(client, tenantId, 'transactions', row.id, 'Draft', actorUserId);
+    const refreshed = await getTransactionById(client, tenantId, row.id);
+    if (refreshed) effectiveRow = refreshed;
+    const { submitDomainEntityForApproval } = await import(
+      '../../workflow/services/workflowDomainSubmitService.js'
+    );
+    await submitDomainEntityForApproval(client, tenantId, 'payment', row.id, actorUserId, null);
+    const afterSubmit = await getTransactionById(client, tenantId, row.id);
+    if (afterSubmit) effectiveRow = afterSubmit;
+  } else {
+    await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
+    await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
+    if (!skipJournalMirror) {
+      await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
+    }
   }
+
   await recordDomainMutation(client, {
     tenantId,
     userId: actorUserId,
     module: 'transactions',
     entityType: 'transaction',
-    entityId: row.id,
+    entityId: effectiveRow.id,
     action: 'create',
-    summary: `${row.type} transaction posted (${row.amount})`,
+    summary: pendingPaymentApproval
+      ? `${effectiveRow.type} payment saved as draft pending approval (${effectiveRow.amount})`
+      : `${effectiveRow.type} transaction posted (${effectiveRow.amount})`,
     newValue: {
-      id: row.id,
-      type: row.type,
-      amount: row.amount,
-      date: formatPgDateToYyyyMmDd(row.date as Date | string),
-      accountId: row.account_id,
+      id: effectiveRow.id,
+      type: effectiveRow.type,
+      amount: effectiveRow.amount,
+      date: formatPgDateToYyyyMmDd(effectiveRow.date as Date | string),
+      accountId: effectiveRow.account_id,
+      approvalStatus: effectiveRow.approval_status,
     },
-    version: row.version,
+    version: effectiveRow.version,
   });
-  return row;
+  return effectiveRow;
 }
 
 export async function updateTransaction(
@@ -771,4 +807,104 @@ export async function listTransactionsChangedSince(
   since: Date
 ): Promise<TransactionRow[]> {
   return new TransactionRepository(tenantId).listChangedSince(client, since);
+}
+
+/** Post GL + bill/invoice aggregates after payment approval workflow completes. */
+export async function postTransactionAfterApproval(
+  client: pg.PoolClient,
+  tenantId: string,
+  transactionId: string,
+  actorUserId: string | null
+): Promise<TransactionRow> {
+  const row = await getTransactionById(client, tenantId, transactionId);
+  if (!row) throw new Error('Transaction not found.');
+  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
+  await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
+  await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
+  const refreshed = await getTransactionById(client, tenantId, transactionId);
+  if (!refreshed) throw new Error('Transaction not found after approval posting.');
+  return refreshed;
+}
+
+export async function submitPaymentForApproval(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null,
+  requesterRole?: string | null
+) {
+  const row = await getTransactionById(client, tenantId, id);
+  if (!row) throw new Error('Payment not found.');
+  const { transactionRequiresPaymentApproval } = await import(
+    '../../workflow/services/approvalLifecycleService.js'
+  );
+  if (!transactionRequiresPaymentApproval(row)) {
+    throw new Error('This transaction does not require payment approval workflow.');
+  }
+  if (String(row.approval_status ?? 'Approved') !== 'Draft') {
+    throw new Error('Only draft payments can be submitted for approval.');
+  }
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'transactions',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { submitDomainEntityForApproval } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const result = await submitDomainEntityForApproval(
+    client,
+    tenantId,
+    'payment',
+    id,
+    userId,
+    requesterRole ?? null
+  );
+  const updated = await getTransactionById(client, tenantId, id);
+  if (!updated) throw new Error('Payment not found after submit.');
+  return { conflict: false as const, row: updated, workflowMode: result.mode, approvalRequest: result.request };
+}
+
+export async function approvePayment(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null
+) {
+  const row = await getTransactionById(client, tenantId, id);
+  if (!row) throw new Error('Payment not found.');
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'transactions',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { approveDomainEntityWithWorkflowGate } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+  const result = await approveDomainEntityWithWorkflowGate(
+    client,
+    tenantId,
+    'payment',
+    id,
+    userId,
+    async () => {
+      await setApprovalLifecycleStatus(client, tenantId, 'transactions', id, 'Approved', userId);
+      const updated = await postTransactionAfterApproval(client, tenantId, id, userId);
+      return { snapshot: rowToTransactionApi(updated) };
+    }
+  );
+  const updated = await getTransactionById(client, tenantId, id);
+  if (!updated) throw new Error('Payment not found after approve.');
+  return { conflict: false as const, row: updated, ...result };
 }

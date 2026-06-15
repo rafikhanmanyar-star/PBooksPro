@@ -58,9 +58,10 @@ const statusBadge: Record<string, string> = {
 
 type PurchaseOrdersPageProps = {
   vendorId?: string;
+  onCreateGrn?: (purchaseOrderId: string) => void;
 };
 
-const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId }) => {
+const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCreateGrn }) => {
   const state = useFinancialReportAppState();
   const { vendors, projects, categories } = state;
   const perms = usePermissions();
@@ -189,6 +190,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId }) => 
               <th className="px-3 py-2 text-left">Vendor</th>
               <th className="px-3 py-2 text-left">Issue Date</th>
               <th className="px-3 py-2 text-right">Total</th>
+              <th className="px-3 py-2 text-right">Received</th>
               <th className="px-3 py-2 text-right">Billed</th>
               <th className="px-3 py-2 text-center">Status</th>
               <th className="px-3 py-2 text-center">Actions</th>
@@ -197,7 +199,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId }) => 
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
                   {isFetching ? 'Loading…' : 'No purchase orders found.'}
                 </td>
               </tr>
@@ -210,6 +212,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId }) => 
                     <td className="px-3 py-2">{vendor?.name ?? po.vendorId}</td>
                     <td className="px-3 py-2">{po.issueDate}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(po.totalAmount)}</td>
+                    <td className="px-3 py-2 text-right">{formatMoney(po.receivedAmount ?? 0)}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(po.billedAmount ?? 0)}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={`text-xs font-semibold px-2 py-1 rounded ${statusBadge[po.status] ?? 'bg-slate-100'}`}>
@@ -239,6 +242,11 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId }) => 
                             disabled={busy}
                           >
                             Approve
+                          </Button>
+                        )}
+                        {['Approved', 'Partially Billed'].includes(po.status) && perms.canCreateGoodsReceipt && onCreateGrn && (
+                          <Button size="sm" variant="secondary" onClick={() => onCreateGrn(po.id)}>
+                            Create GRN
                           </Button>
                         )}
                         {['Draft', 'Submitted', 'Approved'].includes(po.status) && perms.canCancelPurchaseOrder && (

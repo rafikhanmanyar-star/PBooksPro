@@ -33,6 +33,8 @@ import {
   type ContractRetentionFormState,
 } from './ContractRetentionUI';
 import ContractActivitySidebar from './ContractActivitySidebar';
+import SubmitForApprovalButton from '../workflow/SubmitForApprovalButton';
+import SubmitForApprovalButton from '../workflow/SubmitForApprovalButton';
 
 interface ProjectContractFormProps {
     onClose: () => void;
@@ -694,9 +696,16 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                 </div>
 
                 <div className="flex justify-between pt-4 border-t mt-6">
-                    <div>
+                    <div className="flex flex-wrap gap-2 items-center">
                         {contractToEdit && (
                             <Button type="button" variant="danger" onClick={handleDelete}>Delete</Button>
+                        )}
+                        {contractToEdit && (
+                            <SubmitForApprovalButton
+                                entityType="contract"
+                                entityId={contractToEdit.id}
+                                approvalStatus={contractToEdit.approvalStatus}
+                            />
                         )}
                     </div>
                     <div className="flex gap-2">

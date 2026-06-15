@@ -130,6 +130,7 @@ export enum SalesReturnReason {
 }
 
 export enum ContractStatus {
+  PENDING = 'Pending',
   ACTIVE = 'Active',
   COMPLETED = 'Completed',
   TERMINATED = 'Terminated',
@@ -513,6 +514,15 @@ export interface Invoice {
 
 export type ExpenseBearerType = 'owner' | 'building' | 'tenant';
 
+export interface BillPoLine {
+  id?: string;
+  purchaseOrderLineId: string;
+  goodsReceiptLineId?: string;
+  billedQty: number;
+  unitRate: number;
+  lineTotal: number;
+}
+
 export interface Bill {
   id: string;
   billNumber: string;
@@ -536,6 +546,9 @@ export interface Bill {
   documentPath?: string; // Path to uploaded document file (legacy/local)
   documentId?: string; // Reference to documents table (local + cloud)
   purchaseOrderId?: string;
+  goodsReceiptId?: string;
+  poBillLines?: BillPoLine[];
+  approvalStatus?: string;
   version?: number; // Version for optimistic locking (default: 1)
 }
 
@@ -915,6 +928,7 @@ export interface Contract {
   retentionReleaseBy?: string;
   /** API / PostgreSQL optimistic concurrency */
   version?: number;
+  approvalStatus?: string;
 }
 
 export type ContractRetentionType = 'NONE' | 'PERCENTAGE' | 'FIXED_AMOUNT';
@@ -1470,12 +1484,14 @@ export interface PurchaseOrderReportSummary {
     status: string;
     count: number;
     totalAmount: number;
+    receivedAmount: number;
     billedAmount: number;
     openAmount: number;
   }>;
   totals: {
     count: number;
     totalAmount: number;
+    receivedAmount: number;
     billedAmount: number;
     openAmount: number;
   };
@@ -1486,8 +1502,10 @@ export interface PurchaseOrderReportSummary {
     vendorName: string;
     status: string;
     totalAmount: number;
+    receivedAmount: number;
     billedAmount: number;
     remainingAmount: number;
+    billableRemaining: number;
     issueDate: string;
   }>;
 }

@@ -5,13 +5,18 @@ import { CURRENCY } from '../../constants';
 
 const PurchaseOrderReportWidget: React.FC = () => {
   const { data, isLoading } = usePurchaseOrderReport();
-  const summary = data ?? { byStatus: [], totals: { count: 0, totalAmount: 0, billedAmount: 0, openAmount: 0 }, openPurchaseOrders: [] };
+  const summary = data ?? {
+    byStatus: [],
+    totals: { count: 0, totalAmount: 0, receivedAmount: 0, billedAmount: 0, openAmount: 0 },
+    openPurchaseOrders: [],
+  };
 
   return (
     <ChartCard title="Purchase Order Summary">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
         <MetricCard label="Total POs" value={summary.totals.count} />
         <MetricCard label="PO Value" value={summary.totals.totalAmount} />
+        <MetricCard label="Received" value={summary.totals.receivedAmount} />
         <MetricCard label="Billed" value={summary.totals.billedAmount} />
         <MetricCard label="Open Balance" value={summary.totals.openAmount} status="warning" />
       </div>
@@ -41,8 +46,12 @@ const PurchaseOrderReportWidget: React.FC = () => {
                     <span>
                       {po.poNumber} — {po.vendorName}
                     </span>
-                    <span className="font-semibold whitespace-nowrap">
-                      {po.remainingAmount.toLocaleString('en-US', { style: 'currency', currency: CURRENCY })} left
+                    <span className="font-semibold whitespace-nowrap text-right">
+                      {po.billableRemaining.toLocaleString('en-US', { style: 'currency', currency: CURRENCY })} billable
+                      <span className="text-app-muted font-normal">
+                        {' '}
+                        · {po.receivedAmount.toLocaleString('en-US', { style: 'currency', currency: CURRENCY })} rcvd
+                      </span>
                     </span>
                   </li>
                 ))}

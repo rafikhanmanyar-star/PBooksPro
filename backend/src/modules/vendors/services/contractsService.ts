@@ -43,6 +43,11 @@ export type ContractRow = {
   retention_balance: string;
   retention_released: string;
   retention_release_by: string | null;
+  approval_status: string;
+  submitted_at: Date | null;
+  submitted_by: string | null;
+  approved_at: Date | null;
+  approved_by: string | null;
   user_id: string | null;
   version: number;
   deleted_at: Date | null;
@@ -90,6 +95,7 @@ export function rowToContractApi(row: ContractRow): Record<string, unknown> {
     startDate: sd ? formatPgDateToYyyyMmDd(sd) : undefined,
     endDate: ed ? formatPgDateToYyyyMmDd(ed) : undefined,
     status: row.status,
+    approvalStatus: row.approval_status ?? 'Approved',
     categoryIds: (() => {
       if (!row.category_ids) return [];
       try {
@@ -337,6 +343,7 @@ async function insertContract(
     contractWriteFields(p, body),
     uid
   );
+  await maybeInitContractWorkflowDraft(client, tenantId, row.id, actorUserId);
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -401,4 +408,105 @@ export async function softDeleteContract(
     });
   }
   return { ok, conflict: false };
+}
+
+async function maybeInitContractWorkflowDraft(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractId: string,
+  actorUserId: string | null
+): Promise<void> {
+  const { isApprovalWorkflowEnabled } = await import('../../workflow/services/workflowSettingsService.js');
+  if (!(await isApprovalWorkflowEnabled(client, tenantId))) return;
+  const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+  await client.query(
+    `UPDATE contracts SET status = 'Pending', updated_at = NOW(), version = version + 1
+     WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+    [tenantId, contractId]
+  );
+  await setApprovalLifecycleStatus(client, tenantId, 'contracts', contractId, 'Draft', actorUserId);
+}
+
+export async function submitContractForApproval(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null,
+  requesterRole?: string | null
+) {
+  const row = await getContractById(client, tenantId, id);
+  if (!row) throw new Error('Contract not found.');
+  if (String(row.approval_status ?? 'Approved') !== 'Draft') {
+    throw new Error('Only draft contracts can be submitted for approval.');
+  }
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contracts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { submitDomainEntityForApproval } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const result = await submitDomainEntityForApproval(
+    client,
+    tenantId,
+    'contract',
+    id,
+    userId,
+    requesterRole ?? null
+  );
+  const updated = await getContractById(client, tenantId, id);
+  if (!updated) throw new Error('Contract not found after submit.');
+  return { conflict: false as const, row: updated, workflowMode: result.mode, approvalRequest: result.request };
+}
+
+export async function approveContract(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null
+) {
+  const row = await getContractById(client, tenantId, id);
+  if (!row) throw new Error('Contract not found.');
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'contracts',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { approveDomainEntityWithWorkflowGate } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+  const result = await approveDomainEntityWithWorkflowGate(
+    client,
+    tenantId,
+    'contract',
+    id,
+    userId,
+    async () => {
+      const current = await getContractById(client, tenantId, id);
+      if (!current) throw new Error('Contract not found.');
+      const contractStatus =
+        current.status === 'Pending' || current.status === 'Draft' ? 'Active' : current.status;
+      await setApprovalLifecycleStatus(client, tenantId, 'contracts', id, 'Approved', userId, {
+        contractStatus,
+      });
+      const updated = await getContractById(client, tenantId, id);
+      if (!updated) throw new Error('Contract not found after approve.');
+      return { snapshot: rowToContractApi(updated) };
+    }
+  );
+  const updated = await getContractById(client, tenantId, id);
+  if (!updated) throw new Error('Contract not found after approve.');
+  return { conflict: false as const, row: updated, ...result };
 }

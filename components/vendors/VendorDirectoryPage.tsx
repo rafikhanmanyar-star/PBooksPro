@@ -212,6 +212,12 @@ const VendorDirectoryPage: React.FC = () => {
     const startWidth = useRef(0);
 
     const [duplicateBillData, setDuplicateBillData] = useState<Partial<Bill> | null>(null);
+    const [grnPrefillPoId, setGrnPrefillPoId] = useState<string | null>(null);
+
+    const handleCreateGrnFromPo = (purchaseOrderId: string) => {
+        setGrnPrefillPoId(purchaseOrderId);
+        setOptionsView('GoodsReceipts');
+    };
 
     // Check if we need to open a vendor from search or add new vendor
     useEffect(() => {
@@ -814,9 +820,12 @@ const VendorDirectoryPage: React.FC = () => {
                                 ) : optionsView === 'PriceHistory' ? (
                                     <VendorPriceHistoryPage />
                                 ) : optionsView === 'PurchaseOrders' ? (
-                                    <PurchaseOrdersPage />
+                                    <PurchaseOrdersPage onCreateGrn={handleCreateGrnFromPo} />
                                 ) : optionsView === 'GoodsReceipts' ? (
-                                    <GoodsReceiptsPage />
+                                    <GoodsReceiptsPage
+                                        initialPurchaseOrderId={grnPrefillPoId}
+                                        onInitialPoConsumed={() => setGrnPrefillPoId(null)}
+                                    />
                                 ) : optionsView === 'Bills' ? (
                                     <AllBillsTable
                                         onEditBill={(bill) => {

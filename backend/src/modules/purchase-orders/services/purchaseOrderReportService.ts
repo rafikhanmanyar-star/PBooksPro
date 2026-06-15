@@ -5,11 +5,13 @@ export async function getPurchaseOrderReportSummary(client: pg.PoolClient, tenan
     status: string;
     count: string;
     total_amount: string;
+    received_amount: string;
     billed_amount: string;
   }>(
     `SELECT status,
             COUNT(*)::text AS count,
             COALESCE(SUM(total_amount), 0)::text AS total_amount,
+            COALESCE(SUM(received_amount), 0)::text AS received_amount,
             COALESCE(SUM(billed_amount), 0)::text AS billed_amount
      FROM purchase_orders
      WHERE tenant_id = $1 AND deleted_at IS NULL
@@ -22,6 +24,7 @@ export async function getPurchaseOrderReportSummary(client: pg.PoolClient, tenan
     status: row.status,
     count: Number(row.count),
     totalAmount: Number(row.total_amount),
+    receivedAmount: Number(row.received_amount),
     billedAmount: Number(row.billed_amount),
     openAmount: Math.max(0, Number(row.total_amount) - Number(row.billed_amount)),
   }));
@@ -30,10 +33,11 @@ export async function getPurchaseOrderReportSummary(client: pg.PoolClient, tenan
     (acc, row) => ({
       count: acc.count + row.count,
       totalAmount: acc.totalAmount + row.totalAmount,
+      receivedAmount: acc.receivedAmount + row.receivedAmount,
       billedAmount: acc.billedAmount + row.billedAmount,
       openAmount: acc.openAmount + row.openAmount,
     }),
-    { count: 0, totalAmount: 0, billedAmount: 0, openAmount: 0 }
+    { count: 0, totalAmount: 0, receivedAmount: 0, billedAmount: 0, openAmount: 0 }
   );
 
   const openPos = await client.query<{
@@ -43,11 +47,12 @@ export async function getPurchaseOrderReportSummary(client: pg.PoolClient, tenan
     vendor_name: string;
     status: string;
     total_amount: string;
+    received_amount: string;
     billed_amount: string;
     issue_date: Date;
   }>(
     `SELECT po.id, po.po_number, po.vendor_id, v.name AS vendor_name, po.status,
-            po.total_amount::text, po.billed_amount::text, po.issue_date
+            po.total_amount::text, po.received_amount::text, po.billed_amount::text, po.issue_date
      FROM purchase_orders po
      JOIN vendors v ON v.id = po.vendor_id AND v.tenant_id = po.tenant_id
      WHERE po.tenant_id = $1 AND po.deleted_at IS NULL
@@ -60,16 +65,22 @@ export async function getPurchaseOrderReportSummary(client: pg.PoolClient, tenan
   return {
     byStatus,
     totals,
-    openPurchaseOrders: openPos.rows.map((row) => ({
-      id: row.id,
-      poNumber: row.po_number,
-      vendorId: row.vendor_id,
-      vendorName: row.vendor_name,
-      status: row.status,
-      totalAmount: Number(row.total_amount),
-      billedAmount: Number(row.billed_amount),
-      remainingAmount: Math.max(0, Number(row.total_amount) - Number(row.billed_amount)),
-      issueDate: row.issue_date,
-    })),
+    openPurchaseOrders: openPos.rows.map((row) => {
+      const receivedAmount = Number(row.received_amount);
+      const billedAmount = Number(row.billed_amount);
+      return {
+        id: row.id,
+        poNumber: row.po_number,
+        vendorId: row.vendor_id,
+        vendorName: row.vendor_name,
+        status: row.status,
+        totalAmount: Number(row.total_amount),
+        receivedAmount,
+        billedAmount,
+        remainingAmount: Math.max(0, Number(row.total_amount) - billedAmount),
+        billableRemaining: Math.max(0, receivedAmount - billedAmount),
+        issueDate: row.issue_date,
+      };
+    }),
   };
 }

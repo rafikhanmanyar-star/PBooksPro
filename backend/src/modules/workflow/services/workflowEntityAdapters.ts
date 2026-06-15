@@ -4,7 +4,29 @@ import {
   type PurchaseOrderRow,
 } from '../../purchase-orders/repositories/PurchaseOrderRepository.js';
 import { rowToPurchaseOrderApi } from '../../purchase-orders/services/purchaseOrderService.js';
+import {
+  getBillById,
+  rowToBillApi,
+  type BillRow,
+} from '../../vendors/services/billsService.js';
+import {
+  getContractById,
+  rowToContractApi,
+  type ContractRow,
+} from '../../vendors/services/contractsService.js';
+import {
+  getTransactionById,
+  rowToTransactionApi,
+  postTransactionAfterApproval,
+  type TransactionRow,
+} from '../../accounting/services/transactionsService.js';
 import type { WorkflowEntityType } from '../../../workflow/workflowTypes.js';
+import { isApprovalGated } from '../../../workflow/approvalLifecycle.js';
+import {
+  getApprovalAuditRow,
+  setApprovalLifecycleStatus,
+  transactionRequiresPaymentApproval,
+} from './approvalLifecycleService.js';
 
 export type WorkflowEntityContext = {
   entityRef: string;
@@ -47,6 +69,68 @@ export type WorkflowEntityAdapter = {
   ): void;
   auditModule: string;
 };
+
+function emitRealtime(
+  tenantId: string,
+  entityType: import('../../../core/realtime.js').RealtimeEntityType,
+  entityId: string,
+  snapshot: Record<string, unknown>,
+  sourceUserId?: string | null
+) {
+  void import('../../../core/realtime.js').then(({ emitEntityEvent }) => {
+    emitEntityEvent(tenantId, 'updated', entityType, {
+      id: entityId,
+      sourceUserId: sourceUserId ?? undefined,
+      data: snapshot,
+      version: typeof snapshot.version === 'number' ? snapshot.version : undefined,
+    });
+  });
+}
+
+function billToContext(row: BillRow): WorkflowEntityContext {
+  const approvalStatus = String((row as BillRow & { approval_status?: string }).approval_status ?? 'Approved');
+  return {
+    entityRef: row.bill_number,
+    amount: Number(row.amount),
+    departmentId: null,
+    projectId: row.project_id,
+    previousStatus: approvalStatus,
+    pendingStatus: 'Submitted',
+    approvedStatus: 'Approved',
+    returnedStatus: 'Draft',
+    snapshot: rowToBillApi(row),
+  };
+}
+
+function contractToContext(row: ContractRow): WorkflowEntityContext {
+  const approvalStatus = String((row as ContractRow & { approval_status?: string }).approval_status ?? 'Approved');
+  return {
+    entityRef: row.contract_number,
+    amount: Number(row.total_amount),
+    departmentId: null,
+    projectId: row.project_id,
+    previousStatus: approvalStatus,
+    pendingStatus: 'Submitted',
+    approvedStatus: 'Approved',
+    returnedStatus: 'Draft',
+    snapshot: rowToContractApi(row),
+  };
+}
+
+function paymentToContext(row: TransactionRow): WorkflowEntityContext {
+  const approvalStatus = String((row as TransactionRow & { approval_status?: string }).approval_status ?? 'Approved');
+  return {
+    entityRef: row.reference?.trim() || row.id,
+    amount: Number(row.amount),
+    departmentId: null,
+    projectId: row.project_id,
+    previousStatus: approvalStatus,
+    pendingStatus: 'Submitted',
+    approvedStatus: 'Approved',
+    returnedStatus: 'Draft',
+    snapshot: rowToTransactionApi(row),
+  };
+}
 
 const purchaseOrderAdapter: WorkflowEntityAdapter = {
   entityType: 'purchase_order',
@@ -114,14 +198,213 @@ const purchaseOrderAdapter: WorkflowEntityAdapter = {
   },
 
   emitEntityUpdate(tenantId, entityId, snapshot, sourceUserId) {
-    void import('../../../core/realtime.js').then(({ emitEntityEvent }) => {
-      emitEntityEvent(tenantId, 'updated', 'purchase_order', {
-        id: entityId,
-        sourceUserId: sourceUserId ?? undefined,
-        data: snapshot,
-        version: typeof snapshot.version === 'number' ? snapshot.version : undefined,
-      });
+    emitRealtime(tenantId, 'purchase_order', entityId, snapshot, sourceUserId);
+  },
+};
+
+const billAdapter: WorkflowEntityAdapter = {
+  entityType: 'bill',
+  auditModule: 'bills',
+
+  async load(client, tenantId, entityId) {
+    const row = await getBillById(client, tenantId, entityId);
+    if (!row) return null;
+    return billToContext(row);
+  },
+
+  async applyPending(client, tenantId, entityId, userId) {
+    const row = await getBillById(client, tenantId, entityId);
+    if (!row) throw new Error('Bill not found.');
+    const approval = String((row as BillRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Draft') {
+      throw new Error('Only draft bills can be submitted for approval.');
+    }
+    await setApprovalLifecycleStatus(client, tenantId, 'bills', entityId, 'Submitted', userId);
+    const updated = await getBillById(client, tenantId, entityId);
+    if (!updated) throw new Error('Bill not found after submit.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Submitted',
+      snapshot: rowToBillApi(updated),
+    };
+  },
+
+  async applyApproved(client, tenantId, entityId, userId) {
+    const row = await getBillById(client, tenantId, entityId);
+    if (!row) throw new Error('Bill not found.');
+    const approval = String((row as BillRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted' && approval !== 'Draft') {
+      throw new Error(`Bill cannot be approved from approval status ${approval}.`);
+    }
+    const paymentStatus = row.status === 'Draft' ? 'Unpaid' : row.status;
+    await setApprovalLifecycleStatus(client, tenantId, 'bills', entityId, 'Approved', userId, {
+      paymentStatus,
     });
+    const { postBillAfterApproval } = await import('../../vendors/services/billsService.js');
+    const updated = await postBillAfterApproval(client, tenantId, entityId, userId);
+    return {
+      previousStatus: approval,
+      newStatus: 'Approved',
+      snapshot: rowToBillApi(updated),
+    };
+  },
+
+  async applyReturned(client, tenantId, entityId, userId) {
+    const row = await getBillById(client, tenantId, entityId);
+    if (!row) throw new Error('Bill not found.');
+    const approval = String((row as BillRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted') throw new Error('Only submitted bills can be returned.');
+    await setApprovalLifecycleStatus(client, tenantId, 'bills', entityId, 'Draft', userId, {
+      paymentStatus: 'Draft',
+    });
+    const updated = await getBillById(client, tenantId, entityId);
+    if (!updated) throw new Error('Bill not found after return.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Draft',
+      snapshot: rowToBillApi(updated),
+    };
+  },
+
+  emitEntityUpdate(tenantId, entityId, snapshot, sourceUserId) {
+    emitRealtime(tenantId, 'bill', entityId, snapshot, sourceUserId);
+  },
+};
+
+const contractAdapter: WorkflowEntityAdapter = {
+  entityType: 'contract',
+  auditModule: 'contracts',
+
+  async load(client, tenantId, entityId) {
+    const row = await getContractById(client, tenantId, entityId);
+    if (!row) return null;
+    return contractToContext(row);
+  },
+
+  async applyPending(client, tenantId, entityId, userId) {
+    const row = await getContractById(client, tenantId, entityId);
+    if (!row) throw new Error('Contract not found.');
+    const approval = String((row as ContractRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Draft') throw new Error('Only draft contracts can be submitted for approval.');
+    await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Submitted', userId);
+    const updated = await getContractById(client, tenantId, entityId);
+    if (!updated) throw new Error('Contract not found after submit.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Submitted',
+      snapshot: rowToContractApi(updated),
+    };
+  },
+
+  async applyApproved(client, tenantId, entityId, userId) {
+    const row = await getContractById(client, tenantId, entityId);
+    if (!row) throw new Error('Contract not found.');
+    const approval = String((row as ContractRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted' && approval !== 'Draft') {
+      throw new Error(`Contract cannot be approved from approval status ${approval}.`);
+    }
+    const contractStatus = row.status === 'Pending' || row.status === 'Draft' ? 'Active' : row.status;
+    await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Approved', userId, {
+      contractStatus,
+    });
+    const updated = await getContractById(client, tenantId, entityId);
+    if (!updated) throw new Error('Contract not found after approve.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Approved',
+      snapshot: rowToContractApi(updated),
+    };
+  },
+
+  async applyReturned(client, tenantId, entityId, userId) {
+    const row = await getContractById(client, tenantId, entityId);
+    if (!row) throw new Error('Contract not found.');
+    const approval = String((row as ContractRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted') throw new Error('Only submitted contracts can be returned.');
+    await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Draft', userId, {
+      contractStatus: 'Pending',
+    });
+    const updated = await getContractById(client, tenantId, entityId);
+    if (!updated) throw new Error('Contract not found after return.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Draft',
+      snapshot: rowToContractApi(updated),
+    };
+  },
+
+  emitEntityUpdate(tenantId, entityId, snapshot, sourceUserId) {
+    emitRealtime(tenantId, 'contract', entityId, snapshot, sourceUserId);
+  },
+};
+
+const paymentAdapter: WorkflowEntityAdapter = {
+  entityType: 'payment',
+  auditModule: 'transactions',
+
+  async load(client, tenantId, entityId) {
+    const row = await getTransactionById(client, tenantId, entityId);
+    if (!row) return null;
+    if (!transactionRequiresPaymentApproval(row)) {
+      throw new Error('This transaction does not require payment approval workflow.');
+    }
+    return paymentToContext(row);
+  },
+
+  async applyPending(client, tenantId, entityId, userId) {
+    const row = await getTransactionById(client, tenantId, entityId);
+    if (!row) throw new Error('Payment not found.');
+    if (!transactionRequiresPaymentApproval(row)) {
+      throw new Error('This transaction does not require payment approval workflow.');
+    }
+    const approval = String((row as TransactionRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Draft') throw new Error('Only draft payments can be submitted for approval.');
+    await setApprovalLifecycleStatus(client, tenantId, 'transactions', entityId, 'Submitted', userId);
+    const updated = await getTransactionById(client, tenantId, entityId);
+    if (!updated) throw new Error('Payment not found after submit.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Submitted',
+      snapshot: rowToTransactionApi(updated),
+    };
+  },
+
+  async applyApproved(client, tenantId, entityId, userId) {
+    const row = await getTransactionById(client, tenantId, entityId);
+    if (!row) throw new Error('Payment not found.');
+    if (!transactionRequiresPaymentApproval(row)) {
+      throw new Error('This transaction does not require payment approval workflow.');
+    }
+    const approval = String((row as TransactionRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted' && approval !== 'Draft') {
+      throw new Error(`Payment cannot be approved from approval status ${approval}.`);
+    }
+    await setApprovalLifecycleStatus(client, tenantId, 'transactions', entityId, 'Approved', userId);
+    const updated = await postTransactionAfterApproval(client, tenantId, entityId, userId);
+    return {
+      previousStatus: approval,
+      newStatus: 'Approved',
+      snapshot: rowToTransactionApi(updated),
+    };
+  },
+
+  async applyReturned(client, tenantId, entityId, userId) {
+    const row = await getTransactionById(client, tenantId, entityId);
+    if (!row) throw new Error('Payment not found.');
+    const approval = String((row as TransactionRow & { approval_status?: string }).approval_status ?? 'Approved');
+    if (approval !== 'Submitted') throw new Error('Only submitted payments can be returned.');
+    await setApprovalLifecycleStatus(client, tenantId, 'transactions', entityId, 'Draft', userId);
+    const updated = await getTransactionById(client, tenantId, entityId);
+    if (!updated) throw new Error('Payment not found after return.');
+    return {
+      previousStatus: approval,
+      newStatus: 'Draft',
+      snapshot: rowToTransactionApi(updated),
+    };
+  },
+
+  emitEntityUpdate(tenantId, entityId, snapshot, sourceUserId) {
+    emitRealtime(tenantId, 'transaction', entityId, snapshot, sourceUserId);
   },
 };
 
@@ -139,7 +422,7 @@ function poToContext(row: PurchaseOrderRow): WorkflowEntityContext {
   };
 }
 
-/** Generic adapter for entities without full lifecycle integration yet. */
+/** Generic adapter for variation/retention entities (contract table proxy). */
 function stubAdapter(
   entityType: WorkflowEntityType,
   auditModule: string,
@@ -159,7 +442,8 @@ function stubAdapter(
       );
       const row = r.rows[0];
       if (!row) return null;
-      const status = String(row[statusColumn] ?? 'Draft');
+      const audit = await getApprovalAuditRow(client, tenantId, table as 'contracts', entityId);
+      const status = String(audit?.approval_status ?? row[statusColumn] ?? 'Draft');
       return {
         entityRef: String(row[refColumn] ?? entityId),
         amount: Number(row.amount ?? row.total_amount ?? row.total ?? 0),
@@ -172,57 +456,35 @@ function stubAdapter(
         snapshot: row as Record<string, unknown>,
       };
     },
-    async applyPending(client, tenantId, entityId, _userId) {
+    async applyPending(client, tenantId, entityId, userId) {
       const ctx = await this.load(client, tenantId, entityId);
       if (!ctx) throw new Error(`${entityType} not found.`);
-      await client.query(
-        `UPDATE ${table} SET ${statusColumn} = 'Submitted', updated_at = NOW()
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, entityId]
-      );
+      await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Submitted', userId);
       return { previousStatus: ctx.previousStatus, newStatus: 'Submitted', snapshot: ctx.snapshot };
     },
     async applyApproved(client, tenantId, entityId, userId) {
       const ctx = await this.load(client, tenantId, entityId);
       if (!ctx) throw new Error(`${entityType} not found.`);
-      await client.query(
-        `UPDATE ${table} SET ${statusColumn} = $3, updated_at = NOW()
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, entityId, approvedValue]
-      );
+      await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Approved', userId);
       return { previousStatus: ctx.previousStatus, newStatus: approvedValue, snapshot: ctx.snapshot };
     },
-    async applyReturned(client, tenantId, entityId, _userId) {
+    async applyReturned(client, tenantId, entityId, userId) {
       const ctx = await this.load(client, tenantId, entityId);
       if (!ctx) throw new Error(`${entityType} not found.`);
-      await client.query(
-        `UPDATE ${table} SET ${statusColumn} = 'Draft', updated_at = NOW()
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, entityId]
-      );
+      await setApprovalLifecycleStatus(client, tenantId, 'contracts', entityId, 'Draft', userId);
       return { previousStatus: ctx.previousStatus, newStatus: 'Draft', snapshot: ctx.snapshot };
     },
     emitEntityUpdate(tenantId, entityId, snapshot, sourceUserId) {
-      const realtimeType =
-        entityType === 'variation_order' || entityType === 'retention_release'
-          ? 'contract'
-          : (entityType as import('../../../core/realtime.js').RealtimeEntityType);
-      void import('../../../core/realtime.js').then(({ emitEntityEvent }) => {
-        emitEntityEvent(tenantId, 'updated', realtimeType, {
-          id: entityId,
-          sourceUserId: sourceUserId ?? undefined,
-          data: snapshot,
-        });
-      });
+      emitRealtime(tenantId, 'contract', entityId, snapshot, sourceUserId);
     },
   };
 }
 
 const ADAPTERS: Record<WorkflowEntityType, WorkflowEntityAdapter> = {
   purchase_order: purchaseOrderAdapter,
-  contract: stubAdapter('contract', 'contracts', 'contracts', 'contract_number', 'status', 'Approved'),
-  bill: stubAdapter('bill', 'bills', 'bills', 'bill_number', 'status', 'Approved'),
-  payment: stubAdapter('payment', 'transactions', 'transactions', 'id', 'status', 'Approved'),
+  contract: contractAdapter,
+  bill: billAdapter,
+  payment: paymentAdapter,
   retention_release: stubAdapter(
     'retention_release',
     'contracts',
@@ -250,3 +512,5 @@ export function getWorkflowEntityAdapter(entityType: WorkflowEntityType): Workfl
 export function listWorkflowEntityTypes(): WorkflowEntityType[] {
   return Object.keys(ADAPTERS) as WorkflowEntityType[];
 }
+
+export { isApprovalGated };

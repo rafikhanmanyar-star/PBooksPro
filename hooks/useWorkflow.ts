@@ -27,6 +27,7 @@ function invalidateApprovalQueries(queryClient: ReturnType<typeof useQueryClient
   void queryClient.invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root });
   void queryClient.invalidateQueries({ queryKey: ['contracts'] });
   void queryClient.invalidateQueries({ queryKey: ['bills'] });
+  void queryClient.invalidateQueries({ queryKey: ['transactions'] });
   void queryClient.invalidateQueries({ queryKey: ['vendors'] });
 }
 

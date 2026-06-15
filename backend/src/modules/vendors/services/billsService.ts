@@ -37,6 +37,12 @@ export type BillRow = {
   document_path: string | null;
   document_id: string | null;
   purchase_order_id: string | null;
+  goods_receipt_id: string | null;
+  approval_status: string;
+  submitted_at: Date | null;
+  submitted_by: string | null;
+  approved_at: Date | null;
+  approved_by: string | null;
   user_id: string | null;
   version: number;
   deleted_at: Date | null;
@@ -132,6 +138,8 @@ export function rowToBillApi(row: BillRow): Record<string, unknown> {
     documentPath: row.document_path ?? undefined,
     documentId: row.document_id ?? undefined,
     purchaseOrderId: row.purchase_order_id ?? undefined,
+    goodsReceiptId: row.goods_receipt_id ?? undefined,
+    approvalStatus: row.approval_status ?? 'Approved',
     userId: row.user_id ?? undefined,
     version: row.version,
     createdAt: row.created_at instanceof Date ? row.created_at.toISOString() : row.created_at,
@@ -142,6 +150,21 @@ export function rowToBillApi(row: BillRow): Record<string, unknown> {
       row.deleted_at instanceof Date ? row.deleted_at.toISOString() : row.deleted_at;
   }
   return base;
+}
+
+export async function enrichBillApiFromRow(
+  client: pg.PoolClient,
+  tenantId: string,
+  row: BillRow
+): Promise<Record<string, unknown>> {
+  const api = rowToBillApi(row);
+  if (row.purchase_order_id) {
+    const { loadBillPoLinesForApi } = await import(
+      '../../purchase-orders/services/purchaseOrderLineBillingService.js'
+    );
+    api.poBillLines = await loadBillPoLinesForApi(client, tenantId, row.id);
+  }
+  return api;
 }
 
 function pickBody(body: Record<string, unknown>) {
@@ -175,6 +198,7 @@ function pickBody(body: Record<string, unknown>) {
     document_path: (body.documentPath ?? body.document_path) as string | null | undefined,
     document_id: (body.documentId ?? body.document_id) as string | null | undefined,
     purchase_order_id: (body.purchaseOrderId ?? body.purchase_order_id) as string | null | undefined,
+    goods_receipt_id: (body.goodsReceiptId ?? body.goods_receipt_id) as string | null | undefined,
     user_id: (body.userId ?? body.user_id) as string | null | undefined,
     version: typeof body.version === 'number' ? body.version : undefined,
   };
@@ -207,6 +231,7 @@ function billWriteFieldsFromPick(p: ReturnType<typeof pickBody>): BillWriteField
     document_path: trimOptId(p.document_path),
     document_id: trimOptId(p.document_id),
     purchase_order_id: trimOptId(p.purchase_order_id),
+    goods_receipt_id: trimOptId(p.goods_receipt_id),
   };
 }
 
@@ -239,13 +264,39 @@ async function finalizeBillSaveFromLedger(
   client: pg.PoolClient,
   tenantId: string,
   billId: string,
-  opts?: { action?: 'create' | 'update'; actorUserId?: string | null }
+  opts?: { action?: 'create' | 'update'; actorUserId?: string | null; body?: Record<string, unknown> }
 ): Promise<BillRow> {
   await recalculateBillPaymentAggregates(client, tenantId, billId);
-  const row = await getBillById(client, tenantId, billId);
+  let row = await getBillById(client, tenantId, billId);
   if (!row) throw new Error('Bill not found after save.');
-  await syncBillJournalMirror(client, tenantId, row, row.user_id);
+
+  if (row.purchase_order_id && opts?.body) {
+    const { syncBillPoLines } = await import(
+      '../../purchase-orders/services/purchaseOrderLineBillingService.js'
+    );
+    await syncBillPoLines(
+      client,
+      tenantId,
+      billId,
+      row.purchase_order_id,
+      opts.body,
+      billId
+    );
+    row = (await getBillById(client, tenantId, billId))!;
+  }
+
+  const approvalStatus = String(row.approval_status ?? 'Approved');
+  if (approvalStatus === 'Approved') {
+    await syncBillJournalMirror(client, tenantId, row, row.user_id);
+  }
   const action = opts?.action ?? 'update';
+  const apiPayload = rowToBillApi(row);
+  if (row.purchase_order_id) {
+    const { loadBillPoLinesForApi } = await import(
+      '../../purchase-orders/services/purchaseOrderLineBillingService.js'
+    );
+    apiPayload.poBillLines = await loadBillPoLinesForApi(client, tenantId, billId);
+  }
   await recordDomainMutation(client, {
     tenantId,
     userId: opts?.actorUserId ?? row.user_id,
@@ -254,7 +305,7 @@ async function finalizeBillSaveFromLedger(
     entityId: row.id,
     action,
     summary: action === 'create' ? `Bill ${row.bill_number} created` : `Bill ${row.bill_number} updated`,
-    newValue: rowToBillApi(row),
+    newValue: apiPayload,
     version: row.version,
   });
   if (row.purchase_order_id) {
@@ -307,6 +358,10 @@ async function assertContractBillWithinLimit(
 
   const contract = await new ContractRepository(tenantId).getById(client, cid);
   if (!contract) throw new Error('Linked contract not found.');
+  const approval = String((contract as { approval_status?: string }).approval_status ?? 'Approved');
+  if (approval !== 'Approved') {
+    throw new Error('Bills cannot be posted against a contract that is not approved.');
+  }
 
   const alreadyBilled = await new BillRepository(tenantId).sumBilledForContract(
     client,
@@ -377,13 +432,13 @@ export async function updateBill(
       if (!exists) return { row: null, conflict: false };
       return { row: null, conflict: u.conflict };
     }
-    const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
+    const finalized = await finalizeBillSaveFromLedger(client, tenantId, id, { body });
     return { row: finalized, conflict: false };
   }
 
   const row = await billRepo.updateActive(client, id, fields);
   if (!row) return { row: null, conflict: false };
-  const finalized = await finalizeBillSaveFromLedger(client, tenantId, id);
+  const finalized = await finalizeBillSaveFromLedger(client, tenantId, id, { body });
   return { row: finalized, conflict: false };
 }
 
@@ -396,7 +451,8 @@ async function upsertBillByTenantAndBillNumber(
   tenantId: string,
   proposeId: string,
   p: ReturnType<typeof pickBody>,
-  actorUserId: string | null
+  actorUserId: string | null,
+  body: Record<string, unknown>
 ): Promise<{ row: BillRow; conflict: boolean; wasInsert: boolean }> {
   const userIdResolved =
     p.user_id && String(p.user_id).trim() ? String(p.user_id).trim() : actorUserId ?? null;
@@ -452,9 +508,13 @@ async function upsertBillByTenantAndBillNumber(
   }
 
   const wasInsert = !existingByNumber;
+  if (wasInsert) {
+    await maybeInitBillWorkflowDraft(client, tenantId, row.id, actorUserId);
+  }
   const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
     action: wasInsert ? 'create' : 'update',
     actorUserId,
+    body,
   });
   return { row: finalized, conflict: false, wasInsert };
 }
@@ -497,14 +557,15 @@ export async function upsertBill(
       tenantId,
       `bill_${randomUUID().replace(/-/g, '')}`,
       p,
-      actorUserId
+      actorUserId,
+      body
     );
   }
 
   /** No PK yet in DB → merge purely on UNIQUE (tenant_id, bill_number) so duplicate_key cannot occur. */
   if (!existingById) {
     try {
-      return await upsertBillByTenantAndBillNumber(client, tenantId, id, p, actorUserId);
+      return await upsertBillByTenantAndBillNumber(client, tenantId, id, p, actorUserId, body);
     } catch (e) {
       /** Plain INSERT races or mismatched arbiter inference; reconcile by canonical (tenant_id, bill_number). */
       if (!isDuplicateBillNumberConstraint(e)) throw e;
@@ -542,6 +603,7 @@ export async function upsertBill(
     const finalized = await finalizeBillSaveFromLedger(client, tenantId, row.id, {
       action: 'update',
       actorUserId,
+      body,
     });
     return { row: finalized, conflict: false, wasInsert: false };
   } catch (e) {
@@ -595,6 +657,10 @@ export async function softDeleteBill(
     });
   }
   if (before.purchase_order_id) {
+    const { recalculatePoLineBilledQty } = await import(
+      '../../purchase-orders/services/purchaseOrderLineBillingService.js'
+    );
+    await recalculatePoLineBilledQty(client, tenantId, before.purchase_order_id);
     await recalculatePurchaseOrderBilling(client, tenantId, before.purchase_order_id, actorUserId);
   }
   return { ok: true, conflict: false };
@@ -643,4 +709,122 @@ export async function recalculateBillPaymentAggregates(
   else newStatus = 'Unpaid';
 
   await new BillRepository(tenantId).setPaymentAggregates(client, billId, paid, newStatus);
+}
+
+async function maybeInitBillWorkflowDraft(
+  client: pg.PoolClient,
+  tenantId: string,
+  billId: string,
+  actorUserId: string | null
+): Promise<void> {
+  const { isApprovalWorkflowEnabled } = await import('../../workflow/services/workflowSettingsService.js');
+  if (!(await isApprovalWorkflowEnabled(client, tenantId))) return;
+  const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+  await setApprovalLifecycleStatus(client, tenantId, 'bills', billId, 'Draft', actorUserId, {
+    paymentStatus: 'Draft',
+  });
+}
+
+/** Post GL mirror after bill approval workflow completes. */
+export async function postBillAfterApproval(
+  client: pg.PoolClient,
+  tenantId: string,
+  billId: string,
+  actorUserId: string | null
+): Promise<BillRow> {
+  const row = await getBillById(client, tenantId, billId);
+  if (!row) throw new Error('Bill not found.');
+  await syncBillJournalMirror(client, tenantId, row, actorUserId ?? row.user_id);
+  if (row.purchase_order_id) {
+    const { recalculatePoLineBilledQty } = await import(
+      '../../purchase-orders/services/purchaseOrderLineBillingService.js'
+    );
+    await recalculatePoLineBilledQty(client, tenantId, row.purchase_order_id);
+    await recalculatePurchaseOrderBilling(client, tenantId, row.purchase_order_id, actorUserId);
+  }
+  const refreshed = await getBillById(client, tenantId, billId);
+  if (!refreshed) throw new Error('Bill not found after approval posting.');
+  return refreshed;
+}
+
+export async function submitBillForApproval(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null,
+  requesterRole?: string | null
+) {
+  const row = await getBillById(client, tenantId, id);
+  if (!row) throw new Error('Bill not found.');
+  if (String(row.approval_status ?? 'Approved') !== 'Draft') {
+    throw new Error('Only draft bills can be submitted for approval.');
+  }
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'bills',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { submitDomainEntityForApproval } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const result = await submitDomainEntityForApproval(
+    client,
+    tenantId,
+    'bill',
+    id,
+    userId,
+    requesterRole ?? null
+  );
+  const updated = await getBillById(client, tenantId, id);
+  if (!updated) throw new Error('Bill not found after submit.');
+  return { conflict: false as const, row: updated, workflowMode: result.mode, approvalRequest: result.request };
+}
+
+export async function approveBill(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  expectedVersion: number | undefined,
+  userId: string | null
+) {
+  const row = await getBillById(client, tenantId, id);
+  if (!row) throw new Error('Bill not found.');
+  if (expectedVersion != null) {
+    const lww = await checkEntityLwwConflict(client, {
+      tenantId,
+      table: 'bills',
+      entityId: id,
+      clientVersion: expectedVersion,
+    });
+    if (lww.conflict) return { conflict: true as const, serverVersion: row.version };
+  }
+  const { approveDomainEntityWithWorkflowGate } = await import(
+    '../../workflow/services/workflowDomainSubmitService.js'
+  );
+  const { setApprovalLifecycleStatus } = await import('../../workflow/services/approvalLifecycleService.js');
+  const result = await approveDomainEntityWithWorkflowGate(
+    client,
+    tenantId,
+    'bill',
+    id,
+    userId,
+    async () => {
+      const current = await getBillById(client, tenantId, id);
+      if (!current) throw new Error('Bill not found.');
+      const paymentStatus = current.status === 'Draft' ? 'Unpaid' : current.status;
+      await setApprovalLifecycleStatus(client, tenantId, 'bills', id, 'Approved', userId, {
+        paymentStatus,
+      });
+      const updated = await postBillAfterApproval(client, tenantId, id, userId);
+      return { snapshot: rowToBillApi(updated) };
+    }
+  );
+  const updated = await getBillById(client, tenantId, id);
+  if (!updated) throw new Error('Bill not found after approve.');
+  return { conflict: false as const, row: updated, ...result };
 }

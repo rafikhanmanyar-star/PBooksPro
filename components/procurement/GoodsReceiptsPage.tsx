@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import type { GoodsReceiptLine, TenantGoodsReceipt } from '../../types';
 import { useGoodsReceiptMutations, useGoodsReceipts } from '../../hooks/useGoodsReceipts';
 import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { usePermissions } from '../../hooks/usePermissions';
 import { fetchPoReceiptContext } from '../../services/goodsReceiptsApi';
+import { CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -24,9 +25,15 @@ const statusBadge: Record<string, string> = {
 
 type GoodsReceiptsPageProps = {
   vendorId?: string;
+  initialPurchaseOrderId?: string | null;
+  onInitialPoConsumed?: () => void;
 };
 
-const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({ vendorId }) => {
+const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
+  vendorId,
+  initialPurchaseOrderId,
+  onInitialPoConsumed,
+}) => {
   const state = useFinancialReportAppState();
   const { vendors, projects } = state;
   const perms = usePermissions();
@@ -75,6 +82,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({ vendorId }) => {
   });
 
   const [form, setForm] = useState<TenantGoodsReceipt>(emptyForm());
+  const consumedPoRef = useRef<string | null>(null);
 
   const openCreate = () => {
     setEditing(null);
@@ -122,6 +130,16 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({ vendorId }) => {
       setLoadingPo(false);
     }
   };
+
+  useEffect(() => {
+    if (!initialPurchaseOrderId || consumedPoRef.current === initialPurchaseOrderId) return;
+    consumedPoRef.current = initialPurchaseOrderId;
+    setEditing(null);
+    setForm(emptyForm());
+    setFormError(null);
+    setIsFormOpen(true);
+    void loadPoLines(initialPurchaseOrderId).finally(() => onInitialPoConsumed?.());
+  }, [initialPurchaseOrderId, onInitialPoConsumed]);
 
   const updateLineQty = (lineId: string, receivedQty: number) => {
     setForm((f) => ({

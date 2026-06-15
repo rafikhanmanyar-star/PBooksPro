@@ -167,6 +167,7 @@ syncFile(
 
 syncFile('shared/workflow/workflowTypes.ts', 'backend/src/workflow/workflowTypes.ts');
 syncFile('shared/workflow/ruleEngine.ts', 'backend/src/workflow/ruleEngine.ts');
+syncFile('shared/workflow/approvalLifecycle.ts', 'backend/src/workflow/approvalLifecycle.ts');
 
 syncFile(
   'shared/procurement/goodsReceiptCore.ts',

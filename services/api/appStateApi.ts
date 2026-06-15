@@ -313,11 +313,26 @@ function normalizeBillFromApi(b: any): Bill {
     propertyId: b.property_id || b.propertyId || undefined,
     projectAgreementId: b.project_agreement_id || b.projectAgreementId || undefined,
     contractId: b.contract_id || b.contractId || undefined,
+    purchaseOrderId: b.purchase_order_id || b.purchaseOrderId || undefined,
+    goodsReceiptId: b.goods_receipt_id || b.goodsReceiptId || undefined,
+    approvalStatus: b.approval_status || b.approvalStatus || 'Approved',
     staffId: b.staff_id || b.staffId || undefined,
     expenseBearerType: b.expense_bearer_type || b.expenseBearerType || undefined,
     expenseCategoryItems,
     documentPath: b.document_path || b.documentPath || undefined,
     documentId: b.document_id || b.documentId || undefined,
+    poBillLines: (() => {
+      const raw = b.po_bill_lines ?? b.poBillLines;
+      if (!Array.isArray(raw)) return undefined;
+      return raw.map((line: any) => ({
+        id: line.id,
+        purchaseOrderLineId: line.purchase_order_line_id || line.purchaseOrderLineId || '',
+        goodsReceiptLineId: line.goods_receipt_line_id || line.goodsReceiptLineId || undefined,
+        billedQty: Number(line.billed_qty ?? line.billedQty ?? 0),
+        unitRate: Number(line.unit_rate ?? line.unitRate ?? 0),
+        lineTotal: Number(line.line_total ?? line.lineTotal ?? 0),
+      }));
+    })(),
     version: typeof b.version === 'number' ? b.version : b.version != null ? parseInt(String(b.version), 10) : undefined,
   };
 }

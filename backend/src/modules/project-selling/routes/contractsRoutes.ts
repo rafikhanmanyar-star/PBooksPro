@@ -10,6 +10,8 @@ import {
   rowToContractApi,
   softDeleteContract,
   upsertContract,
+  submitContractForApproval,
+  approveContract,
 } from '../../vendors/services/contractsService.js';
 import {
   getContractRetentionSummary,
@@ -198,6 +200,63 @@ contractsRouter.post('/contracts/:id/release-retention', requirePermission('cont
     );
     if (result.conflict) {
       sendVersionConflict(res, result.row.version);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+contractsRouter.post('/contracts/:id/submit', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      submitContractForApproval(
+        client,
+        tenantId,
+        req.params.id,
+        expectedVersion,
+        req.userId ?? null,
+        req.role ?? null
+      )
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+contractsRouter.post('/contracts/:id/approve', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      approveContract(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
       return;
     }
     const apiRow = rowToContractApi(result.row);

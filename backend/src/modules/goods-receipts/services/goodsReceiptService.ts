@@ -149,9 +149,9 @@ async function validateGrnAgainstPo(
       throw new Error('Invalid purchase order line reference.');
     }
 
-    let alreadyReceived = Number(poLine.received_qty);
+    let alreadyReceived: number;
     if (excludeGrnId) {
-      const prior = await client.query<{ qty: string }>(
+      const priorPosted = await client.query<{ qty: string }>(
         `SELECT COALESCE(SUM(gl.received_qty), 0)::text AS qty
          FROM goods_receipt_lines gl
          JOIN goods_receipts gr ON gr.id = gl.goods_receipt_id
@@ -159,8 +159,23 @@ async function validateGrnAgainstPo(
            AND gr.id <> $3 AND gr.status IN ('Posted', 'Closed') AND gr.deleted_at IS NULL`,
         [tenantId, line.purchase_order_line_id, excludeGrnId]
       );
-      alreadyReceived = Number(prior.rows[0]?.qty ?? 0);
+      alreadyReceived = Number(priorPosted.rows[0]?.qty ?? 0);
+    } else {
+      alreadyReceived = Number(poLine.received_qty);
     }
+
+    const draftOther = await client.query<{ qty: string }>(
+      `SELECT COALESCE(SUM(gl.received_qty), 0)::text AS qty
+       FROM goods_receipt_lines gl
+       JOIN goods_receipts gr ON gr.id = gl.goods_receipt_id
+       WHERE gl.tenant_id = $1 AND gl.purchase_order_line_id = $2
+         AND gr.status = 'Draft' AND gr.deleted_at IS NULL
+         ${excludeGrnId ? 'AND gr.id <> $3' : ''}`,
+      excludeGrnId
+        ? [tenantId, line.purchase_order_line_id, excludeGrnId]
+        : [tenantId, line.purchase_order_line_id]
+    );
+    alreadyReceived += Number(draftOther.rows[0]?.qty ?? 0);
 
     const validation = validateReceiptLineQty({
       orderedQty: Number(poLine.quantity),

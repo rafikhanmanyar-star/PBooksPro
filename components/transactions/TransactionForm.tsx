@@ -34,7 +34,7 @@ type CostCenterType = 'project' | 'building' | 'general';
 const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionToEdit, transactionTypeForNew, onShowDeleteWarning }) => {
     const state = useStateSelector(s => s);
     const dispatch = useDispatchOnly();
-    const { showAlert, showConfirm } = useNotification();
+    const { showAlert, showConfirm, showToast } = useNotification();
     const { openChat } = useWhatsApp();
     const entityFormModal = useEntityFormModal();
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -446,6 +446,15 @@ const TransactionForm: React.FC<TransactionFormProps> = ({ onClose, transactionT
                     showAlert,
                     openChat,
                 });
+            }
+            try {
+                const { fetchWorkflowSettings } = await import('../../services/workflowApi');
+                const wf = await fetchWorkflowSettings();
+                if (wf.approvalWorkflowEnabled) {
+                    showToast('Bill payment submitted for approval. It will post after approval.', 'success');
+                }
+            } catch {
+                /* workflow settings optional */
             }
             onClose();
             return;

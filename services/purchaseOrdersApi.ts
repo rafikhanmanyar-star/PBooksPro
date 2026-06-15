@@ -46,3 +46,44 @@ export async function deletePurchaseOrder(id: string, version?: number): Promise
 export async function fetchPurchaseOrderReportSummary(): Promise<PurchaseOrderReportSummary> {
   return apiClient.get<PurchaseOrderReportSummary>('/purchase-orders/report/summary');
 }
+
+export type PoBillingLine = {
+  id: string;
+  itemName?: string;
+  description?: string;
+  orderedQty: number;
+  receivedQty: number;
+  billedQty: number;
+  billableQty: number;
+  unitRate: number;
+  lineTotal: number;
+};
+
+export type PoBillingContext = {
+  purchaseOrderId: string;
+  poNumber: string;
+  vendorId: string;
+  projectId?: string;
+  status: string;
+  totalAmount: number;
+  receivedAmount: number;
+  billedAmount: number;
+  billableRemaining: number;
+  poRemainingAmount: number;
+  lines: PoBillingLine[];
+  postedGoodsReceipts: Array<{
+    id: string;
+    grnNumber: string;
+    status: string;
+    receivedDate: string;
+    lineTotal: number;
+  }>;
+};
+
+export async function fetchPoBillingContext(
+  purchaseOrderId: string,
+  excludeBillId?: string
+): Promise<PoBillingContext> {
+  const qs = excludeBillId ? `?excludeBillId=${encodeURIComponent(excludeBillId)}` : '';
+  return apiClient.get<PoBillingContext>(`/purchase-orders/${purchaseOrderId}/billing-context${qs}`);
+}

@@ -6,8 +6,11 @@ import {
   getBillById,
   listBills,
   rowToBillApi,
+  enrichBillApiFromRow,
   softDeleteBill,
   upsertBill,
+  submitBillForApproval,
+  approveBill,
 } from '../services/billsService.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
 import {
@@ -113,7 +116,7 @@ billsRouter.get('/bills/:id', async (req: AuthedRequest, res) => {
         sendFailure(res, 404, 'NOT_FOUND', 'Bill not found');
         return;
       }
-      sendSuccess(res, rowToBillApi(row));
+      sendSuccess(res, await enrichBillApiFromRow(client, tenantId, row));
     } finally {
       client.release();
     }
@@ -129,14 +132,22 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      upsertBill(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const upserted = await upsertBill(
+        client,
+        tenantId,
+        req.body as Record<string, unknown>,
+        req.userId ?? null
+      );
+      if (upserted.conflict || !upserted.row) return upserted;
+      const apiRow = await enrichBillApiFromRow(client, tenantId, upserted.row);
+      return { ...upserted, apiRow };
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.row.version);
       return;
     }
-    const apiRow = rowToBillApi(result.row);
+    const apiRow = 'apiRow' in result && result.apiRow ? result.apiRow : rowToBillApi(result.row!);
     const action = result.wasInsert ? 'created' : 'updated';
     emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
@@ -499,6 +510,56 @@ billsRouter.put('/bills/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 409, 'DUPLICATE', msg);
       return;
     }
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+billsRouter.post('/bills/:id/submit', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      submitBillForApproval(client, tenantId, req.params.id, expectedVersion, req.userId ?? null, req.role ?? null)
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
+      return;
+    }
+    const apiRow = rowToBillApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'bill', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+billsRouter.post('/bills/:id/approve', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const body = req.body as Record<string, unknown>;
+  const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
+  try {
+    const result = await withTransaction((client) =>
+      approveBill(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
+    );
+    if (result.conflict) {
+      sendVersionConflict(res, result.serverVersion);
+      return;
+    }
+    const apiRow = rowToBillApi(result.row);
+    emitEntityEvent(tenantId, 'updated', 'bill', { data: apiRow, sourceUserId: req.userId });
+    sendSuccess(res, apiRow);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }
 });
