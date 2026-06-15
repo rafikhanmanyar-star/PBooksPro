@@ -12,6 +12,26 @@ export const WIZARD_STEPS = [
 
 export const QUICK_AMOUNT_PRESETS = [5_000, 10_000, 25_000, 50_000, 100_000] as const;
 
+/** Short grid labels for the capture type picker (reference UI). */
+export const TYPE_SHORT_LABELS: Record<string, string> = {
+  fuel_expense: 'Fuel',
+  office_expense: 'Office',
+  site_expense: 'Site',
+  travel_expense: 'Travel',
+  material_purchase: 'Material Purchase',
+  supplier_payment: 'Vendor Payment',
+  employee_payment: 'Worker Wages',
+  advance_payment: 'Advance Payment',
+  cash_withdrawal: 'Cash Withdrawal',
+  other: 'Other Expense',
+  customer_collection: 'Customer Collection',
+  cash_deposit: 'Cash Deposit',
+};
+
+export function typeShortLabel(id: string): string {
+  return TYPE_SHORT_LABELS[id] ?? transactionTypeLabel(id);
+}
+
 const TYPE_ICONS: Record<string, ReactNode> = {
   supplier_payment: ICONS.wallet,
   employee_payment: ICONS.users,

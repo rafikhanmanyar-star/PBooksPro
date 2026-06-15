@@ -8,7 +8,10 @@ import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useAuth } from '../../../context/AuthContext';
 import { CURRENCY, ICONS } from '../../../constants';
 import { todayLocalYyyyMmDd } from '../../../utils/dateUtils';
-import VoiceCaptureButton from './VoiceCaptureButton';
+import FieldSuggestionChips from './FieldSuggestionChips';
+import QuickCaptureStepper from './QuickCaptureStepper';
+import RecentCapturesList from './RecentCapturesList';
+import VoiceCapturePanel from './VoiceCapturePanel';
 import {
   getLastQuickCaptureSnapshot,
   getQuickCaptureSuggestions,
@@ -21,9 +24,14 @@ import {
   QUICK_AMOUNT_PRESETS,
   transactionTypeIcon,
   transactionTypeLabel,
+  typeShortLabel,
   WIZARD_STEPS,
 } from '../constants/quickTransactionWizard';
 import { UNPOSTED_SOURCE_EXECUTIVE_APP } from '../../../types/executiveMobile.types';
+import type { ParsedVoiceCapture } from '../utils/parseVoiceQuickCapture';
+import { voiceDescriptionForFinance } from '../utils/parseVoiceQuickCapture';
+
+type MoneyFilter = 'out' | 'in';
 
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,6 +59,7 @@ export default function QuickTransactionWizard() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState(1);
+  const [moneyFilter, setMoneyFilter] = useState<MoneyFilter>('out');
   const [transactionType, setTransactionType] = useState(UNPOSTED_TRANSACTION_TYPES[0].id);
   const [amount, setAmount] = useState('');
   const [partyName, setPartyName] = useState('');
@@ -58,6 +67,7 @@ export default function QuickTransactionWizard() {
   const [projectId, setProjectId] = useState('');
   const [costCenterCode, setCostCenterCode] = useState('');
   const [attachment, setAttachment] = useState<File | null>(null);
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldSuggestions, setFieldSuggestions] = useState(() =>
@@ -76,6 +86,7 @@ export default function QuickTransactionWizard() {
     () => UNPOSTED_TRANSACTION_TYPES.filter((t) => isInflowType(t.id)),
     []
   );
+  const visibleTypes = moneyFilter === 'in' ? inflowTypes : outflowTypes;
 
   const persistDetailFields = () => {
     saveQuickCaptureFields(
@@ -98,12 +109,7 @@ export default function QuickTransactionWizard() {
 
   const lastSnapshotSummary = useMemo(() => {
     if (!lastSnapshot) return '';
-    return [
-      lastSnapshot.partyName,
-      lastSnapshot.description,
-      lastSnapshot.projectId,
-      lastSnapshot.costCenterCode,
-    ]
+    return [lastSnapshot.partyName, lastSnapshot.description, lastSnapshot.projectId, lastSnapshot.costCenterCode]
       .filter(Boolean)
       .join(' · ');
   }, [lastSnapshot]);
@@ -116,6 +122,7 @@ export default function QuickTransactionWizard() {
 
   const resetWizard = () => {
     setStep(1);
+    setMoneyFilter('out');
     setTransactionType(UNPOSTED_TRANSACTION_TYPES[0].id);
     setAmount('');
     setPartyName('');
@@ -123,8 +130,21 @@ export default function QuickTransactionWizard() {
     setProjectId('');
     setCostCenterCode('');
     setAttachment(null);
+    setVoiceTranscript(null);
     setSubmitted(false);
     setError(null);
+  };
+
+  const applyVoiceParsed = (parsed: ParsedVoiceCapture) => {
+    setError(null);
+    setVoiceTranscript(parsed.rawTranscript);
+    setTransactionType(parsed.transactionType);
+    setAmount(String(parsed.amount));
+    if (parsed.partyName) setPartyName(parsed.partyName);
+    if (parsed.projectId) setProjectId(parsed.projectId);
+    if (parsed.costCenterCode) setCostCenterCode(parsed.costCenterCode);
+    setMoneyFilter(isInflowType(parsed.transactionType) ? 'in' : 'out');
+    setStep(parsed.confidence === 'high' ? 5 : 3);
   };
 
   const validateStep = (): boolean => {
@@ -156,13 +176,18 @@ export default function QuickTransactionWizard() {
 
   const selectTransactionType = (typeId: (typeof UNPOSTED_TRANSACTION_TYPES)[number]['id']) => {
     setError(null);
+    setVoiceTranscript(null);
     setTransactionType(typeId);
-    setStep(2);
+    setMoneyFilter(isInflowType(typeId) ? 'in' : 'out');
   };
 
   const selectQuickAmount = (preset: number) => {
     setError(null);
     setAmount(String(preset));
+    if (!transactionType) {
+      setError('Select a transaction type first');
+      return;
+    }
     setStep(3);
   };
 
@@ -174,13 +199,17 @@ export default function QuickTransactionWizard() {
       setStep(2);
       return;
     }
+    const financeDescription = voiceTranscript
+      ? voiceDescriptionForFinance(voiceTranscript, description.trim() || undefined)
+      : description.trim() || undefined;
+
     try {
       const created = await createMutation.mutateAsync({
         transactionDate: todayLocalYyyyMmDd(),
         amount: parsedAmount,
         transactionType,
         partyName: partyName.trim() || undefined,
-        description: description.trim() || undefined,
+        description: financeDescription,
         projectId: projectId.trim() || undefined,
         costCenterCode: costCenterCode.trim() || undefined,
         source: UNPOSTED_SOURCE_EXECUTIVE_APP,
@@ -203,7 +232,7 @@ export default function QuickTransactionWizard() {
 
   if (submitted) {
     return (
-      <div className="p-6 pb-24 text-center space-y-4">
+      <div className="p-6 pb-28 text-center space-y-4 executive-v2-page">
         <div className="w-16 h-16 mx-auto text-ds-primary">{ICONS.checkCircle}</div>
         <h2 className="text-lg font-bold">Submitted for review</h2>
         <p className="text-sm text-app-muted">
@@ -228,135 +257,137 @@ export default function QuickTransactionWizard() {
   }
 
   return (
-    <div className="flex flex-col flex-1 min-h-0 h-full">
-      <div className="px-4 pt-4 pb-3 border-b border-app-border bg-app-header shrink-0">
+    <div className="flex flex-col flex-1 min-h-0 h-full executive-v2-page">
+      {/* Header */}
+      <div className="px-4 pt-4 pb-3 border-b border-app-border/60 bg-app-card/95 shrink-0">
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-start gap-1 min-w-0 flex-1">
+          <div className="flex items-start gap-2 min-w-0 flex-1">
             {step > 1 && (
               <button
                 type="button"
                 onClick={goBack}
-                className="flex items-center justify-center w-11 h-11 -ml-2 text-ds-primary touch-manipulation shrink-0 rounded-xl active:bg-app-highlight"
+                className="flex items-center justify-center w-10 h-10 -ml-1 text-ds-primary touch-manipulation shrink-0 rounded-xl"
                 aria-label="Back"
               >
                 <span className="w-5 h-5">{ICONS.chevronLeft}</span>
               </button>
             )}
-            <div className="min-w-0 pt-0.5">
-              <h1 className="text-lg font-bold truncate">Quick Capture</h1>
-              <p className="text-xs text-app-muted">Step {step} of {totalSteps}</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-ds-primary w-5 h-5 shrink-0">{ICONS.activity}</span>
+                <h1 className="text-lg font-bold text-app-text">Quick Capture</h1>
+              </div>
+              <p className="text-xs text-app-muted mt-0.5 leading-snug">
+                Record transactions in seconds. Finance team will review and post.
+              </p>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1 shrink-0">
-            {step > 1 && step < totalSteps ? (
-              <button
-                type="button"
-                onClick={goNext}
-                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation active:opacity-90"
-              >
-                Next
-                <span className="w-4 h-4">{ICONS.chevronRight}</span>
-              </button>
-            ) : step === totalSteps ? (
-              <button
-                type="button"
-                onClick={() => void handleSubmit()}
-                disabled={createMutation.isPending}
-                className="inline-flex items-center justify-center gap-1.5 min-h-[44px] px-4 py-2 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation disabled:opacity-60 active:opacity-90"
-              >
-                {createMutation.isPending ? 'Sending…' : (
-                  <>
-                    Submit
-                    <span className="w-4 h-4">{ICONS.send}</span>
-                  </>
-                )}
-              </button>
-            ) : null}
-            {step === 4 && (
-              <button
-                type="button"
-                onClick={goNext}
-                className="text-xs text-app-muted touch-manipulation min-h-[32px] px-1"
-              >
-                Skip receipt
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={() => setView('myTransactions')}
+            className="shrink-0 text-xs font-semibold text-ds-primary px-3 py-2 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation"
+          >
+            My Submissions
+          </button>
         </div>
-        <div className="flex gap-1.5">
-          {WIZARD_STEPS.map((s) => (
-            <div
-              key={s.key}
-              className={`h-1.5 flex-1 rounded-full transition-colors ${
-                s.id < step ? 'bg-ds-primary' : s.id === step ? 'bg-green-400' : 'bg-app-border'
-              }`}
-            />
-          ))}
-        </div>
+        <QuickCaptureStepper currentStep={step} />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4">
-        <div className="mb-4">
-          <h2 className="text-base font-semibold text-app-text">{currentStepMeta.title}</h2>
-          <p className="text-sm text-app-muted">{currentStepMeta.subtitle}</p>
-        </div>
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-36">
+        {step !== 1 && (
+          <div className="mb-4">
+            <h2 className="text-base font-semibold text-app-text">{currentStepMeta.title}</h2>
+            <p className="text-sm text-app-muted">{currentStepMeta.subtitle}</p>
+          </div>
+        )}
 
+        {/* Step 1 — Type hub (reference layout) */}
         {step === 1 && (
           <div className="space-y-5">
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-base font-bold text-app-text">Select Transaction Type</h2>
+                <p className="text-xs text-app-muted">Choose what you want to record</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMoneyFilter((f) => (f === 'out' ? 'in' : 'out'))}
+                className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border touch-manipulation ${
+                  moneyFilter === 'in'
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                    : 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                }`}
+              >
+                {moneyFilter === 'in' ? '↑ Money In' : '↓ Money Out'}
+              </button>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+              {visibleTypes.map((t) => {
+                const selected = transactionType === t.id;
+                const isOut = OUTFLOW_TYPE_IDS.has(t.id);
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => selectTransactionType(t.id)}
+                    className={`qc-type-tile touch-manipulation ${
+                      selected
+                        ? isOut
+                          ? 'qc-type-tile--out-selected'
+                          : 'qc-type-tile--in-selected'
+                        : ''
+                    }`}
+                  >
+                    <span className={`qc-type-tile-icon ${selected ? 'qc-type-tile-icon--selected' : ''}`}>
+                      <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
+                    </span>
+                    <span className="text-[10px] font-medium leading-tight text-center mt-1.5 line-clamp-2">
+                      {typeShortLabel(t.id)}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
             <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-2">Money out</p>
-              <div className="grid grid-cols-2 gap-2">
-                {outflowTypes.map((t) => {
-                  const selected = transactionType === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => selectTransactionType(t.id)}
-                      className={`p-3 rounded-xl border text-left touch-manipulation transition-colors ${
-                        selected
-                          ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
-                          : 'border-app-border bg-app-card hover:border-green-400/50'
-                      }`}
-                    >
-                      <span className={`inline-flex w-8 h-8 items-center justify-center rounded-lg mb-2 ${
-                        selected ? 'bg-ds-primary text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
-                      }`}>
-                        <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
-                      </span>
-                      <p className="text-sm font-medium leading-snug">{t.label}</p>
-                    </button>
-                  );
-                })}
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-bold text-app-text">Quick Amounts (PKR)</h3>
+                <button
+                  type="button"
+                  onClick={() => setStep(2)}
+                  className="text-xs font-semibold text-ds-primary touch-manipulation"
+                >
+                  Enter Custom Amount
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {QUICK_AMOUNT_PRESETS.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => selectQuickAmount(preset)}
+                    className={`qc-amount-chip touch-manipulation ${
+                      amount === String(preset) ? 'qc-amount-chip--selected' : ''
+                    }`}
+                  >
+                    {preset.toLocaleString()}
+                  </button>
+                ))}
               </div>
             </section>
-            <section>
-              <p className="text-xs font-semibold uppercase tracking-wide text-app-muted mb-2">Money in</p>
-              <div className="grid grid-cols-1 gap-2">
-                {inflowTypes.map((t) => {
-                  const selected = transactionType === t.id;
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => selectTransactionType(t.id)}
-                      className={`p-3 rounded-xl border text-left touch-manipulation flex items-center gap-3 ${
-                        selected
-                          ? 'border-ds-primary bg-ds-primary/10 dark:bg-green-950/30 ring-2 ring-green-600/30'
-                          : 'border-app-border bg-app-card'
-                      }`}
-                    >
-                      <span className={`inline-flex w-10 h-10 items-center justify-center rounded-lg shrink-0 ${
-                        selected ? 'bg-ds-primary text-white' : 'bg-black/5 dark:bg-white/10 text-app-muted'
-                      }`}>
-                        <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
-                      </span>
-                      <p className="text-sm font-medium">{t.label}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
+
+            <RecentCapturesList limit={4} />
+
+            {transactionType && amount && (
+              <button
+                type="button"
+                onClick={() => setStep(3)}
+                className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation"
+              >
+                Continue to details
+              </button>
+            )}
           </div>
         )}
 
@@ -365,13 +396,6 @@ export default function QuickTransactionWizard() {
             <div className="p-3 rounded-xl bg-app-card border border-app-border text-sm">
               <span className="text-app-muted">Type: </span>
               <span className="font-medium">{transactionTypeLabel(transactionType)}</span>
-              <span className={`ml-2 text-xs px-2 py-0.5 rounded-full ${
-                isInflowType(transactionType)
-                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                  : 'bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200'
-              }`}>
-                {isInflowType(transactionType) ? 'Collection' : 'Payment'}
-              </span>
             </div>
             <AmountInput
               label={`Amount (${CURRENCY})`}
@@ -380,25 +404,27 @@ export default function QuickTransactionWizard() {
               className="text-2xl font-bold text-center"
               autoFocus
             />
-            <div>
-              <p className="text-xs text-app-muted mb-2">Quick amounts</p>
-              <div className="flex flex-wrap gap-2">
-                {QUICK_AMOUNT_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => selectQuickAmount(preset)}
-                    className={`px-3 py-2 rounded-lg text-sm border touch-manipulation ${
-                      amount === String(preset)
-                        ? 'border-ds-primary bg-ds-primary/10 text-green-800 dark:bg-green-950/30'
-                        : 'border-app-border bg-app-card'
-                    }`}
-                  >
-                    {(preset / 1000).toLocaleString()}k
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_AMOUNT_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  onClick={() => selectQuickAmount(preset)}
+                  className={`qc-amount-chip touch-manipulation ${
+                    amount === String(preset) ? 'qc-amount-chip--selected' : ''
+                  }`}
+                >
+                  {preset.toLocaleString()}
+                </button>
+              ))}
             </div>
+            <button
+              type="button"
+              onClick={goNext}
+              className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
+            >
+              Continue
+            </button>
           </div>
         )}
 
@@ -408,7 +434,7 @@ export default function QuickTransactionWizard() {
               <button
                 type="button"
                 onClick={applyLastSnapshot}
-                className="w-full text-left p-3 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation active:bg-ds-primary/10"
+                className="w-full text-left p-3 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation"
               >
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-ds-primary mb-1">
                   Use last capture
@@ -436,10 +462,6 @@ export default function QuickTransactionWizard() {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="e.g. Cement delivery, site visit fuel…"
-              />
-              <VoiceCaptureButton
-                onTranscript={(text) => setDescription((prev) => (prev ? `${prev} ${text}` : text))}
-                className="mt-2"
               />
               <FieldSuggestionChips
                 suggestions={fieldSuggestions.description}
@@ -473,13 +495,20 @@ export default function QuickTransactionWizard() {
                 onSelect={setCostCenterCode}
               />
             </div>
+            <button
+              type="button"
+              onClick={goNext}
+              className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
+            >
+              Continue
+            </button>
           </div>
         )}
 
         {step === 4 && (
           <div className="space-y-4">
             <p className="text-xs text-app-muted rounded-lg bg-app-card border border-app-border px-3 py-2">
-              OCR receipt capture: snap a photo and attach it. Finance can extract line items during review.
+              Snap a receipt photo (optional). Finance can extract details during review.
             </p>
             <input
               ref={fileRef}
@@ -496,42 +525,70 @@ export default function QuickTransactionWizard() {
             >
               <span className="w-12 h-12 text-app-muted">{ICONS.camera}</span>
               <span className="text-sm font-medium">
-                {attachment ? attachment.name : 'Tap to scan receipt (OCR) or upload'}
+                {attachment ? attachment.name : 'Tap to scan receipt or upload'}
               </span>
-              <span className="text-xs text-app-muted">Photo or PDF</span>
             </button>
-            {attachment && (
+            <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => setAttachment(null)}
-                className="text-sm text-ds-danger touch-manipulation"
+                onClick={goNext}
+                className="flex-1 py-3 rounded-xl border border-app-border font-semibold touch-manipulation"
               >
-                Remove attachment
+                Skip receipt
               </button>
-            )}
+              <button
+                type="button"
+                onClick={goNext}
+                className="flex-1 py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
+              >
+                Continue
+              </button>
+            </div>
           </div>
         )}
 
         {step === 5 && (
           <div className="space-y-3">
+            {voiceTranscript && (
+              <div className="rounded-xl border border-blue-300/50 bg-blue-50/80 dark:bg-blue-950/30 px-4 py-3">
+                <p className="text-xs font-semibold text-ds-primary uppercase tracking-wide">Voice capture</p>
+                <p className="text-sm text-app-text mt-1">&ldquo;{voiceTranscript}&rdquo;</p>
+              </div>
+            )}
             <div className="rounded-xl border border-app-border bg-app-card divide-y divide-app-border">
               <ReviewRow label="Type" value={transactionTypeLabel(transactionType)} />
               <ReviewRow label="Amount" value={formatAmount(amount)} highlight />
               <ReviewRow label="Party" value={partyName.trim() || '—'} />
-              <ReviewRow label="Description" value={description.trim() || '—'} />
+              <ReviewRow label="Notes" value={description.trim() || '—'} />
               <ReviewRow label="Project" value={projectId.trim() || '—'} />
               <ReviewRow label="Cost Center" value={costCenterCode.trim() || '—'} />
               <ReviewRow label="Receipt" value={attachment ? attachment.name : 'None'} />
               <ReviewRow label="Date" value={todayLocalYyyyMmDd()} />
             </div>
-            <p className="text-xs text-app-muted px-1">
-              Submitting sends this to your finance team. No accounting entries are created until they process it.
-            </p>
+            <button
+              type="button"
+              onClick={() => void handleSubmit()}
+              disabled={createMutation.isPending}
+              className="w-full py-3.5 rounded-xl bg-ds-primary text-white font-bold touch-manipulation disabled:opacity-60"
+            >
+              {createMutation.isPending ? 'Submitting…' : 'Submit for finance review'}
+            </button>
           </div>
         )}
 
         {error && <p className="mt-4 text-sm text-ds-danger">{error}</p>}
       </div>
+
+      {/* Voice panel — pinned above bottom nav on step 1 */}
+      {step === 1 && (
+        <div className="shrink-0 px-4 pb-4 pt-2 border-t border-app-border/40 bg-app-bg/95 backdrop-blur-sm">
+          <VoiceCapturePanel
+            disabled={createMutation.isPending}
+            onParsed={applyVoiceParsed}
+            onError={(msg) => setError(msg)}
+          />
+        </div>
+      )}
     </div>
   );
 }
