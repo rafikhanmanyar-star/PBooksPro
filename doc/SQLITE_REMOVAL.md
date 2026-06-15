@@ -27,7 +27,7 @@ PostgreSQL is the **only active database** for Desktop and Cloud editions. Offli
 | Item | Status |
 |------|--------|
 | Legacy npm scripts moved to `tools/legacy/` (`legacy:*` aliases) | Done |
-| `better-sqlite3` moved to `optionalDependencies` (not required for API client) | Done |
+| `better-sqlite3` removed from app package (legacy tools use sql.js only) | Done |
 | `rebuild:native` skips better-sqlite3 | Done |
 | `services/sessionContext.ts` — tenant/user id for API | Done |
 | `config/dataMode.ts` — `isPostgresApiMode()` helper | Done |
@@ -45,6 +45,16 @@ PostgreSQL is the **only active database** for Desktop and Cloud editions. Offli
 | Vite always stubs legacy-sqlite + sql.js | Done |
 | `rebuild:native` — no-op for API client | Done |
 
+## Completed (Phase 5)
+
+| Item | Status |
+|------|--------|
+| Collapse all `isLocalOnlyMode()` UI branches | Done |
+| API-only hot paths (Auth, Header, Settings, Sidebar, personal tx, chat, backup) | Done |
+| `appStateApi` payroll merge via `sessionContext` | Done |
+| Remove `better-sqlite3` from package + lockfile | Done |
+| Staging smoke test (`npm run test:staging`) | Done |
+
 ## API client Electron builder (no SQLite)
 
 Files **removed** from `electron-builder-api-client.yml` and `electron-builder-api-client-staging.yml`:
@@ -52,20 +62,16 @@ Files **removed** from `electron-builder-api-client.yml` and `electron-builder-a
 - `electron/sqliteBridge.cjs`, `companyManager.cjs`, `schema.sql`, migrations, schema validator
 - `node_modules/better-sqlite3/**` and native bindings
 
-## Optional follow-up
+## Optional follow-up (deferred)
 
 | Item | Status |
 |------|--------|
-| Collapse `isLocalOnlyMode()` in `App.tsx` + `AppContext.tsx` | Done |
-| Collapse `isLocalOnlyMode()` in `SettingsPage.tsx` + `Sidebar.tsx` | Done |
-| Collapse `isLocalOnlyMode()` in AuthContext, Header, ImportExportWizard, personal tx | Done |
-| Collapse remaining `isLocalOnlyMode()` UI branches (~100 files) | Done |
-| Replace stub imports with API hooks (personal tx, chat, backup) | Done |
-| Remove `optionalDependencies.better-sqlite3` once legacy tools archived | Done |
+| Refactor `importService.ts` local Excel import (stub-only today) | Deferred |
+| Remove Vite `legacy-sqlite-stubs` alias once import paths are gone | Deferred |
 
 ## Legacy tooling
 
-See `tools/legacy/README.md`. Deprecated aliases (`prepare-local-db`, `migrate:sqlite-to-postgres`, etc.) forward to `legacy:*` scripts. These still use sql.js / optional better-sqlite3 for one-off migrations.
+See `tools/legacy/README.md`. Deprecated aliases forward to `legacy:*` scripts. These use **sql.js** (devDependency) for one-off migrations only.
 
 ## Verification
 
