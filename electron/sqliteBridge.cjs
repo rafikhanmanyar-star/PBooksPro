@@ -2,6 +2,9 @@
  * PBooks Pro - Electron SQLite Bridge
  * Exposes native SQLite to renderer via IPC. Uses better-sqlite3.
  * Supports multi-company: companyManager calls openDb(path) to switch DBs.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
  */
 
 const { ipcMain } = require('electron');

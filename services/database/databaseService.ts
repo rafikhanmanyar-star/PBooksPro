@@ -1,8 +1,11 @@
 /**
  * Database Service
- * 
+ *
  * Provides a clean abstraction layer for database operations using sql.js.
  * Handles initialization, transactions, and provides type-safe query methods.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Use apiClient → PostgreSQL.
  */
 
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';

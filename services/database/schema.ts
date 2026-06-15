@@ -1,9 +1,12 @@
 /**
  * SQL Database Schema for PBooksPro
- * 
+ *
  * This file defines the complete database schema that mirrors the AppState structure.
  * All tables are designed to maintain referential integrity and support the application's
  * data model.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. PostgreSQL migrations in database/migrations/ are the source of truth.
  */
 
 // Aligned with PostgreSQL (postgresql-schema.sql + hardening). PostgreSQL is source of truth.

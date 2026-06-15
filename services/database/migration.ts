@@ -1,6 +1,9 @@
 /**
  * Legacy localStorage → SQLite migration hooks.
  * Current Electron builds initialize SQLite directly; migration is a no-op unless extended.
+ *
+ * @deprecated Legacy SQLite migration retained temporarily.
+ * Do not use for new development. Use PostgreSQL migrations in database/migrations/.
  */
 
 export function needsMigration(): boolean {

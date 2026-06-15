@@ -2,6 +2,9 @@
  * PBooks Pro - Company Manager
  * Manages multi-company SQLite databases via a central master_index.db.
  * Each company gets its own isolated .db file under data/companies/.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
  */
 
 const { ipcMain, dialog } = require('electron');

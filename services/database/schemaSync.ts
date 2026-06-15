@@ -1,8 +1,11 @@
 /**
  * Schema Synchronization Service
- * 
+ *
  * Compares local SQLite schema with cloud PostgreSQL schema and ensures they match.
  * Handles schema version tracking and migration.
+ *
+ * @deprecated Legacy SQLite synchronization retained temporarily.
+ * Do not use for new development. Desktop and Cloud editions use PostgreSQL via apiClient.
  */
 
 import { getDatabaseService } from './databaseService';

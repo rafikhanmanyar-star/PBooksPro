@@ -16,4 +16,4 @@ See `architecture-data.mdc` for full data layer rules.
 
 ## Multi-Tenant
 - All business tables need `tenant_id`; index `(tenant_id, …)` for scoped queries
-- Keep SQLite schema in `services/database/schema.ts` aligned when adding columns
+- PostgreSQL migrations are the sole source of truth — do not add SQLite schema for new columns

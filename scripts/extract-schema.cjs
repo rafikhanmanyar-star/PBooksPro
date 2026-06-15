@@ -1,5 +1,8 @@
 /**
  * Extracts CREATE_SCHEMA_SQL from schema.ts into electron/schema.sql
+ *
+ * @deprecated Legacy SQLite schema generation retained temporarily.
+ * Do not use for new development. Use PostgreSQL migrations in database/migrations/.
  */
 const fs = require('fs');
 const path = require('path');

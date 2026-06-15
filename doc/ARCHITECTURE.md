@@ -1,6 +1,10 @@
-# PBooks Pro — Architecture Guide (v2)
+# PBooks Pro — Architecture Guide (v2.1)
 
-Single reference for new development after the **Architecture v2** upgrade. Four sections: **Overview**, **Backend**, **Frontend**, and **Data Layer**.
+Single reference for new development after the **Architecture v2.1** upgrade. Four sections: **Overview**, **Backend**, **Frontend**, and **Data Layer**.
+
+> **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (loaded via `.cursor/rules/architecture-v2-agent-compliance.mdc`).
+
+> **Database standard:** PBooks Pro uses **PostgreSQL only** for Desktop Edition, Cloud Edition, staging, and production. Offline SQLite mode is **deprecated and removed** from the active architecture. Legacy SQLite code may remain temporarily — do not extend it.
 
 Post-launch deferred items (RLS, BullMQ, CQRS, etc.) are tracked in [`doc/ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
@@ -12,9 +16,15 @@ Post-launch deferred items (RLS, BullMQ, CQRS, etc.) are tracked in [`doc/ARCHIT
 
 0. [Implementation Status (v2)](#implementation-status-v2)
 1. [Architecture Overview](#1-architecture-overview)
-2. [Backend Architecture](#2-backend-architecture)
-3. [Frontend Architecture](#3-frontend-architecture)
-4. [Data Layer Architecture](#4-data-layer-architecture)
+2. [Database Standard](#database-standard)
+3. [Architecture Enforcement Rules](#architecture-enforcement-rules)
+4. [Financial Reporting Rules](#financial-reporting-rules)
+5. [Core Business Domains](#core-business-domains)
+6. [Backend Architecture](#2-backend-architecture)
+7. [Frontend Architecture](#3-frontend-architecture)
+8. [Data Layer Architecture](#4-data-layer-architecture)
+9. [Real-Time First Architecture](#real-time-first-architecture)
+10. [Architecture Compliance Checklist](#architecture-compliance-checklist)
 
 ---
 
@@ -76,29 +86,56 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 
 PBooks Pro is a monorepo: React/Vite frontend at repo root, Express/PostgreSQL backend in `backend/`, Electron shell in `electron/`, shared packages in `shared/`.
 
-### v2 Target Layer Stack
+**Single source of truth:** PostgreSQL.
+
+### Runtime Architecture (v2.1)
+
+**Desktop Edition**
 
 ```
 Electron (electron/)
   → React app (root)
-    → apiClient (/api/v1) or SQLite IPC
+    → apiClient (/api/v1)
       → Express API (backend/src/)
         → Domain modules (routes → services → repositories)
           → FinancialPostingService (all GL writes)
           → PostgreSQL
 ```
 
-**Shared packages** (`shared/financial-core/`, `shared/report-engines/`) are the single source of truth for calculation logic on both client and server.
+**Cloud Edition**
 
-### Runtime Modes
+```
+Browser
+  → React app (root)
+    → apiClient (/api/v1)
+      → Express API (backend/src/)
+        → Domain modules (routes → services → repositories)
+          → FinancialPostingService (all GL writes)
+          → PostgreSQL
+```
 
-| Mode | Trigger | Data path |
-|------|---------|-----------|
-| Offline SQLite | `VITE_LOCAL_ONLY=true` | Electron → `sqliteBridge` → `services/database/` |
-| LAN/API client | `VITE_LOCAL_ONLY=false` | `apiClient` → `/api/v1` on :3000 (prod) / :3001 (staging) → PostgreSQL |
-| API server only | `backend/dist/index.js` | PostgreSQL + migrations on startup |
+**Backend**
+
+```
+Express API
+  → Modules (routes → services → repositories)
+  → PostgreSQL
+```
+
+**Shared packages** (`shared/financial-core/`, `shared/report-engines/`, `shared/rbac/`) are the single source of truth for calculation logic and permission definitions on both client and server.
+
+### Editions & Environments
+
+| Edition / Environment | Client | API port | Database |
+|----------------------|--------|----------|----------|
+| Desktop Edition (production) | Electron | **3000** | `pbookspro` |
+| Desktop Edition (staging) | Electron | **3001** | `pBookspro_Staging` |
+| Cloud Edition | Browser | **3000** / **3001** | PostgreSQL (same as above) |
+| API server only | — | **3000** / **3001** | PostgreSQL + migrations on startup |
 
 Never mix ports: staging = **3001**, production = **3000** (enforced in `services/api/client.ts` and `config/apiUrl.ts`).
+
+> **Deprecated:** Offline SQLite mode (`VITE_LOCAL_ONLY`, `sqliteBridge`, `services/database/`) is no longer part of the active architecture. All new development uses the API client path to PostgreSQL.
 
 ### Strangler Migration (v1 → v2)
 
@@ -123,8 +160,7 @@ Architecture v2 was rolled out incrementally. **Legacy paths still exist** as th
 | Business logic + SQL | `backend/src/modules/<domain>/services/` |
 | DB access | `backend/src/modules/<domain>/repositories/` extending `TenantRepository` |
 | GL / journal writes | `backend/src/modules/accounting/services/FinancialPostingService.ts` only |
-| DB schema (API) | `database/migrations/NNN_name.sql` |
-| DB schema (SQLite) | `services/database/schema.ts` → `npm run electron:extract-schema` |
+| DB schema | `database/migrations/NNN_name.sql` (PostgreSQL only) |
 | Financial calculation | `shared/financial-core/` |
 | Report calculation | `shared/report-engines/` (UI imports via re-export shims in `components/reports/`) |
 | RBAC permissions | `shared/rbac/permissions.ts` |
@@ -151,8 +187,221 @@ Architecture v2 was rolled out incrementally. **Legacy paths still exist** as th
 - Broad `useAppContext()` in new code — use `useStateSelector` or domain hooks (`context/domains/`)
 - New endpoints on `/api` without going through `mountVersionedApi` — use `/api/v1`
 - Committing `backend/dist/`, `.env*`, or backup files
+- SQLite-specific code, schemas, or sync logic — **deprecated**; use PostgreSQL via module repositories
+- Local-only screen updates for business entities — mutations must propagate to all users in the org via real-time events (see [Real-Time First Architecture](#real-time-first-architecture))
 
 ---
+
+## Real-Time First Architecture
+
+PBooks Pro is a **multi-user ERP**. Multiple users in the same organization work simultaneously. Real-time synchronization is **mandatory**, not optional.
+
+**Principle:** Never implement features that only update the local screen without propagating changes to every connected client in the same tenant.
+
+### Every business entity mutation MUST
+
+1. **Save to PostgreSQL** — commit the transaction before emitting events
+2. **Record audit trail** — `withAudit()` or `recordDomainMutation()` (`backend/src/core/recordDomainMutation.ts`, `backend/src/core/AuditMutation.ts`)
+3. **Emit tenant-scoped event** — `emitEntityEvent()` or `emitFinancialPosted()` (`backend/src/core/realtime.ts`)
+4. **Notify connected clients** — Socket.IO tenant room via `initRealtime()` (same HTTP server as Express)
+5. **Refresh affected screens automatically** — clients invalidate caches and merge remote changes; manual page refresh is never required
+
+**Applies to all business entities**, including: contracts, payments, invoices, vendor bills, receipts, journal entries, properties, leads, customers, vendors, quotations, purchase orders, retention releases, IPC bills, BOQs, and every other tenant-scoped domain.
+
+### MUST NOT
+
+| Anti-pattern | Why |
+|--------------|-----|
+| Local-only state updates | Other users never see the change |
+| Manual refresh as primary sync | Violates Real-Time First; refresh buttons are supplementary only |
+| Screen refresh buttons as primary sync mechanism | Same |
+| Polling-only solutions | Acceptable as fallback only; socket events are required for mutations |
+| Tenant-wide broadcasts without tenant filtering | Cross-tenant leakage; always scope to `tenant:${tenantId}` room |
+
+### Event architecture standard
+
+No mutation is complete until the event is emitted. Standard pipeline:
+
+```
+Repository → Service → withAudit() / recordDomainMutation() → emitEntityEvent() → Real-Time Gateway → Connected Clients
+```
+
+| Layer | Reference |
+|-------|-----------|
+| Audit + change_log | `recordDomainMutation()` — `backend/src/core/recordDomainMutation.ts` |
+| LWW before write | `checkEntityLwwConflict()` / `assertEntityLwwBeforeWrite()` — `backend/src/core/entityMutation.ts` → `assertLwwVersion()` in `backend/src/services/changeLogService.ts` |
+| Real-time gateway | `initRealtime()`, `emitEntityEvent()`, `emitFinancialPosted()` — `backend/src/core/realtime.ts` |
+| Route example (bill upsert + 409) | `backend/src/modules/vendors/routes/billsRoutes.ts` |
+| GL posted event | `FinancialPostingService` → `emitFinancialPosted()` |
+
+**Socket events today:** `entity_created`, `entity_updated`, `entity_deleted`, `financial.posted` (plus `lock_acquired` / `lock_released`, `notification_created`, WhatsApp events).
+
+**Required semantic event types** (lifecycle): `created`, `updated`, `deleted`, `approved`, `rejected`, `posted`, `reversed`, `status_changed`. Map workflow transitions to `emitEntityEvent(..., 'updated', …)` with the appropriate `recordDomainMutation` audit action until dedicated socket event names are added for each lifecycle.
+
+### Tenant isolation
+
+Every event payload must be scoped to one organization:
+
+| Field | Source |
+|-------|--------|
+| `tenantId` | JWT / `req.tenantId` — never from client body |
+| Entity type | `RealtimeEntityType` in `backend/src/core/realtime.ts` |
+| Entity id | `id` on payload or nested `data.id` |
+| Event type | `action`: `created` \| `updated` \| `deleted` (socket layer) |
+| Timestamp | `ts` (ISO string, set by `emitEvent()`) |
+| Version | Entity `version` in `data` and `change_log` when LWW-enabled |
+
+Clients **must** ignore events where `payload.tenantId !== currentTenantId` (see `handleEntity` in `context/AppContext.tsx`). Server joins sockets only to `tenant:${tenantId}` (`initRealtime()` in `backend/src/core/realtime.ts`).
+
+### Frontend synchronization
+
+| Concern | Reference |
+|---------|-----------|
+| Socket client | `connectRealtimeSocket()`, `getRealtimeSocket()` — `core/socket.ts` |
+| Global entity listener | `context/AppContext.tsx` — subscribes to `entity_created` / `entity_updated` / `entity_deleted` / `financial.posted`; debounced API refresh + selective AppState patches for bills/invoices/transactions/units |
+| Incremental merge | `services/api/changeLogMerge.ts` — `applyChangeLogToMergedState()` + `CHANGE_LOG_ENTITY_MAP` |
+| React Query + socket | `hooks/useUserNotifications.ts`, `modules/executive-mobile/hooks/useMobileNotifications.ts` — `getRealtimeSocket()` + `queryClient.invalidateQueries()` on `notification_created` |
+| Record locks | `hooks/useRecordLock.ts` — `lock_acquired` / `lock_released` via `getRealtimeSocket()` |
+| Connection UI | `components/ui/ConnectionStatusIndicator.tsx` |
+
+**Rules for new modules:**
+
+1. Subscribe to tenant entity events (reuse shared socket from `core/socket.ts`)
+2. On event: `queryClient.invalidateQueries({ queryKey: … })` or `queryClient.setQueryData(...)` for targeted updates
+3. Update dashboards, lists, and open forms when safe (respect LWW `version`)
+4. Manual page refresh (`F5`) is never required for multi-user consistency
+
+### React Query integration
+
+New server-backed hooks **must** wire cache invalidation to relevant socket events:
+
+```typescript
+useEffect(() => {
+  const socket = getRealtimeSocket();
+  if (!socket) return;
+  const onEntity = (payload: { tenantId?: string; type?: string }) => {
+    if (payload.tenantId && payload.tenantId !== currentTenantId) return;
+    if (payload.type === 'bill') {
+      void queryClient.invalidateQueries({ queryKey: ['bills'] });
+    }
+  };
+  socket.on('entity_updated', onEntity);
+  socket.on('entity_created', onEntity);
+  socket.on('entity_deleted', onEntity);
+  return () => {
+    socket.off('entity_updated', onEntity);
+    socket.off('entity_created', onEntity);
+    socket.off('entity_deleted', onEntity);
+  };
+}, [currentTenantId, queryClient]);
+```
+
+Prefer `invalidateQueries` for list/report hooks; use `setQueryData` when merging a single row without refetch is safe and version-checked.
+
+### Optimistic locking (LWW)
+
+Entities with a `version` column use **last-write-wins**:
+
+1. Client sends `version` on upsert
+2. Service calls `checkEntityLwwConflict()` before write
+3. On conflict: HTTP **409** `CONFLICT` with `{ serverVersion }` — see `billsRoutes.ts`
+4. UI informs the user; do not silently overwrite
+
+Change log merge on the client skips stale payloads when `entry.version < entityVersion(existing)` (`services/api/changeLogMerge.ts`).
+
+---
+
+## Database Standard
+
+PBooks Pro uses **PostgreSQL** as the single database engine for:
+
+- Desktop Edition
+- Cloud Edition
+- Staging
+- Production
+
+SQLite is **not** part of the active architecture and must **not** be used for:
+
+- New features
+- New schemas
+- New migrations
+- New repositories
+- New synchronization logic
+
+Any SQLite references remaining in legacy code (`sqliteBridge`, `VITE_LOCAL_ONLY`, `services/database/schema.ts`, `electron:extract-schema`) are **deprecated** and scheduled for removal. Do not extend them.
+
+---
+
+## Architecture Enforcement Rules
+
+AI agents and developers **must**:
+
+- Follow Architecture v2.1 exactly
+- Refuse to introduce alternative architectural patterns
+- Refuse to create new flat routes or flat services
+- Refuse direct SQL in route handlers
+- Refuse bypassing repositories or `FinancialPostingService`
+- Refuse duplicate financial or report calculations
+- Refuse new database technologies or SQLite-specific code
+- Refuse new APIs outside `/api/v1`
+- Refuse client-supplied `tenant_id` usage
+
+If a requested implementation conflicts with architecture rules:
+
+1. Explain the violation
+2. Propose the architecture-compliant implementation
+3. Continue using the approved architecture
+
+---
+
+## Financial Reporting Rules
+
+All financial statements must be generated exclusively from:
+
+- `shared/financial-core/`
+- `shared/report-engines/`
+
+The following reports must **never** contain duplicated business logic:
+
+- Balance Sheet
+- Income Statement
+- Profit & Loss
+- Cash Flow Statement
+- Trial Balance
+- General Ledger
+- Subsidiary Ledgers
+- Financial Position Statement
+
+Calculation logic is **prohibited** in:
+
+- React components
+- Route handlers
+- Repositories
+- UI utilities
+
+Only formatting and presentation are allowed in UI layers.
+
+---
+
+## Core Business Domains
+
+The following are first-class domains in PBooks Pro and must be implemented under `backend/src/modules/`:
+
+- Project Construction
+- Contracts
+- BOQ
+- IPC Bills
+- Retention Management
+- Variation Orders
+- Purchase Orders
+- Vendor Quotations
+- Property Sales
+- Property Rentals
+- CRM
+- Collections
+- Facility Management
+
+Do not implement these features as generic modules or temporary utilities.
 
 ## 2. Backend Architecture
 
@@ -260,6 +509,7 @@ Migration: `105_accounting_periods_locked_status.sql`. Enforced in `FinancialPos
 6. Mutations: `withAudit()` or `recordDomainMutation()` + `emitEntityEvent()` for live sync
 7. GL writes: route through `FinancialPostingService` only
 8. New permissions: edit `shared/rbac/permissions.ts`, then `npm run build:backend`
+9. Real-time: emit after commit; LWW 409 on conflict — see `billsRoutes.ts`
 
 ### Middleware Chain (order matters)
 
@@ -315,6 +565,7 @@ Do not duplicate server-fetched KPI/report data in AppContext when a React Query
 
 - Pure state transitions → `context/reducers/`
 - I/O (hydration, socket, save) → `AppContext.tsx` provider
+- Real-time: `core/socket.ts` + entity listeners in `AppContext.tsx`; React Query invalidation in domain hooks — see [Real-Time First Architecture](#real-time-first-architecture)
 
 ### API Client Layer
 
@@ -334,11 +585,8 @@ Endpoints are relative to base URL (e.g. `apiClient.get('/dashboard/snapshots')`
 
 ### Dashboard (v2)
 
-When `!isLocalOnlyMode()`:
-
 - Fetch pre-calculated KPIs via `useDashboardSnapshots` → `GET /dashboard/snapshots?date=`
 - Backend computes from `analytics_snapshots` + `shared/report-engines` (not raw client `AppState` scans)
-- Keep client-side fallback during transition for offline mode
 
 ### Navigation (not React Router)
 
@@ -372,18 +620,11 @@ modules/<feature>/         — self-contained feature (hooks + UI colocated)
 - Icons: `lucide-react`
 - Entity CRUD modals: `hooks/useEntityFormModal`
 
-### Local-Only (SQLite) Path
-
-- Schema changes: `services/database/schema.ts` → `npm run electron:extract-schema`
-- Access via database service / Electron IPC — never raw SQL from components
-- `unifiedDatabaseService.query()` throws by design in API mode
-- Sync metadata tables (`change_log`, `sync_queue`) are API-path only in v2 launch scope
-
 ---
 
 ## 4. Data Layer Architecture
 
-### PostgreSQL (API / LAN mode)
+### PostgreSQL (single database engine)
 
 - Migrations: `database/migrations/NNN_snake_case.sql` (lexicographic order)
 - Runner: `backend/src/migrate.ts` — tracks `schema_migrations`, runs on API startup
@@ -395,6 +636,7 @@ modules/<feature>/         — self-contained feature (hooks + UI colocated)
 - Idempotent where possible (`IF NOT EXISTS`, `IF EXISTS`)
 - Never drop columns/tables without explicit plan and backup
 - Document staging vs production differences in migration or `doc/`
+- **Never** add SQLite migrations or schema files for new features
 
 ### v2 Schema Additions (launch scope)
 
@@ -406,14 +648,19 @@ modules/<feature>/         — self-contained feature (hooks + UI colocated)
 | `108_offline_sync_metadata.sql` | `sync_queue`, `change_log`, `updated_by` columns |
 | `109_analytics_snapshots.sql` | Pre-calculated dashboard KPIs |
 
-### SQLite (local-only / Electron)
+### Legacy SQLite (deprecated — do not extend)
 
-- Schema source: `services/database/schema.ts`
-- Extracted: `electron/schema.sql` via `npm run electron:extract-schema`
-- Runtime: `electron/sqliteBridge.cjs` (better-sqlite3, WAL, multi-company via `companyManager.cjs`)
-- Browser fallback: sql.js + OPFS in `services/database/databaseService.ts`
+The following remain in the codebase temporarily for backward compatibility only:
 
-When adding SQLite tables/columns, update `schema.ts` and re-extract — keep aligned with PostgreSQL migrations where applicable.
+| Component | Location | Status |
+|-----------|----------|--------|
+| SQLite bridge | `electron/sqliteBridge.cjs` | @deprecated |
+| Local schema | `services/database/schema.ts` | @deprecated |
+| Schema extraction | `npm run electron:extract-schema` | @deprecated |
+| Offline flag | `VITE_LOCAL_ONLY` / `isLocalOnlyMode()` | @deprecated |
+| SQLite sync | `services/database/schemaSync.ts` | @deprecated |
+
+Do not use these for new development. All schema changes go through PostgreSQL migrations only.
 
 ### Shared Packages (source of truth)
 
@@ -456,7 +703,7 @@ Custom/dynamic reports: extend `backend/src/modules/reporting/`.
 - Repositories enforce tenant scope via `TenantRepository`
 - Services receive `tenantId` as explicit parameter from `req.tenantId`
 - Soft delete: `deleted_at` + `deleted_by`; financial posted records never physically deleted
-- Realtime: `emitEntityEvent(tenantId, …)` and `emitFinancialPosted()` scope Socket.IO per org
+- Realtime: `emitEntityEvent(tenantId, …)` and `emitFinancialPosted()` scope Socket.IO per org — see [Real-Time First Architecture](#real-time-first-architecture)
 - Demo tenants: see `constants/demoEnvironment.ts` for read-only / master-tenant rules
 
 ---
@@ -473,8 +720,53 @@ Custom/dynamic reports: extend `backend/src/modules/reporting/`.
 7. hooks/queries/useFeature.ts                    (if server-backed)
 8. components/<domain>/FeaturePage.tsx
 9. types.ts Page union + App.tsx + Sidebar
-10. Mutations: withAudit() or recordDomainMutation(); GL: FinancialPostingService
+10. Mutations: withAudit() or recordDomainMutation(); emitEntityEvent() for live sync; GL: FinancialPostingService
+11. Frontend: React Query hook invalidates on socket events for the entity type
 ```
+
+---
+
+## Architecture Compliance Checklist
+
+Before completing any task, verify **Architecture v2.1** and **Real-Time First** compliance.
+
+### Architecture v2.1
+
+- [ ] Uses `backend/src/modules/<domain>/`
+- [ ] Repository extends `TenantRepository`
+- [ ] All queries include `tenant_id`
+- [ ] Uses PostgreSQL only
+- [ ] No SQLite references added
+- [ ] Uses `/api/v1`
+- [ ] Uses `FinancialPostingService` for GL
+- [ ] Uses `withAudit()` or `recordDomainMutation()`
+- [ ] Financial calculations exist only in `shared/financial-core/`
+- [ ] Report calculations exist only in `shared/report-engines/`
+- [ ] Migration added for schema changes
+- [ ] Permissions updated when required
+- [ ] No direct SQL in routes
+- [ ] No duplicate business logic
+- [ ] No legacy architecture extensions
+- [ ] No secrets or build artifacts committed
+
+### Real-Time First
+
+- [ ] Mutation commits to PostgreSQL before event emission
+- [ ] Audit trail recorded (`withAudit()` or `recordDomainMutation()`)
+- [ ] `emitEntityEvent()` or `emitFinancialPosted()` called after successful mutation
+- [ ] Event scoped to tenant room (`tenant:${tenantId}`); payload includes `tenantId`, entity type, id, action, `ts`
+- [ ] Entity `version` included in payload when LWW-enabled
+- [ ] No cross-tenant event leakage (server room join + client tenant filter)
+- [ ] Frontend subscribes via `core/socket.ts` (`connectRealtimeSocket` / `getRealtimeSocket`)
+- [ ] React Query caches invalidated (or `setQueryData`) on relevant socket events
+- [ ] AppContext / module hooks refresh lists, dashboards, and forms without manual page reload
+- [ ] No local-only screen updates for shared business entities
+- [ ] No refresh button as primary sync for new modules
+- [ ] Not polling-only — socket events required for mutation propagation
+- [ ] LWW: `checkEntityLwwConflict()` before upsert when entity has `version`
+- [ ] HTTP 409 `CONFLICT` with `serverVersion` on stale write; user informed
+- [ ] Lifecycle transitions (approved, rejected, posted, reversed, status_changed) emit events (typically as `updated` + audit action)
+- [ ] Agent added full pipeline (emit + subscription + cache invalidation) if feature was requested without real-time sync
 
 ---
 

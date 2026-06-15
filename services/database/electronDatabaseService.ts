@@ -4,6 +4,9 @@
  * Uses native SQLite (better-sqlite3) via IPC when running in Electron.
  * Replaces sql.js entirely - single local DB, no OPFS/IndexedDB/localStorage.
  * Cloud remains PostgreSQL via API.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
  */
 
 import { CREATE_SCHEMA_SQL, SCHEMA_VERSION } from './schema';

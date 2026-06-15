@@ -30,6 +30,12 @@ import {
     syncRentFromSecurityIncomeToPairedExpense,
 } from '../utils/rentalSecurityDepositSettlement';
 import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
+import { getQueryClient } from '../config/queryClient';
+import {
+    invalidateQueriesForEntityEvent,
+    invalidateQueriesForFinancialPosted,
+} from '../services/realtime/entityQueryInvalidation';
+import type { RealtimeEntityPayload } from '../services/realtime/realtimePayload';
 import { toLocalDateString } from '../utils/dateUtils';
 import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
@@ -148,27 +154,6 @@ function normalizeRemoteUnitRow(raw: Record<string, unknown>): Unit {
                   ? parseInt(String(u.version), 10)
                   : undefined,
     };
-}
-
-const SELLING_ANALYTICS_INVALIDATE_ENTITY_TYPES = new Set([
-    'unit',
-    'project',
-    'project_agreement',
-    'sales_return',
-]);
-
-function invalidateSellingAnalyticsQueries(): void {
-    void import('../config/queryClient')
-        .then(({ getQueryClient }) =>
-            import('../modules/selling-analytics/hooks/useSellingAnalytics').then(
-                ({ sellingAnalyticsQueryKeys }) => {
-                    getQueryClient().invalidateQueries({ queryKey: sellingAnalyticsQueryKeys.root });
-                }
-            )
-        )
-        .catch(() => {
-            /* query client not ready */
-        });
 }
 
 // Re-export store accessors for backward compatibility (useSelectiveState, personalFinanceSync, etc.)
@@ -1789,7 +1774,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     payload: { ...unit, ...saved },
                                     _isRemote: true,
                                 } as AppAction);
-                                invalidateSellingAnalyticsQueries();
+                                void invalidateQueriesForEntityEvent(getQueryClient(), {
+                                    type: 'unit',
+                                    action: 'updated',
+                                });
                             }
                         })
                         .catch((err) => {
@@ -2098,19 +2086,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }, DEBOUNCE_MS);
         };
 
-        const handleEntity = (payload: {
-            sourceUserId?: string;
-            tenantId?: string;
-            type?: string;
-            action?: 'created' | 'updated' | 'deleted';
-            id?: string;
-            data?: unknown;
-        }) => {
+        const handleEntity = (payload: RealtimeEntityPayload) => {
+            void invalidateQueriesForEntityEvent(getQueryClient(), payload, {
+                currentUserId: auth.user?.id,
+                currentTenantId: currentTenantId ?? undefined,
+            });
+
             if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
                 return;
-            }
-            if (payload?.type && SELLING_ANALYTICS_INVALIDATE_ENTITY_TYPES.has(payload.type)) {
-                invalidateSellingAnalyticsQueries();
             }
             const isOwnMutation =
                 !!(payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id);
@@ -2223,6 +2206,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
 
         const handleFinancialPosted = () => {
+            void invalidateQueriesForFinancialPosted(getQueryClient());
             scheduleRefresh();
         };
 

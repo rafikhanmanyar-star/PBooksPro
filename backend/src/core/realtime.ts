@@ -57,6 +57,8 @@ export type RealtimePayload = {
   tenantId: string;
   sourceUserId?: string;
   ts: string;
+  /** Optimistic-lock version when present on entity payload (LWW / conflict detection). */
+  version?: number;
 };
 
 let io: Server | null = null;
@@ -224,19 +226,29 @@ export function emitEntityEvent(
   tenantId: string,
   action: RealtimeAction,
   type: RealtimeEntityType,
-  opts: { data?: unknown; id?: string; sourceUserId?: string }
+  opts: { data?: unknown; id?: string; sourceUserId?: string; version?: number }
 ): void {
   const eventName =
     action === 'created' ? 'entity_created' : action === 'updated' ? 'entity_updated' : 'entity_deleted';
   const id = opts.id ?? (opts.data && typeof opts.data === 'object' && opts.data !== null && 'id' in opts.data
     ? String((opts.data as { id: unknown }).id)
     : undefined);
+  let version = opts.version;
+  if (version === undefined && opts.data && typeof opts.data === 'object' && opts.data !== null && 'version' in opts.data) {
+    const raw = (opts.data as { version: unknown }).version;
+    if (typeof raw === 'number' && !Number.isNaN(raw)) version = raw;
+    else if (raw != null) {
+      const parsed = parseInt(String(raw), 10);
+      if (!Number.isNaN(parsed)) version = parsed;
+    }
+  }
   emitEvent(eventName, tenantId, {
     type,
     action,
     data: opts.data ?? (id !== undefined ? { id } : undefined),
     id,
     sourceUserId: opts.sourceUserId,
+    ...(version !== undefined ? { version } : {}),
   });
 }
 

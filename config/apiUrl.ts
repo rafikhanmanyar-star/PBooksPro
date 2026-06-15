@@ -1,11 +1,12 @@
 /**
  * API URL configuration for the app.
  *
+ * Architecture v2.1: Desktop and Cloud editions use apiClient → Express API → PostgreSQL.
+ * Legacy offline SQLite requires an explicit build flag (`VITE_LOCAL_ONLY=true`).
+ *
  * When the app is opened from another PC (e.g. http://192.168.1.105:5173),
  * the API is derived from the same host on port 3000 (e.g. http://192.168.1.105:3000/api),
  * so no IP needs to be hardcoded.
- *
- * Set VITE_API_URL for remote API (not used in local-only mode).
  */
 
 /** Default HTTP port for LAN API (must match backend). */
@@ -218,18 +219,18 @@ export function getAppDisplayName(): string {
 }
 
 /**
- * Local-only: SQLite + Electron offline builds (set `VITE_LOCAL_ONLY=true` in build scripts).
- * LAN / API: set `VITE_LOCAL_ONLY=false` (required for packaged API client, and for dev when using .env).
+ * Architecture v2.1: PostgreSQL-only by default.
  *
- * When the variable is **unset**: browser tabs on `http:` / `https:` are treated as API-capable so
- * transaction mutations POST to PostgreSQL. Otherwise a dev server without `.env` would skip API sync
- * (optimistic UI only — data lost on refresh, other users never see changes). `file://` (Electron)
- * stays local-only unless `VITE_LOCAL_ONLY=false` is baked into the build, or the user chose
- * organization server sign-in (`pbooks_session_data_source=postgres_api`).
+ * Returns true only when the build explicitly sets `VITE_LOCAL_ONLY=true`
+ * (legacy offline SQLite scripts: `npm run electron:offline:*`).
+ * All standard Desktop and Cloud builds use `VITE_LOCAL_ONLY=false` and always return false here.
+ *
+ * @deprecated Legacy SQLite offline mode retained temporarily for migration tooling only.
+ * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
  */
 export function isLocalOnlyMode(): boolean {
   const v = import.meta.env.VITE_LOCAL_ONLY;
-  if (v === 'false' || v === false) return false;
+  if (v !== 'true' && v !== true) return false;
 
   if (typeof window !== 'undefined') {
     try {
@@ -241,18 +242,12 @@ export function isLocalOnlyMode(): boolean {
     }
   }
 
-  if (v === 'true' || v === true) return true;
-  if (typeof window !== 'undefined') {
-    const p = window.location.protocol;
-    if (p === 'http:' || p === 'https:') return false;
-  }
   return true;
 }
 
 /**
- * True when transactions, payroll payments, and related operational data must persist via REST to PostgreSQL
- * (valid JWT + non-offline tenant + session is treated as API-backed — same cases where {@link isLocalOnlyMode} is false).
- * Offline SQLite / local-tenant workflows return false here so mutations stay on the desktop storage layer only.
+ * True when transactions, payroll payments, and related operational data must persist via REST to PostgreSQL.
+ * Requires a valid JWT and non-local tenant id.
  */
 export function isAccountingBackedByRemoteApi(): boolean {
   if (typeof window === 'undefined') return false;

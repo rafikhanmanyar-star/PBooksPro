@@ -2,6 +2,9 @@
  * Unified Database Service
  *
  * Local SQLite only. Desktop uses Electron/sql.js; no cloud PostgreSQL.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Use apiClient → PostgreSQL.
  */
 
 import { getPlatform } from '../../utils/platformDetection';
@@ -41,6 +44,7 @@ class UnifiedDatabaseServiceImpl implements UnifiedDatabaseService {
       this.mode = 'api';
       this.localDbService = null;
       this.initializationError = null;
+      this.isInitialized = true;
       return;
     }
 
@@ -90,6 +94,7 @@ class UnifiedDatabaseServiceImpl implements UnifiedDatabaseService {
   }
 
   isReady(): boolean {
+    if (this.mode === 'api') return true;
     return this.isInitialized && this.initializationError === null;
   }
 

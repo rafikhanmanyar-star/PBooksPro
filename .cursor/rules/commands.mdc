@@ -247,14 +247,17 @@ npm run dev:backend:production
 | `npm run start:backend` | Run compiled API (`node backend/dist/index.js`) |
 | `npm run dev` | Start Vite dev server (web client) |
 | `npm run build` | Build frontend only |
-| `npm run electron:dev` | Electron dev mode (local SQLite build) |
-| `npm run electron:local` | Same as electron:dev |
-| `npm run electron:installer` | Build offline SQLite installer → `release/` (no publish) |
+| `npm run electron:dev` | Electron API client dev build (`VITE_LOCAL_ONLY=false`) |
+| `npm run electron:local` | Electron API client — requires running API server |
+| `npm run electron:installer` | Build Desktop API client installer → `release/` (no publish) |
+| `npm run electron:offline:dev` | **Deprecated** — legacy offline SQLite dev build |
+| `npm run electron:offline:local` | **Deprecated** — legacy offline SQLite full build |
+| `npm run electron:offline:installer` | **Deprecated** — legacy offline SQLite NSIS installer |
 | `npm run icons:generate` | Regenerate app icons (ICO/ICNS/PNG) from `pbookspro logo.png` → `electron/assets/`, `public/` |
 | `npm run github:clean-releases` | Delete old GitHub releases (keeps latest 10) |
-| `npm run prepare-local-db` | Rewrite tenant/user IDs in local SQLite DB |
-| `npm run clear-local-transactions` | Clear transactions from local SQLite DB |
-| `npm run migrate:sqlite-to-postgres` | Import SQLite backup → PostgreSQL |
+| `npm run prepare-local-db` | **Deprecated** — rewrite tenant/user IDs in local SQLite DB |
+| `npm run clear-local-transactions` | **Deprecated** — clear transactions from local SQLite DB |
+| `npm run migrate:sqlite-to-postgres` | **Legacy** — import SQLite backup → PostgreSQL |
 | `npm run migrate:sqlite-to-postgres:transactions` | Re-import transactions only |
 | `npm run repair:pg-categories` | Repair category_id from SQLite backup |
 
@@ -306,7 +309,9 @@ npm run start:backend:production  # production, compiled
 $env:VITE_LOCAL_ONLY="false"; npm run dev
 ```
 
-For **offline SQLite**, use `npm run electron:local` — not `test:local-only` or `test:staging`.
+For **Desktop Edition (PostgreSQL)**, use `npm run test:local-only` or `npm run test:staging` — not legacy offline SQLite scripts.
+
+Legacy offline SQLite (deprecated): `npm run electron:offline:local` — see `services/database/LEGACY.md`.
 
 ---
 

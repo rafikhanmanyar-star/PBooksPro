@@ -1,25 +1,36 @@
 ---
-description: Server API routes and middleware conventions
+description: Server API routes and middleware conventions (v2 modules)
 globs: backend/**/*.ts
 alwaysApply: false
 ---
 
-# Server API Conventions
+# Server API Conventions (v2)
 
-See `architecture-backend.mdc` for full backend architecture. Quick reference:
+See `architecture-backend.mdc` and `doc/ARCHITECTURE_V2_AGENT_RULES.md` §4.
 
 ## Routes
-- File: `backend/src/routes/*Routes.ts`; export `*Router`
-- Thin handlers: validate → call service → `sendSuccess` / `handleRouteError`
-- SQL belongs in `backend/src/services/`, not route files
+
+- **New code:** `backend/src/modules/<domain>/routes/` — export router, register in `mountVersionedApi.ts`
+- **Legacy:** `backend/src/routes/*.ts` are re-exports only — do not add handlers
+- Thin handlers: Zod validate → service → `sendSuccess` / `handleRouteError`
+- SQL belongs in module repositories/services, never route files
 
 ## Auth & Tenant
-- Mount with `authMiddleware` + `requireActiveSubscription()` in `backend/src/index.ts`
+
+- Authenticated stack: `authMiddleware` + `requireActiveSubscription()` on `/api/v1`
 - `req.tenantId`, `req.userId`, `req.role` on `AuthedRequest` after auth
-- RBAC: `requirePermission('feature.action')` or mount-level `requirePermissionWhenPathStartsWith`
-- Admin portal: `backend/src/adminPortal/` with `adminAuthMiddleware`
+- Pass `tenantId` explicitly to services — never from request body
+- RBAC: `requirePermission('feature.action')` or mount-level guards
+- Admin portal: `/api/admin` via `adminPortal/` — separate JWT, not tenant-scoped
+
+## Mutations
+
+- Use `withAudit()` or `recordDomainMutation()` for tenant data changes
+- Emit `emitEntityEvent()` for live sync where other clients need updates
+- GL writes: `FinancialPostingService` only
 
 ## Errors
-- Validate input; `sendFailure(res, 400, 'message')` for bad requests
+
+- Validate input; `sendFailure(res, 400, 'CODE', 'message')` for bad requests
 - Rate limiting on public endpoints (login, lookup)
 - Log with `console.error`; never expose internals to client
