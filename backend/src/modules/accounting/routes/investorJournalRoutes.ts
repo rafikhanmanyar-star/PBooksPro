@@ -12,8 +12,8 @@ import {
   fetchInvestorEquityLedger,
 } from '../../../services/investorJournalPostingService.js';
 import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
-import { rowToTransactionApi } from '../../../services/transactionsService.js';
-import type { TransactionRow } from '../../../services/transactionsService.js';
+import { rowToTransactionApi } from '../services/transactionsService.js';
+import type { TransactionRow } from '../services/transactionsService.js';
 
 export const investorJournalRouter = Router();
 

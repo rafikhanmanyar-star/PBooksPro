@@ -9,7 +9,7 @@ import {
   softDeleteInvoice,
   updateInvoice,
   upsertInvoice,
-} from '../../../services/invoicesService.js';
+} from '../services/invoicesService.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';

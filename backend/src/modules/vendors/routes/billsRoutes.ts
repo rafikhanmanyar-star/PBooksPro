@@ -8,7 +8,7 @@ import {
   rowToBillApi,
   softDeleteBill,
   upsertBill,
-} from '../../../services/billsService.js';
+} from '../services/billsService.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
 import {
   getContractorAdvanceById,
@@ -18,7 +18,7 @@ import { settleVendorBillsBatchWithAdvances } from '../../../services/vendorBill
 import { reverseVendorBillAdvanceSettlement } from '../../../services/vendorBillAdvanceSettlementReverseService.js';
 import { replaceVendorBillAdvanceSettlement } from '../../../services/vendorBillAdvanceReplaceService.js';
 import { listVendorBillSettlementsForBills } from '../../../services/vendorBillSettlementReadService.js';
-import { rowToTransactionApi } from '../../../services/transactionsService.js';
+import { rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const billsRouter = Router();

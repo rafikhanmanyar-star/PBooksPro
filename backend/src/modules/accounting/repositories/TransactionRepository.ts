@@ -3,7 +3,7 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import type {
   ListTransactionFilters,
   TransactionRow,
-} from '../../../services/transactionsService.js';
+} from '../services/transactionsService.js';
 
 const SELECT_ROW = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,
   t.account_id, t.from_account_id, t.to_account_id, t.category_id, t.contact_id, t.vendor_id, t.project_id,

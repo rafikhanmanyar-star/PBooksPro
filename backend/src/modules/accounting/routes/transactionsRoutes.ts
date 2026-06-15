@@ -11,10 +11,10 @@ import {
   updateTransaction,
   upsertTransaction,
   type ListTransactionFilters,
-} from '../../../services/transactionsService.js';
+} from '../services/transactionsService.js';
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
-import { getBillById, rowToBillApi } from '../../../services/billsService.js';
-import { getInvoiceById, rowToInvoiceApi } from '../../../services/invoicesService.js';
+import { getBillById, rowToBillApi } from '../../vendors/services/billsService.js';
+import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { memoryCacheDeletePrefix } from '../../../utils/memoryCache.js';
 

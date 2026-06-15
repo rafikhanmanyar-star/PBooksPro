@@ -10,21 +10,21 @@ import {
   BILL_JOURNAL_SOURCE_MODULE,
   shouldSkipBillJournalMirror,
 } from '../../../services/billJournalPostingService.js';
-import type { BillRow } from '../../../services/billsService.js';
+import type { BillRow } from '../../vendors/services/billsService.js';
 import {
   buildJournalBodyFromInvoice,
   buildJournalLinesFromInvoice,
   INVOICE_JOURNAL_SOURCE_MODULE,
   shouldSkipInvoiceJournalMirror,
 } from '../../../services/invoiceJournalPostingService.js';
-import type { InvoiceRow } from '../../../services/invoicesService.js';
+import type { InvoiceRow } from '../../customers/services/invoicesService.js';
 import {
   buildJournalBodyFromTransaction,
   buildJournalLinesFromTransaction,
   TRANSACTION_JOURNAL_SOURCE_MODULE,
   shouldSkipTransactionJournalMirror,
 } from '../../../services/transactionJournalPostingService.js';
-import type { TransactionRow } from '../../../services/transactionsService.js';
+import type { TransactionRow } from './transactionsService.js';
 import {
   buildJournalBodyFromPeV,
   buildJournalLinesFromPeV,

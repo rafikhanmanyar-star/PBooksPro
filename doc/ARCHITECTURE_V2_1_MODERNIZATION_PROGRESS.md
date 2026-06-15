@@ -149,10 +149,11 @@ npm run verify:realtime:track-e
 | **Project-selling CRUD** | `budgetsService`, `pmCycleAllocationsService`, `projectAgreementsService` → `modules/project-selling/services/` |
 | **Vendors** | `contractsService` → `modules/vendors/services/` (routes in project-selling import cross-module) |
 | **Accounting periods** | `accountingPeriodService` → `modules/accounting/services/` (`FinancialPostingService`, `JournalRepository` use module path) |
+| **Financial core (batch 4)** | `billsService` → vendors; `invoicesService` → customers; `transactionsService` → accounting |
 | **Flat shims** | Corresponding `backend/src/services/*.ts` files re-export only |
 | **Module imports** | Routes and repositories import from module `services/` layer |
 
-**Remaining P3 backlog:** bills/invoices/transactions services, report services, and other flat `services/*` — retire incrementally.
+**Remaining P3 backlog:** journal posting services (`*JournalPostingService`), report services, `stateChangesService` / `appStateBulkService` flat imports — retire incrementally.
 
 ---
 

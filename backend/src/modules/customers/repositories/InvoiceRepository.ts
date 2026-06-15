@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { InvoiceRow } from '../../../services/invoicesService.js';
+import type { InvoiceRow } from '../services/invoicesService.js';
 
 const INVOICE_COLUMNS = `id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
   invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,

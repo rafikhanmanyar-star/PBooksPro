@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import type { TransactionRow } from '../../../services/transactionsService.js';
+import type { TransactionRow } from '../services/transactionsService.js';
 import { TRANSACTION_JOURNAL_SOURCE_MODULE } from '../../../services/transactionJournalPostingService.js';
 
 const TX_SELECT = `SELECT t.id, t.tenant_id, t.user_id, t.type, t.subtype, t.amount, t.date, t.description, t.reference,

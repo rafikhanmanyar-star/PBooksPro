@@ -103,6 +103,26 @@ Assert-FileContains -Label 'accountingPeriodService lives in accounting module' 
     -Path (Join-Path $root 'backend/src/modules/accounting/services/accountingPeriodService.ts') `
     -Pattern 'export async function assertAccountingPeriodOpen'
 
+Assert-FileContains -Label 'billsService lives in vendors module' `
+    -Path (Join-Path $root 'backend/src/modules/vendors/services/billsService.ts') `
+    -Pattern 'export async function upsertBill'
+
+Assert-FileContains -Label 'invoicesService lives in customers module' `
+    -Path (Join-Path $root 'backend/src/modules/customers/services/invoicesService.ts') `
+    -Pattern 'export async function upsertInvoice'
+
+Assert-FileContains -Label 'transactionsService lives in accounting module' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/transactionsService.ts') `
+    -Pattern 'export async function upsertTransaction'
+
+Assert-FileContains -Label 'billsRoutes imports module billsService' `
+    -Path (Join-Path $root 'backend/src/modules/vendors/routes/billsRoutes.ts') `
+    -Pattern '\.\./services/billsService'
+
+Assert-FileContains -Label 'FinancialPostingService imports module transaction types' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/FinancialPostingService.ts') `
+    -Pattern '\./transactionsService'
+
 Write-Host "[build] npm run build:backend"
 npm run build:backend | Out-Null
 

@@ -14,7 +14,7 @@ import {
   updateRentalAgreement,
 } from '../../../services/rentalAgreementsService.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
-import { listInvoices, rowToInvoiceApi } from '../../../services/invoicesService.js';
+import { listInvoices, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const rentalAgreementsRouter = Router();
