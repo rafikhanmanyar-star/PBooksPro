@@ -1,3 +1,5 @@
+# @deprecated Architecture v2.0 — legacy offline SQLite staging client (better-sqlite3).
+# Do NOT use for release:staging. Use electron-builder-api-client-staging.yml + electron-builder-api-server-staging.yml.
 # Staging build: same pack list as production, output to release-staging/
 # Disable code signing so winCodeSign is not downloaded (avoids Windows symlink extraction error).
 # Include full build config so staging uses the same "files" exclusions as production (avoids ~1.1GB bloat).

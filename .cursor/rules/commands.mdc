@@ -64,14 +64,23 @@ npm run release:staging
 2. Pulls latest `origin/staging`
 3. Commits any uncommitted local changes
 4. **Pushes source code to `origin/staging`**
-5. Runs the full staging build (`deploy:staging`):
+5. Runs the full staging build (`deploy:staging`) — **Architecture v2.1** (PostgreSQL API, not legacy SQLite):
    - Loads `.env.staging`
+   - `verify:staging-release:preflight` — blocks legacy SQLite installer configs
+   - Compiles backend (`build:backend`) → `backend/dist/modules/*` (v2 module layout)
    - Migrates **`pBookspro_Staging`**
    - **Bumps patch version** in `package.json`
-   - Builds **PBooks Pro API Server (Staging)** → `release-api-server-staging/`
-   - Builds **PBooks Pro Client (Staging)** → `release-api-client-staging/`
+   - Stages **PBooks Pro Staging API Server** (`electron:stage-api-server` + compiled backend + migrations) → `release-api-server-staging/`
+   - Builds client with `VITE_LOCAL_ONLY=false`, `VITE_STAGING=true`, API `:3001`
+   - `verify:staging-release:client` — no sql.js / legacy-sqlite in `dist/`
    - Publishes GitHub **prerelease** (needs `GH_TOKEN` in `.env.staging`)
    - Pushes version commit + tag to `origin/staging`
+
+**Preflight only (no installers):**
+
+```powershell
+npm run verify:staging-release:preflight
+```
 
 **Test locally before release:**
 
@@ -233,6 +242,8 @@ npm run dev:backend:production
 | `npm run deploy:production` | Production build/publish only (no merge) |
 | `npm run test:staging` | Staging stack: `pBookspro_Staging` + API :3001 + Electron client |
 | `npm run test:staging:watch` | Same as `test:staging` with backend tsx watch |
+| `npm run verify:staging-release:preflight` | Assert staging release uses v2.1 API installers (no SQLite yml) |
+| `npm run verify:staging-release` | Full staging release guardrails (preflight + built artifacts) |
 | `npm run test:local-only` | Production DB stack: `pbookspro` + API :3000 + Electron client |
 | `npm run test:local-only:watch` | Same as `test:local-only` with backend tsx watch |
 | `npm run db:migrate:staging` | Migrate **`pBookspro_Staging`** (`.env.staging`) |

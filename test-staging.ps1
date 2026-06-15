@@ -232,8 +232,7 @@ if (-not $useWatch) {
 Write-Host "  Staging API is up." -ForegroundColor Green
 
 Write-Host ""
-Write-Host '  [6/8] Building Electron staging client...' -ForegroundColor Yellow
-& npm run electron:extract-schema
+Write-Host '  [6/8] Building Electron staging client (Architecture v2.1 API mode)...' -ForegroundColor Yellow
 
 $env:VITE_LOCAL_ONLY = "false"
 $env:VITE_ELECTRON_BUILD = "true"

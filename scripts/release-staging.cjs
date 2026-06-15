@@ -46,6 +46,7 @@ if (commitPendingChanges('Pre-release staging commit')) {
   console.log('[release:staging] Committed pending local changes.');
 }
 
+console.log('[release:staging] Staging installers: PBooks Pro Staging API Server + Staging Client (Architecture v2.1 — PostgreSQL /api/v1).');
 console.log('[release:staging] Step 2/2 — Build, bump version, publish GitHub prerelease, push staging + tag…');
 run('npm run deploy:staging');
 
