@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { RecordLockRow, RecordLockType } from '../../../services/recordLocksService.js';
+import type { RecordLockRow, RecordLockType } from '../services/recordLocksService.js';
 
 export class RecordLockRepository extends TenantRepository {
   constructor(tenantId: string, client?: pg.PoolClient) {

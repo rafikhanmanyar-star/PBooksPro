@@ -12,7 +12,7 @@ import {
   releaseLock,
   logLockForceTakeover,
   type RecordLockType,
-} from '../../../services/recordLocksService.js';
+} from '../services/recordLocksService.js';
 import { emitLockEvent } from '../../../core/realtime.js';
 
 export const locksRouter = Router();

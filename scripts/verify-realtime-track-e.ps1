@@ -63,6 +63,18 @@ Assert-FileContains -Label 'module installmentPlansRoutes imports module service
     -Path (Join-Path $root 'backend/src/modules/project-selling/routes/installmentPlansRoutes.ts') `
     -Pattern '\.\./services/installmentPlansService'
 
+Assert-FileContains -Label 'recordLocksService lives in accounting module' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/recordLocksService.ts') `
+    -Pattern 'export async function acquireLock'
+
+Assert-FileContains -Label 'flat recordLocksService is strangler re-export' `
+    -Path (Join-Path $root 'backend/src/services/recordLocksService.ts') `
+    -Pattern 'modules/accounting/services/recordLocksService'
+
+Assert-FileContains -Label 'locksRoutes imports module recordLocksService' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/routes/locksRoutes.ts') `
+    -Pattern '\.\./services/recordLocksService'
+
 Write-Host "[build] npm run build:backend"
 npm run build:backend | Out-Null
 

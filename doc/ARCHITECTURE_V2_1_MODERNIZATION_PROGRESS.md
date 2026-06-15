@@ -144,10 +144,11 @@ npm run verify:realtime:track-e
 | Item | Change |
 |------|--------|
 | **Project-selling services** | `installmentPlansService` + `planAmenitiesService` moved to `modules/project-selling/services/` |
-| **Flat shims** | `backend/src/services/installmentPlansService.ts` + `planAmenitiesService.ts` re-export only |
+| **Record locks** | `recordLocksService` moved to `modules/accounting/services/` |
+| **Flat shims** | `backend/src/services/installmentPlansService.ts`, `planAmenitiesService.ts`, `recordLocksService.ts` re-export only |
 | **Module imports** | Routes, repositories, `mobileApprovalsService` import from module layer |
 
-**Remaining P3 backlog:** other flat `services/*` files (e.g. `recordLocksService`, report services) — retire incrementally.
+**Remaining P3 backlog:** other flat `services/*` files (report services, domain CRUD services still in flat layer) — retire incrementally.
 
 ---
 
