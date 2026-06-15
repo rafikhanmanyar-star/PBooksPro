@@ -50,6 +50,7 @@ export function useCreateUnpostedTransaction() {
       void qc.invalidateQueries({ queryKey: ['unposted-transaction-counts'] });
       void qc.invalidateQueries({ queryKey: ['user-notifications'] });
       void qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
+      void qc.invalidateQueries({ queryKey: ['mobile-command-center'] });
     },
   });
 }
