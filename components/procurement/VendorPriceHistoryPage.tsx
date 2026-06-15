@@ -85,11 +85,11 @@ const VendorPriceHistoryPage: React.FC = () => {
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-slate-800">Vendor Price History</h2>
+        <h2 className="text-xl font-bold text-app-text">Vendor Price History</h2>
         <Button variant="secondary" onClick={() => refetch()} disabled={isFetching}>Refresh</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-slate-50 p-4 rounded-lg border">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 bg-app-toolbar/40 p-4 rounded-lg border border-app-border">
         <ComboBox label="Vendor" items={vendors ?? []} selectedId={vendorId} onSelect={(v) => setVendorId(v?.id || '')} placeholder="All vendors" entityType="vendor" />
         <ComboBox label="Category" items={expenseCategories} selectedId={categoryId} onSelect={(c) => setCategoryId(c?.id || '')} placeholder="All categories" entityType="category" />
         <ComboBox label="Project" items={projects} selectedId={projectId} onSelect={(p) => setProjectId(p?.id || '')} placeholder="All projects" entityType="project" />
@@ -97,27 +97,27 @@ const VendorPriceHistoryPage: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 bg-white border rounded-lg">
-          <p className="text-xs text-slate-500 uppercase font-bold">Records</p>
-          <p className="text-2xl font-bold text-slate-800">{rows.length}</p>
+        <div className="p-4 bg-app-card border border-app-border rounded-lg shadow-ds-card">
+          <p className="text-xs text-app-muted uppercase font-bold">Records</p>
+          <p className="text-2xl font-bold text-app-text">{rows.length}</p>
         </div>
-        <div className="p-4 bg-white border rounded-lg">
-          <p className="text-xs text-slate-500 uppercase font-bold">Average Price</p>
-          <p className="text-2xl font-bold text-indigo-700">
+        <div className="p-4 bg-app-card border border-app-border rounded-lg shadow-ds-card">
+          <p className="text-xs text-app-muted uppercase font-bold">Average Price</p>
+          <p className="text-2xl font-bold text-primary">
             {avgRate.toLocaleString('en-US', { style: 'currency', currency: CURRENCY })}
           </p>
         </div>
-        <div className="p-4 bg-white border rounded-lg">
-          <p className="text-xs text-slate-500 uppercase font-bold">Latest Rate</p>
-          <p className="text-2xl font-bold text-slate-800">
+        <div className="p-4 bg-app-card border border-app-border rounded-lg shadow-ds-card">
+          <p className="text-xs text-app-muted uppercase font-bold">Latest Rate</p>
+          <p className="text-2xl font-bold text-app-text">
             {rows[0]?.quotedRate.toLocaleString('en-US', { style: 'currency', currency: CURRENCY }) ?? '—'}
           </p>
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+      <div className="overflow-x-auto border border-app-border rounded-lg bg-app-card">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+          <thead className="bg-app-table-header text-app-muted">
             <tr>
               <th className="px-3 py-2 text-left">Date</th>
               <th className="px-3 py-2 text-left">Vendor</th>
@@ -129,9 +129,9 @@ const VendorPriceHistoryPage: React.FC = () => {
           </thead>
           <tbody>
             {rows.length === 0 ? (
-              <tr><td colSpan={6} className="px-3 py-8 text-center text-slate-500">No price history found.</td></tr>
+              <tr><td colSpan={6} className="px-3 py-8 text-center text-app-muted">No price history found.</td></tr>
             ) : rows.map((row) => (
-              <tr key={row.id} className="border-t">
+              <tr key={row.id} className="border-t border-app-border hover:bg-app-table-hover">
                 <td className="px-3 py-2">{formatDate(row.quotationDate)}</td>
                 <td className="px-3 py-2">{row.vendorName || row.vendorId}</td>
                 <td className="px-3 py-2">{row.projectName || '—'}</td>

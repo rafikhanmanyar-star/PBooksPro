@@ -48,12 +48,12 @@ function recomputeLine(line: POItem): POItem {
 }
 
 const statusBadge: Record<string, string> = {
-  Draft: 'bg-slate-100 text-slate-700',
-  Submitted: 'bg-blue-100 text-blue-800',
-  Approved: 'bg-emerald-100 text-emerald-800',
-  'Partially Billed': 'bg-amber-100 text-amber-900',
-  'Fully Billed': 'bg-indigo-100 text-indigo-800',
-  Cancelled: 'bg-red-100 text-red-800',
+  Draft: 'bg-app-toolbar text-app-muted border border-app-border',
+  Submitted: 'bg-primary/15 text-primary',
+  Approved: 'bg-[color:var(--badge-paid-bg)] text-ds-success',
+  'Partially Billed': 'bg-[color:var(--badge-partial-bg)] text-ds-warning',
+  'Fully Billed': 'bg-primary/15 text-primary',
+  Cancelled: 'bg-[color:var(--badge-unpaid-bg)] text-ds-danger',
 };
 
 type PurchaseOrdersPageProps = {
@@ -150,15 +150,15 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
   const busy = isFetching || save.isPending || submit.isPending || approve.isPending || cancel.isPending;
 
   if (!perms.canViewPurchaseOrders) {
-    return <p className="p-6 text-sm text-slate-500">You do not have permission to view purchase orders.</p>;
+    return <p className="p-6 text-sm text-app-muted">You do not have permission to view purchase orders.</p>;
   }
 
   return (
     <div className="p-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Purchase Orders</h2>
-          <p className="text-sm text-slate-500">Quotation → PO → Bill → Payment</p>
+          <h2 className="text-xl font-bold text-app-text">Purchase Orders</h2>
+          <p className="text-sm text-app-muted">Quotation → PO → Bill → Payment</p>
         </div>
         <div className="flex gap-2">
           {perms.canCreatePurchaseOrder && (
@@ -182,9 +182,9 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
         </Select>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+      <div className="overflow-x-auto border border-app-border rounded-lg bg-app-card">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+          <thead className="bg-app-table-header text-app-muted">
             <tr>
               <th className="px-3 py-2 text-left">PO #</th>
               <th className="px-3 py-2 text-left">Vendor</th>
@@ -199,7 +199,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
           <tbody>
             {orders.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-8 text-center text-app-muted">
                   {isFetching ? 'Loading…' : 'No purchase orders found.'}
                 </td>
               </tr>
@@ -207,7 +207,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
               orders.map((po) => {
                 const vendor = vendors.find((v) => v.id === po.vendorId);
                 return (
-                  <tr key={po.id} className="border-t">
+                  <tr key={po.id} className="border-t border-app-border hover:bg-app-table-hover">
                     <td className="px-3 py-2 font-medium">{po.poNumber}</td>
                     <td className="px-3 py-2">{vendor?.name ?? po.vendorId}</td>
                     <td className="px-3 py-2">{po.issueDate}</td>
@@ -215,7 +215,7 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
                     <td className="px-3 py-2 text-right">{formatMoney(po.receivedAmount ?? 0)}</td>
                     <td className="px-3 py-2 text-right">{formatMoney(po.billedAmount ?? 0)}</td>
                     <td className="px-3 py-2 text-center">
-                      <span className={`text-xs font-semibold px-2 py-1 rounded ${statusBadge[po.status] ?? 'bg-slate-100'}`}>
+                      <span className={`text-xs font-semibold px-2 py-1 rounded ${statusBadge[po.status] ?? 'bg-app-toolbar text-app-muted'}`}>
                         {po.status}
                       </span>
                     </td>
@@ -271,9 +271,9 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
 
       {isFormOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <h3 className="text-lg font-bold">{editing ? 'Edit Purchase Order' : 'New Purchase Order'}</h3>
-            {formError && <p className="text-sm text-red-600">{formError}</p>}
+          <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
+            <h3 className="text-lg font-bold text-app-text">{editing ? 'Edit Purchase Order' : 'New Purchase Order'}</h3>
+            {formError && <p className="text-sm text-ds-danger">{formError}</p>}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <ComboBox

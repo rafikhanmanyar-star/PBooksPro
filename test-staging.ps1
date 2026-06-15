@@ -3,6 +3,8 @@
 # Run from repo root:
 #   npm run test:staging
 #
+# Does NOT bump package.json version — use npm run release:staging for version bumps + installers.
+#
 # Production-like local test (pbookspro + API port 3000) - unchanged:
 #   npm run test:local-only
 #
@@ -91,6 +93,25 @@ function Get-ProcessTreePids {
     return @($all)
 }
 
+function Get-PackageVersion {
+    $pkgPath = Join-Path $ProjectRoot "package.json"
+    $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
+    return [string]$pkg.version
+}
+
+function Assert-PackageVersionUnchanged {
+    param([string]$ExpectedVersion)
+
+    $current = Get-PackageVersion
+    if ($current -eq $ExpectedVersion) { return }
+
+    Write-Host ""
+    Write-Host "  ERROR: package.json version changed ($ExpectedVersion -> $current)." -ForegroundColor Red
+    Write-Host "  npm run test:staging must not bump the app version." -ForegroundColor Red
+    Write-Host "  Use npm run release:staging when you need a version bump and installers." -ForegroundColor Yellow
+    exit 1
+}
+
 $LocalApiBase = "http://127.0.0.1:3001/api"
 $LocalWsRoot = "http://127.0.0.1:3001"
 $HealthUrl = "http://127.0.0.1:3001/health"
@@ -103,6 +124,12 @@ Write-Host "================================================" -ForegroundColor C
 Write-Host ""
 
 Set-Location $ProjectRoot
+
+# Local test only — never patch-bump package.json (release:staging sets PBOOKS_BUMP_VERSION=1).
+$env:PBOOKS_BUMP_VERSION = "0"
+$packageVersionAtStart = Get-PackageVersion
+
+try {
 
 if (-not (Test-Path $EnvFile)) {
     Write-Host "  Missing $EnvFile - copy from .env.staging.example and set DATABASE_URL." -ForegroundColor Red
@@ -257,3 +284,7 @@ Write-Host "  [8/8] Stopping staging backend..." -ForegroundColor Yellow
 try {
     taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null
 } catch {}
+
+} finally {
+    Assert-PackageVersionUnchanged -ExpectedVersion $packageVersionAtStart
+}

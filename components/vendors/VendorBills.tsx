@@ -170,7 +170,7 @@ const VendorBills: React.FC<VendorBillsProps> = ({ vendorId, onEditBill }) => {
                             </tr>
                         )) : (
                             <tr>
-                                <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                                <td colSpan={7} className="px-4 py-12 text-center text-app-muted">
                                     No bills found matching your filters.
                                 </td>
                             </tr>

@@ -9,6 +9,7 @@ import { CURRENCY } from '../../constants';
 import { useQuotationComparison, useQuotationComparisonWorkflow } from '../../hooks/useQuotationComparison';
 import { usePermissions } from '../../hooks/usePermissions';
 import type { VendorQuotationComparisonRow } from '../../types';
+import { backupAlertWarning, backupAlertSuccess, backupAlertError } from '../settings/backupThemeClasses';
 
 const PACKAGE_OPTIONS = ['Grey Structure', 'Finishing', 'Electrical', 'Plumbing', 'HVAC', 'Landscaping'];
 
@@ -141,8 +142,8 @@ const VendorQuotationComparisonPage: React.FC = () => {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Vendor Quotation Comparison</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <h2 className="text-xl font-bold text-app-text">Vendor Quotation Comparison</h2>
+          <p className="text-sm text-app-muted mt-1">
             Compare unit price, totals, delivery, payment terms, warranty, and vendor rating.
           </p>
         </div>
@@ -159,22 +160,22 @@ const VendorQuotationComparisonPage: React.FC = () => {
       </div>
 
       {recommended && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-900">
+        <div className={`p-4 ${backupAlertWarning} text-sm`}>
           <strong>Recommended:</strong> {recommended.vendorName} — score {recommended.recommendationScore}/100
           {recommended.quotationNumber ? ` (${recommended.quotationNumber})` : ''}
         </div>
       )}
 
       {statusMessage && (
-        <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+        <div className={`p-3 ${backupAlertSuccess} text-sm`}>
           {statusMessage}
         </div>
       )}
       {errorMessage && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">{errorMessage}</div>
+        <div className={`p-3 ${backupAlertError} text-sm`}>{errorMessage}</div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-lg border border-slate-200">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 bg-app-toolbar/40 p-4 rounded-lg border border-app-border">
         <ComboBox
           label="Project"
           items={projects}
@@ -213,9 +214,9 @@ const VendorQuotationComparisonPage: React.FC = () => {
         <Input label="Item" value={itemName} onChange={(e) => setItemName(e.target.value)} placeholder="Filter by item" />
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-lg">
+      <div className="overflow-x-auto border border-app-border rounded-lg bg-app-card">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-100">
+          <thead className="bg-app-table-header text-app-muted">
             <tr>
               <th className="px-3 py-2 text-left">Vendor</th>
               <th className="px-3 py-2 text-right">Unit Price</th>
@@ -231,7 +232,7 @@ const VendorQuotationComparisonPage: React.FC = () => {
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={9} className="px-3 py-8 text-center text-app-muted">
                   {isFetching ? 'Loading comparison…' : 'No matching quotations found.'}
                 </td>
               </tr>
@@ -239,19 +240,19 @@ const VendorQuotationComparisonPage: React.FC = () => {
               rows.map((row) => (
                 <tr
                   key={`${row.quotationId}-${row.vendorId}-${row.unitPrice}`}
-                  className={`border-t ${row.isRecommended ? 'bg-amber-50' : row.isLowestRate ? 'bg-emerald-50/60' : ''}`}
+                  className={`border-t border-app-border hover:bg-app-table-hover ${row.isRecommended ? 'bg-[color:var(--badge-partial-bg)]' : row.isLowestRate ? 'bg-[color:var(--badge-paid-bg)]' : ''}`}
                 >
-                  <td className="px-3 py-2 font-medium">
+                  <td className="px-3 py-2 font-medium text-app-text">
                     <div>{row.vendorName}</div>
                     {row.quotationNumber && (
-                      <div className="text-xs text-slate-500">{row.quotationNumber}</div>
+                      <div className="text-xs text-app-muted">{row.quotationNumber}</div>
                     )}
                     <div className="mt-1 flex flex-wrap gap-0.5">
-                      {row.isRecommended && <Badge className="bg-amber-200 text-amber-900">Recommended</Badge>}
-                      {row.isLowestRate && <Badge className="bg-emerald-200 text-emerald-900">Lowest Price</Badge>}
-                      {row.isBestDelivery && <Badge className="bg-blue-100 text-blue-800">Best Delivery</Badge>}
-                      {row.isBestWarranty && <Badge className="bg-purple-100 text-purple-800">Best Warranty</Badge>}
-                      {row.isHighestRated && <Badge className="bg-indigo-100 text-indigo-800">Top Rated</Badge>}
+                      {row.isRecommended && <Badge className="bg-[color:var(--badge-partial-bg)] text-ds-warning">Recommended</Badge>}
+                      {row.isLowestRate && <Badge className="bg-[color:var(--badge-paid-bg)] text-ds-success">Lowest Price</Badge>}
+                      {row.isBestDelivery && <Badge className="bg-primary/15 text-primary">Best Delivery</Badge>}
+                      {row.isBestWarranty && <Badge className="bg-primary/15 text-primary">Best Warranty</Badge>}
+                      {row.isHighestRated && <Badge className="bg-primary/15 text-primary">Top Rated</Badge>}
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right font-semibold">{formatMoney(row.unitPrice)}</td>
@@ -288,7 +289,7 @@ const VendorQuotationComparisonPage: React.FC = () => {
       </div>
 
       {!perms.canCompareQuotations && (
-        <p className="text-sm text-slate-500">You do not have permission to compare quotations.</p>
+        <p className="text-sm text-app-muted">You do not have permission to compare quotations.</p>
       )}
     </div>
   );

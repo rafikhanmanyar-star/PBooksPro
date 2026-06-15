@@ -78,6 +78,7 @@ export default {
         'nav-active': 'var(--nav-item-active-bg)',
         'segment-bg': 'var(--segment-bg)',
         'segment-active': 'var(--segment-active-bg)',
+        'segment-active-text': 'var(--segment-active-text)',
         'badge-paid': 'var(--badge-paid-text)',
         'badge-partial': 'var(--badge-partial-text)',
         'badge-unpaid': 'var(--badge-unpaid-text)',

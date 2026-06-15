@@ -88,7 +88,7 @@ npm run verify:staging-release:preflight
 npm run test:staging
 ```
 
-Runs migrations on `pBookspro_Staging`, starts API on port **3001**, launches Electron client against staging API.
+Runs migrations on `pBookspro_Staging`, starts API on port **3001**, launches Electron client against staging API. **Does not bump** `package.json` version (use `release:staging` for version bumps and installers).
 
 **Lower-level only** (already on `staging`, code already pushed): `npm run deploy:staging`
 
@@ -240,7 +240,7 @@ npm run dev:backend:production
 | `npm run release:production` | **Release production:** merge staging→main, build + publish full release (auto-update) |
 | `npm run deploy:staging` | Staging build/publish only (no git push/merge) |
 | `npm run deploy:production` | Production build/publish only (no merge) |
-| `npm run test:staging` | Staging stack: `pBookspro_Staging` + API :3001 + Electron client |
+| `npm run test:staging` | Staging stack: `pBookspro_Staging` + API :3001 + Electron client (no version bump) |
 | `npm run test:staging:watch` | Same as `test:staging` with backend tsx watch |
 | `npm run verify:staging-release:preflight` | Assert staging release uses v2.1 API installers (no SQLite yml) |
 | `npm run verify:staging-release` | Full staging release guardrails (preflight + built artifacts) |

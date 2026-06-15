@@ -104,7 +104,7 @@ const AddVendorSection: React.FC<{
                                 className={`
                                     flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
                                     ${isActive
-                                        ? 'bg-segment-active text-segment-active shadow-ds-card'
+                                        ? 'bg-segment-active text-segment-active-text shadow-ds-card'
                                         : 'text-app-muted hover:text-app-text hover:bg-app-table-hover'
                                     }
                                 `}
@@ -440,7 +440,7 @@ const VendorDirectoryPage: React.FC = () => {
         return (
             <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mb-2"></div>
+                    <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary mb-2"></div>
                     <p className="text-sm text-app-muted">Loading vendors...</p>
                 </div>
             </div>
@@ -820,9 +820,13 @@ const VendorDirectoryPage: React.FC = () => {
                                 ) : optionsView === 'PriceHistory' ? (
                                     <VendorPriceHistoryPage />
                                 ) : optionsView === 'PurchaseOrders' ? (
-                                    <PurchaseOrdersPage onCreateGrn={handleCreateGrnFromPo} />
+                                    <PurchaseOrdersPage
+                                        vendorId={selectedVendor?.id}
+                                        onCreateGrn={handleCreateGrnFromPo}
+                                    />
                                 ) : optionsView === 'GoodsReceipts' ? (
                                     <GoodsReceiptsPage
+                                        vendorId={selectedVendor?.id}
                                         initialPurchaseOrderId={grnPrefillPoId}
                                         onInitialPoConsumed={() => setGrnPrefillPoId(null)}
                                     />

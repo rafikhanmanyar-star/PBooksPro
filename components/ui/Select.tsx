@@ -1,16 +1,31 @@
 
 import React, { ReactNode } from 'react';
 
+export type SelectOption = {
+  value: string;
+  label: string;
+};
+
 interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
-  children: ReactNode;
+  children?: ReactNode;
+  options?: SelectOption[];
   hideIcon?: boolean;
 }
 
 const fieldClass =
   'block w-full px-ds-md py-3 sm:py-2 border border-app-input-border bg-app-input text-app-text rounded-ds-md shadow-ds-card focus:outline-none focus:ring-2 focus:ring-ds-primary/35 focus:border-ds-primary text-base sm:text-ds-body transition-colors appearance-none disabled:opacity-60 disabled:cursor-not-allowed';
 
-const Select: React.FC<SelectProps> = ({ label, id, name, children, hideIcon = false, className, ...props }) => {
+const Select: React.FC<SelectProps> = ({
+  label,
+  id,
+  name,
+  children,
+  options,
+  hideIcon = false,
+  className,
+  ...props
+}) => {
   const selectId = id || (label ? `select-${name || label.toLowerCase().replace(/\s+/g, '-')}` : undefined);
 
   const selectElement = (
@@ -32,7 +47,13 @@ const Select: React.FC<SelectProps> = ({ label, id, name, children, hideIcon = f
       }
       {...props}
     >
-      {children}
+      {options
+        ? options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))
+        : children}
     </select>
   );
 
