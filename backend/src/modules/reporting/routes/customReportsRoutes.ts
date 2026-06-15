@@ -25,6 +25,7 @@ import {
 } from '../validators/reportConfigurationSchema.js';
 import { runCustomReport } from '../services/customReportRunService.js';
 import { buildCsvBuffer, buildPdfGridBuffer, buildXlsxBuffer } from '../exports/renderFormats.js';
+import { emitCustomReportTemplateEvent } from '../services/reportRealtimeEvents.js';
 
 export const customReportsRouter = Router();
 
@@ -274,6 +275,12 @@ customReportsRouter.post('/reports/custom/save-template', requireFinancialWriteR
       templateId: id,
       detail: { is_public: body.is_public, is_default: body.is_default },
     });
+    emitCustomReportTemplateEvent(
+      tenantId,
+      'created',
+      { id, data: { id, name: body.name, module: body.module } },
+      userId
+    );
     sendSuccess(res, { id });
   } catch (e) {
     handleRouteError(res, e, { route: 'POST /reports/custom/save-template' });
@@ -393,6 +400,12 @@ customReportsRouter.put('/reports/custom/template/:id', requireFinancialWriteRol
       templateId: id,
       detail: {},
     });
+    emitCustomReportTemplateEvent(
+      tenantId,
+      'updated',
+      { id, data: { id, name: body.name ?? existing.name, module: existing.module } },
+      userId
+    );
     sendSuccess(res, { ok: true });
   } catch (e) {
     handleRouteError(res, e);
@@ -434,6 +447,7 @@ customReportsRouter.delete('/reports/custom/template/:id', requireFinancialWrite
       templateId: id,
       detail: {},
     });
+    emitCustomReportTemplateEvent(tenantId, 'deleted', { id, data: { id, name: existing.name } }, userId);
     sendSuccess(res, { ok: true });
   } catch (e) {
     handleRouteError(res, e);

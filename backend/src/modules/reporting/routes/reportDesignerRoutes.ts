@@ -20,6 +20,9 @@ import * as scheduleRepo from '../repositories/reportScheduleRepository.js';
 import * as pinRepo from '../repositories/reportDashboardPinRepository.js';
 import * as shareRepo from '../repositories/reportShareRepository.js';
 import * as catalogRepo from '../repositories/reportTemplateCatalogRepository.js';
+import {
+  emitReportDefinitionEvent,
+} from '../services/reportRealtimeEvents.js';
 
 export const reportDesignerRouter = Router();
 
@@ -180,6 +183,7 @@ reportDesignerRouter.post(
         templateId: id,
         detail: { visibility: body.visibility, reportType: body.reportType },
       });
+      emitReportDefinitionEvent(tenantId, 'created', { id, data: { id, name: body.name, module: body.module } }, userId);
       sendSuccess(res, { id });
     } catch (e) {
       handleRouteError(res, e, { route: 'POST /reports/designer/definitions' });
@@ -230,6 +234,10 @@ reportDesignerRouter.put(
         sendFailure(res, 404, 'NOT_FOUND', 'Report not found or not editable');
         return;
       }
+      const row = await defRepo.getDefinitionById(tenantId, userId, req.params.id);
+      if (row) {
+        emitReportDefinitionEvent(tenantId, 'updated', { id: row.id, data: mapDefinitionRow(row) }, userId);
+      }
       sendSuccess(res, { ok: true });
     } catch (e) {
       handleRouteError(res, e);
@@ -254,6 +262,7 @@ reportDesignerRouter.delete(
         sendFailure(res, 404, 'NOT_FOUND', 'Report not found');
         return;
       }
+      emitReportDefinitionEvent(tenantId, 'deleted', { id: req.params.id }, userId);
       sendSuccess(res, { ok: true });
     } catch (e) {
       handleRouteError(res, e);

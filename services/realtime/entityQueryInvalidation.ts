@@ -31,6 +31,7 @@ export const FINANCIAL_ENTITY_TYPES = new Set([
   'sales_return',
   'budget',
   'recurring_invoice_template',
+  'accounting_period',
 ]);
 
 export const RENTAL_ENTITY_TYPES = new Set([
@@ -135,6 +136,16 @@ export async function invalidateQueriesForEntityEvent(
 
   if (entityType === 'document') {
     await queryClient.invalidateQueries({ queryKey: ['documents'] });
+  }
+
+  if (entityType === 'personal_task' || entityType === 'personal_category' || entityType === 'personal_transaction') {
+    await queryClient.invalidateQueries({ queryKey: ['personal'] });
+  }
+
+  if (entityType === 'report_definition' || entityType === 'custom_report_template') {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
+    await queryClient.invalidateQueries({ queryKey: ['reports', 'designer'] });
+    await queryClient.invalidateQueries({ queryKey: ['reports', 'custom'] });
   }
 }
 

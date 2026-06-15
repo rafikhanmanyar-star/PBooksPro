@@ -11,7 +11,7 @@ import {
   postInterProjectEquityTransfer,
   fetchInvestorEquityLedger,
 } from '../../../services/investorJournalPostingService.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
 import { rowToTransactionApi } from '../../../services/transactionsService.js';
 import type { TransactionRow } from '../../../services/transactionsService.js';
 
@@ -54,15 +54,16 @@ const transferSchema = z.object({
   description: z.string().optional(),
 });
 
-function emitJournalCreated(
+function emitJournalPosted(
   tenantId: string,
   journalEntryId: string,
+  sourceModule: string,
   userId: string | undefined,
   mirroredTransaction?: TransactionRow
 ) {
-  emitEntityEvent(tenantId, 'created', 'payment', {
-    data: { journalEntryId },
-    id: journalEntryId,
+  emitFinancialPosted(tenantId, {
+    journalEntryId,
+    sourceModule,
     sourceUserId: userId,
   });
   if (mirroredTransaction) {
@@ -90,7 +91,7 @@ investorJournalRouter.post('/investor/journal/contribution', requireLedgerRole, 
     const result = await withTransaction((client) =>
       postInvestorContribution(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.journalEntryId, req.userId, result.mirroredTransaction);
+    emitJournalPosted(tenantId, result.journalEntryId, 'investor_contribution', req.userId, result.mirroredTransaction);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -114,7 +115,7 @@ investorJournalRouter.post('/investor/journal/withdrawal', requireLedgerRole, as
     const result = await withTransaction((client) =>
       postInvestorWithdrawal(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.journalEntryId, req.userId, result.mirroredTransaction);
+    emitJournalPosted(tenantId, result.journalEntryId, 'investor_withdrawal', req.userId, result.mirroredTransaction);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -138,7 +139,7 @@ investorJournalRouter.post('/investor/journal/profit-allocation', requireLedgerR
     const result = await withTransaction((client) =>
       postProfitAllocationToInvestor(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.journalEntryId, req.userId);
+    emitJournalPosted(tenantId, result.journalEntryId, 'investor_profit_allocation', req.userId);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -162,8 +163,8 @@ investorJournalRouter.post('/investor/journal/inter-project-transfer', requireLe
     const result = await withTransaction((client) =>
       postInterProjectEquityTransfer(client, tenantId, { ...parsed.data, createdBy })
     );
-    emitJournalCreated(tenantId, result.outJournalEntryId, req.userId);
-    emitJournalCreated(tenantId, result.inJournalEntryId, req.userId);
+    emitJournalPosted(tenantId, result.outJournalEntryId, 'investor_inter_project_transfer', req.userId);
+    emitJournalPosted(tenantId, result.inJournalEntryId, 'investor_inter_project_transfer', req.userId);
     sendSuccess(res, result, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

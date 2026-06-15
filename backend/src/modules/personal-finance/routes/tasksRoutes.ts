@@ -14,6 +14,7 @@ import {
   rowToPersonalTaskApi,
   updatePersonalTask,
 } from '../../../services/personalTasksService.js';
+import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const tasksRouter = Router();
 
@@ -137,7 +138,13 @@ tasksRouter.post('/tasks', async (req: AuthedRequest, res) => {
     const row = await withTransaction((client) =>
       createPersonalTask(client, tenantId, userId, (req.body || {}) as Record<string, unknown>)
     );
-    sendSuccess(res, rowToPersonalTaskApi(row), 201);
+    const apiRow = rowToPersonalTaskApi(row);
+    emitEntityEvent(tenantId, 'created', 'personal_task', {
+      data: apiRow,
+      id: String(apiRow.id),
+      sourceUserId: req.userId,
+    });
+    sendSuccess(res, apiRow, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -160,7 +167,13 @@ tasksRouter.put('/tasks/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
     }
-    sendSuccess(res, rowToPersonalTaskApi(row));
+    const apiRow = rowToPersonalTaskApi(row);
+    emitEntityEvent(tenantId, 'updated', 'personal_task', {
+      data: apiRow,
+      id: String(apiRow.id),
+      sourceUserId: req.userId,
+    });
+    sendSuccess(res, apiRow);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -181,6 +194,7 @@ tasksRouter.delete('/tasks/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
     }
+    emitEntityEvent(tenantId, 'deleted', 'personal_task', { id, sourceUserId: req.userId });
     sendSuccess(res, { ok: true });
   } catch (e) {
     handleRouteError(res, e);

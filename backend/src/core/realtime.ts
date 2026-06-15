@@ -44,7 +44,11 @@ export type RealtimeEntityType =
   | 'contractor_advance'
   | 'contractor_bill'
   | 'project_expense_voucher'
-  | 'project_expense_category';
+  | 'project_expense_category'
+  | 'accounting_period'
+  | 'personal_task'
+  | 'report_definition'
+  | 'custom_report_template';
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted';
 
