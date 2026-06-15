@@ -1,7 +1,7 @@
 # PBooksPro Architecture v2.1 Modernization & Agent Compliance — Progress
 
-**Last updated:** 2026-06-15 (Track E implementation closed)  
-**Production release:** `v1.2.392+` (Architecture v2.1 — Tracks A–E implementation complete)  
+**Last updated:** 2026-06-15 (Track F P4 complete; production **v1.2.396** shipped)  
+**Staging release:** `v1.2.395` (prerelease) · **Production release:** `v1.2.396` (full release)  
 **Canonical rules:** [`ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ---
@@ -15,7 +15,7 @@
 | **C — Staging desktop hardening** | Smoke-test regressions | ✅ Fixed |
 | **D — Post-removal verification** | Automated + staging smoke test | ✅ Complete (2026-06-15) |
 | **E — Strangler & real-time** | Flat-service retirement, emit audit gaps | ✅ **Implementation complete** (2026-06-15) — E.2 manual QA optional pre-production |
-| **F — Post-launch deferred** | RLS, BullMQ, esbuild bundle retirement | 📋 **Next engineering track** (on request) |
+| **F — Post-launch deferred** | RLS, BullMQ; report engine hardening (P4 done) | ✅ **P4 complete** · P5 on request only |
 
 ---
 
@@ -157,7 +157,7 @@ Automated coverage is in `verify:track-e2`. **Manual** two-session tests are rec
 
 **What to watch:** Browser/Electron devtools console — no WebSocket errors; no stale lists after ~2s.
 
-**When all rows pass:** proceed to `npm run release:production` (or re-run staging release).
+**When all rows pass:** optional post-ship validation — production is already on **v1.2.396**.
 
 Run after push to `staging` and `npm run test:staging` (API :3001 + Staging Client). Use **two sessions** logged into the **same tenant** as different users.
 
@@ -192,16 +192,30 @@ npm run test:staging
 
 ---
 
-## v2.1 modernization — milestone ✅ (Tracks A–E)
+## v2.1 modernization — milestone ✅ (Tracks A–F P4 + production ship)
 
-Architecture v2.1 **launch-scope modernization** (documentation, SQLite removal, staging hardening, strangler retirement, real-time) is **code-complete**.
+Architecture v2.1 **launch-scope modernization** is **complete and shipped**.
 
-| What’s done | What’s next (your choice) |
-|-------------|---------------------------|
-| Tracks A–E implementation | **Production release:** `npm run release:production` after staging + E.2 manual QA |
-| Staging installers (API Server + API Client v2.1) | **Production release:** `npm run release:production` after staging + E.2 manual QA |
-| 81 automated Track E checks | **Track F P5:** RLS, BullMQ (explicitly deferred) |
-| **Track F P4** — report engines via `shared/report-engines` + static imports | **Optional:** Platform flat services (`services/billing/*`, `services/auth/*`, …) |
+| Milestone | Status | Evidence |
+|-----------|--------|----------|
+| Tracks A–E implementation | ✅ | Strangler batches 3–12, real-time emit audit, SQLite removal |
+| Track F P4 (report engines) | ✅ | `ensure-shared-report-engines.mjs`, `reportEngines/index.ts`, `verify:track-f-p4` |
+| Staging release (API Server + Client) | ✅ | GitHub prerelease **v1.2.395** |
+| Production release (API Server + Client) | ✅ | GitHub full release **v1.2.396** |
+
+### Still optional (not blocking v2.1)
+
+| Item | Type | Notes |
+|------|------|-------|
+| E.2 manual multi-user QA | Recommended QA | Checklist below — two clients, same tenant |
+| Track D manual spot-checks | Recommended QA | P&L, Import wizard, Marketing approval |
+| Track F P5 — PostgreSQL RLS | Deferred engineering | `SET app.tenant_id` + policies — on request |
+| Track F P5 — BullMQ schedulers | Deferred engineering | Replace `setInterval` — on request |
+| Platform `services/*` strangler | Optional refactor | `billing/`, `auth/`, `dashboard/` still flat |
+| Import wizard completion emit | Low-priority future | `REALTIME_EMIT_AUDIT.md` § Gaps |
+| Move report engine **source** into `shared/report-engines/` | Optional refactor | P4 bundles from `components/` via `serverEntry.ts`; formulas already shared at runtime |
+
+**No further v2.1 implementation steps are required** unless you explicitly request Track F P5 or optional refactors above.
 
 ---
 
@@ -211,10 +225,11 @@ See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
 | Priority | Item | Status | Notes |
 |----------|------|--------|-------|
-| **P4** | Report engines: `shared/report-engines` → static `reportEngines/index` imports | **Done** (2026-06-15) | `scripts/ensure-shared-report-engines.mjs`; removed 13 `dist/*Engine.mjs` + `loadReportEngine.ts` |
-| P5 | PostgreSQL RLS | Planned | `SET app.tenant_id` + policies |
-| P5 | BullMQ schedulers | Planned | Replace `setInterval` email/backup/report schedulers |
-| Optional | Platform `services/*` strangler | Planned | Billing, auth, dashboard subfolders still flat |
+| **P4** | Report engines: `shared/report-engines` → static `reportEngines/index` imports | ✅ **Done** (2026-06-15) | Shipped in **v1.2.395** / **v1.2.396** |
+| P5 | PostgreSQL RLS | 📋 Planned (on request) | `SET app.tenant_id` + policies |
+| P5 | BullMQ schedulers | 📋 Planned (on request) | Replace `setInterval` email/backup/report schedulers |
+| Optional | Platform `services/*` strangler | 📋 Planned | Billing, auth, dashboard subfolders still flat |
+| Optional | Report engine source relocation | 📋 Future | Move TS from `components/reports/` into `shared/report-engines/` (P4 uses build-time bundle) |
 
 **P4 verify:** `npm run verify:track-f-p4` (after `npm run build:backend`).
 
@@ -253,9 +268,9 @@ See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
 ---
 
-## Track F — Post-launch (explicitly deferred)
+## Track F — Post-launch (P5+ only)
 
-Moved to **§ Track F — Post-launch** above (current engineering track). See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md). Implement only when requested.
+P4 is complete and shipped. **P5 items implement only when requested.** See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
 ---
 

@@ -1,11 +1,11 @@
 # Architecture v2 — Post-Launch Deferred Items
 
-Tracked items intentionally deferred after commercial launch scope.
+Tracked items intentionally deferred after commercial launch scope. **v2.1 launch modernization (Tracks A–F P4) shipped in production v1.2.396.**
 
 | Item | Status | Notes |
 |------|--------|-------|
-| PostgreSQL RLS | Planned | `SET app.tenant_id` + policies on business tables |
-| BullMQ + Redis | Planned | Replace `setInterval` schedulers; migrate `email_automation_queue` |
+| PostgreSQL RLS | Planned (P5) | `SET app.tenant_id` + policies on business tables — on request |
+| BullMQ + Redis | Planned (P5) | Replace `setInterval` schedulers; migrate `email_automation_queue` — on request |
 | Full CQRS | Not started | Event sourcing not required for launch |
 | Field-level sync conflicts | Planned | After LWW (`change_log` + `version`) proven in production |
 | Distributed workers | Planned | Depends on BullMQ |
@@ -13,6 +13,8 @@ Tracked items intentionally deferred after commercial launch scope.
 | Retire esbuild report bundles | **Done** (P4) | Single `ensure-shared-report-engines.mjs`; static imports via `backend/src/reportEngines/index.ts` |
 | Tenant domain strangler (flat `services/*.ts`) | **Mostly done** | E.3 batches 3–12; platform subfolders (`billing/`, `auth/`, …) remain flat |
 | Payroll → journal_entries unification | Planned | `payrollLedger` remains separate exception |
+| Platform flat `services/*` strangler | Planned | `billing/`, `auth/`, `dashboard/` subfolders remain flat |
+| Report engine source in `shared/report-engines/` | Optional | P4 ships via `serverEntry.ts` build bundle; component re-exports remain |
 
 ## Launch scope — foundation built (not full migration)
 
