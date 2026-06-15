@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PlanAmenityRow } from '../../../services/planAmenitiesService.js';
+import type { PlanAmenityRow } from '../services/planAmenitiesService.js';
 
 const AMENITY_COLUMNS = `id, tenant_id, name, price::text, is_percentage, is_active, description, version, deleted_at, created_at, updated_at`;
 

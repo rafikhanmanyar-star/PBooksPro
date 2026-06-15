@@ -3,7 +3,9 @@
 **Purpose:** Mandatory compliance guide for AI agents and developers on **all new work** in PBooks Pro.  
 **Full reference:** [`doc/ARCHITECTURE.md`](ARCHITECTURE.md) · **Post-launch deferred:** [`doc/ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md)
 
-Architecture v2.1 **launch scope is complete**. Legacy flat routes, services, and SQLite components remain temporarily — **never extend legacy patterns for new features**.
+Architecture v2.1 **launch scope is complete**. Client SQLite was **removed in Phase 6** (2026-06). Legacy flat routes/services remain as thin delegates only — **never extend legacy patterns for new features**.
+
+> **Progress tracker:** [`doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`](ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md)
 
 > **Database standard:** PostgreSQL is the single database engine for Desktop Edition, Cloud Edition, staging, and production. SQLite is deprecated and removed from the active architecture.
 
@@ -513,7 +515,7 @@ Use this sequence for every new feature:
 | Ad hoc `appendAuditEvent` | `withAudit()` / `recordDomainMutation()` |
 | Client KPI scans | `analytics_snapshots` + dashboard API |
 | Inline document BLOBs | `document_metadata` + R2 |
-| SQLite / `services/database/` | PostgreSQL via module repositories |
+| SQLite / `services/legacy-sqlite*` | **Removed** (Phase 6) — use PostgreSQL via module repositories |
 
 When fixing legacy code, **delegate to module layers** rather than adding inline SQL.
 

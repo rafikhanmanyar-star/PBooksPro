@@ -82,8 +82,8 @@ const IMPORT_ORDER = [
   { name: 'RentalAgreements', dependencies: ['Properties', 'Contacts'], description: 'Import rental agreements (depends on Properties and Contacts)' },
   { name: 'ProjectSellingAgreements', dependencies: ['Projects', 'Units', 'Contacts'], description: 'Import project selling agreements / installment plans (depends on Projects, Units, and Contacts)' },
   { name: 'RentalInvoices', dependencies: ['RentalAgreements', 'Contacts', 'Properties'], description: 'Import rental invoices (depends on Rental Agreements, Contacts, and Properties)' },
-  { name: 'RentalInvoicePayments', dependencies: ['RentalInvoices', 'Accounts'], description: 'Import rental invoice payments (depends on Rental Invoices and Accounts). Data is saved to your local database.' },
-  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to your local database.' },
+  { name: 'RentalInvoicePayments', dependencies: ['RentalInvoices', 'Accounts'], description: 'Import rental invoice payments (depends on Rental Invoices and Accounts). Data is saved to PostgreSQL via the API.' },
+  { name: 'LoanTransactions', dependencies: ['Accounts'], description: 'Import loan transactions (Give/Receive/Repay/Collect); bank account required (Bank-type account name). Data is saved to PostgreSQL via the API.' },
   { name: 'Vendors', dependencies: [], description: 'Import vendors (name, contact info, address)' },
   { name: 'Contracts', dependencies: ['Projects', 'Contacts'], description: 'Import project contracts (depends on Projects and Contacts/Vendors)' },
   { name: 'ProjectBills', dependencies: ['Contracts', 'Projects', 'Categories', 'Contacts'], description: 'Import project bills (depends on Contracts, Projects, Categories, and Contacts)' },
@@ -615,7 +615,7 @@ const ImportExportWizard: React.FC<ImportExportWizardProps> = ({ embedded, start
               <h3 className="font-semibold text-blue-900 mb-2">Template Information</h3>
               <p className="text-sm text-blue-800 mb-3">
                 Download a template to prepare your data, then import it from the Import step.
-                <strong> Single-sheet templates</strong> (Vendors, Rental Agreements, Rental Invoices, Rental Invoice Payments, Contracts, Project Bills, Project Bill Payments, Budgets) contain only that sheet with required columns and sample rows. Imported data is saved to your local database.
+                <strong> Single-sheet templates</strong> (Vendors, Rental Agreements, Rental Invoices, Rental Invoice Payments, Contracts, Project Bills, Project Bill Payments, Budgets) contain only that sheet with required columns and sample rows. Imported data is saved to PostgreSQL via the API.
               </p>
               <p className="text-sm text-blue-800">
                 The full template includes all sheets (Contacts, Projects, Buildings, Properties, Units, etc.). For <strong>Loan Transactions</strong>, use <strong>bankAccountName</strong> (Bank-type account required).

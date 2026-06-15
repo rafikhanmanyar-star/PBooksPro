@@ -33,7 +33,7 @@ import {
   isBillPaymentFromSecurityDepositIncome,
   findSecurityDepositAppliedExpenseForBillPayment,
 } from '../../utils/rentalBillPayments';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import {
   computeRentalBillsDashboard,
   type RentalBillsDashboardRow,

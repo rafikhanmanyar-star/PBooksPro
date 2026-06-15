@@ -17,7 +17,7 @@ import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappServ
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarningModal';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import BillBulkPaymentModal from './BillBulkPaymentModal';
 import VendorBillPaymentModal from '../vendors/VendorBillPaymentModal';
 import { openDocumentById } from '../../services/documentUploadService';

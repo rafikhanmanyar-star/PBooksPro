@@ -14,7 +14,7 @@ import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
 import { ContactType, Project, Unit } from '../../types';
 import InstallmentConfigForm, { type InstallmentConfig } from '../settings/InstallmentConfigForm';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 
 const ProjectSettingsPage: React.FC = () => {
     const state = useProjectReportAppState();

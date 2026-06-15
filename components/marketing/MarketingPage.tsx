@@ -1,4 +1,4 @@
-import { useDispatchOnly, useMarketingPageState, useWhatsAppMode } from '../../hooks/useSelectiveState';
+﻿import { useDispatchOnly, useMarketingPageState, useWhatsAppMode } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { 
@@ -357,7 +357,497 @@ const MarketingPage: React.FC = () => {
 
     useEffect(() => {
         const loadOrgUsers = async () => {
-            console.warn('[MARKETING PAGE] Plan not found:', editingEntity.id);
+            try {
+                devLogger.log('[ORG USERS] Loading organization users from API...');
+                const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
+                devLogger.log('[ORG USERS] Loaded users:', {
+                    count: data?.length || 0,
+                    users: data?.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role }))
+                });
+                setOrgUsers(data || []);
+            } catch (error) {
+                const msg = error instanceof Error ? error.message : String(error);
+                devLogger.error('[ORG USERS] Failed to load organization users', msg);
+                setOrgUsers([]);
+            }
+        };
+        loadOrgUsers();
+    }, []);
+
+    const usersForApproval = orgUsers.length > 0 ? orgUsers : users;
+    const approvers = useMemo(
+        () => {
+            devLogger.log('[APPROVERS] Building approvers list...', {
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
+                usersForApprovalCount: usersForApproval.length,
+                usingOrgUsers: orgUsers.length > 0
+            });
+            
+            const filtered = usersForApproval
+                .filter(user => {
+                    const hasRole = user.role && user.role.toLowerCase() === 'admin';
+                    const isNotCurrentUser = user.id !== currentUser?.id; // Don't include yourself
+                    devLogger.log('[APPROVERS] Checking user:', {
+                        id: user.id,
+                        username: user.username,
+                        name: user.name,
+                        role: user.role,
+                        hasAdminRole: hasRole,
+                        isNotCurrentUser,
+                        willInclude: hasRole && isNotCurrentUser
+                    });
+                    return hasRole && isNotCurrentUser;
+                })
+                .map(user => ({ id: user.id, name: user.name || user.username }));
+            
+            devLogger.log('[APPROVAL DEBUG] Final approvers list:', {
+                totalUsers: usersForApproval.length,
+                approversCount: filtered.length,
+                approvers: filtered,
+                allUsersWithRoles: usersForApproval.map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }))
+            });
+            return filtered;
+        },
+        [usersForApproval, currentUser]
+    );
+    
+    // Units for selected project
+    const units = useMemo(() => {
+        if (!projectId) return [];
+        return appUnits.filter(u => u.projectId === projectId);
+    }, [projectId, appUnits]);
+
+    const activePlan = useMemo(() => {
+        if (!selectedPlanId) return null;
+        return (installmentPlans || []).find(p => p.id === selectedPlanId) || null;
+    }, [selectedPlanId, installmentPlans]);
+
+    const effectiveStatus = activePlan?.status || status;
+    const normalizedStatus = (effectiveStatus || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
+    const isPendingApproval = normalizedStatus === 'pending approval';
+    const isApprovedStatus = normalizedStatus === 'approved';
+    const isRejectedStatus = normalizedStatus === 'rejected';
+    const isLockedStatus = normalizedStatus === 'locked';
+    const effectiveApprovalRequestedToId = activePlan?.approvalRequestedToId || approvalRequestedToId;
+    const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
+    const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
+    const isMatchingUser = useMemo(() => {
+        if (!currentUser) return () => false;
+        const candidates = [
+            currentUser.id,
+            currentUser.username,
+            currentUser.name
+        ].filter(Boolean).map(value => value.toString().toLowerCase());
+        return (value?: string) => {
+            if (!value) return false;
+            const normalizedValue = value.toString().toLowerCase();
+            const matches = candidates.includes(normalizedValue);
+            devLogger.log('[APPROVAL DEBUG] Matching check:', {
+                value,
+                normalizedValue,
+                candidates,
+                matches
+            });
+            return matches;
+        };
+    }, [currentUser]);
+    const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
+
+    // Debug logging for approval workflow
+    useEffect(() => {
+        if (selectedPlanId && activePlan) {
+            devLogger.log('[APPROVAL DEBUG] Active plan approval state:', {
+                planId: activePlan.id,
+                status: activePlan.status,
+                approvalRequestedToId: activePlan.approvalRequestedToId,
+                approvalRequestedById: activePlan.approvalRequestedById,
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
+                currentUserName: currentUser?.name,
+                currentUserRole: currentUser?.role,
+                isPendingApproval,
+                isApproverForSelectedPlan
+            });
+        }
+    }, [selectedPlanId, activePlan, isPendingApproval, isApproverForSelectedPlan, currentUser]);
+
+    const isReadOnly = isPendingApproval || isApprovedStatus || isLockedStatus;
+    const approvalRequestedToName = effectiveApprovalRequestedToId
+        ? usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.name || usersForApproval.find(u => u.id === effectiveApprovalRequestedToId)?.username
+        : undefined;
+    const approvalRequestedByName = effectiveApprovalRequestedById
+        ? usersForApproval.find(u => u.id === effectiveApprovalRequestedById)?.name || usersForApproval.find(u => u.id === effectiveApprovalRequestedById)?.username
+        : undefined;
+    const approvalReviewedByName = effectiveApprovalReviewedById
+        ? usersForApproval.find(u => u.id === effectiveApprovalReviewedById)?.name || usersForApproval.find(u => u.id === effectiveApprovalReviewedById)?.username
+        : undefined;
+
+
+    // Calculate amenities total
+    const amenitiesTotal = useMemo(() => {
+        const lp = parseFloat(listPrice) || 0;
+        return selectedAmenityIds.reduce((total, amenityId) => {
+            const amenity = activeAmenities.find(a => a.id === amenityId);
+            if (!amenity) return total;
+            if (amenity.isPercentage) {
+                return total + (lp * amenity.price / 100);
+            }
+            return total + amenity.price;
+        }, 0);
+    }, [selectedAmenityIds, activeAmenities, listPrice]);
+
+    const totalDiscountAmount = useMemo(() => {
+        return discounts.reduce((total, d) => total + (d.amount || 0), 0);
+    }, [discounts]);
+
+    // Calculations (now includes amenities)
+    const calculations = useMemo(() => {
+        const lp = parseFloat(listPrice) || 0;
+        
+        // Add amenities to list price, then subtract discounts
+        const priceWithAmenities = lp + amenitiesTotal;
+        const netValue = priceWithAmenities - totalDiscountAmount;
+        const dpPercent = parseFloat(downPaymentPercentage) || 0;
+        const dpAmount = netValue * (dpPercent / 100);
+        const remaining = netValue - dpAmount;
+        
+        let freqMonths = 1;
+        if (frequency === 'Quarterly') freqMonths = 3;
+        if (frequency === 'Yearly') freqMonths = 12;
+        
+        const totalInstallments = Math.max(1, Math.round((parseFloat(durationYears) || 1) * 12 / freqMonths));
+        const installmentAmount = remaining / totalInstallments;
+        
+        return {
+            netValue,
+            dpAmount,
+            remaining,
+            totalInstallments,
+            installmentAmount,
+            freqMonths,
+            priceWithAmenities
+        };
+    }, [listPrice, totalDiscountAmount, downPaymentPercentage, durationYears, frequency, amenitiesTotal]);
+
+    // Installment Schedule
+    const schedule = useMemo(() => {
+        const items: { index: string; dueDate: string; amount: number; balance: number }[] = [];
+        const baseDate = new Date();
+        
+        // Initial Down Payment
+        let currentBalance = calculations.netValue;
+        const initialRemaining = currentBalance - calculations.dpAmount;
+        
+        items.push({
+            index: 'Initial',
+            dueDate: 'At Booking',
+            amount: calculations.dpAmount,
+            balance: initialRemaining
+        });
+
+        currentBalance = initialRemaining;
+        
+        for (let i = 1; i <= calculations.totalInstallments; i++) {
+            const dueDate = new Date(baseDate);
+            dueDate.setMonth(baseDate.getMonth() + (i * calculations.freqMonths));
+            
+            // For the last installment, ensure it zeros out exactly
+            const amount = i === calculations.totalInstallments ? currentBalance : calculations.installmentAmount;
+            currentBalance -= amount;
+            
+            items.push({
+                index: i.toString(),
+                dueDate: dueDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+                amount: amount,
+                balance: Math.max(0, currentBalance)
+            });
+        }
+        return items;
+    }, [calculations]);
+
+    // Handle Unit Selection - Auto fill list price
+    useEffect(() => {
+        if (unitId) {
+            const unit = appUnits.find(u => u.id === unitId);
+            if (unit && unit.salePrice) {
+                setListPrice(unit.salePrice.toString());
+            }
+        }
+    }, [unitId, appUnits]);
+
+    // Build selected amenities array for saving
+    const buildSelectedAmenities = (): InstallmentPlanAmenity[] => {
+        const lp = parseFloat(listPrice) || 0;
+        return selectedAmenityIds.map(amenityId => {
+            const amenity = activeAmenities.find(a => a.id === amenityId);
+            if (!amenity) return null;
+            const calculatedAmount = amenity.isPercentage 
+                ? (lp * amenity.price / 100)
+                : amenity.price;
+            return {
+                amenityId: amenity.id,
+                amenityName: amenity.name,
+                calculatedAmount
+            };
+        }).filter(Boolean) as InstallmentPlanAmenity[];
+    };
+
+    const normalizeMoney = (value: number) => Number.isFinite(value) ? Number(value.toFixed(2)) : 0;
+
+    const normalizeDiscounts = (list: { id: string; name: string; amount: number; categoryId?: string }[]) => {
+        return [...list]
+            .map(d => ({
+                id: d.id,
+                name: d.name.trim(),
+                amount: normalizeMoney(d.amount),
+                categoryId: d.categoryId || ''
+            }))
+            .sort((a, b) => a.id.localeCompare(b.id));
+    };
+
+    const normalizeAmenities = (list: InstallmentPlanAmenity[]) => {
+        return [...list]
+            .map(a => ({
+                amenityId: a.amenityId,
+                amenityName: a.amenityName.trim(),
+                calculatedAmount: normalizeMoney(a.calculatedAmount)
+            }))
+            .sort((a, b) => a.amenityId.localeCompare(b.amenityId));
+    };
+
+    const isPlanUnchanged = (plan: InstallmentPlan) => {
+        const currentSnapshot = {
+            leadId,
+            projectId,
+            unitId,
+            durationYears: parseFloat(durationYears) || 0,
+            downPaymentPercentage: parseFloat(downPaymentPercentage) || 0,
+            frequency,
+            listPrice: normalizeMoney(parseFloat(listPrice) || 0),
+            discounts: normalizeDiscounts(discounts),
+            description: description.trim(),
+            introText: introText.trim(),
+            selectedAmenities: normalizeAmenities(buildSelectedAmenities()),
+            amenitiesTotal: normalizeMoney(amenitiesTotal)
+        };
+
+        const planSnapshot = {
+            leadId: plan.leadId,
+            projectId: plan.projectId,
+            unitId: plan.unitId,
+            durationYears: plan.durationYears,
+            downPaymentPercentage: plan.downPaymentPercentage,
+            frequency: plan.frequency,
+            listPrice: normalizeMoney(plan.listPrice),
+            discounts: normalizeDiscounts(plan.discounts || []),
+            description: (plan.description || '').trim(),
+            introText: (plan.introText || '').trim(),
+            selectedAmenities: normalizeAmenities(plan.selectedAmenities || []),
+            amenitiesTotal: normalizeMoney(plan.amenitiesTotal || 0)
+        };
+
+        return JSON.stringify(currentSnapshot) === JSON.stringify(planSnapshot);
+    };
+
+    const handleSave = (mode: 'draft' | 'submitApproval' = 'draft', approverId?: string) => {
+        if (!leadId || !projectId || !unitId) {
+            showAlert('Please fill all required fields');
+            return;
+        }
+
+        if (mode === 'submitApproval' && !approverId) {
+            showToast('Please select an approver');
+            return;
+        }
+
+        const existingPlan = selectedPlanId
+            ? (installmentPlans || []).find(p => p.id === selectedPlanId)
+            : null;
+
+        const now = new Date().toISOString();
+        const submitStatus: InstallmentPlan['status'] = mode === 'submitApproval' ? 'Pending Approval' : 'Draft';
+        const approvalRequestedBy = mode === 'submitApproval' ? (currentUser?.id || undefined) : undefined;
+        const approvalRequestedTo = mode === 'submitApproval' ? approverId : undefined;
+
+        // Debug logging for approval submission
+        if (mode === 'submitApproval') {
+            devLogger.log('[APPROVAL DEBUG] Submitting plan for approval:', {
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
+                approvalRequestedBy,
+                approvalRequestedTo,
+                approverId,
+                hasCurrentUser: !!currentUser
+            });
+        }
+
+        if (mode === 'submitApproval' && existingPlan && isPlanUnchanged(existingPlan)) {
+            const updatedPlan: InstallmentPlan = {
+                ...existingPlan,
+                status: submitStatus,
+                approvalRequestedById: approvalRequestedBy,
+                approvalRequestedToId: approvalRequestedTo,
+                approvalRequestedAt: now,
+                approvalReviewedById: undefined,
+                approvalReviewedAt: undefined,
+                updatedAt: now
+            };
+            dispatch({ type: 'UPDATE_INSTALLMENT_PLAN', payload: updatedPlan });
+            showToast('Approval request sent');
+            resetForm();
+            return;
+        }
+
+        // Always create a new version when saving changes for review or draft.
+        const newVersion = selectedPlanId ? version + 1 : 1;
+        const newRootId = rootId || `root_${Date.now()}`;
+
+        const newPlan: InstallmentPlan = {
+            id: `plan_${Date.now()}`,
+            rootId: newRootId,
+            version: newVersion,
+            status: submitStatus,
+            leadId,
+            projectId,
+            unitId,
+            durationYears: parseFloat(durationYears),
+            downPaymentPercentage: parseFloat(downPaymentPercentage),
+            frequency,
+            listPrice: parseFloat(listPrice),
+            discounts,
+            netValue: calculations.netValue,
+            downPaymentAmount: calculations.dpAmount,
+            installmentAmount: calculations.installmentAmount,
+            totalInstallments: calculations.totalInstallments,
+            description,
+            introText,
+            selectedAmenities: buildSelectedAmenities(),
+            amenitiesTotal,
+            approvalRequestedById: approvalRequestedBy,
+            approvalRequestedToId: approvalRequestedTo,
+            approvalRequestedAt: mode === 'submitApproval' ? now : undefined,
+            approvalReviewedById: undefined,
+            approvalReviewedAt: undefined,
+            createdAt: now,
+            updatedAt: now,
+            userId: currentUser?.id
+        };
+
+        dispatch({ type: 'ADD_INSTALLMENT_PLAN', payload: newPlan });
+        showToast(mode === 'submitApproval' ? 'Approval request sent' : 'New version saved successfully');
+        
+        resetForm();
+    };
+
+    const addDiscount = () => {
+        if (!newDiscountName.trim() || parseFloat(newDiscountAmount) <= 0) {
+            showToast('Please enter discount name and amount');
+            return;
+        }
+        setDiscounts(prev => [...prev, {
+            id: `disc_${Date.now()}`,
+            name: newDiscountName.trim(),
+            amount: parseFloat(newDiscountAmount),
+            categoryId: newDiscountCategoryId || undefined
+        }]);
+        setNewDiscountName('');
+        setNewDiscountAmount('0');
+        setNewDiscountCategoryId('');
+    };
+
+    const removeDiscount = (id: string) => {
+        setDiscounts(prev => prev.filter(d => d.id !== id));
+    };
+
+    const addAmenity = () => {
+        if (!selectedAmenityIdToAdd) return;
+        if (selectedAmenityIds.includes(selectedAmenityIdToAdd)) {
+            showToast('Amenity already added');
+            return;
+        }
+        setSelectedAmenityIds(prev => [...prev, selectedAmenityIdToAdd]);
+        setSelectedAmenityIdToAdd('');
+    };
+
+    const resetForm = () => {
+        setLeadId('');
+        setProjectId('');
+        setUnitId('');
+        setDurationYears('1');
+        setDownPaymentPercentage('20');
+        setFrequency('Monthly');
+        setDescription('');
+        setListPrice('0');
+        setDiscounts([]);
+        setSelectedAmenityIds([]);
+        setSelectedPlanId(null);
+        setIntroText('');
+        setStatus('Draft');
+        setVersion(1);
+        setRootId(undefined);
+        setApprovalRequestedById(undefined);
+        setApprovalRequestedToId('');
+        setApprovalRequestedAt(undefined);
+        setApprovalReviewedById(undefined);
+        setApprovalReviewedAt(undefined);
+        setNewDiscountName('');
+        setNewDiscountAmount('0');
+        setNewDiscountCategoryId('');
+        setSelectedAmenityIdToAdd('');
+        setShowApprovalModal(false);
+        setApprovalModalApproverId('');
+        setShowForm(false);
+    };
+
+    const handleEdit = (plan: InstallmentPlan) => {
+        const isLatest = latestVersions[plan.rootId || plan.id] === plan.version;
+        if (!isLatest) {
+            showAlert('Only the latest version of a plan can be edited.');
+            return;
+        }
+        
+        setSelectedPlanId(plan.id);
+        setLeadId(plan.leadId);
+        setProjectId(plan.projectId);
+        setUnitId(plan.unitId);
+        setDurationYears(plan.durationYears.toString());
+        setDownPaymentPercentage(plan.downPaymentPercentage.toString());
+        setFrequency(plan.frequency);
+        setListPrice(plan.listPrice.toString());
+        setDiscounts(plan.discounts || []);
+        setDescription(plan.description || '');
+        setIntroText(plan.introText || '');
+        setStatus(plan.status || 'Draft');
+        setVersion(plan.version || 1);
+        setRootId(plan.rootId || plan.id);
+        setApprovalRequestedById(plan.approvalRequestedById);
+        setApprovalRequestedToId(plan.approvalRequestedToId || '');
+        setApprovalRequestedAt(plan.approvalRequestedAt);
+        setApprovalReviewedById(plan.approvalReviewedById);
+        setApprovalReviewedAt(plan.approvalReviewedAt);
+        setSelectedAmenityIds((plan.selectedAmenities || []).map(a => a.amenityId));
+        setShowForm(true);
+    };
+
+    const handleDelete = async (id: string) => {
+        const confirmed = await showConfirm('Are you sure you want to delete this plan?');
+        if (confirmed) {
+            dispatch({ type: 'DELETE_INSTALLMENT_PLAN', payload: id });
+            showToast('Plan deleted');
+        }
+    };
+
+    useEffect(() => {
+        if (editingEntity?.type === 'INSTALLMENT_PLAN' && editingEntity.id) {
+            devLogger.log('[MARKETING PAGE] Editing entity received:', editingEntity.id);
+            const plan = (installmentPlans || []).find(p => p.id === editingEntity?.id);
+            if (plan) {
+                devLogger.log('[MARKETING PAGE] Plan found, opening for edit:', plan.id);
+                handleEdit(plan);
+            } else {
+                console.warn('[MARKETING PAGE] Plan not found:', editingEntity.id);
+            }
             dispatch({ type: 'CLEAR_EDITING_ENTITY' });
         }
     }, [editingEntity, installmentPlans]);
@@ -491,7 +981,7 @@ const MarketingPage: React.FC = () => {
             // Progress tracking messages
             const progressMessages: string[] = [];
             const logProgress = (message: string) => {
-                progressMessages.push(`✓ ${message}`);
+                progressMessages.push(`Ô£ô ${message}`);
                 showToast(message);
             };
 
@@ -693,7 +1183,7 @@ const MarketingPage: React.FC = () => {
             };
             
             // Dispatch the update - this will sync to cloud and local DB
-            devLogger.log('🔄 Dispatching plan status update:', {
+            devLogger.log('­ƒöä Dispatching plan status update:', {
                 planId: plan.id,
                 oldStatus: plan.status,
                 newStatus: 'Sale Recognized',
@@ -710,7 +1200,7 @@ const MarketingPage: React.FC = () => {
             });
 
             // Log conversion to console for debugging
-            devLogger.log('✅ Conversion completed:', {
+            devLogger.log('Ô£à Conversion completed:', {
                 planId: plan.id,
                 agreementId: agreementId,
                 agreementNumber: agreementNumber,
@@ -721,12 +1211,12 @@ const MarketingPage: React.FC = () => {
 
             // Final success message
             await showAlert(
-                `✅ Conversion completed successfully!\n\n` +
+                `Ô£à Conversion completed successfully!\n\n` +
                 progressMessages.join('\n') + '\n\n' +
-                `📄 Agreement: ${agreementNumber}\n` +
-                `📋 Invoices: ${invoices.length} created\n` +
-                `💰 Total Amount: Rs. ${netValue.toLocaleString()}\n\n` +
-                `🔒 Plan Status: Sale Recognized (Locked)\n` +
+                `­ƒôä Agreement: ${agreementNumber}\n` +
+                `­ƒôï Invoices: ${invoices.length} created\n` +
+                `­ƒÆ░ Total Amount: Rs. ${netValue.toLocaleString()}\n\n` +
+                `­ƒöÆ Plan Status: Sale Recognized (Locked)\n` +
                 `This plan cannot be converted again.`
             );
 
@@ -799,7 +1289,7 @@ const MarketingPage: React.FC = () => {
             const lead = contacts.find(l => l.id === plan.leadId);
             const project = projects.find(p => p.id === plan.projectId);
             const unit = appUnits.find(u => u.id === plan.unitId);
-            const label = `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
+            const label = `${lead?.name || 'Lead'} ÔÇó ${project?.name || 'Project'} ÔÇó ${unit?.name || 'Unit'}`;
 
             const creatorUser = usersForApproval.find(u => u.id === (plan.userId || plan.approvalRequestedById));
             const requestedBy = usersForApproval.find(u => u.id === plan.approvalRequestedById);
@@ -812,7 +1302,7 @@ const MarketingPage: React.FC = () => {
                 const creatorName = creatorUser?.name || creatorUser?.username || 'Unknown User';
                 entries.push({
                     title: 'Plan created',
-                    detail: `${label} • Created by ${creatorName}`,
+                    detail: `${label} ÔÇó Created by ${creatorName}`,
                     time: plan.createdAt,
                     planId: plan.id
                 });
@@ -823,7 +1313,7 @@ const MarketingPage: React.FC = () => {
                 const requestedToName = requestedTo?.name || requestedTo?.username || 'Unknown Approver';
                 entries.push({
                     title: 'Approval requested',
-                    detail: `${label} • ${requestedByName} → ${requestedToName}`,
+                    detail: `${label} ÔÇó ${requestedByName} ÔåÆ ${requestedToName}`,
                     time: plan.approvalRequestedAt,
                     planId: plan.id
                 });
@@ -833,7 +1323,7 @@ const MarketingPage: React.FC = () => {
                 const reviewedByName = reviewedBy?.name || reviewedBy?.username || 'Unknown Admin';
                 entries.push({
                     title: `Plan ${plan.status.toLowerCase()}`,
-                    detail: `${label} • Reviewed by ${reviewedByName}`,
+                    detail: `${label} ÔÇó Reviewed by ${reviewedByName}`,
                     time: plan.approvalReviewedAt,
                     planId: plan.id
                 });
@@ -843,8 +1333,8 @@ const MarketingPage: React.FC = () => {
             if (plan.status === 'Sale Recognized' && plan.updatedAt) {
                 const currentUserName = currentUser?.name || currentUser?.username || 'System';
                 entries.push({
-                    title: '✅ Converted to Agreement',
-                    detail: `${label} • Sale recognized by ${currentUserName}`,
+                    title: 'Ô£à Converted to Agreement',
+                    detail: `${label} ÔÇó Sale recognized by ${currentUserName}`,
                     time: plan.updatedAt,
                     planId: plan.id
                 });
@@ -909,7 +1399,7 @@ const MarketingPage: React.FC = () => {
                     type: 'status_change',
                     date: plan.approvalRequestedAt,
                     title: 'APPROVAL REQUESTED',
-                    detail: `Sent for approval: ${rbName} → ${rtName}`,
+                    detail: `Sent for approval: ${rbName} ÔåÆ ${rtName}`,
                     userName: rbName,
                     userInitials: rbName.charAt(0),
                     status: 'Pending Approval'
@@ -1746,7 +2236,7 @@ const MarketingPage: React.FC = () => {
                                                         <h3 className="font-bold text-app-text">Installment Schedule</h3>
                                                     </div>
                                                     <div className="text-[10px] font-bold text-app-muted uppercase tracking-wider">
-                                                        {durationYears} Years Plan • {calculations.totalInstallments} Installments
+                                                        {durationYears} Years Plan ÔÇó {calculations.totalInstallments} Installments
                                                     </div>
                                                 </div>
                                                 <div className="rounded-lg border border-app-border overflow-hidden shadow-sm">

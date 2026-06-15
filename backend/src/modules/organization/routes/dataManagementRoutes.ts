@@ -8,6 +8,7 @@ import {
   clearTenantTransactions,
   factoryResetTenant,
 } from '../../../services/tenantDataManagementService.js';
+import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const dataManagementRouter = Router();
 
@@ -35,6 +36,10 @@ dataManagementRouter.delete(
     try {
       const result = await withTransaction(async (client) => clearTenantTransactions(client, tenantId));
       invalidateTenantDashboardCache(tenantId);
+      emitEntityEvent(tenantId, 'updated', 'settings', {
+        data: { bulkRefresh: 'clear_transactions', recordsDeleted: result.recordsDeleted },
+        sourceUserId: req.userId,
+      });
       sendSuccess(res, {
         success: true,
         message: 'Transaction data cleared.',
@@ -67,6 +72,10 @@ dataManagementRouter.delete(
     try {
       const result = await withTransaction(async (client) => factoryResetTenant(client, tenantId));
       invalidateTenantDashboardCache(tenantId);
+      emitEntityEvent(tenantId, 'updated', 'settings', {
+        data: { bulkRefresh: 'factory_reset', recordsDeleted: result.recordsDeleted },
+        sourceUserId: req.userId,
+      });
       sendSuccess(res, {
         success: true,
         message: 'Organization reset to fresh install state.',

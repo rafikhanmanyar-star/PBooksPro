@@ -1,18 +1,12 @@
 /**
- * Inventory of client-side SQLite / repository entry points for LAN migration.
- * Priority: financial engine → core AR/AP → payroll/inventory.
- *
- * Grep maintenance (run from repo root):
- *   rg "getDatabaseService|sqliteBridge|AppStateRepository" --glob "*.{ts,tsx}"
+ * Historical inventory of client-side SQLite entry points (Architecture v2.1 Phase 6).
+ * Offline SQLite was removed — API modules below are the active data path.
  */
 
-export const SQLITE_ENTRY_MODULES = [
-  'services/legacy-sqlite/repositories/appStateRepository.ts',
-  'services/legacy-sqlite/repositories/baseRepository.ts',
-  'services/financialEngine/journalEngine.ts (local branch)',
-  'hooks/useDatabaseState.ts (local branch)',
-  'context/AppContext.tsx (local branch)',
-  'electron/preload.cjs / sqliteBridge',
+/** @deprecated Retired in Phase 6 — kept for migration script grep maintenance only. */
+export const RETIRED_SQLITE_ENTRY_MODULES = [
+  'services/legacy-sqlite/** (deleted)',
+  'electron/sqliteBridge.cjs (excluded from API client builds)',
 ] as const;
 
 export const API_FIRST_MODULES = [
@@ -23,5 +17,5 @@ export const API_FIRST_MODULES = [
   'services/api/repositories/*',
 ] as const;
 
-/** Backend modules with PostgreSQL REST (see backend/src/routes/). */
+/** Backend modules with PostgreSQL REST (see backend/src/modules/). */
 export const BACKEND_REST_MODULES = ['accounts', 'contacts', 'journal', 'rental-agreements', 'users'] as const;

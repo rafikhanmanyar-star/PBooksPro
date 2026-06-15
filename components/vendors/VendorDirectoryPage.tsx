@@ -21,7 +21,7 @@ import VendorQuotationsTable from './VendorQuotationsTable';
 import QuotationForm from './QuotationForm';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { Quotation } from '../../types';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import ResizeHandle from '../ui/ResizeHandle';
 import AllQuotationsTable from './AllQuotationsTable';
 import AllBillsTable from './AllBillsTable';

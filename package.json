@@ -90,6 +90,8 @@
     "typecheck:c2": "tsc -p tsconfig.strict-all.json --noEmit",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
+    "verify:api-client:phase6": "powershell -ExecutionPolicy Bypass -File scripts/verify-api-client-phase6.ps1",
+    "verify:realtime:track-e": "powershell -ExecutionPolicy Bypass -File scripts/verify-realtime-track-e.ps1",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowJournalCore.test.ts",
     "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",

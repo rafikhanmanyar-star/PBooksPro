@@ -4,13 +4,12 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { generateBuildVersionMeta } from './scripts/generate-build-version.mjs'
-import { legacySqliteStubPlugin } from './scripts/vite-legacy-sqlite-stub-plugin.mjs'
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
 const buildVersionMeta = generateBuildVersionMeta();
 
-// Plugin to inject build version meta — sql.js stubbing handled by legacySqliteStubPlugin
+// Plugin to inject build version meta
 
 const isElectronBuild = process.env.VITE_ELECTRON_BUILD === 'true';
 
@@ -40,7 +39,6 @@ export default defineConfig({
   },
   assetsInclude: isElectronBuild ? [] : ['**/*.wasm'],
   optimizeDeps: {
-    exclude: ['sql.js'],
     include: ['react', 'react-dom'],
     esbuildOptions: {
       define: {
@@ -50,10 +48,6 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      {
-        find: resolve(__dirname, 'services/legacy-sqlite'),
-        replacement: resolve(__dirname, 'services/legacy-sqlite-stubs'),
-      },
       {
         find: '@',
         replacement: resolve(__dirname, './'),
@@ -102,7 +96,6 @@ export default defineConfig({
     },
   },
   plugins: [
-    legacySqliteStubPlugin(),
     react(),
     {
       name: 'remove-external-resources',

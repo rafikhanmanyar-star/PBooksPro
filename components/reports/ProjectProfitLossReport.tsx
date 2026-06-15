@@ -138,11 +138,11 @@ const ProjectProfitLossReport: React.FC = () => {
       }),
     [reportState, startDate, endDate, entityScope]
   );
-  const report = !clientReport;
+  const report = serverReport ?? clientReport;
 
   const validationErrors = useMemo(
-    () => report?.validation.issues.filter((iss) => iss.severity === 'error') ?? [],
-    [report?.validation.issues]
+    () => report?.validation?.issues.filter((iss) => iss.severity === 'error') ?? [],
+    [report?.validation?.issues]
   );
   const showValidationBanner =
     !!report &&

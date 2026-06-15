@@ -8,7 +8,7 @@ import {
   rowToPlanAmenityApi,
   softDeletePlanAmenity,
   upsertPlanAmenity,
-} from '../../../services/planAmenitiesService.js';
+} from '../services/planAmenitiesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const planAmenitiesRouter = Router();

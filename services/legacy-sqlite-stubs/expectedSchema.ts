@@ -1,1 +1,0 @@
-export const EXPECTED_SCHEMA_VERSION = 0;

@@ -48,7 +48,7 @@ export const NAVIGATION_ITEMS: NavigationSearchItem[] = [
 export const SETTINGS_SECTIONS: SettingsSearchItem[] = [
   { id: 'settings-preferences', categoryId: 'preferences', label: 'Preferences', subtitle: 'Settings · General', keywords: ['theme', 'display', 'messaging'] },
   { id: 'settings-accounts', categoryId: 'accounts', label: 'Chart of Accounts', subtitle: 'Settings · Financial', keywords: ['account', 'category', 'coa', 'bank'] },
-  { id: 'settings-assets', categoryId: 'assets', label: 'Assets', subtitle: 'Settings · Projects, buildings, units', keywords: ['project', 'building', 'property', 'unit'] },
+  { id: 'settings-assets', categoryId: 'assets', label: 'Assets', subtitle: 'Settings · Projects, units, rental buildings, rental properties', keywords: ['project', 'building', 'property', 'unit', 'rental'] },
   { id: 'settings-contacts', categoryId: 'contacts', label: 'Contacts', subtitle: 'Settings · Contact directory', keywords: ['client', 'vendor', 'owner', 'tenant'] },
   { id: 'settings-users', categoryId: 'users', label: 'User Management', subtitle: 'Settings · General', keywords: ['user', 'team'] },
   { id: 'settings-permissions', categoryId: 'permissions', label: 'Permissions', subtitle: 'Settings · Access control', keywords: ['role', 'rbac', 'access'] },

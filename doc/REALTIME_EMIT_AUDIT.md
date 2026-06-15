@@ -4,6 +4,8 @@ Tracks tenant-scoped `emitEntityEvent()` / `emitFinancialPosted()` / `emitLockEv
 
 **Standard:** Every business entity mutation must emit after PostgreSQL commit. See `doc/ARCHITECTURE_V2_AGENT_RULES.md` § Real-Time First.
 
+**Modernization status:** Track E in progress — see `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md` Track E.
+
 ## Compliant (core business modules)
 
 These module routes emit on create/update/delete/post:
@@ -23,6 +25,7 @@ These module routes emit on create/update/delete/post:
 | Payroll | `payrollRoutes` | |
 | Personal finance | `personalFinanceRoutes`, `tasksRoutes` | ✅ Tasks CRUD emits `personal_task` |
 | Documents | `documentsRoutes` | |
+| Organization | `dataManagementRoutes` | ✅ `settings` `bulkRefresh` on clear-transactions / factory-reset |
 | App settings | `appSettingsRoutes` | |
 | Users | `usersRoutes` | |
 | Reporting | `reportDesignerRoutes`, `customReportsRoutes` | `report_definition` / `custom_report_template` events |
@@ -43,7 +46,7 @@ These module routes emit on create/update/delete/post:
 
 | Route | Priority | Action |
 |-------|----------|--------|
-| `organization/dataManagementRoutes` | Low | Bulk import completion event |
+| Import/export wizard (`/data-import-export/*`) | Low | Emit completion event if/when backend route is implemented |
 | `notificationsRoutes` | Done via `notification_created` socket | Separate from entity_* |
 
 ## New entity types

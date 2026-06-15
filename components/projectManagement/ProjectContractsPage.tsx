@@ -12,7 +12,7 @@ import BillTreeView, { BillTreeNode } from '../bills/BillTreeView';
 import { formatDate } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ResizeHandle from '../ui/ResizeHandle';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';

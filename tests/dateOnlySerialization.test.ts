@@ -3,20 +3,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { objectToDbFormat } from '../services/legacy-sqlite/columnMapper';
 import { formatDate, toLocalDateString, toDateOnly, tryParseSqlUtcMidnightIsoToYyyyMmDd } from '../utils/dateUtils';
 import { stringifyApiJsonBody } from '../utils/apiJsonSerialize';
-
-test('objectToDbFormat: issueDate Date → local YYYY-MM-DD, not UTC ISO', () => {
-  const localApr7 = new Date(2026, 3, 7);
-  const out = objectToDbFormat({
-    issueDate: localApr7,
-    createdAt: localApr7,
-  }) as Record<string, string>;
-  assert.strictEqual(out.issue_date, toLocalDateString(localApr7));
-  assert.strictEqual(out.issue_date, '2026-04-07');
-  assert.match(out.created_at, /^\d{4}-\d{2}-\d{2}T/);
-});
 
 test('API JSON: issueDate serializes to YYYY-MM-DD', () => {
   const localApr7 = new Date(2026, 3, 7);
@@ -29,6 +17,11 @@ test('API JSON: issueDate serializes to YYYY-MM-DD', () => {
 test('toDateOnly helper', () => {
   assert.strictEqual(toDateOnly(new Date(2026, 3, 7)), '2026-04-07');
   assert.strictEqual(toDateOnly('2026-04-07'), '2026-04-07');
+});
+
+test('toLocalDateString preserves civil calendar date', () => {
+  const localApr7 = new Date(2026, 3, 7);
+  assert.strictEqual(toLocalDateString(localApr7), '2026-04-07');
 });
 
 test('PostgreSQL DATE as UTC midnight Z: parse + display = civil date (not previous day in UTC− zones)', () => {

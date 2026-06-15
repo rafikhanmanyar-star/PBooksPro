@@ -25,14 +25,36 @@ function is409Conflict(err: unknown): boolean {
 }
 
 interface AssetTypeOption {
-    id: string;
+    id: AssetType;
     label: string;
+    searchPlural: string;
     icon: React.ReactNode;
     color: string;
+    group: AssetGroupId;
+}
+
+interface AssetGroup {
+    id: AssetGroupId;
+    label: string;
+    description: string;
 }
 
 type AssetEntity = Project | Building | Property | Unit;
 type AssetType = 'project' | 'building' | 'property' | 'unit';
+type AssetGroupId = 'project-selling' | 'rental';
+
+const assetGroups: AssetGroup[] = [
+    {
+        id: 'project-selling',
+        label: 'Project Selling & Construction',
+        description: 'Create projects and sellable units for sales, marketing, and construction.',
+    },
+    {
+        id: 'rental',
+        label: 'Rental',
+        description: 'Create rental buildings and rental properties for the rental module.',
+    },
+];
 
 const AssetsManagement: React.FC = () => {
         const appState = useEntityCatalogState();
@@ -94,28 +116,99 @@ const AssetsManagement: React.FC = () => {
         {
             id: 'project',
             label: 'Project',
+            searchPlural: 'projects',
             icon: ICONS.archive,
-            color: 'indigo'
-        },
-        {
-            id: 'building',
-            label: 'Building',
-            icon: ICONS.building,
-            color: 'blue'
-        },
-        {
-            id: 'property',
-            label: 'Property',
-            icon: ICONS.home,
-            color: 'emerald'
+            color: 'indigo',
+            group: 'project-selling',
         },
         {
             id: 'unit',
             label: 'Unit',
+            searchPlural: 'units',
             icon: ICONS.layers,
-            color: 'purple'
-        }
+            color: 'purple',
+            group: 'project-selling',
+        },
+        {
+            id: 'building',
+            label: 'Rental Building',
+            searchPlural: 'rental buildings',
+            icon: ICONS.building,
+            color: 'blue',
+            group: 'rental',
+        },
+        {
+            id: 'property',
+            label: 'Rental Properties',
+            searchPlural: 'rental properties',
+            icon: ICONS.home,
+            color: 'emerald',
+            group: 'rental',
+        },
     ];
+
+    const getAssetTypeButtonClass = (type: AssetTypeOption, isSelected: boolean, size: 'tab' | 'form' = 'tab') => {
+        const layout = size === 'form' ? 'flex flex-col items-start' : 'flex items-center gap-2';
+        const base = `${layout} px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap`;
+        const formBase = `${layout} p-2 rounded-lg border-2 transition-all text-left w-full`;
+
+        if (!isSelected) {
+            return size === 'tab'
+                ? `${base} border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text`
+                : `${formBase} border-app-border bg-app-card hover:border-app-border hover:bg-app-bg`;
+        }
+
+        const selectedTabClass =
+            type.color === 'indigo' ? 'bg-app-highlight text-ds-primary border-2 border-ds-primary' :
+            type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
+            type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
+            'bg-purple-50 text-purple-700 border-2 border-purple-500';
+
+        const selectedFormClass =
+            type.color === 'indigo' ? 'border-ds-primary bg-app-highlight' :
+            type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
+            type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
+            'border-purple-500 bg-purple-50';
+
+        return `${size === 'tab' ? base : formBase} ${size === 'tab' ? selectedTabClass : selectedFormClass}`;
+    };
+
+    const getAssetTypeIconClass = (type: AssetTypeOption, isSelected: boolean) => {
+        if (!isSelected) return 'text-app-muted';
+        return type.color === 'indigo' ? 'text-ds-primary' :
+            type.color === 'blue' ? 'text-blue-600' :
+            type.color === 'emerald' ? 'text-ds-success' :
+            'text-purple-600';
+    };
+
+    const getAssetTypeTextClass = (type: AssetTypeOption, isSelected: boolean) => {
+        if (!isSelected) return 'text-app-text';
+        return type.color === 'indigo' ? 'text-ds-primary' :
+            type.color === 'blue' ? 'text-blue-700' :
+            type.color === 'emerald' ? 'text-emerald-700' :
+            'text-purple-700';
+    };
+
+    const renderAssetTypeButton = (
+        type: AssetTypeOption,
+        isSelected: boolean,
+        onClick: () => void,
+        size: 'tab' | 'form' = 'tab',
+    ) => (
+        <button
+            key={type.id}
+            type="button"
+            onClick={onClick}
+            className={getAssetTypeButtonClass(type, isSelected, size)}
+        >
+            <div className={`${size === 'tab' ? 'w-4 h-4' : 'w-5 h-5 mb-1'} ${getAssetTypeIconClass(type, isSelected)}`}>
+                {type.icon}
+            </div>
+            <span className={size === 'form' ? `font-semibold text-xs ${getAssetTypeTextClass(type, isSelected)}` : undefined}>
+                {type.label}
+            </span>
+        </button>
+    );
 
     // Calculate balances for entities
     const balances = useMemo(() => {
@@ -244,7 +337,7 @@ const AssetsManagement: React.FC = () => {
                 return;
             }
             if (!buildingId) {
-                showToast('Building is required', 'error');
+                showToast('Rental building is required', 'error');
                 return;
             }
         }
@@ -670,7 +763,7 @@ const AssetsManagement: React.FC = () => {
     const owners = appState.contacts.filter(c => c.type === ContactType.OWNER || c.type === ContactType.CLIENT);
 
     const assetSearchPlaceholder = selectedAssetTypeFilter
-        ? `Search ${({ project: 'projects', building: 'buildings', property: 'properties', unit: 'units' } as Record<string, string>)[selectedAssetTypeFilter] ?? 'assets'}...`
+        ? `Search ${getTypeConfig(selectedAssetTypeFilter).searchPlural}...`
         : 'Search all assets...';
 
     // Get column configuration based on selected type
@@ -706,7 +799,7 @@ const AssetsManagement: React.FC = () => {
                 return [
                     { key: 'name', label: 'Name' },
                     { key: 'ownerName', label: 'Owner' },
-                    { key: 'buildingName', label: 'Building' },
+                    { key: 'buildingName', label: 'Rental Building' },
                     { key: 'monthlyServiceCharge', label: 'Service Charge' },
                     { key: 'description', label: 'Description' },
                     { key: 'balance', label: 'Balance' },
@@ -736,13 +829,13 @@ const AssetsManagement: React.FC = () => {
         <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
             {/* Asset Type Filter Tabs - Top Level */}
             <div className="flex-shrink-0">
-                <div className="flex items-center justify-between gap-2 overflow-x-auto pb-2">
-                    <div className="flex items-center gap-2 overflow-x-auto flex-1 min-w-0">
+                <div className="flex items-start justify-between gap-3 overflow-x-auto pb-2">
+                    <div className="flex items-start gap-3 overflow-x-auto flex-1 min-w-0">
                         <button
                             type="button"
                             onClick={() => setSelectedAssetTypeFilter(null)}
                             className={`
-                                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
+                                flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap flex-shrink-0
                                 ${!selectedAssetTypeFilter
                                     ? 'bg-app-surface-2 text-app-text border-2 border-app-border'
                                     : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
@@ -751,37 +844,35 @@ const AssetsManagement: React.FC = () => {
                         >
                             <span>All Assets</span>
                         </button>
-                        {assetTypes.map((type) => {
-                            const isSelected = selectedAssetTypeFilter === type.id;
+
+                        {assetGroups.map((group, groupIndex) => {
+                            const groupTypes = assetTypes.filter((type) => type.group === group.id);
                             return (
-                                <button
-                                    key={type.id}
-                                    type="button"
-                                    onClick={() => {
-                                        setSelectedAssetTypeFilter(type.id as AssetType);
-                                        setSelectedType(type.id as AssetType);
-                                    }}
-                                    className={`
-                                        flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap ml-2
-                                        ${isSelected
-                                            ? (type.color === 'indigo' ? 'bg-app-highlight text-ds-primary border-2 border-ds-primary' :
-                                               type.color === 'blue' ? 'bg-blue-50 text-blue-700 border-2 border-blue-500' :
-                                               type.color === 'emerald' ? 'bg-emerald-50 text-emerald-700 border-2 border-emerald-500' :
-                                               'bg-purple-50 text-purple-700 border-2 border-purple-500')
-                                            : 'border-2 border-transparent text-app-muted hover:bg-app-bg hover:text-app-text'
-                                        }
-                                    `}
+                                <div
+                                    key={group.id}
+                                    className={`flex flex-col gap-1.5 flex-shrink-0 ${groupIndex > 0 ? 'pl-3 border-l border-app-border' : ''}`}
                                 >
-                                    <div className={`w-4 h-4 ${isSelected ? (
-                                        type.color === 'indigo' ? 'text-ds-primary' :
-                                        type.color === 'blue' ? 'text-blue-600' :
-                                        type.color === 'emerald' ? 'text-ds-success' :
-                                        'text-purple-600'
-                                    ) : 'text-app-muted'}`}>
-                                        {type.icon}
+                                    <div className="px-1">
+                                        <div className="text-[11px] font-semibold uppercase tracking-wide text-app-muted">
+                                            {group.label}
+                                        </div>
+                                        <div className="text-[11px] text-app-muted/80 hidden sm:block">
+                                            {group.description}
+                                        </div>
                                     </div>
-                                    <span>{type.label}</span>
-                                </button>
+                                    <div className="flex items-center gap-2">
+                                        {groupTypes.map((type) =>
+                                            renderAssetTypeButton(
+                                                type,
+                                                selectedAssetTypeFilter === type.id,
+                                                () => {
+                                                    setSelectedAssetTypeFilter(type.id);
+                                                    setSelectedType(type.id);
+                                                },
+                                            ),
+                                        )}
+                                    </div>
+                                </div>
                             );
                         })}
                     </div>
@@ -832,56 +923,34 @@ const AssetsManagement: React.FC = () => {
                     <form onSubmit={handleSubmit} className="space-y-4" autoComplete="off">
                         {/* Asset Type Selection - only when no type selected from top tabs */}
                         {!selectedAssetTypeFilter && (
-                            <div>
-                                <label className="block text-xs font-semibold text-app-text mb-2">
+                            <div className="space-y-4">
+                                <label className="block text-xs font-semibold text-app-text">
                                     Asset Type <span className="text-red-500">*</span>
                                 </label>
-                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                                    {assetTypes.map((type) => {
-                                        const isSelected = selectedType === type.id;
-                                        return (
-                                            <button
-                                                key={type.id}
-                                                type="button"
-                                                onClick={() => {
-                                                    setSelectedType(type.id as AssetType);
-                                                    handleResetForm();
-                                                }}
-                                                className={`
-                                                    p-2 rounded-lg border-2 transition-all text-left
-                                                    ${isSelected
-                                                        ? (type.color === 'indigo' ? 'border-ds-primary bg-app-highlight' :
-                                                           type.color === 'blue' ? 'border-blue-500 bg-blue-50' :
-                                                           type.color === 'emerald' ? 'border-emerald-500 bg-emerald-50' :
-                                                           'border-purple-500 bg-purple-50')
-                                                        : 'border-app-border bg-app-card hover:border-app-border hover:bg-app-bg'
-                                                    }
-                                                `}
-                                            >
-                                                <div className={`w-5 h-5 mb-1 ${
-                                                    isSelected
-                                                        ? (type.color === 'indigo' ? 'text-ds-primary' :
-                                                           type.color === 'blue' ? 'text-blue-600' :
-                                                           type.color === 'emerald' ? 'text-ds-success' :
-                                                           'text-purple-600')
-                                                        : 'text-app-muted'
-                                                }`}>
-                                                    {type.icon}
-                                                </div>
-                                                <div className={`font-semibold text-xs ${
-                                                    isSelected
-                                                        ? (type.color === 'indigo' ? 'text-ds-primary' :
-                                                           type.color === 'blue' ? 'text-blue-700' :
-                                                           type.color === 'emerald' ? 'text-emerald-700' :
-                                                           'text-purple-700')
-                                                        : 'text-app-text'
-                                                }`}>
-                                                    {type.label}
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
+                                {assetGroups.map((group) => {
+                                    const groupTypes = assetTypes.filter((type) => type.group === group.id);
+                                    return (
+                                        <div key={group.id}>
+                                            <div className="mb-2">
+                                                <div className="text-xs font-semibold text-app-text">{group.label}</div>
+                                                <div className="text-[11px] text-app-muted">{group.description}</div>
+                                            </div>
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                {groupTypes.map((type) =>
+                                                    renderAssetTypeButton(
+                                                        type,
+                                                        selectedType === type.id,
+                                                        () => {
+                                                            setSelectedType(type.id);
+                                                            handleResetForm();
+                                                        },
+                                                        'form',
+                                                    ),
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         )}
 
@@ -893,7 +962,12 @@ const AssetsManagement: React.FC = () => {
                                 label="Name *"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
-                                placeholder={selectedType === 'project' ? 'Project Name' : selectedType === 'building' ? 'Building Name' : selectedType === 'property' ? 'Property Name' : 'Unit Name'}
+                                placeholder={
+                                    selectedType === 'project' ? 'Project Name'
+                                    : selectedType === 'building' ? 'Rental Building Name'
+                                    : selectedType === 'property' ? 'Rental Property Name'
+                                    : 'Unit Name'
+                                }
                                 required
                                 autoFocus
                                 autoComplete="off"
@@ -960,11 +1034,11 @@ const AssetsManagement: React.FC = () => {
                                 </div>
                                 <div className="sm:col-span-2 lg:col-span-1">
                                     <ComboBox
-                                        label="Building *"
+                                        label="Rental Building *"
                                         items={appState.buildings}
                                         selectedId={buildingId}
                                         onSelect={(item) => setBuildingId(item?.id || '')}
-                                        placeholder="Select building"
+                                        placeholder="Select rental building"
                                         allowAddNew={false}
                                     />
                                 </div>

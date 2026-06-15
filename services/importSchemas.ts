@@ -41,7 +41,7 @@ const safeJsonParse = (str: any) => {
     }
 };
 
-// Export this function so it can be used by importService
+// Used by importValidator and client-side Excel validation adapters
 export const parseExpenseCategoryItems = (
     row: any,
     maps: ImportMaps,

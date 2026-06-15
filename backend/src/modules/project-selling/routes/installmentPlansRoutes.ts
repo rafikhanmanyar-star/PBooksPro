@@ -8,7 +8,7 @@ import {
   rowToInstallmentPlanApi,
   softDeleteInstallmentPlan,
   upsertInstallmentPlan,
-} from '../../../services/installmentPlansService.js';
+} from '../services/installmentPlansService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const installmentPlansRouter = Router();

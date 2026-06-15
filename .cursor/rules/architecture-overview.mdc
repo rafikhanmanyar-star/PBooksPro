@@ -40,7 +40,9 @@ Shared calculation logic: `shared/financial-core/`, `shared/report-engines/`.
 
 ## Strangler: New Code Uses v2.1
 
-Legacy `backend/src/routes/` + flat `services/` are thin delegates only. **New features** go in `backend/src/modules/<domain>/` with `TenantRepository` subclasses.
+Legacy `backend/src/routes/` + flat `services/` are thin delegates only. **Client SQLite removed (Phase 6).** New features go in `backend/src/modules/<domain>/` with `TenantRepository` subclasses.
+
+**Progress:** `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
 
 ## Where to Put New Code
 

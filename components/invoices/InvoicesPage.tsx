@@ -19,7 +19,7 @@ import { useNotification } from '../../context/NotificationContext';
 import ProjectFinancialGrid, { FinancialRecord } from './ProjectFinancialGrid';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import ProjectInvoiceDetailView from './ProjectInvoiceDetailView';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import { useDebounce } from '../../hooks/useDebounce';
 import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 import { isActiveInvoice } from '../../utils/invoiceActive';

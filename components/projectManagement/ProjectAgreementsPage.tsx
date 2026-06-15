@@ -11,7 +11,7 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { TreeNode } from '../ui/TreeView';
 import DatePicker from '../ui/DatePicker';
 import useLocalStorage from '../../hooks/useLocalStorage';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import { usePermissions } from '../../hooks/usePermissions';

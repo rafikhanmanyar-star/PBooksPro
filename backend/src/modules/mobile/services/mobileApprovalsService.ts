@@ -11,7 +11,7 @@ import {
   listInstallmentPlans,
   rowToInstallmentPlanApi,
   upsertInstallmentPlan,
-} from '../../../services/installmentPlansService.js';
+} from '../../project-selling/services/installmentPlansService.js';
 import {
   type MobileApprovalItem,
   isPendingInstallmentPlan,

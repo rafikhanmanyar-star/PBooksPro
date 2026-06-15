@@ -1,15 +1,9 @@
-# Local-only build: import / dependency notes
+# Local-only imports (retired)
 
-**Updated (Architecture v2.1 Phase 4+):** The application client is **PostgreSQL/API-only**. `isLocalOnlyMode()` in `config/apiUrl.ts` always returns `false`.
+**Architecture v2.1 Phase 6:** Offline SQLite and `services/legacy-sqlite-stubs/` were removed. The application client is **PostgreSQL/API-only**.
 
-## Remaining legacy imports
+- Data load/persist: `services/api/appStateApi.ts` → `/api/v1`
+- Import/export: `components/settings/ImportExportWizard.tsx` → backend `data-import-export` routes
+- Validation schemas: `services/importSchemas.ts` + `services/importValidator.ts` (client-side Excel validation only; no SQLite writes)
 
-Some files still import `services/legacy-sqlite/*` paths. At build time these resolve to `services/legacy-sqlite-stubs/*` (no sql.js bundle). Replace with API hooks over time.
-
-## `getAppStateApiService` / `services/api/appStateApi.ts`
-
-Primary path for loading and persisting tenant state. Some components still have `if (!isLocalOnlyMode())` guards around API calls — dead branches to remove incrementally.
-
-## Legacy tooling
-
-See `tools/legacy/README.md` for one-off SQLite → PostgreSQL migration scripts.
+Legacy one-off migration scripts remain under `tools/legacy/` and may use `sql.js` directly — they are not bundled in the Desktop/API client.

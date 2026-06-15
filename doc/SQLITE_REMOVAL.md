@@ -62,12 +62,26 @@ Files **removed** from `electron-builder-api-client.yml` and `electron-builder-a
 - `electron/sqliteBridge.cjs`, `companyManager.cjs`, `schema.sql`, migrations, schema validator
 - `node_modules/better-sqlite3/**` and native bindings
 
-## Optional follow-up (deferred)
+## Completed (Phase 5)
 
 | Item | Status |
 |------|--------|
-| Refactor `importService.ts` local Excel import (stub-only today) | Deferred |
-| Remove Vite `legacy-sqlite-stubs` alias once import paths are gone | Deferred |
+| Collapse `isLocalOnlyMode()` across app (~100 files) | Done |
+| Replace stub imports with API hooks (personal tx, chat, backup) | Done |
+| Remove `optionalDependencies.better-sqlite3` | Done |
+| Staging desktop smoke-test regressions fixed (`logger`, P&L report) | Done |
+
+## Completed (Phase 6)
+
+| Item | Status |
+|------|--------|
+| Delete `services/importService.ts` (local Excel → SQLite path) | Done |
+| Point `ImportType` imports to `types.ts` | Done |
+| Delete `services/legacy-sqlite-stubs/**` | Done |
+| Delete `services/legacySqliteLoader.ts` | Done |
+| Remove Vite `legacy-sqlite` alias + `vite-legacy-sqlite-stub-plugin.mjs` | Done |
+| Update `tests/dateOnlySerialization.test.ts` (no stub columnMapper) | Done |
+
 
 ## Legacy tooling
 
@@ -79,6 +93,9 @@ See `tools/legacy/README.md`. Deprecated aliases forward to `legacy:*` scripts. 
 npm run build:backend
 npm run build
 npm run test:staging
+npm run verify:api-client:phase6
 ```
+
+**Phase 6 complete (2026-06-15):** Client has no `legacy-sqlite` stubs, `importService.ts`, or Vite stub plugin. See `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md` for next steps.
 
 API build should **not** emit large `databaseService-*` or `vendor-db` (sql.js) chunks.

@@ -4,7 +4,9 @@ Single reference for new development after the **Architecture v2.1** upgrade. Fo
 
 > **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (loaded via `.cursor/rules/architecture-v2-agent-compliance.mdc`).
 
-> **Database standard:** PBooks Pro uses **PostgreSQL only** for Desktop Edition, Cloud Edition, staging, and production. Offline SQLite mode is **deprecated and removed** from the active architecture. Legacy SQLite code may remain temporarily — do not extend it.
+> **Modernization progress:** [`doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`](ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md)
+
+> **Database standard:** PBooks Pro uses **PostgreSQL only** for Desktop Edition, Cloud Edition, staging, and production. **Client SQLite was removed in Architecture v2.1 Phase 6** (2026-06). Legacy Electron/sql.js tooling under `tools/legacy/` is for one-off migrations only — not bundled in API client builds.
 
 Post-launch deferred items (RLS, BullMQ, CQRS, etc.) are tracked in [`doc/ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
@@ -135,7 +137,7 @@ Express API
 
 Never mix ports: staging = **3001**, production = **3000** (enforced in `services/api/client.ts` and `config/apiUrl.ts`).
 
-> **Deprecated:** Offline SQLite mode (`VITE_LOCAL_ONLY`, `sqliteBridge`, `services/database/`) is no longer part of the active architecture. All new development uses the API client path to PostgreSQL.
+> **Deprecated:** Offline SQLite was removed from the application client (Phase 6). Desktop and Cloud editions use `apiClient` → `/api/v1` → PostgreSQL only.
 
 ### Strangler Migration (v1 → v2)
 
@@ -648,19 +650,19 @@ modules/<feature>/         — self-contained feature (hooks + UI colocated)
 | `108_offline_sync_metadata.sql` | `sync_queue`, `change_log`, `updated_by` columns |
 | `109_analytics_snapshots.sql` | Pre-calculated dashboard KPIs |
 
-### Legacy SQLite (deprecated — do not extend)
+### Legacy SQLite (removed from client — tools only)
 
-The following remain in the codebase temporarily for backward compatibility only:
+The **application client** no longer includes SQLite IPC, stubs, or offline import paths (see [`SQLITE_REMOVAL.md`](SQLITE_REMOVAL.md) Phase 6).
 
 | Component | Location | Status |
 |-----------|----------|--------|
-| SQLite bridge | `electron/sqliteBridge.cjs` | @deprecated |
-| Local schema | `services/database/schema.ts` | @deprecated |
-| Schema extraction | `npm run electron:extract-schema` | @deprecated |
-| Offline flag | `VITE_LOCAL_ONLY` / `isLocalOnlyMode()` | @deprecated |
-| SQLite sync | `services/database/schemaSync.ts` | @deprecated |
+| Client SQLite stack | `services/legacy-sqlite*`, `importService.ts`, Vite stubs | **Removed** (Phase 6) |
+| SQLite bridge | `electron/sqliteBridge.cjs` | Excluded from API client installers; gated behind `PBOOKS_ENABLE_SQLITE=1` |
+| Schema extraction | `npm run electron:extract-schema` | @deprecated — use `electron/schema.sql` |
+| Offline flag | `isLocalOnlyMode()` | Always `false`; no-op session helpers in `config/apiUrl.ts` |
+| One-off migration scripts | `tools/legacy/*` | Uses `sql.js` locally — **not** shipped in Desktop/Cloud client |
 
-Do not use these for new development. All schema changes go through PostgreSQL migrations only.
+Do not use legacy paths for new development. All schema changes go through PostgreSQL migrations only.
 
 ### Shared Packages (source of truth)
 

@@ -20,7 +20,7 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
 

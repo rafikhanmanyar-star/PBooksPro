@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, memo, startTransition } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useDispatchOnly } from '../../hooks/useSelectiveState';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import { ICONS } from '../../constants';
 import RentalARDashboard from './RentalARDashboard';
 import CreateRentalInvoiceModal from './CreateRentalInvoiceModal';

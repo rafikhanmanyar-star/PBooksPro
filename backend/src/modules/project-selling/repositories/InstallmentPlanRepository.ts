@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { InstallmentPlanRow } from '../../../services/installmentPlansService.js';
+import type { InstallmentPlanRow } from '../services/installmentPlansService.js';
 
 const SELECT_IP = `SELECT id, tenant_id, project_id, lead_id, unit_id, net_value::text, status, duration_years,
   down_payment_percentage::text, frequency, list_price::text, customer_discount::text, floor_discount::text,

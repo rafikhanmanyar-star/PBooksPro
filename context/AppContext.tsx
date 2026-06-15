@@ -13,6 +13,7 @@ import packageJson from '../package.json';
 import { roleHasPermission } from '../shared/rbac/permissions';
 import { isAccountingBackedByRemoteApi } from '../config/apiUrl';
 import { notifyDatabaseError } from '../services/dbErrorNotification';
+import { logger } from '../services/logger';
 import { formatApiErrorMessage } from '../utils/formatApiErrorMessage';
 import { reconcileRentalAgreementsList } from '../services/rentalAgreementReconcile';
 import { resolveExpenseCategoryForBillPayment } from '../utils/rentalBillPayments';
@@ -1821,13 +1822,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
                 return;
             }
+
+            const d = payload?.data;
+            const bulkRefresh =
+                payload.type === 'settings' &&
+                payload.action === 'updated' &&
+                d &&
+                typeof d === 'object' &&
+                d !== null &&
+                'bulkRefresh' in d &&
+                typeof (d as { bulkRefresh: unknown }).bulkRefresh === 'string'
+                    ? (d as { bulkRefresh: string }).bulkRefresh
+                    : undefined;
+            if (bulkRefresh) {
+                void refreshFromApiRef.current?.();
+                return;
+            }
+
             const isOwnMutation =
                 !!(payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id);
             if (isOwnMutation) {
                 return;
             }
             /* Apply bill/invoice patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
-            const d = payload?.data;
             if (payload.type === 'unit' && payload.action === 'deleted') {
                 const deletedId =
                     typeof payload.id === 'string'
@@ -1888,6 +1905,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         _isRemote: true,
                     } as AppAction);
                 }
+            } else if (payload.type === 'installment_plan' && payload.action === 'deleted') {
+                const deletedId =
+                    typeof payload.id === 'string'
+                        ? payload.id
+                        : d &&
+                            typeof d === 'object' &&
+                            d !== null &&
+                            'id' in d &&
+                            typeof (d as { id: unknown }).id === 'string'
+                          ? (d as { id: string }).id
+                          : undefined;
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_INSTALLMENT_PLAN',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (payload.type === 'plan_amenity' && payload.action === 'deleted') {
+                const deletedId =
+                    typeof payload.id === 'string'
+                        ? payload.id
+                        : d &&
+                            typeof d === 'object' &&
+                            d !== null &&
+                            'id' in d &&
+                            typeof (d as { id: unknown }).id === 'string'
+                          ? (d as { id: string }).id
+                          : undefined;
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_PLAN_AMENITY',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
             } else if (
                 payload.action !== 'deleted' &&
                 d &&
@@ -1924,6 +1977,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     baseDispatch({
                         type: exists ? 'UPDATE_UNIT' : 'ADD_UNIT',
                         payload: unit,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'installment_plan') {
+                    const plan = d as InstallmentPlan;
+                    const exists = latestStateRef.current.installmentPlans.some((p) => p.id === plan.id);
+                    baseDispatch({
+                        type: exists ? 'UPDATE_INSTALLMENT_PLAN' : 'ADD_INSTALLMENT_PLAN',
+                        payload: plan,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'plan_amenity') {
+                    const amenity = d as PlanAmenity;
+                    const exists = latestStateRef.current.planAmenities.some((a) => a.id === amenity.id);
+                    baseDispatch({
+                        type: exists ? 'UPDATE_PLAN_AMENITY' : 'ADD_PLAN_AMENITY',
+                        payload: amenity,
                         _isRemote: true,
                     } as AppAction);
                 }

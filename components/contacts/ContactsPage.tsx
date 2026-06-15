@@ -12,7 +12,7 @@ import { useNotification } from '../../context/NotificationContext';
 import Input from '../ui/Input';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
 import Tabs from '../ui/Tabs';
-import { ImportType } from '../../services/importService';
+import { ImportType } from '../../types';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import useLocalStorage from '../../hooks/useLocalStorage';

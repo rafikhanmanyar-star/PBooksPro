@@ -7,7 +7,9 @@ alwaysApply: true
 
 **Full rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` · **Deep dive:** `doc/ARCHITECTURE.md`
 
-Launch scope is complete. **New features use v2.1 patterns only** — never extend legacy flat routes/services or SQLite code.
+Launch scope is complete. **Client SQLite removed (Phase 6).** New features use v2.1 patterns only — never extend legacy flat routes/services.
+
+**Progress:** `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
 
 **Database standard:** PostgreSQL only (Desktop + Cloud + staging + production). SQLite is deprecated.
 
