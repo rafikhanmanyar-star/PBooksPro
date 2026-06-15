@@ -145,6 +145,11 @@ function Run-AfterClient {
         exit 1
     }
     Write-Host 'OK: dist/assets has no sql-* chunks'
+
+    Write-Host '[verify-dist-bundle-integrity] npm run verify:dist-bundle-integrity'
+    npm run verify:dist-bundle-integrity | Out-Host
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host 'OK: dist chunk references resolve'
 }
 
 Write-Host "`n=== PBooks Pro Staging Release Verification ($Step) ===`n"

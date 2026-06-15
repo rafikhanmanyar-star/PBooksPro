@@ -4,7 +4,7 @@ Tracks tenant-scoped `emitEntityEvent()` / `emitFinancialPosted()` / `emitLockEv
 
 **Standard:** Every business entity mutation must emit after PostgreSQL commit. See `doc/ARCHITECTURE_V2_AGENT_RULES.md` § Real-Time First.
 
-**Modernization status:** Track E.2 (multi-user spot tests) — see `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md` Track E § E.2.
+**Modernization status:** Track E implementation complete (2026-06-15). See `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md` — Track F P4 next on request.
 
 ## Compliant (core business modules)
 

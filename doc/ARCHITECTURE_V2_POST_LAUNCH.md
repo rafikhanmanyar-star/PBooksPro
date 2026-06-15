@@ -10,7 +10,8 @@ Tracked items intentionally deferred after commercial launch scope.
 | Field-level sync conflicts | Planned | After LWW (`change_log` + `version`) proven in production |
 | Distributed workers | Planned | Depends on BullMQ |
 | Retire `/api` alias | **Done** | Clients normalized to `/api/v1` |
-| Retire esbuild report bundles | Planned | After backend imports `shared/report-engines` directly |
+| Retire esbuild report bundles | Planned | 13 bundles; `loadReportEngine.ts` — first Track F item after v2.1 Tracks A–E |
+| Tenant domain strangler (flat `services/*.ts`) | **Mostly done** | E.3 batches 3–12; platform subfolders (`billing/`, `auth/`, …) remain flat |
 | Payroll → journal_entries unification | Planned | `payrollLedger` remains separate exception |
 
 ## Launch scope — foundation built (not full migration)

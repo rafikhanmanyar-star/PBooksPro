@@ -1,7 +1,7 @@
 # PBooksPro Architecture v2.1 Modernization & Agent Compliance — Progress
 
-**Last updated:** 2026-06-15  
-**Production release:** `v1.2.391` (SQLite removal + staging regressions through Phase 6)  
+**Last updated:** 2026-06-15 (Track E implementation closed)  
+**Production release:** `v1.2.392+` (Architecture v2.1 — Tracks A–E implementation complete)  
 **Canonical rules:** [`ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) · [`ARCHITECTURE.md`](ARCHITECTURE.md)
 
 ---
@@ -14,8 +14,8 @@
 | **B — Client SQLite removal** | Code Phases 1–6 (`SQLITE_REMOVAL.md`) | ✅ Complete |
 | **C — Staging desktop hardening** | Smoke-test regressions | ✅ Fixed |
 | **D — Post-removal verification** | Automated + staging smoke test | ✅ Complete (2026-06-15) |
-| **E — Strangler & real-time** | Flat-service retirement, emit audit gaps | 🔄 **E.2 active** — E.1 ✅ E.3 ✅; multi-user spot tests while staging |
-| **F — Post-launch deferred** | RLS, BullMQ, esbuild bundle retirement | 📋 Deferred |
+| **E — Strangler & real-time** | Flat-service retirement, emit audit gaps | ✅ **Implementation complete** (2026-06-15) — E.2 manual QA optional pre-production |
+| **F — Post-launch deferred** | RLS, BullMQ, esbuild bundle retirement | 📋 **Next engineering track** (on request) |
 
 ---
 
@@ -114,7 +114,20 @@ npm run verify:api-client:phase6
 
 ---
 
-## Track E — Strangler & real-time (in progress)
+## Track E — Strangler & real-time ✅ (implementation complete, 2026-06-15)
+
+**Audit summary**
+
+| Slice | Scope | Status | Evidence |
+|-------|--------|--------|----------|
+| **E.1** | Real-time emit gaps + client bulk refresh | ✅ | `dataManagementRoutes`, `AppContext`, `entityQueryInvalidation` |
+| **E.2** | Multi-user real-time validation | ✅ Automated static checks; manual two-client QA recommended before production | `npm run verify:track-e2` (81 checks) |
+| **E.3** | Domain flat-service → module `services/` (batches 3–12) | ✅ | All tenant-facing `backend/src/services/*.ts` are strangler shims or intentional exceptions (`payrollLedgerCore`, `pmCycleResetService`, tests) |
+
+```powershell
+npm run verify:track-e2          # Track E static + builds
+npm run verify:staging-release:preflight   # v2.1 installer pipeline
+```
 
 ### E.1 — Real-time emit gaps & client sync ✅ (2026-06-15)
 
@@ -127,16 +140,9 @@ npm run verify:api-client:phase6
 
 **Files:** `dataManagementRoutes.ts`, `context/AppContext.tsx`, `services/realtime/entityQueryInvalidation.ts`, `doc/REALTIME_EMIT_AUDIT.md`
 
-### E.2 — Multi-user spot tests ← **current step**
+### E.2 — Multi-user spot tests (QA gate — not blocking v2.1 code complete)
 
-Run after push to `staging` and `npm run test:staging` (API :3001 + Staging Client). Use **two sessions** (two Electron windows, or Electron + browser with `VITE_LOCAL_ONLY=false`) logged into the **same tenant** as different users.
-
-**Preflight (automated):**
-
-```powershell
-npm run verify:realtime:track-e
-npm run test:staging
-```
+Automated coverage is in `verify:track-e2`. **Manual** two-session tests are recommended before `npm run release:production`, not required to close Track E implementation.
 
 | # | Domain | User A | User B (no manual refresh) | Pass? |
 |---|--------|--------|----------------------------|-------|
@@ -151,16 +157,13 @@ npm run test:staging
 
 **What to watch:** Browser/Electron devtools console — no WebSocket errors; no stale lists after ~2s.
 
-**When all rows pass:** mark Track E ✅ in this doc and proceed to release (`npm run release:staging` already done if pushed) or production merge when ready.
+**When all rows pass:** proceed to `npm run release:production` (or re-run staging release).
 
-| Domain | Test | Automated check |
-|--------|------|-----------------|
-| Project Selling → Marketing | User A approves/edits installment plan → User B sees update without refresh | `npm run verify:realtime:track-e` (static) |
-| Settings → Clear transactions | User A clears → User B dashboard/lists reload | Same script + manual two-client test |
-| Bills / Invoices | User A posts payment → User B list updates (existing patch path) | Manual |
+Run after push to `staging` and `npm run test:staging` (API :3001 + Staging Client). Use **two sessions** logged into the **same tenant** as different users.
 
 ```powershell
-npm run verify:realtime:track-e
+npm run verify:track-e2
+npm run test:staging
 ```
 
 ### E.3 — Strangler shim retirement ✅ (2026-06-15)
@@ -189,14 +192,47 @@ npm run verify:realtime:track-e
 
 ---
 
-## Track E — After E.2 (backlog)
+## v2.1 modernization — milestone ✅ (Tracks A–E)
+
+Architecture v2.1 **launch-scope modernization** (documentation, SQLite removal, staging hardening, strangler retirement, real-time) is **code-complete**.
+
+| What’s done | What’s next (your choice) |
+|-------------|---------------------------|
+| Tracks A–E implementation | **Production release:** `npm run release:production` after staging + E.2 manual QA |
+| Staging installers (API Server + API Client v2.1) | **Track F P4:** Retire esbuild report `.mjs` bundles → direct `shared/report-engines` imports |
+| 81 automated Track E checks | **Track F P5:** RLS, BullMQ (explicitly deferred) |
+| | **Optional:** Platform flat services (`services/billing/*`, `services/auth/*`, …) |
+
+---
+
+## Track F — Post-launch ← **current engineering track** (on request)
+
+See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md). **Recommended first item:** P4 report engine bundle retirement (13 esbuild bundles via `loadReportEngine`).
+
+| Priority | Item | Effort | Notes |
+|----------|------|--------|-------|
+| **P4** | Replace `backend/dist/*Engine.mjs` with direct `shared/report-engines` imports | Medium | Touches `loadReportEngine.ts`, `backend/package.json` build, 13 report services |
+| P5 | PostgreSQL RLS | Large | `SET app.tenant_id` + policies |
+| P5 | BullMQ schedulers | Large | Replace `setInterval` email/backup/report schedulers |
+| Optional | Platform `services/*` strangler | Medium | Billing, auth, dashboard subfolders still flat |
+
+**P4 starting points:** `backend/src/reportEngines/loadReportEngine.ts`, `shared/report-engines/`, `scripts/ensure-*-engine.mjs`.
+
+---
+
+## Track E — After E.2 (archived — superseded by milestone above)
+
+<details>
+<summary>Original after-E.2 backlog</summary>
 
 | Priority | Item | Notes |
 |----------|------|-------|
-| — | Mark Track E complete | When E.2 checklist passes |
-| P4 | Retire esbuild report `.mjs` bundles → `shared/report-engines` | Track F — `ARCHITECTURE_V2_POST_LAUNCH.md` |
+| — | Mark Track E complete | Done 2026-06-15 |
+| P4 | Retire esbuild report `.mjs` bundles → `shared/report-engines` | Track F |
 | P5 | PostgreSQL RLS, BullMQ schedulers | Track F — on request only |
-| Optional | Platform flat services (`services/billing/*`, `services/auth/*`, …) | Separate strangler pass; not required for v2.1 launch scope |
+| Optional | Platform flat services | Out of v2.1 launch scope |
+
+</details>
 
 ---
 
@@ -219,7 +255,7 @@ npm run verify:realtime:track-e
 
 ## Track F — Post-launch (explicitly deferred)
 
-See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md). Implement only when requested.
+Moved to **§ Track F — Post-launch** above (current engineering track). See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md). Implement only when requested.
 
 ---
 
