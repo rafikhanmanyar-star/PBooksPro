@@ -8,7 +8,7 @@ import {
   rowToBudgetApi,
   softDeleteBudget,
   upsertBudget,
-} from '../../../services/budgetsService.js';
+} from '../services/budgetsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const budgetsRouter = Router();

@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { BudgetRow } from '../../../services/budgetsService.js';
+import type { BudgetRow } from '../services/budgetsService.js';
 
 const BUDGET_COLUMNS = `id, tenant_id, category_id, project_id, amount::text, user_id, version, deleted_at, created_at, updated_at`;
 

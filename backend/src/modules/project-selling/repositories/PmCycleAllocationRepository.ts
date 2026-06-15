@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PmCycleAllocationRow } from '../../../services/pmCycleAllocationsService.js';
+import type { PmCycleAllocationRow } from '../services/pmCycleAllocationsService.js';
 
 const ALLOCATION_COLUMNS = `id, tenant_id, project_id, cycle_id, cycle_label, frequency, start_date, end_date, allocation_date,
   amount, paid_amount, status, bill_id, description, expense_total, fee_rate, excluded_category_ids,

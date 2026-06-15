@@ -8,7 +8,7 @@ import {
   rowToPmCycleAllocationApi,
   softDeletePmCycleAllocation,
   upsertPmCycleAllocation,
-} from '../../../services/pmCycleAllocationsService.js';
+} from '../services/pmCycleAllocationsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const pmCycleAllocationsRouter = Router();

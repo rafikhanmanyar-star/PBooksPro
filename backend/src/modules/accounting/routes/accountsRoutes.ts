@@ -9,7 +9,7 @@ import {
   softDeleteAccount,
   updateAccount,
   upsertAccount,
-} from '../../../services/accountsService.js';
+} from '../services/accountsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const accountsRouter = Router();

@@ -145,10 +145,12 @@ npm run verify:realtime:track-e
 |------|--------|
 | **Project-selling services** | `installmentPlansService` + `planAmenitiesService` moved to `modules/project-selling/services/` |
 | **Record locks** | `recordLocksService` moved to `modules/accounting/services/` |
-| **Flat shims** | `backend/src/services/installmentPlansService.ts`, `planAmenitiesService.ts`, `recordLocksService.ts` re-export only |
-| **Module imports** | Routes, repositories, `mobileApprovalsService` import from module layer |
+| **Accounting CRUD** | `accountsService` + `categoriesService` moved to `modules/accounting/services/` |
+| **Project-selling CRUD** | `budgetsService` + `pmCycleAllocationsService` moved to `modules/project-selling/services/` |
+| **Flat shims** | Corresponding `backend/src/services/*.ts` files re-export only |
+| **Module imports** | Routes and repositories import from module `services/` layer |
 
-**Remaining P3 backlog:** other flat `services/*` files (report services, domain CRUD services still in flat layer) — retire incrementally.
+**Remaining P3 backlog:** bills/invoices/transactions services, report services, and other flat `services/*` — retire incrementally.
 
 ---
 

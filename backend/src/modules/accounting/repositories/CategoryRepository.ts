@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../../constants/globalSystemChart.js';
-import type { CategoryRow } from '../../../services/categoriesService.js';
+import type { CategoryRow } from '../services/categoriesService.js';
 
 const CATEGORY_COLUMNS = `id, tenant_id, name, type, description, is_permanent, is_rental, is_hidden, parent_category_id, version, deleted_at, created_at, updated_at`;
 

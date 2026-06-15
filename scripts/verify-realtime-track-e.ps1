@@ -75,6 +75,22 @@ Assert-FileContains -Label 'locksRoutes imports module recordLocksService' `
     -Path (Join-Path $root 'backend/src/modules/accounting/routes/locksRoutes.ts') `
     -Pattern '\.\./services/recordLocksService'
 
+Assert-FileContains -Label 'accountsService lives in accounting module' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/accountsService.ts') `
+    -Pattern 'export async function listAccounts'
+
+Assert-FileContains -Label 'categoriesService lives in accounting module' `
+    -Path (Join-Path $root 'backend/src/modules/accounting/services/categoriesService.ts') `
+    -Pattern 'export async function listCategories'
+
+Assert-FileContains -Label 'budgetsService lives in project-selling module' `
+    -Path (Join-Path $root 'backend/src/modules/project-selling/services/budgetsService.ts') `
+    -Pattern 'export async function upsertBudget'
+
+Assert-FileContains -Label 'pmCycleAllocationsService lives in project-selling module' `
+    -Path (Join-Path $root 'backend/src/modules/project-selling/services/pmCycleAllocationsService.ts') `
+    -Pattern 'export async function upsertPmCycleAllocation'
+
 Write-Host "[build] npm run build:backend"
 npm run build:backend | Out-Null
 

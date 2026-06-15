@@ -5,7 +5,7 @@ import {
   ACCOUNT_BALANCE_CASE,
   ACCOUNT_BALANCE_CASE_BY_ID,
 } from '../../../financial/accountBalanceSql.js';
-import type { AccountRow } from '../../../services/accountsService.js';
+import type { AccountRow } from '../services/accountsService.js';
 
 const ACCOUNT_SELECT = `a.id, a.tenant_id, a.name, a.type, (${ACCOUNT_BALANCE_CASE})::text AS balance, a.opening_balance, a.description, a.is_permanent, a.parent_account_id, a.user_id, a.version, a.deleted_at, a.created_at, a.updated_at,
   a.bs_position, a.bs_term, a.bs_group_key, a.account_code, a.sub_type, a.is_active`;

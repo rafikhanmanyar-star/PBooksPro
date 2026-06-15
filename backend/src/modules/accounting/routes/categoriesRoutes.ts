@@ -11,7 +11,7 @@ import {
   softDeleteCategory,
   updateCategory,
   upsertCategory,
-} from '../../../services/categoriesService.js';
+} from '../services/categoriesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const categoriesRouter = Router();
