@@ -14,7 +14,7 @@
 | **B — Client SQLite removal** | Code Phases 1–6 (`SQLITE_REMOVAL.md`) | ✅ Complete |
 | **C — Staging desktop hardening** | Smoke-test regressions | ✅ Fixed |
 | **D — Post-removal verification** | Automated + staging smoke test | ✅ Complete (2026-06-15) |
-| **E — Strangler & real-time** | Flat-service retirement, emit audit gaps | 🔄 E.1–E.3 slice done; E.2 manual spot tests remain |
+| **E — Strangler & real-time** | Flat-service retirement, emit audit gaps | 🔄 **E.2 active** — E.1 ✅ E.3 ✅; multi-user spot tests while staging |
 | **F — Post-launch deferred** | RLS, BullMQ, esbuild bundle retirement | 📋 Deferred |
 
 ---
@@ -127,7 +127,31 @@ npm run verify:api-client:phase6
 
 **Files:** `dataManagementRoutes.ts`, `context/AppContext.tsx`, `services/realtime/entityQueryInvalidation.ts`, `doc/REALTIME_EMIT_AUDIT.md`
 
-### E.2 — Multi-user spot tests
+### E.2 — Multi-user spot tests ← **current step**
+
+Run after push to `staging` and `npm run test:staging` (API :3001 + Staging Client). Use **two sessions** (two Electron windows, or Electron + browser with `VITE_LOCAL_ONLY=false`) logged into the **same tenant** as different users.
+
+**Preflight (automated):**
+
+```powershell
+npm run verify:realtime:track-e
+npm run test:staging
+```
+
+| # | Domain | User A | User B (no manual refresh) | Pass? |
+|---|--------|--------|----------------------------|-------|
+| 1 | Project Selling → Marketing | Edit or approve an installment plan | Plan list / detail updates | [ ] |
+| 2 | Settings → Data management | Clear transactions (or factory reset on test tenant) | Dashboard + lists reload via `settings` bulkRefresh | [ ] |
+| 3 | Vendors → Bills | Post payment or vendor bill advance settlement | Bill list / balance updates | [ ] |
+| 4 | Customers → Invoices | Record invoice payment | Invoice list updates | [ ] |
+| 5 | **Batch 12 regression** | Accounting → Close accounting period | Period status visible on B | [ ] |
+| 6 | **Batch 12 regression** | Vendors → Contractor advance + bill | Contractor bill appears for B | [ ] |
+| 7 | **Track D carry-over** | Reports → Project P&L | N/A (single user) — no crash | [ ] |
+| 8 | **Track D carry-over** | Settings → Import/Export wizard | Opens; copy references API/PostgreSQL | [ ] |
+
+**What to watch:** Browser/Electron devtools console — no WebSocket errors; no stale lists after ~2s.
+
+**When all rows pass:** mark Track E ✅ in this doc and proceed to release (`npm run release:staging` already done if pushed) or production merge when ready.
 
 | Domain | Test | Automated check |
 |--------|------|-----------------|
@@ -139,7 +163,7 @@ npm run verify:api-client:phase6
 npm run verify:realtime:track-e
 ```
 
-### E.3 — Strangler shim retirement (in progress)
+### E.3 — Strangler shim retirement ✅ (2026-06-15)
 
 | Item | Change |
 |------|--------|
@@ -162,6 +186,17 @@ npm run verify:realtime:track-e
 | **Module imports** | Routes and repositories import from module `services/` layer |
 
 **E.3 domain service migration:** complete for tenant-facing modules (batches 3–12). **Intentional flat exceptions:** platform subfolders (`services/auth/`, `services/billing/`, `services/dashboard/`, etc.), one-off scripts (`pmCycleResetService`), and middleware that may still import via shims.
+
+---
+
+## Track E — After E.2 (backlog)
+
+| Priority | Item | Notes |
+|----------|------|-------|
+| — | Mark Track E complete | When E.2 checklist passes |
+| P4 | Retire esbuild report `.mjs` bundles → `shared/report-engines` | Track F — `ARCHITECTURE_V2_POST_LAUNCH.md` |
+| P5 | PostgreSQL RLS, BullMQ schedulers | Track F — on request only |
+| Optional | Platform flat services (`services/billing/*`, `services/auth/*`, …) | Separate strangler pass; not required for v2.1 launch scope |
 
 ---
 

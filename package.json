@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.391",
+  "version": "1.2.392",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -92,6 +92,7 @@
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "verify:api-client:phase6": "powershell -ExecutionPolicy Bypass -File scripts/verify-api-client-phase6.ps1",
     "verify:realtime:track-e": "powershell -ExecutionPolicy Bypass -File scripts/verify-realtime-track-e.ps1",
+    "verify:track-e2": "powershell -ExecutionPolicy Bypass -File scripts/verify-realtime-track-e.ps1",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowJournalCore.test.ts",
     "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",
