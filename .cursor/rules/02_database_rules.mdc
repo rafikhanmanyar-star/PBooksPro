@@ -1,0 +1,51 @@
+---
+description: PostgreSQL-only database rules — migrations, tenant scope, sync metadata
+globs: "{database/migrations/**,backend/**/repositories/**,shared/**}"
+alwaysApply: false
+---
+
+# Database Rules (PostgreSQL Only)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §10
+
+## Single database engine
+
+**PostgreSQL** is the only supported database for Desktop Edition, Cloud Edition, staging, and production.
+
+### BANNED for new work
+
+- SQLite schemas, migrations, or sync
+- `sqliteBridge`, `services/database/`, `VITE_LOCAL_ONLY`
+- `npm run electron:extract-schema` / local schema generation
+- Inline BLOB columns for new documents (use R2 + `document_metadata`)
+
+## Migrations
+
+- Path: `database/migrations/NNN_descriptive_name.sql`
+- Applied in lexicographic order via `backend/src/migrate.ts`
+- Idempotent where possible: `IF NOT EXISTS`, `IF EXISTS`
+- Never drop columns/tables without explicit plan
+- Multi-step writes: `withTransaction()` from `backend/src/db/pool.ts`
+
+## Multi-tenant schema
+
+- Business tables: `tenant_id` + index `(tenant_id, …)`
+- Soft delete: `deleted_at` + `deleted_by` via `TenantRepository.softDelete()`
+- LWW: `version` column where `recordDomainMutation()` applies
+
+## Launch-scope tables
+
+- `accounting_periods.status` includes `locked`
+- `document_metadata` + R2 storage
+- `sync_queue` + `change_log`
+- `analytics_snapshots`
+
+## Shared package sync
+
+| Edit source | Generated (do not edit) |
+|-------------|-------------------------|
+| `shared/financial-core/` | `backend/src/financial/` |
+| `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` |
+| `shared/report-engines/` | `backend/src/reportEngines/index.ts` via `ensure-shared-report-engines.mjs` |
+
+After shared edits: `npm run build:backend`

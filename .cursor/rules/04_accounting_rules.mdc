@@ -1,0 +1,51 @@
+---
+description: Accounting & GL rules — FinancialPostingService, journals, periods, fiscal close
+globs: "{backend/src/modules/accounting/**,shared/financial-core/**,services/financialEngine/**}"
+alwaysApply: false
+---
+
+# Accounting Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE.md` § Financial Reporting
+
+## General ledger
+
+- **All GL writes** go through `FinancialPostingService` (`modules/accounting/services/`)
+- Never write `journal_entries` / `journal_lines` from routes or domain services directly
+- Use `JournalRepository` only from within posting services
+- After posting: `emitFinancialPosted()` for real-time GL sync
+
+## Posting domains (reference)
+
+| Source | Service |
+|--------|---------|
+| Bills | `billJournalPostingService` |
+| Invoices | `invoiceJournalPostingService` |
+| Transactions | `transactionJournalPostingService` |
+| PEV | `pevJournalPostingService` |
+| Investor | `investorJournalPostingService` |
+| Fiscal period close | `fiscalPeriodCloseService` |
+
+## Accounting periods
+
+- `accounting_periods.status` includes `locked`
+- `FinancialPostingService` enforces period lock before any GL write
+- Period close mutations: audit + `emitEntityEvent()`
+
+## Shared financial core
+
+- Source: `shared/financial-core/` → synced to `backend/src/financial/`
+- Trial balance, journal ledger, validation, dimension scope — **never duplicate** in components or routes
+- Edit shared source; run `npm run build:backend`
+
+## Reconciliation
+
+- `shared/financial-core/financialReconciliationEngine.ts`
+- API: `modules/accounting/routes/financialReconciliationRoutes.ts`
+
+## MUST NOT
+
+- Direct GL SQL in route handlers
+- Bypass period lock
+- New calculation logic outside `shared/financial-core/`
+- Edit AUTO-GENERATED `backend/src/financial/*.ts`

@@ -1,0 +1,53 @@
+---
+description: Frontend Architecture V2.1 — apiClient, React Query, real-time, navigation
+globs: "{components/**,hooks/**,services/**,context/**,modules/**,stores/**}/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# Frontend Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §9
+
+## API client
+
+- Base: `/api/v1` (`config/apiUrl.ts` → `normalizeApiBaseUrl()`)
+- Singleton: `services/api/client.ts` (`apiClient`)
+- Repos: `services/api/repositories/*Api.ts` with `normalize*FromApi()`
+- Desktop and Cloud both use PostgreSQL via Express API — no offline DB path
+
+## State management
+
+| Layer | Use when |
+|-------|----------|
+| `useStateSelector` / `context/domains/` | AppContext slices — preferred for new code |
+| React Query (`hooks/queries/`) | Server data, reports, dashboard |
+| Zustand (`stores/`) | Ephemeral UI-only state |
+
+Do not duplicate server KPIs in AppContext when React Query exists.
+
+## Real-time (mandatory)
+
+See `03_realtime_sync.mdc`. New server-backed hooks must invalidate on socket events.
+
+## Reports & financial UI
+
+- Import display logic from shared shims; no new calculation in components
+- Dashboard: `useDashboardSnapshots`
+
+## Navigation
+
+`Page` union in `types.ts` → `PAGE_GROUPS` + `lazyWithRetry` in `App.tsx` → Sidebar / `utils/appNavigation.ts`
+
+## New feature flow
+
+```
+types → *Api.ts → React Query hook → socket listener → UI → navigation → usePermissions()
+```
+
+Styling: Tailwind + `styles/design-tokens.css`; modals: `hooks/useEntityFormModal`
+
+## BANNED for new development
+
+- `VITE_LOCAL_ONLY`, `isLocalOnlyMode()`, `services/database/`
+- Broad `useAppContext()` for new features
+- Local-only entity mutations without socket path

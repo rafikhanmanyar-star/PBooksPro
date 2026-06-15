@@ -1,0 +1,48 @@
+---
+description: Reporting rules — shared engines, API report services, dashboard snapshots
+globs: "{shared/report-engines/**,components/reports/**,backend/src/modules/**/services/*Report*.ts,backend/src/reportEngines/**}"
+alwaysApply: false
+---
+
+# Reporting Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §5
+
+## Calculation source of truth
+
+| Package | Contents |
+|---------|----------|
+| `shared/financial-core/` | Trial balance, journal ledger, validation, cash flow journal |
+| `shared/report-engines/` | P&L, balance sheet, ledgers, rental reports |
+
+**MUST NOT** add new report math in `components/`, routes, or repositories.
+
+## Backend report pipeline (Track F P4)
+
+1. Engine logic: `shared/report-engines/` (+ re-export shims in `components/reports/`)
+2. Build: `scripts/ensure-shared-report-engines.mjs` → `reportEngines.compiled.js`
+3. Import: `backend/src/reportEngines/index.ts` (static imports)
+4. Service: `modules/<domain>/services/*ReportService.ts`
+5. Route: `/api/v1/reports/...` with RBAC
+
+Verify: `npm run verify:track-f-p4` after backend changes.
+
+## UI layer
+
+- `components/reports/` = presentation + re-export shims only
+- Dashboard KPIs: `useDashboardSnapshots` → `GET /dashboard/snapshots` (not raw AppState scans)
+- Custom reports: `modules/reporting/`
+
+## New report checklist
+
+1. Engine in `shared/report-engines/` (no React imports)
+2. Add export to `shared/report-engines/serverEntry.ts`
+3. Backend `*ReportService.ts` + route under `/api/v1`
+4. RBAC permission in `shared/rbac/permissions.ts`
+5. Frontend hook + socket invalidation if live lists depend on report inputs
+
+## MUST NOT
+
+- `loadReportEngine()` or per-engine `dist/*Engine.mjs` bundles (retired)
+- Duplicate formulas in backend services
+- Client-side-only financial statements for API mode

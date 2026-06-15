@@ -1,0 +1,56 @@
+---
+description: RBAC permissions — shared definitions, route guards, frontend checks
+globs: "{shared/rbac/**,backend/src/middleware/rbac*,hooks/usePermissions*,components/**/Permission*}"
+alwaysApply: false
+---
+
+# Permissions Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc`
+
+## Source of truth
+
+- **Edit:** `shared/rbac/permissions.ts`
+- **Generated:** `backend/src/auth/permissions.ts` (AUTO-GENERATED — do not edit)
+- After changes: `npm run build:backend`
+
+## Backend guards
+
+```typescript
+requirePermission('financial.write')
+requirePermission('reports.trial_balance.read')
+requireCompanyAdmin()
+requirePayrollAccessForPayrollPaths()
+```
+
+Mount-level or per-route on `modules/<domain>/routes/`.
+
+## Frontend
+
+- `hooks/usePermissions.ts` / `usePermission()` for UI gating
+- Hide actions user cannot perform; backend must still enforce
+
+## Role matrix (summary)
+
+| Role | Typical scope |
+|------|----------------|
+| `super_admin` | All permissions |
+| `company_admin` | Tenant admin + users |
+| `accountant` | Financial write, reports, audit read |
+| `sales_user` | Project selling subset |
+| `read_only_user` | Read reports, no write |
+
+Full matrix: `shared/rbac/permissions.ts` + tests in `backend/src/auth/permissions.test.ts`
+
+## New feature checklist
+
+1. Add permission constants to `shared/rbac/permissions.ts`
+2. `npm run build:backend`
+3. Guard backend route with `requirePermission()`
+4. Gate frontend UI with `usePermissions()`
+
+## MUST NOT
+
+- Hardcode role name strings without using permission constants
+- Skip backend guards because UI hides the button
+- Edit `backend/src/auth/permissions.ts` directly

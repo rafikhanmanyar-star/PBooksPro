@@ -1,0 +1,58 @@
+---
+description: Backend Architecture V2.1 — modules, repositories, API, audit, real-time
+globs: backend/**/*.ts
+alwaysApply: false
+---
+
+# Backend Architecture (V2.1)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §8
+
+## Layer pattern
+
+```
+modules/<domain>/routes/       → HTTP, Zod, sendSuccess/handleRouteError
+modules/<domain>/services/     → business logic, rowTo*Api()
+modules/<domain>/repositories/ → TenantRepository subclasses
+```
+
+Register routers in `mountVersionedApi.ts` under `/api/v1`. Legacy `backend/src/routes/*.ts` are **re-exports only** — never add handlers.
+
+## Core infrastructure
+
+| Component | Purpose |
+|-----------|---------|
+| `TenantRepository` | `(tenantId, client?)`; `softDelete()`, `activeOnly()` |
+| `withAudit()` | Transactional audit on mutations |
+| `recordDomainMutation()` | audit_events + change_log + sync_queue |
+| `FinancialPostingService` | **Only** GL gateway; period lock; `emitFinancialPosted()` |
+| `checkEntityLwwConflict()` | LWW before upsert when entity has `version` |
+| `emitEntityEvent()` | **Mandatory** after commit (`backend/src/core/realtime.ts`) |
+
+## Mutation pipeline
+
+```
+LWW check → PostgreSQL write → withAudit/recordDomainMutation → emitEntityEvent → sendSuccess (or 409)
+```
+
+Reference: `modules/vendors/routes/billsRoutes.ts`
+
+## API
+
+- Canonical prefix: `/api/v1` only
+- Exempt: `/health`, `/api/webhooks/*`, `/api/admin`
+- `authMiddleware` → `requireActiveSubscription()` → RBAC guards → `auditRequestContextMiddleware`
+- `req.tenantId` from auth — **never** from request body
+- Responses: `sendSuccess` / `sendFailure` / `handleRouteError` — never raw SQL errors
+
+## New endpoint flow
+
+```
+migration → TenantRepository → service → route → mountVersionedApi → *Api.ts
+```
+
+Mutations **must** include audit + `emitEntityEvent()`. GL paths use `FinancialPostingService` only.
+
+## Report services
+
+Import engines from `backend/src/reportEngines/index.ts` (built from `shared/report-engines/serverEntry.ts`). Do not add `loadReportEngine()` or per-engine `.mjs` bundles.

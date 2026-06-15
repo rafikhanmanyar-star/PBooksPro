@@ -2,7 +2,7 @@
 
 Single reference for new development after the **Architecture v2.1** upgrade. Four sections: **Overview**, **Backend**, **Frontend**, and **Data Layer**.
 
-> **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (loaded via `.cursor/rules/architecture-v2-agent-compliance.mdc`).
+> **For AI agents:** mandatory compliance checklists, enforcement rules, and MUST/MUST NOT rules are in [`doc/ARCHITECTURE_V2_AGENT_RULES.md`](ARCHITECTURE_V2_AGENT_RULES.md) (enforced via `.cursor/rules/00_architecture_authority.mdc` and `doc/CURSOR_RULES_AUDIT.md`).
 
 > **Modernization progress:** [`doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`](ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md)
 

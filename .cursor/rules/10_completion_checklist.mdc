@@ -1,0 +1,35 @@
+---
+description: Mandatory feature completion checklist — no feature is done without all items
+alwaysApply: true
+---
+
+# Feature Completion Checklist (Mandatory)
+
+**Authority:** `00_architecture_authority.mdc`
+
+A feature is **NOT complete** unless every applicable item below is satisfied.
+
+## Checklist
+
+```
+□ API           — /api/v1 endpoint in modules/<domain>/routes/, registered in mountVersionedApi.ts
+□ Tenant        — tenant_id scoped; TenantRepository or explicit tenant filter; req.tenantId only
+□ Audit         — withAudit() or recordDomainMutation() on mutations
+□ Real-Time     — emitEntityEvent() after commit + client React Query invalidation / AppContext merge
+□ Permissions   — shared/rbac permission + requirePermission() on route + usePermissions() in UI
+□ LWW           — checkEntityLwwConflict() where entity has version; HTTP 409 on conflict
+□ Reporting     — financial/report-facing changes use shared/ engines; report routes if new statements
+□ Architecture  — no SQLite, no flat routes/services, no SQL in routes, no direct GL writes
+```
+
+## Agent behavior
+
+Before marking a task complete, **explicitly confirm** each applicable checkbox in the response.
+
+If the user asks to skip an item, explain the compliance risk and document the exception.
+
+## References
+
+- Real-time: `03_realtime_sync.mdc`
+- Backend: `01_backend_architecture.mdc`
+- Pre-codegen: `99_startup_check.mdc`

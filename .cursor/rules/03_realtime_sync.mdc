@@ -1,0 +1,54 @@
+---
+description: Real-Time First — mandatory sync for all tenant mutations
+globs: "{backend/**/*.ts,context/**,hooks/**,services/realtime/**,services/api/**}"
+alwaysApply: false
+---
+
+# Real-Time Synchronization (Mandatory)
+
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE.md` § Real-Time First · `doc/REALTIME_EMIT_AUDIT.md`
+
+> A feature without synchronization support is **incomplete**.
+
+## Every business mutation MUST
+
+1. **PostgreSQL commit** — data persisted before emit
+2. **Audit trail** — `withAudit()` or `recordDomainMutation()`
+3. **Event emission** — `emitEntityEvent()` or `emitFinancialPosted()`
+4. **Tenant-scoped broadcast** — Socket.IO room `tenant:${tenantId}` only
+5. **Client refresh** — React Query `invalidateQueries` / `setQueryData` + AppContext merge
+
+## Backend
+
+```typescript
+// After successful commit:
+emitEntityEvent(tenantId, 'updated', 'bill', { data: row, sourceUserId: userId });
+```
+
+- Extend `RealtimeEntityType` in `backend/src/core/realtime.ts` for new entities
+- LWW: `checkEntityLwwConflict()` → HTTP 409 + `serverVersion` on conflict
+
+## Frontend
+
+- Socket: `core/socket.ts`
+- Global listener: `context/AppContext.tsx`
+- Per-hook invalidation: `services/realtime/entityQueryInvalidation.ts`
+- Pattern: `hooks/useUserNotifications.ts`
+
+New server-backed hooks **must** subscribe to `entity_created` / `entity_updated` / `entity_deleted` / `financial.posted` and invalidate relevant query keys.
+
+## MUST NOT
+
+- Local-only business entity updates
+- Manual page refresh as primary sync mechanism
+- Polling-only mutation propagation
+- Unscoped socket broadcasts (no global fan-out)
+
+## Verification
+
+```powershell
+npm run verify:track-e2
+npm run test:staging
+```
+
+Multi-user test: User A mutates → User B's UI updates without manual refresh.

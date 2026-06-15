@@ -1,0 +1,46 @@
+---
+description: Security rules — auth, tenant isolation, secrets, rate limiting
+globs: "{backend/src/auth/**,backend/src/middleware/**,electron/**,config/**}"
+alwaysApply: false
+---
+
+# Security Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc`
+
+## Authentication
+
+- JWT via `authMiddleware` on `/api/v1` tenant routes
+- `req.tenantId`, `req.userId`, `req.role` on `AuthedRequest`
+- Admin portal: `/api/admin` — separate JWT, not tenant-scoped
+- MFA policy: `shared/rbac/mfaPolicy.ts` → synced to `backend/src/auth/`
+
+## Tenant isolation
+
+- **Never** accept `tenant_id` from request body or query for authorization
+- Every repository query scoped by `tenant_id`
+- Socket rooms: `tenant:${tenantId}` only — no cross-tenant emits
+- RLS (PostgreSQL row-level security) is **deferred** — see `ARCHITECTURE_V2_POST_LAUNCH.md`
+
+## Secrets & config
+
+- **Never** commit `.env`, `.env.staging`, `.env.production`, tokens, or keys
+- Production checks: `backend/src/utils/productionEnvCheck.ts`
+- Password policy: `backend/src/utils/passwordPolicy.ts`
+
+## API hardening
+
+- Rate limiting on public endpoints (login, lookup)
+- `sendFailure` for validation errors — never expose SQL/stack traces
+- Webhooks: verify signatures (Paddle, etc.) before processing
+
+## Documents
+
+- Files in R2 via `DocumentStorageService` — not inline DB BLOBs for new uploads
+- `document_metadata` tenant-scoped
+
+## MUST NOT
+
+- Client-supplied tenant override
+- Unscoped socket broadcasts
+- Logging passwords, tokens, or PII in production logs

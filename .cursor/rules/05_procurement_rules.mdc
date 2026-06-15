@@ -1,0 +1,45 @@
+---
+description: Procurement domain — vendors, bills, contracts, quotations, POs, retention
+globs: "{backend/src/modules/vendors/**,backend/src/modules/project-selling/**,components/vendors/**,components/procurement/**}"
+alwaysApply: false
+---
+
+# Procurement Rules (V2.1)
+
+**Authority:** `00_architecture_authority.mdc`
+
+## Module layout
+
+| Domain | Module path |
+|--------|-------------|
+| Vendors, bills, contracts, quotations | `backend/src/modules/vendors/` |
+| Project selling, agreements | `backend/src/modules/project-selling/` |
+| Contractor billing, retention, FIFO | `modules/vendors/services/` |
+
+## Patterns
+
+- CRUD: `TenantRepository` → service → route → `/api/v1`
+- Bill/invoice payments that hit GL: `FinancialPostingService` (via journal posting services)
+- Contractor advances: `contractorFifo`, vendor bill advance stack in `modules/vendors/services/`
+- Quotation validation: `shared/quotation-validation/` → synced to `backend/src/quotationValidation/`
+- Contract retention: `shared/contract-retention/` → `backend/src/contractRetention/`
+
+## Real-time (mandatory)
+
+Emit after every mutation affecting:
+
+- `vendor`, `bill`, `contract`, `quotation`, `purchase_order`
+- Contractor billing, retention releases, bill payments
+
+Reference: `modules/vendors/routes/billsRoutes.ts`
+
+## MUST NOT
+
+- New flat `backend/src/services/vendors*.ts` handlers
+- SQLite or offline procurement flows
+- Duplicate quotation/retention logic outside `shared/`
+
+## Frontend
+
+- API via `services/api/repositories/*Api.ts`
+- React Query hooks + socket invalidation for bill/vendor lists

@@ -27,11 +27,11 @@ Original modernization brief deliverables:
 |-------|-------------|--------|----------|
 | 1 | Remove SQLite as active runtime mode from architecture docs | ✅ | `doc/ARCHITECTURE.md` § Runtime Architecture |
 | 2 | PostgreSQL-only database standard | ✅ | `ARCHITECTURE.md` § Database Standard |
-| 3 | Architecture enforcement rules for agents | ✅ | `ARCHITECTURE_V2_AGENT_RULES.md` §1, `.cursor/rules/architecture-v2-agent-compliance.mdc` |
+| 3 | Architecture enforcement rules for agents | ✅ | `ARCHITECTURE_V2_AGENT_RULES.md` §1, `.cursor/rules/00_architecture_authority.mdc` |
 | 4 | Financial reporting protection rules | ✅ | `ARCHITECTURE.md` § Financial Reporting Rules |
 | 5 | Construction & real estate domain rules | ✅ | `ARCHITECTURE.md` § Core Business Domains |
 | 6 | Architecture compliance checklist | ✅ | `ARCHITECTURE.md` + agent rules §14 (32 items incl. Real-Time First) |
-| 7 | Approved runtime architecture (Desktop + Cloud + Backend) | ✅ | `ARCHITECTURE.md` §1, `architecture-overview.mdc` |
+| 7 | Approved runtime architecture (Desktop + Cloud + Backend) | ✅ | `ARCHITECTURE.md` §1, `00_architecture_authority.mdc` |
 | 8 | Mark legacy SQLite components `@deprecated` | ✅ | Electron gates, `config/apiUrl.ts`, `doc/SQLITE_REMOVAL.md` |
 
 **Also completed:** Real-Time First mandatory rules (mutation → audit → `emitEntityEvent()` → socket → React Query invalidation).

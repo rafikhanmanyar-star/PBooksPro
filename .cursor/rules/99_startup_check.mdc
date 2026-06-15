@@ -1,0 +1,45 @@
+---
+description: Startup verification — run before generating non-compliant code
+alwaysApply: true
+---
+
+# Startup Verification (Pre-Codegen)
+
+**Authority:** `00_architecture_authority.mdc`
+
+Before implementing a feature or fix, verify compliance with Architecture V2.1.
+
+## Verification steps
+
+1. **Architecture** — Does the plan use `modules/<domain>/`, `/api/v1`, `TenantRepository`, `FinancialPostingService`?
+2. **Tenant isolation** — Is every query scoped by `tenant_id` from `req.tenantId`?
+3. **Audit** — Will mutations call `withAudit()` or `recordDomainMutation()`?
+4. **Synchronization** — Will mutations call `emitEntityEvent()` and will the client invalidate React Query?
+5. **PostgreSQL** — No SQLite, `sqliteBridge`, `VITE_LOCAL_ONLY`, or local schema paths?
+6. **Permissions** — Are RBAC constants and route guards defined?
+7. **LWW** — For versioned entities, is conflict handling included?
+
+## If violations exist
+
+1. **Explain** each violation against `00_architecture_authority.mdc`
+2. **Propose** the compliant implementation (reference domain rule files 01–09)
+3. **Refuse** non-compliant architecture unless the user explicitly accepts the risk after explanation
+
+## Quick references
+
+| Check | Rule file |
+|-------|-----------|
+| Backend layout | `01_backend_architecture.mdc` |
+| Database | `02_database_rules.mdc` |
+| Real-time | `03_realtime_sync.mdc` |
+| GL / accounting | `04_accounting_rules.mdc` |
+| Vendors / procurement | `05_procurement_rules.mdc` |
+| Reports | `06_reporting_rules.mdc` |
+| Frontend | `07_frontend_rules.mdc` |
+| Security | `08_security_rules.mdc` |
+| RBAC | `09_permissions_rules.mdc` |
+| Done gate | `10_completion_checklist.mdc` |
+
+## Canonical docs
+
+`doc/ARCHITECTURE.md` · `doc/ARCHITECTURE_V2_AGENT_RULES.md` · `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`

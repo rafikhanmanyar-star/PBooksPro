@@ -1,0 +1,68 @@
+---
+description: Architecture V2.1 master authority — all rules defer to this document
+alwaysApply: true
+---
+
+# Architecture V2.1 — Master Authority
+
+**This rule is the single governance authority for Cursor agents.**
+
+If any other rule, skill, or user request conflicts with Architecture V2.1, **Architecture V2.1 wins**.
+
+## Canonical sources (read in order)
+
+1. `doc/ARCHITECTURE.md`
+2. `doc/ARCHITECTURE_V2_AGENT_RULES.md`
+3. `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
+4. `doc/ARCHITECTURE_V2_POST_LAUNCH.md` (deferred items — implement only when requested)
+
+**Ignore archived docs** for implementation decisions. See `doc/CURSOR_RULES_AUDIT.md`.
+
+## Runtime (Desktop + Cloud)
+
+```
+Electron/Browser → React → apiClient (/api/v1) → Express → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+Shared logic: `shared/financial-core/`, `shared/report-engines/`, `shared/rbac/`.
+
+## MUST
+
+- `backend/src/modules/<domain>/` for new backend features
+- `tenant_id` on every business query; `TenantRepository` subclasses
+- GL writes via `FinancialPostingService` only
+- `/api/v1` via `mountVersionedApi.ts`
+- Mutations: `withAudit()` or `recordDomainMutation()` + **`emitEntityEvent()`**
+- LWW: `checkEntityLwwConflict()`; HTTP 409 + `serverVersion` on conflict
+- Calculations in `shared/financial-core/` or `shared/report-engines/` only
+- PostgreSQL only — migrations in `database/migrations/`
+- Frontend: `apiClient`, React Query, socket invalidation — not broad `useAppContext()`
+
+## MUST NOT
+
+- SQL in routes; direct GL writes; missing `tenant_id`
+- Edit AUTO-GENERATED `backend/src/financial/` or `backend/src/auth/permissions.ts`
+- New handlers in legacy `backend/src/routes/` or flat `backend/src/services/`
+- SQLite, `sqliteBridge`, `VITE_LOCAL_ONLY`, local schema generation for new work
+- Local-only screen updates; manual refresh as primary sync
+- Commit `.env*`, `backend/dist/`, backups
+
+## Enforcement
+
+If a request violates these rules: **explain → propose compliant design → refuse non-compliant architecture** unless the user explicitly overrides after understanding the risk.
+
+## Domain rule index
+
+| Area | Rule file |
+|------|-----------|
+| Backend | `01_backend_architecture.mdc` |
+| Database | `02_database_rules.mdc` |
+| Real-time | `03_realtime_sync.mdc` |
+| Accounting / GL | `04_accounting_rules.mdc` |
+| Procurement / vendors | `05_procurement_rules.mdc` |
+| Reporting | `06_reporting_rules.mdc` |
+| Frontend | `07_frontend_rules.mdc` |
+| Security | `08_security_rules.mdc` |
+| Permissions | `09_permissions_rules.mdc` |
+| Completion gate | `10_completion_checklist.mdc` |
+| Pre-codegen check | `99_startup_check.mdc` |
