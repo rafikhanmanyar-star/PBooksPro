@@ -1327,6 +1327,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     getAppStateApiService()
                         .saveQuotation(quotation)
+                        .then((saved) => {
+                            dispatch({
+                                type: 'UPDATE_QUOTATION',
+                                payload: { ...quotation, ...saved },
+                                _isRemote: true,
+                            } as AppAction);
+                        })
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to persist quotation to API:', err);
                             notifyDatabaseError(new Error(formatApiErrorMessage(err)), {

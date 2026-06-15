@@ -8,7 +8,7 @@ import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useAuth } from '../../../context/AuthContext';
 import { CURRENCY, ICONS } from '../../../constants';
 import { todayLocalYyyyMmDd } from '../../../utils/dateUtils';
-import FieldSuggestionChips from './FieldSuggestionChips';
+import VoiceCaptureButton from './VoiceCaptureButton';
 import {
   getLastQuickCaptureSnapshot,
   getQuickCaptureSuggestions,
@@ -437,6 +437,10 @@ export default function QuickTransactionWizard() {
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="e.g. Cement delivery, site visit fuel…"
               />
+              <VoiceCaptureButton
+                onTranscript={(text) => setDescription((prev) => (prev ? `${prev} ${text}` : text))}
+                className="mt-2"
+              />
               <FieldSuggestionChips
                 suggestions={fieldSuggestions.description}
                 currentValue={description}
@@ -474,6 +478,9 @@ export default function QuickTransactionWizard() {
 
         {step === 4 && (
           <div className="space-y-4">
+            <p className="text-xs text-app-muted rounded-lg bg-app-card border border-app-border px-3 py-2">
+              OCR receipt capture: snap a photo and attach it. Finance can extract line items during review.
+            </p>
             <input
               ref={fileRef}
               type="file"
@@ -489,7 +496,7 @@ export default function QuickTransactionWizard() {
             >
               <span className="w-12 h-12 text-app-muted">{ICONS.camera}</span>
               <span className="text-sm font-medium">
-                {attachment ? attachment.name : 'Tap to capture or upload receipt'}
+                {attachment ? attachment.name : 'Tap to scan receipt (OCR) or upload'}
               </span>
               <span className="text-xs text-app-muted">Photo or PDF</span>
             </button>

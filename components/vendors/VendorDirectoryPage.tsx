@@ -2,7 +2,7 @@ import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSele
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { Vendor, Bill, Transaction, Page, TransactionType } from '../../types';
+import { Vendor, Bill, Transaction, TransactionType } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import VendorLedger from './VendorLedger';
 import Button from '../ui/Button';
@@ -25,22 +25,52 @@ import { ImportType } from '../../types';
 import ResizeHandle from '../ui/ResizeHandle';
 import AllQuotationsTable from './AllQuotationsTable';
 import AllBillsTable from './AllBillsTable';
-import VendorComparisonReport from '../reports/VendorComparisonReport';
 import VendorQuotationComparisonPage from '../procurement/VendorQuotationComparisonPage';
 import VendorPriceHistoryPage from '../procurement/VendorPriceHistoryPage';
 import PurchaseOrdersPage from '../procurement/PurchaseOrdersPage';
 import GoodsReceiptsPage from '../procurement/GoodsReceiptsPage';
+import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
+import SubNavModeToggle from '../layout/SubNavModeToggle';
+import NavSectionLabel from '../layout/NavSectionLabel';
 const VendorAnalyticsPage = React.lazy(() => import('../../modules/vendor-analytics/VendorAnalyticsPage'));
-import VendorLedgerReport from '../reports/VendorLedgerReport';
-import { reportDefinitions } from '../reports/reportDefinitions';
 
-const AddVendorSection: React.FC<{
-    optionsView: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports' | null;
-    setOptionsView: (view: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports' | null) => void;
-    setSelectedVendorId: (id: string | null) => void;
+type ProcurementView =
+    | 'Analytics'
+    | 'Directory'
+    | 'Quotation'
+    | 'Comparison'
+    | 'PriceHistory'
+    | 'PurchaseOrders'
+    | 'GoodsReceipts'
+    | 'Bills';
+
+const PROCUREMENT_NAV_ITEMS: { id: ProcurementView; label: string; icon: React.ReactNode }[] = [
+    { id: 'Analytics', label: 'Analytics', icon: ICONS.barChart },
+    { id: 'Directory', label: 'Vendor directory', icon: ICONS.users },
+    { id: 'Quotation', label: 'All Quotations', icon: ICONS.fileText },
+    { id: 'Comparison', label: 'Compare', icon: ICONS.barChart },
+    { id: 'PriceHistory', label: 'Price history', icon: ICONS.trendingUp },
+    { id: 'PurchaseOrders', label: 'Purchase order', icon: ICONS.fileText },
+    { id: 'GoodsReceipts', label: 'Goods receipts', icon: ICONS.trendingUp },
+    { id: 'Bills', label: 'All bills', icon: ICONS.creditCard },
+];
+
+function procurementNavLabelShort(label: string): string {
+    const w = label.trim().split(/\s+/);
+    if (w.length === 1) return w[0].slice(0, 3).toUpperCase();
+    return w.map((x) => x[0]).join('').slice(0, 3).toUpperCase();
+}
+
+function normalizeProcurementView(raw: string): ProcurementView {
+    if (raw === 'Reports') return 'Directory';
+    if (PROCUREMENT_NAV_ITEMS.some((item) => item.id === raw)) return raw as ProcurementView;
+    return 'Directory';
+}
+
+const ProcurementActionBar: React.FC<{
     triggerAddVendor?: boolean;
     onModalOpenHandled?: () => void;
-}> = ({ optionsView, setOptionsView, setSelectedVendorId, triggerAddVendor, onModalOpenHandled }) => {
+}> = ({ triggerAddVendor, onModalOpenHandled }) => {
     const state = useFinancialReportAppState();
     const { contacts, vendors: appVendors, transactions, invoices, bills, whatsAppTemplates, whatsAppMode, currentUser } = state;
     const dispatch = useDispatchOnly();
@@ -76,47 +106,9 @@ const AddVendorSection: React.FC<{
         setIsModalOpen(false);
     };
 
-    const navItems: { id: 'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports'; label: string; icon: any }[] = [
-        { id: 'Quotation', label: 'All Quotations', icon: ICONS.fileText },
-        { id: 'Comparison', label: 'Compare', icon: ICONS.barChart },
-        { id: 'PriceHistory', label: 'Price History', icon: ICONS.trendingUp },
-        { id: 'PurchaseOrders', label: 'Purchase Orders', icon: ICONS.fileText },
-        { id: 'GoodsReceipts', label: 'Goods Receipts', icon: ICONS.trendingUp },
-        { id: 'Bills', label: 'All Bills', icon: ICONS.creditCard },
-        { id: 'Analytics', label: 'Analytics', icon: ICONS.barChart },
-        { id: 'Reports', label: 'Reports', icon: ICONS.barChart }
-    ];
-
     return (
         <>
-            <div className="bg-app-card border-b border-app-border px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-0 z-20">
-                {/* Global Views Navigation */}
-                <div className="flex bg-segment-bg p-1 rounded-xl">
-                    {navItems.map((item) => {
-                        const isActive = optionsView === item.id;
-                        return (
-                            <button
-                                key={item.id}
-                                onClick={() => {
-                                    setOptionsView(item.id);
-                                    setSelectedVendorId(null);
-                                }}
-                                className={`
-                                    flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
-                                    ${isActive
-                                        ? 'bg-segment-active text-segment-active-text shadow-ds-card'
-                                        : 'text-app-muted hover:text-app-text hover:bg-app-table-hover'
-                                    }
-                                `}
-                            >
-                                <span className={isActive ? 'text-inherit' : 'text-app-muted'}>{item.icon}</span>
-                                {item.label}
-                            </button>
-                        );
-                    })}
-                </div>
-
-                {/* Global Actions */}
+            <div className="bg-app-card border-b border-app-border px-4 md:px-6 py-3 flex flex-col sm:flex-row items-center justify-end gap-3 shrink-0">
                 <div className="flex items-center gap-3">
                     <Button
                         variant="secondary"
@@ -201,8 +193,11 @@ const VendorDirectoryPage: React.FC = () => {
 
     const [vendorSearch, setVendorSearch] = useState('');
     const [activeTab, setActiveTab] = useLocalStorage<'Ledger' | 'Bills' | 'Quotations'>('vendorDirectory_activeTab', 'Ledger');
-    const [optionsView, setOptionsView] = useLocalStorage<'Quotation' | 'Comparison' | 'PriceHistory' | 'PurchaseOrders' | 'GoodsReceipts' | 'Bills' | 'Analytics' | 'Reports'>('vendorDirectory_optionsView', 'Quotation');
-    const [selectedReport, setSelectedReport] = useState<string>('vendor-comparison');
+    const [storedProcurementView, setStoredProcurementView] = useLocalStorage<string>('vendorDirectory_optionsView', 'Directory');
+    const procurementView = normalizeProcurementView(storedProcurementView);
+    const setProcurementView = useCallback((view: ProcurementView) => {
+        setStoredProcurementView(view);
+    }, [setStoredProcurementView]);
     const [sidebarWidth, setSidebarWidth] = useLocalStorage<number>('vendorDirectory_sidebarWidth', 320);
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: SortDirection }>({ key: 'name', direction: 'asc' });
 
@@ -216,8 +211,21 @@ const VendorDirectoryPage: React.FC = () => {
 
     const handleCreateGrnFromPo = (purchaseOrderId: string) => {
         setGrnPrefillPoId(purchaseOrderId);
-        setOptionsView('GoodsReceipts');
+        setProcurementView('GoodsReceipts');
     };
+
+    const {
+        effectiveCollapsed: subNavCollapsed,
+        toggle: toggleSubNav,
+        toggleTitle: subNavToggleTitle,
+    } = useCollapsibleSubNav('subnav_procurement');
+
+    const handleProcurementNavigate = useCallback((view: ProcurementView) => {
+        setProcurementView(view);
+        if (view !== 'Directory') {
+            setSelectedVendorId(null);
+        }
+    }, [setProcurementView]);
 
     // Check if we need to open a vendor from search or add new vendor
     useEffect(() => {
@@ -447,15 +455,182 @@ const VendorDirectoryPage: React.FC = () => {
         );
     }
 
+    const NavItem = ({ view, label }: { view: ProcurementView; label: string }) => {
+        const on = procurementView === view;
+        const short = procurementNavLabelShort(label);
+        if (subNavCollapsed) {
+            return (
+                <button
+                    type="button"
+                    title={label}
+                    onClick={() => handleProcurementNavigate(view)}
+                    className={`w-full flex justify-center px-1 py-1.5 rounded-md text-[10px] font-bold leading-tight transition-colors ${on
+                        ? 'bg-primary text-ds-on-primary shadow-sm'
+                        : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
+                        }`}
+                >
+                    {short}
+                </button>
+            );
+        }
+        return (
+            <button
+                type="button"
+                onClick={() => handleProcurementNavigate(view)}
+                className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${on
+                    ? 'bg-primary text-ds-on-primary shadow-sm shadow-primary/20'
+                    : 'text-app-muted hover:bg-app-toolbar hover:text-app-text'
+                    }`}
+            >
+                {label}
+            </button>
+        );
+    };
+
+    const procurementNavPanel = (
+        <>
+            <div
+                className={`border-b border-app-border shrink-0 flex items-center gap-1 ${subNavCollapsed ? 'flex-col py-2 px-1' : 'justify-between px-3 py-2.5'}`}
+            >
+                {!subNavCollapsed && (
+                    <NavSectionLabel variant="header">Procurement</NavSectionLabel>
+                )}
+                <SubNavModeToggle collapsed={subNavCollapsed} onToggle={toggleSubNav} title={subNavToggleTitle} compact />
+            </div>
+            <nav
+                className="flex-1 overflow-y-auto overflow-x-hidden py-2 px-2 space-y-0.5 scrollbar-thin scrollbar-thumb-app-border min-h-0"
+                aria-label="Procurement module navigation"
+                data-tour="procurement-subnav"
+            >
+                {PROCUREMENT_NAV_ITEMS.map((item) => (
+                    <NavItem key={item.id} view={item.id} label={item.label} />
+                ))}
+            </nav>
+        </>
+    );
+
+    const renderGlobalProcurementView = () => {
+        switch (procurementView) {
+            case 'Quotation':
+                return (
+                    <AllQuotationsTable
+                        onEditQuotation={(quotation) => {
+                            const vendor = (vendors || []).find(v => v.id === quotation.vendorId);
+                            if (vendor) {
+                                setSelectedVendorId(vendor.id);
+                                setProcurementView('Directory');
+                                setActiveTab('Quotations');
+                                setEditingQuotation(quotation);
+                                setIsQuotationFormModalOpen(true);
+                            }
+                        }}
+                    />
+                );
+            case 'Comparison':
+                return <VendorQuotationComparisonPage />;
+            case 'PriceHistory':
+                return <VendorPriceHistoryPage />;
+            case 'PurchaseOrders':
+                return (
+                    <PurchaseOrdersPage
+                        vendorId={selectedVendor?.id}
+                        onCreateGrn={handleCreateGrnFromPo}
+                    />
+                );
+            case 'GoodsReceipts':
+                return (
+                    <GoodsReceiptsPage
+                        vendorId={selectedVendor?.id}
+                        initialPurchaseOrderId={grnPrefillPoId}
+                        onInitialPoConsumed={() => setGrnPrefillPoId(null)}
+                    />
+                );
+            case 'Bills':
+                return (
+                    <AllBillsTable
+                        onEditBill={(bill) => {
+                            const vendor = (vendors || []).find(v => v.id === bill.vendorId);
+                            if (vendor) {
+                                setSelectedVendorId(vendor.id);
+                                setProcurementView('Directory');
+                                setActiveTab('Bills');
+                                setEditingItem({ id: bill.id, type: 'bill' });
+                            }
+                        }}
+                    />
+                );
+            case 'Analytics':
+                return (
+                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading analytics…</div>}>
+                        <VendorAnalyticsPage />
+                    </React.Suspense>
+                );
+            default:
+                return null;
+        }
+    };
+
+    const renderDirectoryPlaceholder = () => (
+        <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8">
+            <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 shadow-ds-card border border-primary/20">
+                <div className="w-12 h-12 text-primary opacity-80">
+                    {ICONS.users}
+                </div>
+            </div>
+            <h2 className="text-2xl font-bold text-app-text mb-3">Select a Vendor</h2>
+            <p className="text-app-muted mb-8 leading-relaxed">
+                Select a vendor from the list to view their ledger, bills, and manage payments.
+            </p>
+            <div className="flex flex-wrap justify-center gap-3">
+                <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-primary"></span>
+                    Manage Bills
+                </div>
+                <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-ds-success"></span>
+                    Record Payments
+                </div>
+                <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-primary"></span>
+                    Track Expenses
+                </div>
+            </div>
+        </div>
+    );
+
     return (
-        <div className="flex flex-col h-full bg-app-bg overflow-hidden" data-tour="vendor-directory">
-            <AddVendorSection
-                optionsView={optionsView}
-                setOptionsView={(view) => setOptionsView(view ?? 'Quotation')}
-                setSelectedVendorId={setSelectedVendorId}
-                triggerAddVendor={triggerAddVendor}
-                onModalOpenHandled={() => setTriggerAddVendor(false)}
-            />
+        <div className="flex flex-col md:flex-row h-full bg-app-bg overflow-hidden" data-tour="vendor-directory">
+            {/* Mobile: compact picker */}
+            <div className="md:hidden shrink-0 border-b border-app-border bg-app-toolbar/30 px-3 py-2">
+                <NavSectionLabel as="label" variant="form" htmlFor="procurement-module-view">Procurement</NavSectionLabel>
+                <select
+                    id="procurement-module-view"
+                    value={procurementView}
+                    onChange={(e) => handleProcurementNavigate(normalizeProcurementView(e.target.value))}
+                    className="w-full mt-1 ds-input-field rounded-lg text-sm font-medium"
+                >
+                    {PROCUREMENT_NAV_ITEMS.map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                </select>
+            </div>
+
+            {/* Second-level left navigation — desktop / tablet */}
+            <aside
+                className={`hidden md:flex flex-col shrink-0 border-r border-app-border bg-app-toolbar/30 h-full min-h-0 overflow-hidden transition-[width] duration-200 ease-out ${subNavCollapsed ? 'w-14' : 'w-60'}`}
+                aria-label="Procurement secondary navigation"
+            >
+                {procurementNavPanel}
+            </aside>
+
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {procurementView === 'Directory' && (
+                <ProcurementActionBar
+                    triggerAddVendor={triggerAddVendor}
+                    onModalOpenHandled={() => setTriggerAddVendor(false)}
+                />
+            )}
+            {procurementView === 'Directory' ? (
             <div className="flex-grow flex flex-col md:flex-row gap-3 md:gap-4 p-3 md:p-4 min-h-0 overflow-hidden">
                 {/* Vendor List Sidebar */}
                 <div
@@ -515,7 +690,7 @@ const VendorDirectoryPage: React.FC = () => {
                                                 onClick={() => {
                                                     setSelectedVendorId(vendor.id);
                                                     setActiveTab('Ledger');
-                                                    setOptionsView(null as any);
+                                                    setProcurementView('Directory');
                                                 }}
                                                 className={`w-full text-left px-3 py-2 rounded-lg transition-all duration-200 border-b border-app-border/50 last:border-0 ${isSelected
                                                     ? 'bg-primary/15 shadow-sm border-transparent'
@@ -573,7 +748,7 @@ const VendorDirectoryPage: React.FC = () => {
 
                 {/* Main Content Area */}
                 <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                    {selectedVendor && !optionsView ? (
+                    {selectedVendor ? (
                         <>
                             {/* Vendor Detail Header */}
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border mb-4 flex-shrink-0 relative overflow-hidden group">
@@ -801,134 +976,22 @@ const VendorDirectoryPage: React.FC = () => {
                         </>
                     ) : (
                         <div className="flex-grow flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border min-h-0 overflow-hidden m-0">
-                            {/* Options Content */}
                             <div className="flex-grow min-h-0 p-4 overflow-auto">
-                                {optionsView === 'Quotation' ? (
-                                    <AllQuotationsTable
-                                        onEditQuotation={(quotation) => {
-                                            const vendor = (vendors || []).find(v => v.id === quotation.vendorId);
-                                            if (vendor) {
-                                                setSelectedVendorId(vendor.id);
-                                                setActiveTab('Quotations');
-                                                setEditingQuotation(quotation);
-                                                setIsQuotationFormModalOpen(true);
-                                            }
-                                        }}
-                                    />
-                                ) : optionsView === 'Comparison' ? (
-                                    <VendorQuotationComparisonPage />
-                                ) : optionsView === 'PriceHistory' ? (
-                                    <VendorPriceHistoryPage />
-                                ) : optionsView === 'PurchaseOrders' ? (
-                                    <PurchaseOrdersPage
-                                        vendorId={selectedVendor?.id}
-                                        onCreateGrn={handleCreateGrnFromPo}
-                                    />
-                                ) : optionsView === 'GoodsReceipts' ? (
-                                    <GoodsReceiptsPage
-                                        vendorId={selectedVendor?.id}
-                                        initialPurchaseOrderId={grnPrefillPoId}
-                                        onInitialPoConsumed={() => setGrnPrefillPoId(null)}
-                                    />
-                                ) : optionsView === 'Bills' ? (
-                                    <AllBillsTable
-                                        onEditBill={(bill) => {
-                                            const vendor = (vendors || []).find(v => v.id === bill.vendorId);
-                                            if (vendor) {
-                                                setSelectedVendorId(vendor.id);
-                                                setActiveTab('Bills');
-                                                setEditingItem({ id: bill.id, type: 'bill' });
-                                            }
-                                        }}
-                                    />
-                                ) : optionsView === 'Analytics' ? (
-                                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading analytics…</div>}>
-                                        <VendorAnalyticsPage />
-                                    </React.Suspense>
-                                ) : optionsView === 'Reports' ? (
-                                    <div className="h-full flex flex-col max-w-7xl mx-auto w-full">
-                                        {/* Report Selection Menu */}
-                                        <div className="mb-6 flex-shrink-0 bg-app-toolbar/40 p-4 rounded-xl border border-app-border flex items-center justify-between">
-                                            <div>
-                                                <h3 className="font-bold text-app-text">Vendor Reports</h3>
-                                                <p className="text-sm text-app-muted">Analyze your spending and vendor performance</p>
-                                            </div>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-sm font-medium text-app-muted">Report Type:</span>
-                                                <div className="relative min-w-[240px]">
-                                                    <select
-                                                        value={selectedReport}
-                                                        onChange={(e) => setSelectedReport(e.target.value)}
-                                                        className="w-full pl-4 pr-10 py-2 ds-input-field rounded-lg appearance-none font-medium shadow-sm transition-all"
-                                                        aria-label="Select report"
-                                                    >
-                                                        <option value="vendor-comparison">Vendor Comparison Report</option>
-                                                        <option value="vendor-ledger">Vendor Ledger Report</option>
-                                                        {reportDefinitions
-                                                            .filter(r => r.title.toLowerCase().includes('vendor'))
-                                                            .map(report => (
-                                                                <option key={report.id} value={report.id}>
-                                                                    {report.title}
-                                                                </option>
-                                                            ))}
-                                                    </select>
-                                                    <div className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none text-app-muted">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                                        </svg>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        {/* Report Display */}
-                                        <div className="flex-grow min-h-0 overflow-hidden bg-app-card rounded-xl shadow-ds-card border border-app-border">
-                                            {selectedReport === 'vendor-comparison' ? (
-                                                <VendorComparisonReport />
-                                            ) : selectedReport === 'vendor-ledger' ? (
-                                                <VendorLedgerReport />
-                                            ) : (
-                                                <div className="p-12 text-center">
-                                                    <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-app-toolbar text-app-muted mb-4">
-                                                        {ICONS.barChart}
-                                                    </div>
-                                                    <h3 className="text-lg font-bold text-app-text mb-1">Select a Report</h3>
-                                                    <p className="text-app-muted">Choose a report type to view analysis</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                ) : (
-                                    <div className="flex flex-col items-center justify-center h-full max-w-md mx-auto text-center p-8">
-                                        <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center mb-6 shadow-ds-card border border-primary/20">
-                                            <div className="w-12 h-12 text-primary opacity-80">
-                                                {ICONS.users}
-                                            </div>
-                                        </div>
-                                        <h2 className="text-2xl font-bold text-app-text mb-3">Select a Vendor</h2>
-                                        <p className="text-app-muted mb-8 leading-relaxed">
-                                            Select a vendor from the list to view their ledger, bills, and manage payments. Or use the views above to see all data.
-                                        </p>
-                                        <div className="flex flex-wrap justify-center gap-3">
-                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-primary"></span>
-                                                Manage Bills
-                                            </div>
-                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-ds-success"></span>
-                                                Record Payments
-                                            </div>
-                                            <div className="px-4 py-2 bg-app-card border border-app-border rounded-lg shadow-ds-card text-sm font-medium text-app-text flex items-center gap-2">
-                                                <span className="w-2 h-2 rounded-full bg-primary"></span>
-                                                Track Expenses
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
+                                {renderDirectoryPlaceholder()}
                             </div>
                         </div>
                     )}
                 </div>
+            </div>
+            ) : (
+                <div className="flex-grow flex flex-col min-h-0 overflow-hidden p-3 md:p-4">
+                    <div className="flex-grow flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border min-h-0 overflow-hidden">
+                        <div className="flex-grow min-h-0 p-4 overflow-auto">
+                            {renderGlobalProcurementView()}
+                        </div>
+                    </div>
+                </div>
+            )}
             </div>
 
             {billToEdit && (

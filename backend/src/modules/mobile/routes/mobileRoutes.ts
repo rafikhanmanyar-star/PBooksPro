@@ -29,10 +29,12 @@ import {
 import type { UnpostedTransactionStatus } from '../types/index.js';
 import {
   approveMobileApproval,
+  bulkApproveMobileApprovals,
   getMobileInstallmentPlanDetail,
   listMobileApprovals,
   rejectMobileApproval,
 } from '../services/mobileApprovalsService.js';
+import { getMobileCommandCenterSnapshot } from '../services/mobileCommandCenterService.js';
 import { listMobileNotifications } from '../services/mobileNotificationsService.js';
 
 export const mobileRouter = Router();
@@ -65,6 +67,30 @@ async function cachedSummary(
   memoryCacheSet(key, data, MOBILE_CACHE_TTL);
   return data;
 }
+
+mobileRouter.get('/mobile/command-center', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  const userId = req.userId;
+  if (!tenantId || !userId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const cacheKey = `mobile:${tenantId}:${userId}:command-center`;
+  try {
+    const cached = memoryCacheGet(cacheKey);
+    if (cached) {
+      sendSuccess(res, cached);
+      return;
+    }
+    const data = await withClient((client) =>
+      getMobileCommandCenterSnapshot(client, tenantId, userId, req.role)
+    );
+    memoryCacheSet(cacheKey, data, MOBILE_CACHE_TTL);
+    sendSuccess(res, data);
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
 
 mobileRouter.get('/mobile/dashboard', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
@@ -347,6 +373,35 @@ mobileRouter.get('/mobile/approvals', async (req: AuthedRequest, res) => {
       listMobileApprovals(client, tenantId, userId, req.role)
     );
     sendSuccess(res, items);
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+mobileRouter.post('/mobile/approvals/bulk-approve', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  const userId = req.userId;
+  if (!tenantId || !userId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  const parsed = items
+    .filter((x: unknown) => x && typeof x === 'object')
+    .map((x: { type?: string; id?: string }) => ({
+      type: String(x.type ?? ''),
+      id: String(x.id ?? ''),
+    }))
+    .filter((x: { type: string; id: string }) => x.type && x.id);
+  if (parsed.length === 0) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', 'items array required');
+    return;
+  }
+  try {
+    const result = await withClient((client) =>
+      bulkApproveMobileApprovals(client, tenantId, userId, req.role, parsed)
+    );
+    sendSuccess(res, result);
   } catch (e) {
     handleRouteError(res, e);
   }

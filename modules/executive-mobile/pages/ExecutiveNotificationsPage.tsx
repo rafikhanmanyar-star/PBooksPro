@@ -89,7 +89,7 @@ function AlertCard({
   );
 }
 
-export default function ExecutiveNotificationsPage() {
+export default function ExecutiveNotificationsPage({ variant = 'alerts' }: { variant?: 'alerts' | 'inbox' }) {
   const { setView } = useExecutiveMode();
   const { data, isLoading, refetch, isFetching } = useMobileNotifications();
   const dismissNotification = useDismissUserNotification();
@@ -135,13 +135,17 @@ export default function ExecutiveNotificationsPage() {
   };
 
   return (
-    <div className="executive-home-page min-h-full pb-28">
+    <div className="executive-home-page executive-v2-page min-h-full pb-28">
       <div className="px-4 pt-5 pb-4 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-app-text">Alerts</h1>
+            <h1 className="text-xl font-bold text-app-text">
+              {variant === 'inbox' ? 'Executive Inbox' : 'Alerts'}
+            </h1>
             <p className="text-sm text-app-muted mt-1">
-              {items.length} active alert{items.length === 1 ? '' : 's'} across your organization
+              {variant === 'inbox'
+                ? 'Prioritized decisions and operational signals in one stream.'
+                : `${items.length} active alert${items.length === 1 ? '' : 's'} across your organization`}
             </p>
           </div>
           <button

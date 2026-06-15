@@ -311,7 +311,7 @@ export const PRODUCT_TOURS: Record<ProductTourId, ProductTourDefinition> = {
       },
       {
         id: 'vendors',
-        title: '8 · Vendor directory',
+        title: '8 · Procurement',
         body: 'Add construction vendors and suppliers. Their bills, quotations, and payment history stay in one place.',
         selector: '[data-tour="vendor-directory"]',
         page: 'vendorDirectory',

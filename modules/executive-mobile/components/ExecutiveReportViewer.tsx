@@ -4,6 +4,7 @@ import { usePermissions } from '../../../hooks/usePermissions';
 import type { ExecutiveReportId } from '../constants/moduleNav';
 
 const REPORT_COMPONENTS: Record<ExecutiveReportId, React.LazyExoticComponent<React.FC>> = {
+  executive_summary: lazy(() => import('./ExecutiveSummaryReport')),
   pl: lazy(() => import('../../../components/reports/ProjectProfitLossReport')),
   bs: lazy(() => import('../../../components/reports/ProjectBalanceSheetReport')),
   cf: lazy(() => import('../../../components/reports/ProjectCashFlowReport')),

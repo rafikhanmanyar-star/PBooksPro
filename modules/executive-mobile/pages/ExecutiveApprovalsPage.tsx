@@ -5,6 +5,10 @@ import { formatApiErrorMessage } from '../../../utils/formatApiErrorMessage';
 import { useNotification } from '../../../context/NotificationContext';
 import ExecutiveCategoryChips from '../components/ExecutiveCategoryChips';
 import MarketingPlanDetailSheet from '../components/MarketingPlanDetailSheet';
+import ApprovalSwipeCard from '../components/ApprovalSwipeCard';
+import ExecutiveApprovalAnalyticsBanner from '../components/ExecutiveApprovalAnalyticsBanner';
+import { useMobileCommandCenter } from '../hooks/useMobileCommandCenter';
+import { bulkApproveMobileItems } from '../../../services/api/mobileCommandCenterApi';
 import {
   APPROVAL_TYPE_META,
   APPROVAL_TYPE_ORDER,
@@ -151,12 +155,14 @@ function ApprovalCard({
 }
 
 export default function ExecutiveApprovalsPage() {
+  const { data: commandCenter } = useMobileCommandCenter();
   const { data, isLoading, refetch, isFetching } = useMobileApprovals();
   const approve = useApproveMobileItem();
   const reject = useRejectMobileItem();
   const { showToast } = useNotification();
   const [category, setCategory] = useState<ApprovalCategoryId>('all');
   const [marketingFilter, setMarketingFilter] = useState<MarketingPlanFilter>('all');
+  const [swipeMode, setSwipeMode] = useState(true);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const { data: planDetail, isLoading: planLoading } = useMobileInstallmentPlanDetail(selectedPlanId);
@@ -247,18 +253,33 @@ export default function ExecutiveApprovalsPage() {
 
   const renderList = (items: MobileApprovalItem[]) => (
     <ul className="space-y-3">
-      {items.map((item) => (
-        <ApprovalCard
-          key={`${item.type}:${item.id}`}
-          item={item}
-          busy={busy}
-          onApprove={() => void handleApprove(item.type, item.id)}
-          onReject={() => void handleReject(item.type, item.id)}
-          onViewPlan={
-            item.type === 'installment_plan' ? () => setSelectedPlanId(item.id) : undefined
-          }
-        />
-      ))}
+      {items.map((item) =>
+        swipeMode && item.canApprove && !item.requiresFullErp ? (
+          <li key={`${item.type}:${item.id}`}>
+            <ApprovalSwipeCard
+              item={item}
+              busy={busy}
+              onApprove={() => void handleApprove(item.type, item.id)}
+              onReject={() => void handleReject(item.type, item.id)}
+              onViewPlan={
+                item.type === 'installment_plan' ? () => setSelectedPlanId(item.id) : undefined
+              }
+            />
+          </li>
+        ) : (
+          <li key={`${item.type}:${item.id}`}>
+            <ApprovalCard
+              item={item}
+              busy={busy}
+              onApprove={() => void handleApprove(item.type, item.id)}
+              onReject={() => void handleReject(item.type, item.id)}
+              onViewPlan={
+                item.type === 'installment_plan' ? () => setSelectedPlanId(item.id) : undefined
+              }
+            />
+          </li>
+        )
+      )}
     </ul>
   );
 
@@ -267,20 +288,55 @@ export default function ExecutiveApprovalsPage() {
       <div className="px-4 pt-5 pb-4 space-y-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-xl font-bold text-app-text">Approvals</h1>
+            <h1 className="text-xl font-bold text-app-text">Approval Center</h1>
             <p className="text-sm text-app-muted mt-1">
               {pendingActionCount} pending · {allItems.length} total in queue
             </p>
           </div>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <button
+              type="button"
+              className="text-sm font-semibold text-ds-primary touch-manipulation min-h-[36px] px-1 disabled:opacity-50"
+              disabled={isFetching}
+              onClick={() => void refetch()}
+            >
+              {isFetching ? 'Updating…' : 'Refresh'}
+            </button>
+            <button
+              type="button"
+              className="text-xs font-medium text-app-muted touch-manipulation"
+              onClick={() => setSwipeMode((v) => !v)}
+            >
+              {swipeMode ? 'Card view' : 'Swipe view'}
+            </button>
+          </div>
+        </div>
+
+        {commandCenter?.approvalAnalytics && (
+          <ExecutiveApprovalAnalyticsBanner analytics={commandCenter.approvalAnalytics} />
+        )}
+
+        {pendingActionCount > 0 && (
           <button
             type="button"
-            className="text-sm font-semibold text-ds-primary touch-manipulation min-h-[44px] px-1 shrink-0 disabled:opacity-50"
-            disabled={isFetching}
-            onClick={() => void refetch()}
+            disabled={busy}
+            className="w-full py-3 rounded-xl bg-emerald-600 text-white font-semibold text-sm touch-manipulation disabled:opacity-50"
+            onClick={async () => {
+              const actionable = (data ?? []).filter((a) => a.canApprove && !a.requiresFullErp);
+              try {
+                const result = await bulkApproveMobileItems(
+                  actionable.map((a) => ({ type: a.type, id: a.id }))
+                );
+                showToast(`Bulk approved ${result.approved} item(s).`, 'success');
+                await refetch();
+              } catch (e) {
+                showToast(formatApiErrorMessage(e), 'error');
+              }
+            }}
           >
-            {isFetching ? 'Updating…' : 'Refresh'}
+            Approve all actionable ({pendingActionCount})
           </button>
-        </div>
+        )}
 
         <ExecutiveCategoryChips
           categories={chips}

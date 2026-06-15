@@ -22,6 +22,12 @@ import MyTransactionsPage from './pages/MyTransactionsPage';
 
 import ExecutiveApprovalsPage from './pages/ExecutiveApprovalsPage';
 
+import ExecutiveInboxPage from './pages/ExecutiveInboxPage';
+
+import ExecutiveCashPositionPage from './pages/ExecutiveCashPositionPage';
+
+import ExecutiveConstructionDashboardPage from './pages/ExecutiveConstructionDashboardPage';
+
 import ExecutiveNotificationsPage from './pages/ExecutiveNotificationsPage';
 
 import MobileOfflineWarning from '../../components/ui/MobileOfflineWarning';
@@ -93,6 +99,18 @@ export default function ExecutiveMobileShell() {
       case 'notifications':
 
         return <ExecutiveNotificationsPage />;
+
+      case 'inbox':
+
+        return <ExecutiveInboxPage />;
+
+      case 'cashPosition':
+
+        return <ExecutiveCashPositionPage />;
+
+      case 'constructionDashboard':
+
+        return <ExecutiveConstructionDashboardPage />;
 
       case 'moduleList':
 

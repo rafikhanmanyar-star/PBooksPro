@@ -8,6 +8,14 @@ import { ICONS } from '../../../constants';
 
 const REPORT_GROUPS = [
   {
+    id: 'executive',
+    label: 'Executive Summary',
+    description: 'One-page leadership snapshot',
+    icon: ICONS.home,
+    iconWrap: 'executive-metric-icon executive-metric-icon--teal',
+    reportIds: ['executive_summary'] as const,
+  },
+  {
     id: 'financial',
     label: 'Financial Statements',
     description: 'Core accounting and performance reports',
