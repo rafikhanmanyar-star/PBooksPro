@@ -45,6 +45,7 @@ export type Permission =
   | 'procurement.quotations.edit'
   | 'procurement.quotations.approve'
   | 'procurement.quotations.compare'
+  | 'procurement.quotations.select'
   | 'procurement.price_validation.override'
   | 'procurement.price_history.read';
 
@@ -82,6 +83,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'procurement.quotations.edit',
   'procurement.quotations.approve',
   'procurement.quotations.compare',
+  'procurement.quotations.select',
   'procurement.price_validation.override',
   'procurement.price_history.read',
 ] as const;
@@ -142,6 +144,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'procurement.quotations.edit': 'Edit vendor quotation',
   'procurement.quotations.approve': 'Approve vendor quotation',
   'procurement.quotations.compare': 'Compare vendor quotations',
+  'procurement.quotations.select': 'Select preferred vendor quotation',
   'procurement.price_validation.override': 'Override price validation',
   'procurement.price_history.read': 'View vendor price history',
 };
@@ -165,6 +168,7 @@ const PROCUREMENT_ALL: Permission[] = [
   'procurement.quotations.edit',
   'procurement.quotations.approve',
   'procurement.quotations.compare',
+  'procurement.quotations.select',
   'procurement.price_validation.override',
   'procurement.price_history.read',
 ];
@@ -216,6 +220,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'procurement.quotations.create',
     'procurement.quotations.edit',
     'procurement.quotations.compare',
+    'procurement.quotations.select',
     'procurement.price_history.read',
   ]),
   sales_user: new Set([...PROJECT_SELLING_SALES_USER_PERMISSIONS]),
