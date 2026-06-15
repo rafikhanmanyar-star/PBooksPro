@@ -4,7 +4,7 @@ import type {
   BackupJobRunRow,
   BackupJobStatus,
   BackupFrequency,
-} from '../../../services/backupSchedulerService.js';
+} from '../services/backupSchedulerService.js';
 
 function mapJob(row: pg.QueryResultRow): BackupJobRow {
   return row as BackupJobRow;

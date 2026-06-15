@@ -9,7 +9,7 @@ import {
   rowToPeCategoryApi,
   softDeleteProjectExpenseCategory,
   upsertProjectExpenseCategory,
-} from '../../../services/projectExpenseCategoryService.js';
+} from '../services/projectExpenseCategoryService.js';
 import {
   approveProjectExpenseVoucher,
   createProjectExpenseVoucher,
@@ -22,14 +22,14 @@ import {
   submitProjectExpenseVoucher,
   unpostProjectExpenseVoucher,
   updateProjectExpenseVoucher,
-} from '../../../services/projectExpenseVoucherService.js';
+} from '../services/projectExpenseVoucherService.js';
 import {
   getPeVExpenseByCategory,
   getPeVExpenseByProject,
   getPeVExpenseByVendor,
   getPeVExpenseTrend,
   getProjectExpenseRegister,
-} from '../../../services/pevReportService.js';
+} from '../services/pevReportService.js';
 
 export const projectExpenseVoucherRouter = Router();
 

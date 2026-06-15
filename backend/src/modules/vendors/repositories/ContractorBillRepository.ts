@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ContractorBillRow } from '../../../services/contractorBillingService.js';
+import type { ContractorBillRow } from '../services/contractorBillingService.js';
 
 const BILL_COLS = `id, tenant_id, contractor_contact_id, bill_number, bill_date, amount::text, status,
   description, project_id, construction_expense_account_id, residual_account_id,

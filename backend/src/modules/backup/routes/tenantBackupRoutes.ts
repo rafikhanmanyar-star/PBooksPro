@@ -12,21 +12,21 @@ import {
   buildTenantBackupPayload,
   compressTenantBackup,
   decompressTenantBackup,
-} from '../../../services/tenantBackupService.js';
+} from '../services/tenantBackupService.js';
 import {
   buildRestorePreview,
   executeTenantRestore,
   listTenantRestoreRuns,
   type ConflictPolicy,
   type RestoreMode,
-} from '../../../services/tenantRestoreService.js';
-import { isDatabaseBackupRestoreEnabled } from '../../../services/fullPgBackupService.js';
+} from '../services/tenantRestoreService.js';
+import { isDatabaseBackupRestoreEnabled } from '../services/fullPgBackupService.js';
 import {
   consumeRestoreSession,
   purgeExpiredRestoreSessions,
-} from '../../../services/backup/backupRestoreAuthService.js';
-import { getBackupSecuritySettings } from '../../../services/backup/backupSecuritySettingsService.js';
-import { backupAuditContext, logBackupAudit } from '../../../services/backup/backupAuditService.js';
+} from '../services/backup/backupRestoreAuthService.js';
+import { getBackupSecuritySettings } from '../services/backup/backupSecuritySettingsService.js';
+import { backupAuditContext, logBackupAudit } from '../services/backup/backupAuditService.js';
 import { getUserEmailForAudit } from '../services/backupAuditContext.js';
 
 export const tenantBackupRouter = Router();

@@ -14,13 +14,13 @@ import {
   retryFailedRun,
   runBackupJobById,
   getBackupStorageRoot,
-} from '../../../services/backupSchedulerService.js';
-import { backupAuditContext, logBackupAudit } from '../../../services/backup/backupAuditService.js';
+} from '../services/backupSchedulerService.js';
+import { backupAuditContext, logBackupAudit } from '../services/backup/backupAuditService.js';
 import { getUserEmailForAudit } from '../services/backupAuditContext.js';
 import {
   isDatabaseBackupRestoreEnabled,
   isPgBackupAvailable,
-} from '../../../services/fullPgBackupService.js';
+} from '../services/fullPgBackupService.js';
 
 export const backupSchedulerRouter = Router();
 

@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayslipRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayslipRow } from '../services/payroll/payrollTypes.js';
 
 const PAYSLIP_COLUMNS = `id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
   total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,

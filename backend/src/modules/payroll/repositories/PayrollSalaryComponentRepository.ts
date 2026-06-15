@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayrollSalaryComponentRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayrollSalaryComponentRow } from '../services/payroll/payrollTypes.js';
 
 const COMPONENT_COLUMNS = `id, tenant_id, name, type, is_percentage, default_value::text, is_taxable, is_active, deleted_at, created_at, updated_at`;
 

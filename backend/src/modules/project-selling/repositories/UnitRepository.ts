@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { UnitRow } from '../../../services/unitsService.js';
+import type { UnitRow } from '../../properties/services/unitsService.js';
 
 const UNIT_COLUMNS = `id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`;
 

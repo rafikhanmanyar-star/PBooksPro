@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayrollRunRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayrollRunRow } from '../services/payroll/payrollTypes.js';
 
 const RUN_COLUMNS = `id, tenant_id, month, year, period_start, period_end, status, total_amount::text, employee_count,
   created_by, updated_by, approved_by, approved_at, paid_at, deleted_at, created_at, updated_at`;

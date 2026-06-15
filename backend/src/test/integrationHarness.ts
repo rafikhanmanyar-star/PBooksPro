@@ -6,7 +6,7 @@
 import type pg from 'pg';
 import '../loadEnv.js';
 import { getPool } from '../db/pool.js';
-import { bootstrapTenantChart } from '../services/tenantBootstrap.js';
+import { bootstrapTenantChart } from '../modules/organization/services/tenantBootstrap.js';
 
 export const INTEGRATION_TENANT_ID = '__integration_test__';
 

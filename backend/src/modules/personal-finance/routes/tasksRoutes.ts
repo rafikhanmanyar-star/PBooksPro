@@ -3,7 +3,7 @@ import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiRe
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { requireAdminRole } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
-import type { PersonalTaskRow } from '../../../services/personalTasksService.js';
+import type { PersonalTaskRow } from '../services/personalTasksService.js';
 import {
   createPersonalTask,
   deletePersonalTask,
@@ -13,7 +13,7 @@ import {
   listUpcomingPersonalTasks,
   rowToPersonalTaskApi,
   updatePersonalTask,
-} from '../../../services/personalTasksService.js';
+} from '../services/personalTasksService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const tasksRouter = Router();

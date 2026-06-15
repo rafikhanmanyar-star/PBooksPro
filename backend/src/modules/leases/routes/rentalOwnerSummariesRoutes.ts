@@ -5,7 +5,7 @@ import { getPool } from '../../../db/pool.js';
 import {
   listAllOwnerBalancesForTenant,
   listOwnerBalancesForOwner,
-} from '../../../services/ownerRentalSummaryService.js';
+} from '../services/ownerRentalSummaryService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const rentalOwnerSummariesRouter = Router();

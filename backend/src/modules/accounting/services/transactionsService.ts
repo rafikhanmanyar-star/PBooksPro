@@ -8,14 +8,14 @@ import {
   type ExpenseCashValidationBatchContext,
   type ProjectCashTxRow,
 } from '../../../financial/expenseCashValidation.js';
-import { syncOwnerSummariesForTransactionChange } from '../../../services/ownerRentalSummaryService.js';
+import { syncOwnerSummariesForTransactionChange } from '../../leases/services/ownerRentalSummaryService.js';
 import {
   isVendorSettlementCashMirrorReference,
 } from '../../../constants/vendorSettlement.js';
 import {
   reverseTransactionJournalMirror,
   syncTransactionJournalMirror,
-} from '../../../services/transactionJournalPostingService.js';
+} from './transactionJournalPostingService.js';
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../../../core/entityMutation.js';

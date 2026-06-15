@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { getPool } from './db/pool.js';
-import { bootstrapTenantChart } from './services/tenantBootstrap.js';
+import { bootstrapTenantChart } from './modules/organization/services/tenantBootstrap.js';
 import { startTrialSubscription } from './services/billing/subscriptionService.js';
 import { logger } from './utils/logger.js';
 import { validatePassword } from './utils/passwordPolicy.js';

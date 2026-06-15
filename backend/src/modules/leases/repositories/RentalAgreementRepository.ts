@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { RentalAgreementRow } from '../../../services/rentalAgreementsService.js';
+import type { RentalAgreementRow } from '../services/rentalAgreementsService.js';
 
 const RENTAL_AGREEMENT_COLUMNS = `id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
   rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,

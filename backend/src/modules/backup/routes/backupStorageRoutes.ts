@@ -10,21 +10,21 @@ import {
   testStorageConnection,
   toPublicSettings,
   type SaveBackupStorageSettingsInput,
-} from '../../../services/backup/backupStorageSettingsService.js';
-import type { StorageProviderId } from '../../../services/backup/storage/types.js';
-import { defaultEndpointHint } from '../../../services/backup/storage/providerFactory.js';
+} from '../services/backup/backupStorageSettingsService.js';
+import type { StorageProviderId } from '../services/backup/storage/types.js';
+import { defaultEndpointHint } from '../services/backup/storage/providerFactory.js';
 import {
   executeOffsiteUploadForRun,
   listOffsiteUploads,
   restoreDatabaseFromCloudRun,
   retryOffsiteUpload,
-} from '../../../services/backup/backupOffsiteService.js';
+} from '../services/backup/backupOffsiteService.js';
 import {
   consumeRestoreSession,
   purgeExpiredRestoreSessions,
-} from '../../../services/backup/backupRestoreAuthService.js';
-import { getBackupSecuritySettings } from '../../../services/backup/backupSecuritySettingsService.js';
-import { backupAuditContext, logBackupAudit } from '../../../services/backup/backupAuditService.js';
+} from '../services/backup/backupRestoreAuthService.js';
+import { getBackupSecuritySettings } from '../services/backup/backupSecuritySettingsService.js';
+import { backupAuditContext, logBackupAudit } from '../services/backup/backupAuditService.js';
 import { getUserEmailForAudit } from '../services/backupAuditContext.js';
 
 export const backupStorageRouter = Router();

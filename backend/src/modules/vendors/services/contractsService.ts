@@ -12,7 +12,7 @@ import {
   pickRetentionFromBody,
   retentionFieldsToApi,
   retentionWriteParams,
-} from '../../../services/contractRetentionService.js';
+} from './contractRetentionService.js';
 
 export type ContractRow = {
   id: string;

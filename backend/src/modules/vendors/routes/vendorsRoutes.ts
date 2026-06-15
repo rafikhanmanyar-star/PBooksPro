@@ -9,7 +9,7 @@ import {
   rowToVendorApi,
   softDeleteVendor,
   updateVendor,
-} from '../../../services/vendorsService.js';
+} from '../services/vendorsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const vendorsRouter = Router();

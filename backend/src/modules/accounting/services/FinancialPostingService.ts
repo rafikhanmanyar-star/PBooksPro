@@ -2,36 +2,36 @@ import type pg from 'pg';
 import { validateBalanced } from '../../../financial/validation.js';
 import { assertAccountingPeriodOpen } from './accountingPeriodService.js';
 import { emitFinancialPosted } from '../../../core/realtime.js';
-import type { CreateJournalBody } from '../../../services/journalService.js';
+import type { CreateJournalBody } from './journalService.js';
 import { JournalRepository } from '../repositories/JournalRepository.js';
 import {
   buildJournalBodyFromBill,
   buildJournalLinesFromBill,
   BILL_JOURNAL_SOURCE_MODULE,
   shouldSkipBillJournalMirror,
-} from '../../../services/billJournalPostingService.js';
+} from './billJournalPostingService.js';
 import type { BillRow } from '../../vendors/services/billsService.js';
 import {
   buildJournalBodyFromInvoice,
   buildJournalLinesFromInvoice,
   INVOICE_JOURNAL_SOURCE_MODULE,
   shouldSkipInvoiceJournalMirror,
-} from '../../../services/invoiceJournalPostingService.js';
+} from './invoiceJournalPostingService.js';
 import type { InvoiceRow } from '../../customers/services/invoicesService.js';
 import {
   buildJournalBodyFromTransaction,
   buildJournalLinesFromTransaction,
   TRANSACTION_JOURNAL_SOURCE_MODULE,
   shouldSkipTransactionJournalMirror,
-} from '../../../services/transactionJournalPostingService.js';
+} from './transactionJournalPostingService.js';
 import type { TransactionRow } from './transactionsService.js';
 import {
   buildJournalBodyFromPeV,
   buildJournalLinesFromPeV,
   PEV_JOURNAL_SOURCE_MODULE,
   shouldSkipPeVJournalMirror,
-} from '../../../services/pevJournalPostingService.js';
-import type { ProjectExpenseVoucherRow } from '../../../services/projectExpenseVoucherService.js';
+} from './pevJournalPostingService.js';
+import type { ProjectExpenseVoucherRow } from '../../project-expense/services/projectExpenseVoucherService.js';
 
 export type PostingOptions = {
   allowClosedPeriod?: boolean;

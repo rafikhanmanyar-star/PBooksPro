@@ -9,7 +9,7 @@ import {
   rowToUnitApi,
   softDeleteUnit,
   updateUnit,
-} from '../../../services/unitsService.js';
+} from '../services/unitsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const unitsRouter = Router();

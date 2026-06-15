@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { SalesReturnRow } from '../../../services/salesReturnsService.js';
+import type { SalesReturnRow } from '../services/salesReturnsService.js';
 
 const SALES_RETURN_COLUMNS = `id, tenant_id, return_number, agreement_id, return_date, reason, reason_notes,
   penalty_percentage::text, penalty_amount::text, refund_amount::text, status,

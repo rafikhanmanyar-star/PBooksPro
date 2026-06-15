@@ -13,7 +13,7 @@ import {
   rowAdvanceToApi,
   rowBillToApi,
   type AdjustmentInput,
-} from '../../../services/contractorBillingService.js';
+} from '../services/contractorBillingService.js';
 
 export const contractorRouter = Router();
 

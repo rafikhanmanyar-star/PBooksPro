@@ -10,7 +10,7 @@ import {
   rowToProjectApi,
   softDeleteProject,
   updateProject,
-} from '../../../services/projectsService.js';
+} from '../services/projectsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const projectsRouter = Router();

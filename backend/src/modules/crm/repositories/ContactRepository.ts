@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ContactRow } from '../../../services/contactsService.js';
+import type { ContactRow } from '../services/contactsService.js';
 
 const CONTACT_COLUMNS = `id, tenant_id, name, type, description, contact_no, company_name, address, user_id, version, deleted_at, created_at, updated_at`;
 

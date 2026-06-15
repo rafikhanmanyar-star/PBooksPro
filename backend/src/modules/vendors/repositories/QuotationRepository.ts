@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { QuotationRow } from '../../../services/quotationsService.js';
+import type { QuotationRow } from '../services/quotationsService.js';
 
 const QUOTATION_COLUMNS = `id, tenant_id, vendor_id, name, quotation_number, date, expiry_date, enable_price_validation, validation_scope, is_active,
   contact_person, contact_phone, contact_email, currency, project_id, building_id, package_name, quotation_type, status,

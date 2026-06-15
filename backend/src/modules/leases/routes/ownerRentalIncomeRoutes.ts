@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool } from '../../../db/pool.js';
-import { getOwnerRentalIncomeReportJson } from '../../../services/ownerRentalIncomeReportService.js';
+import { getOwnerRentalIncomeReportJson } from '../services/ownerRentalIncomeReportService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const ownerRentalIncomeRouter = Router();

@@ -4,7 +4,7 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../../constants/globalSystemChart.js';
 import { todayUtcYyyyMmDd } from '../../../utils/dateOnly.js';
 import { assertAccountingPeriodOpen } from '../services/accountingPeriodService.js';
-import { appendAuditEvent } from '../../../services/enterpriseAuditService.js';
+import { appendAuditEvent } from '../../organization/services/enterpriseAuditService.js';
 import {
   roundMoney,
   validateBalanced,

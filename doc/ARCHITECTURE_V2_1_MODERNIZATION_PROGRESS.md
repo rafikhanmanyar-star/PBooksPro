@@ -150,10 +150,18 @@ npm run verify:realtime:track-e
 | **Vendors** | `contractsService` → `modules/vendors/services/` (routes in project-selling import cross-module) |
 | **Accounting periods** | `accountingPeriodService` → `modules/accounting/services/` (`FinancialPostingService`, `JournalRepository` use module path) |
 | **Financial core (batch 4)** | `billsService` → vendors; `invoicesService` → customers; `transactionsService` → accounting |
+| **Journal posting (batch 5)** | `billJournalPostingService`, `invoiceJournalPostingService`, `transactionJournalPostingService` → `modules/accounting/services/` |
+| **Journal core + backfill (batch 6)** | `journalService`, `pevJournalPostingService`, `billJournalBackfillService`, `invoiceJournalBackfillService`, `transactionJournalBackfillService` → `modules/accounting/services/` |
+| **Ledger load + state sync (batch 7)** | `journalLedgerLoadService`, `journalDimensionsBackfillService` → accounting; `stateChangesService`, `appStateBulkService` → `modules/app-settings/services/` |
+| **Reports + bulk mutation (batch 8)** | Core GL reports → accounting; lease ledger reports → leases; vendor/client ledgers → vendors/customers; `pevReportService` → project-expense; `appStateBulkMutationService` → app-settings |
+| **Domain CRUD (batch 9)** | `contactsService` → crm; `buildingsService`/`propertiesService`/`unitsService` → properties; `vendorsService`/`quotationsService` → vendors; `rentalAgreementsService` → leases; `projectsService`/`projectReceivedAssetsService`/`salesReturnsService` → project-selling; `financialReconciliationService` → accounting |
+| **Settings, sync, payroll (batch 10)** | `appSettingsService` → app-settings; `changeLogService` → organization; `transactionLogService` → accounting; personal finance services → personal-finance; `payrollService` (+ payroll subfolder) → payroll; `recurringInvoiceTemplatesService` → customers; `reportScheduleScheduler` → reporting |
+| **Infra + domain (batch 11)** | `payrollLedgerService` → payroll; `personalTasksService` → personal-finance; `projectExpenseVoucherService`/`projectExpenseCategoryService` → project-expense; `tenantBootstrap`/`tenantDataManagementService`/`syncQueueService`/`presenceService` → organization; backup services → backup module |
+| **Vendor billing + fiscal (batch 12 — final domain batch)** | Contractor billing + vendor bill advance settlement stack, `contractRetentionService`, quotation intelligence/validation → vendors; `fiscalPeriodCloseService` + `investorJournalPostingService` → accounting; `enterpriseAuditService` + `systemFeatureService` → organization; `ownerRentalSummaryService` + `rentalBillsDashboardService` → leases; `services/backup/*` → `modules/backup/services/backup/`; `services/dr/*` → `modules/dr/services/dr/` |
 | **Flat shims** | Corresponding `backend/src/services/*.ts` files re-export only |
 | **Module imports** | Routes and repositories import from module `services/` layer |
 
-**Remaining P3 backlog:** journal posting services (`*JournalPostingService`), report services, `stateChangesService` / `appStateBulkService` flat imports — retire incrementally.
+**E.3 domain service migration:** complete for tenant-facing modules (batches 3–12). **Intentional flat exceptions:** platform subfolders (`services/auth/`, `services/billing/`, `services/dashboard/`, etc.), one-off scripts (`pmCycleResetService`), and middleware that may still import via shims.
 
 ---
 

@@ -9,14 +9,14 @@ import {
   getBackupSecurityStatus,
   rotateBackupKeyVersion,
   updateBackupSecuritySettings,
-} from '../../../services/backup/backupSecuritySettingsService.js';
+} from '../services/backup/backupSecuritySettingsService.js';
 import {
   canRestoreBackup,
   createRestoreSession,
   purgeExpiredRestoreSessions,
   RESTORE_CONFIRM_PHRASE,
-} from '../../../services/backup/backupRestoreAuthService.js';
-import { backupAuditContext } from '../../../services/backup/backupAuditService.js';
+} from '../services/backup/backupRestoreAuthService.js';
+import { backupAuditContext } from '../services/backup/backupAuditService.js';
 
 export const backupSecurityRouter = Router();
 

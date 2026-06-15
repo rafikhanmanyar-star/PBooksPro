@@ -8,7 +8,7 @@ import {
   rowToContactApi,
   softDeleteContact,
   updateContact,
-} from '../../../services/contactsService.js';
+} from '../services/contactsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 

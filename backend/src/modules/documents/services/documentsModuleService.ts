@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
-import type { AuditRequestContext } from '../../../services/enterpriseAuditService.js';
+import type { AuditRequestContext } from '../../organization/services/enterpriseAuditService.js';
 import { DocumentStorageService } from './DocumentStorageService.js';
 import {
   metadataRowToDocumentApi,

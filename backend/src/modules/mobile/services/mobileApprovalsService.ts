@@ -5,7 +5,7 @@ import {
   listProjectExpenseVouchers,
   rejectProjectExpenseVoucher,
   rowToPeVApi,
-} from '../../../services/projectExpenseVoucherService.js';
+} from '../../project-expense/services/projectExpenseVoucherService.js';
 import {
   getInstallmentPlanById,
   listInstallmentPlans,

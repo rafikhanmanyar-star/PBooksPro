@@ -7,7 +7,7 @@ import {
   getOnlineUsersFromPresence,
   recordPresence,
   type PresenceProfile,
-} from '../../../services/presenceService.js';
+} from '../services/presenceService.js';
 import { touchUserSession } from '../../../services/auth/userSessionService.js';
 import { getLicenseStatusForTenant, validateTenantLicense } from '../../../services/billing/licenseEnforcementService.js';
 import { runSubscriptionMaintenance } from '../../../services/billing/subscriptionLifecycleService.js';

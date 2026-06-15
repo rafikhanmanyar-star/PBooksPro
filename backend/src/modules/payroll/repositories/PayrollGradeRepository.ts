@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayrollGradeRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayrollGradeRow } from '../services/payroll/payrollTypes.js';
 
 const GRADE_COLUMNS = `id, tenant_id, name, description, min_salary::text, max_salary::text, created_by, updated_by,
   deleted_at, created_at, updated_at`;

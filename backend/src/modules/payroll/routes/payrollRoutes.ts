@@ -6,7 +6,7 @@ import { requireResourceQuota } from '../../../middleware/licenseEnforcementMidd
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { perfPayrollLog, perfPayrollNow } from '../../../utils/payrollPerf.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
-import type { BulkPayPayslipLine } from '../../../services/payrollService.js';
+import type { BulkPayPayslipLine } from '../services/payrollService.js';
 import {
   createPayrollRun,
   deletePayrollRun,
@@ -46,12 +46,12 @@ import {
   upsertEmployee,
   upsertGrade,
   upsertPayrollProject,
-} from '../../../services/payrollService.js';
+} from '../services/payrollService.js';
 import {
   fetchEmployeeLedgerPage,
   getEmployeePayrollBalanceFromDb,
   rowToLedgerApi,
-} from '../../../services/payrollLedgerService.js';
+} from '../services/payrollLedgerService.js';
 
 export const payrollRouter = Router();
 

@@ -15,23 +15,23 @@ import { requireOrgUserAdmin } from '../../../middleware/authMiddleware.js';
 import { requireBackupRestoreAdmin } from '../../../middleware/backupSecurityMiddleware.js';
 import { getPool } from '../../../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
-import { buildTenantBackupPayload, compressTenantBackup } from '../../../services/tenantBackupService.js';
+import { buildTenantBackupPayload, compressTenantBackup } from '../services/tenantBackupService.js';
 import {
   isDatabaseBackupRestoreEnabled,
   runPgDumpToFile,
-} from '../../../services/fullPgBackupService.js';
-import { runPgRestoreFromFile } from '../../../services/pgRestoreService.js';
+} from '../services/fullPgBackupService.js';
+import { runPgRestoreFromFile } from '../services/pgRestoreService.js';
 import {
   encryptBackupForDownload,
   sha256Hex,
-} from '../../../services/backup/backupCryptoService.js';
-import { readBackupPlaintextFromBuffer } from '../../../services/backup/backupFileService.js';
-import { getBackupSecuritySettings } from '../../../services/backup/backupSecuritySettingsService.js';
+} from '../services/backup/backupCryptoService.js';
+import { readBackupPlaintextFromBuffer } from '../services/backup/backupFileService.js';
+import { getBackupSecuritySettings } from '../services/backup/backupSecuritySettingsService.js';
 import {
   consumeRestoreSession,
   purgeExpiredRestoreSessions,
-} from '../../../services/backup/backupRestoreAuthService.js';
-import { backupAuditContext, logBackupAudit } from '../../../services/backup/backupAuditService.js';
+} from '../services/backup/backupRestoreAuthService.js';
+import { backupAuditContext, logBackupAudit } from '../services/backup/backupAuditService.js';
 import { getUserEmailForAudit } from '../services/backupAuditContext.js';
 
 export const databaseBackupRouter = Router();

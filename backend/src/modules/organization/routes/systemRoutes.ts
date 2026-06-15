@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { sendSuccess } from '../../../utils/apiResponse.js';
-import { buildSystemInfo } from '../../../services/systemFeatureService.js';
+import { buildSystemInfo } from '../services/systemFeatureService.js';
 
 export const systemRouter = Router();
 

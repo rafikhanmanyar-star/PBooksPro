@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayrollEmployeeRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayrollEmployeeRow } from '../services/payroll/payrollTypes.js';
 
 const EMPLOYEE_COLUMNS = `id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
   department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,

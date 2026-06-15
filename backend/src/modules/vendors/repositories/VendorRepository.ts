@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { VendorRow } from '../../../services/vendorsService.js';
+import type { VendorRow } from '../services/vendorsService.js';
 
 const VENDOR_COLUMNS = `id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`;
 

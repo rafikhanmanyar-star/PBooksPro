@@ -1,7 +1,7 @@
 import type pg from 'pg';
 import { appendAuditEvent, type AuditRequestContext } from '../services/enterpriseAuditService.js';
-import { appendChangeLog, type ChangeLogAction } from '../services/changeLogService.js';
-import { enqueueSyncMutation } from '../services/syncQueueService.js';
+import { appendChangeLog, type ChangeLogAction } from '../modules/organization/services/changeLogService.js';
+import { enqueueSyncMutation } from '../modules/organization/services/syncQueueService.js';
 
 export type DomainMutationInput = {
   tenantId: string;

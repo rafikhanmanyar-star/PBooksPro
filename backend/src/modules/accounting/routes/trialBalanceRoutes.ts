@@ -5,7 +5,7 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import {
   getTrialBalanceReportPayload,
   parseTrialBalanceDimensionParam,
-} from '../../../services/trialBalanceReportService.js';
+} from '../services/trialBalanceReportService.js';
 import { scopeFromReportFilters } from '../../../financial/trialBalanceCore.js';
 import type { TrialBalanceBasis } from '../../../financial/trialBalanceCore.js';
 

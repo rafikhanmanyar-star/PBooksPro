@@ -7,7 +7,7 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { invalidateAuthUserCache } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
-import { appendAuditEvent } from '../../../services/enterpriseAuditService.js';
+import { appendAuditEvent } from '../../organization/services/enterpriseAuditService.js';
 import { validatePassword } from '../../../utils/passwordPolicy.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';

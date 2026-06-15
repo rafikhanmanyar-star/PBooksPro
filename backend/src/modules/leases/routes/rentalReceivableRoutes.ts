@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool } from '../../../db/pool.js';
-import { getRentalReceivableReportJson } from '../../../services/rentalReceivableReportService.js';
+import { getRentalReceivableReportJson } from '../services/rentalReceivableReportService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const rentalReceivableRouter = Router();

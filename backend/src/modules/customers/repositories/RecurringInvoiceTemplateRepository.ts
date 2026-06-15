@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { RecurringInvoiceTemplateRow } from '../../../services/recurringInvoiceTemplatesService.js';
+import type { RecurringInvoiceTemplateRow } from '../services/recurringInvoiceTemplatesService.js';
 
 const RECURRING_TEMPLATE_COLUMNS = `id, tenant_id, user_id, contact_id, property_id, building_id, amount, description_template, day_of_month,
   next_due_date, active, agreement_id, invoice_type, frequency, auto_generate, max_occurrences,

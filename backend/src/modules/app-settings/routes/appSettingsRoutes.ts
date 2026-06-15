@@ -8,7 +8,7 @@ import {
   getSettingByKey,
   listAllSettings,
   upsertSetting,
-} from '../../../services/appSettingsService.js';
+} from '../services/appSettingsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const appSettingsRouter = Router();

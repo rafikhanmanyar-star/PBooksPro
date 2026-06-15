@@ -1,1 +1,1 @@
-export type { CreateJournalBody, InvestorTransactionType } from '../../../services/journalService.js';
+export type { CreateJournalBody, InvestorTransactionType } from '../services/journalService.js';

@@ -2,8 +2,8 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
-import { getStateChanges } from '../../../services/stateChangesService.js';
-import { getBulkAppState, getBulkAppStateChunked } from '../../../services/appStateBulkService.js';
+import { getStateChanges } from '../services/stateChangesService.js';
+import { getBulkAppState, getBulkAppStateChunked } from '../services/appStateBulkService.js';
 
 export const stateRouter = Router();
 

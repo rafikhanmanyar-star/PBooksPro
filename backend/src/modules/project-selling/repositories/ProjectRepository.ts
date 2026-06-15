@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ProjectRow } from '../../../services/projectsService.js';
+import type { ProjectRow } from '../services/projectsService.js';
 
 const PROJECT_COLUMNS = `id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`;
 

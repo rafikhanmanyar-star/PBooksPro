@@ -28,7 +28,7 @@ import {
   anonymizeUserData,
   buildAnonymizationMetadata,
 } from '../../../services/privacy/privacyAnonymizationService.js';
-import { appendAuditEvent } from '../../../services/enterpriseAuditService.js';
+import { appendAuditEvent } from '../../organization/services/enterpriseAuditService.js';
 
 export const privacyRouter = Router();
 

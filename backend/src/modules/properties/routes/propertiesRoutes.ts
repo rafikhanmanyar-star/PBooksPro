@@ -9,7 +9,7 @@ import {
   rowToPropertyApi,
   softDeleteProperty,
   updateProperty,
-} from '../../../services/propertiesService.js';
+} from '../services/propertiesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const propertiesRouter = Router();

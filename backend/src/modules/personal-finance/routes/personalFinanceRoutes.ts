@@ -10,7 +10,7 @@ import {
   rowToPersonalCategoryApi,
   softDeletePersonalCategory,
   updatePersonalCategory,
-} from '../../../services/personalCategoriesService.js';
+} from '../services/personalCategoriesService.js';
 import {
   bulkCreatePersonalTransactions,
   createPersonalTransaction,
@@ -19,7 +19,7 @@ import {
   rowToPersonalTransactionApi,
   softDeletePersonalTransaction,
   updatePersonalTransaction,
-} from '../../../services/personalTransactionsService.js';
+} from '../services/personalTransactionsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const personalFinanceRouter = Router();

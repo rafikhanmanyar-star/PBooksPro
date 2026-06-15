@@ -9,7 +9,7 @@ import {
   rowToBuildingApi,
   softDeleteBuilding,
   updateBuilding,
-} from '../../../services/buildingsService.js';
+} from '../services/buildingsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const buildingsRouter = Router();

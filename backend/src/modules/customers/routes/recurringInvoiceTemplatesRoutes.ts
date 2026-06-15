@@ -8,7 +8,7 @@ import {
   rowToRecurringInvoiceTemplateApi,
   softDeleteRecurringInvoiceTemplate,
   upsertRecurringInvoiceTemplate,
-} from '../../../services/recurringInvoiceTemplatesService.js';
+} from '../services/recurringInvoiceTemplatesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const recurringInvoiceTemplatesRouter = Router();

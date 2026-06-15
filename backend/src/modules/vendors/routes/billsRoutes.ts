@@ -13,11 +13,11 @@ import { LockGuardError } from '../../../services/recordLocksService.js';
 import {
   getContractorAdvanceById,
   rowAdvanceToApi,
-} from '../../../services/contractorBillingService.js';
-import { settleVendorBillsBatchWithAdvances } from '../../../services/vendorBillAdvanceSettleService.js';
-import { reverseVendorBillAdvanceSettlement } from '../../../services/vendorBillAdvanceSettlementReverseService.js';
-import { replaceVendorBillAdvanceSettlement } from '../../../services/vendorBillAdvanceReplaceService.js';
-import { listVendorBillSettlementsForBills } from '../../../services/vendorBillSettlementReadService.js';
+} from '../services/contractorBillingService.js';
+import { settleVendorBillsBatchWithAdvances } from '../services/vendorBillAdvanceSettleService.js';
+import { reverseVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceSettlementReverseService.js';
+import { replaceVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceReplaceService.js';
+import { listVendorBillSettlementsForBills } from '../services/vendorBillSettlementReadService.js';
 import { rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 

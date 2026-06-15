@@ -8,7 +8,7 @@ import {
   rowToProjectReceivedAssetApi,
   softDeleteProjectReceivedAsset,
   upsertProjectReceivedAsset,
-} from '../../../services/projectReceivedAssetsService.js';
+} from '../services/projectReceivedAssetsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const projectReceivedAssetsRouter = Router();

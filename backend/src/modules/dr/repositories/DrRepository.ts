@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
-import type { DrAlertRow, DrNotificationSettings } from '../../../services/dr/drAlertService.js';
+import type { DrAlertRow, DrNotificationSettings } from '../services/dr/drAlertService.js';
 
 function mapAlert(row: pg.QueryResultRow): DrAlertRow {
   return {

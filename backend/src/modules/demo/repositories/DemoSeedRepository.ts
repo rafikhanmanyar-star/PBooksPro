@@ -1,7 +1,7 @@
 import type pg from 'pg';
-import { bootstrapTenantChart } from '../../../services/tenantBootstrap.js';
+import { bootstrapTenantChart } from '../../organization/services/tenantBootstrap.js';
 import { startTrialSubscription } from '../../../services/billing/subscriptionService.js';
-import { wipeTenantBusinessData } from '../../../services/tenantDataManagementService.js';
+import { wipeTenantBusinessData } from '../../organization/services/tenantDataManagementService.js';
 import {
   DEMO_DEFAULT_USER_ID,
   DEMO_MASTER_TENANT_ID,
@@ -9,10 +9,10 @@ import {
   DEMO_PUBLIC_TENANT_ID,
   isDemoPresentationTenant,
 } from '../../../constants/demoEnvironment.js';
-import { syncPayrollLedgerForAllEmployees } from '../../../services/payrollLedgerService.js';
-import { backfillBillJournalMirrorsForTenant } from '../../../services/billJournalBackfillService.js';
-import { backfillInvoiceJournalMirrorsForTenant } from '../../../services/invoiceJournalBackfillService.js';
-import { backfillTransactionJournalMirrorsForTenant } from '../../../services/transactionJournalBackfillService.js';
+import { syncPayrollLedgerForAllEmployees } from '../../payroll/services/payrollLedgerService.js';
+import { backfillBillJournalMirrorsForTenant } from '../../accounting/services/billJournalBackfillService.js';
+import { backfillInvoiceJournalMirrorsForTenant } from '../../accounting/services/invoiceJournalBackfillService.js';
+import { backfillTransactionJournalMirrorsForTenant } from '../../accounting/services/transactionJournalBackfillService.js';
 
 const SYS_CASH = 'sys-acc-cash';
 const SYS_RENT = 'sys-cat-rent-inc';

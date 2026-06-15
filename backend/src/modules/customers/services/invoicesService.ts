@@ -2,7 +2,7 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../../../utils/dateOnly.js';
 import { enforceLockForSave } from '../../accounting/services/recordLocksService.js';
-import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from '../../../services/invoiceJournalPostingService.js';
+import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from '../../accounting/services/invoiceJournalPostingService.js';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
 import { InvoiceRepository, type InvoiceWriteFields } from '../repositories/InvoiceRepository.js';

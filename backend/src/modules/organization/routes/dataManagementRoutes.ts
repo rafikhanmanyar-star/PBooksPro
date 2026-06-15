@@ -7,7 +7,7 @@ import { memoryCacheDeletePrefix } from '../../../utils/memoryCache.js';
 import {
   clearTenantTransactions,
   factoryResetTenant,
-} from '../../../services/tenantDataManagementService.js';
+} from '../services/tenantDataManagementService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const dataManagementRouter = Router();

@@ -9,9 +9,9 @@ import {
   getGeneralLedgerReport,
   getJournalWithLines,
   isJournalReversed,
-} from '../../../services/journalService.js';
+} from '../services/journalService.js';
 import { createFinancialPostingService } from '../services/FinancialPostingService.js';
-import { getTrialBalanceReportPayload } from '../../../services/trialBalanceReportService.js';
+import { getTrialBalanceReportPayload } from '../services/trialBalanceReportService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 const lineSchema = z.object({

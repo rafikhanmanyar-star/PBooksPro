@@ -16,7 +16,7 @@ import {
   resolveDemoPublicLoginUser,
 } from '../../../services/demo/demoAuthService.js';
 import { resetPublicDemoTenant } from '../../../services/demo/demoResetService.js';
-import { recordLoginEvent, auditContextFromRequest } from '../../../services/enterpriseAuditService.js';
+import { recordLoginEvent, auditContextFromRequest } from '../../organization/services/enterpriseAuditService.js';
 import { publicIntrospectionLimiter } from '../../../middleware/introspectionGuard.js';
 import {
   assertPublicDemoLoginAllowed,

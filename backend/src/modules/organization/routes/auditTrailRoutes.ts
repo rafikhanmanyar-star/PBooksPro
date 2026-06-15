@@ -8,7 +8,7 @@ import {
   listAuditActions,
   listAuditModules,
   listUnifiedAuditTrail,
-} from '../../../services/enterpriseAuditService.js';
+} from '../services/enterpriseAuditService.js';
 
 export const auditTrailRouter = Router();
 

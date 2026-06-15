@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ProjectReceivedAssetRow } from '../../../services/projectReceivedAssetsService.js';
+import type { ProjectReceivedAssetRow } from '../services/projectReceivedAssetsService.js';
 
 const ASSET_COLUMNS = `id, tenant_id, project_id, contact_id, invoice_id, description, asset_type, recorded_value,
   received_date, sold_date, sale_amount, sale_account_id, notes, user_id, version, deleted_at, created_at, updated_at`;

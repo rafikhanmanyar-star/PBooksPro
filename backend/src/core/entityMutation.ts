@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { assertLwwVersion } from '../services/changeLogService.js';
+import { assertLwwVersion } from '../modules/organization/services/changeLogService.js';
 import {
   recordDomainMutation,
   type DomainMutationInput,

@@ -15,7 +15,7 @@ import {
   closeAccountingPeriod,
   logAccountingPeriodOpened,
   logAccountingPeriodReopened,
-} from '../../../services/fiscalPeriodCloseService.js';
+} from '../services/fiscalPeriodCloseService.js';
 import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
 
 const openBodySchema = z.object({

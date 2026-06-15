@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool } from '../../../db/pool.js';
-import { getTenantLedgerReportJson } from '../../../services/tenantLedgerReportService.js';
+import { getTenantLedgerReportJson } from '../services/tenantLedgerReportService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const tenantLedgerRouter = Router();

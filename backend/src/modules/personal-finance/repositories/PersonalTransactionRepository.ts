@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PersonalTransactionRow } from '../../../services/personalTransactionsService.js';
+import type { PersonalTransactionRow } from '../services/personalTransactionsService.js';
 
 const TRANSACTION_COLUMNS = `id, tenant_id, account_id, personal_category_id, type, amount, transaction_date,
   description, version, deleted_at, created_at, updated_at`;

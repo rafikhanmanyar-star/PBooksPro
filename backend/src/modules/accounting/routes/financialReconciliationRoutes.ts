@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getPool } from '../../../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
-import { getFinancialReconciliationCertification } from '../../../services/financialReconciliationService.js';
+import { getFinancialReconciliationCertification } from '../services/financialReconciliationService.js';
 
 export const financialReconciliationRouter = Router();
 

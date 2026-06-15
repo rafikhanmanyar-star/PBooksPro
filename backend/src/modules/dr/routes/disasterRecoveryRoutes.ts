@@ -3,30 +3,30 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import { getPool } from '../../../db/pool.js';
-import { getDrDashboard } from '../../../services/dr/drDashboardService.js';
+import { getDrDashboard } from '../services/dr/drDashboardService.js';
 import {
   listVerificationRuns,
   runVerificationForBackupRun,
   runVerificationForLatestBackup,
-} from '../../../services/dr/drVerificationService.js';
+} from '../services/dr/drVerificationService.js';
 import {
   listRestoreTests,
   runRecoveryTest,
   runRestoreSimulation,
   runRestoreTestForLatest,
-} from '../../../services/dr/drRestoreTestService.js';
+} from '../services/dr/drRestoreTestService.js';
 import {
   acknowledgeAlert,
   getNotificationSettings,
   listAlerts,
   updateNotificationSettings,
   raiseVerificationFailureAlert,
-} from '../../../services/dr/drAlertService.js';
+} from '../services/dr/drAlertService.js';
 import {
   generateDrReport,
   getDrReport,
   listDrReports,
-} from '../../../services/dr/drReportService.js';
+} from '../services/dr/drReportService.js';
 
 export const disasterRecoveryRouter = Router();
 

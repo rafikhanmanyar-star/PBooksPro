@@ -12,7 +12,7 @@ import {
   softDeleteRentalAgreement,
   syncReconcileRentalAgreementsForTenant,
   updateRentalAgreement,
-} from '../../../services/rentalAgreementsService.js';
+} from '../services/rentalAgreementsService.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
 import { listInvoices, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';

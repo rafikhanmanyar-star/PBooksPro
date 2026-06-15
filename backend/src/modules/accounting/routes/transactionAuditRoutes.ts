@@ -6,7 +6,7 @@ import {
   appendTransactionLog,
   listTransactionLogs,
   rowToTransactionLogApi,
-} from '../../../services/transactionLogService.js';
+} from '../services/transactionLogService.js';
 import { requireFinancialWriteRole, requirePermission } from '../../../middleware/rbacMiddleware.js';
 
 export const transactionAuditRouter = Router();

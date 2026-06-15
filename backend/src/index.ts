@@ -27,7 +27,7 @@ import {
 } from './middleware/idempotencyMiddleware.js';
 import { performanceTimingMiddleware } from './middleware/performanceTimingMiddleware.js';
 import { assertProductionEnv } from './utils/productionEnvCheck.js';
-import { startBackupScheduler } from './services/backupSchedulerService.js';
+import { startBackupScheduler } from './modules/backup/services/backupSchedulerService.js';
 import { startBillingScheduler } from './services/billing/billingSchedulerService.js';
 import { startMarketingEmailScheduler } from './services/marketing/marketingEmailScheduler.js';
 import { startEmailAutomationScheduler } from './services/emailAutomation/emailAutomationScheduler.js';
@@ -38,7 +38,7 @@ import { adminPortalRouter } from './routes/adminPortalRoutes.js';
 import { mountVersionedApi } from './routes/mountVersionedApi.js';
 import { whatsappWebhookRouter } from './routes/whatsappWebhookRoutes.js';
 import { startDashboardSnapshotScheduler } from './modules/dashboard/services/dashboardSnapshotScheduler.js';
-import { startReportScheduleScheduler } from './services/reportScheduleScheduler.js';
+import { startReportScheduleScheduler } from './modules/reporting/services/reportScheduleScheduler.js';
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
 import { sendLivenessResponse } from './routes/healthLiveness.js';
 

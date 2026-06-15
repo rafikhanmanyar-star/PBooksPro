@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { ContractorAdvanceRow } from '../../../services/contractorBillingService.js';
+import type { ContractorAdvanceRow } from '../services/contractorBillingService.js';
 
 const ADVANCE_COLS = `id, tenant_id, contractor_contact_id, advance_date, original_amount::text, remaining_amount::text,
   cash_account_id, advance_asset_account_id, advance_journal_entry_id, project_id, description, created_by,

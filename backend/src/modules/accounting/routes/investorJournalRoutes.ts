@@ -10,7 +10,7 @@ import {
   postProfitAllocationToInvestor,
   postInterProjectEquityTransfer,
   fetchInvestorEquityLedger,
-} from '../../../services/investorJournalPostingService.js';
+} from '../services/investorJournalPostingService.js';
 import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
 import { rowToTransactionApi } from '../services/transactionsService.js';
 import type { TransactionRow } from '../services/transactionsService.js';

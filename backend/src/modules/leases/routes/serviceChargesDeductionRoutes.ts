@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool } from '../../../db/pool.js';
-import { getServiceChargesDeductionReportJson } from '../../../services/serviceChargesDeductionReportService.js';
+import { getServiceChargesDeductionReportJson } from '../services/serviceChargesDeductionReportService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const serviceChargesDeductionRouter = Router();

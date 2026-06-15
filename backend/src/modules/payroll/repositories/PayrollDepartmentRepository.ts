@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PayrollDepartmentRow } from '../../../services/payroll/payrollTypes.js';
+import type { PayrollDepartmentRow } from '../services/payroll/payrollTypes.js';
 
 const DEPARTMENT_COLUMNS = `id, tenant_id, name, code, description, parent_department_id, head_employee_id, cost_center_code,
   budget_allocation::text, is_active, created_by, updated_by, deleted_at, created_at, updated_at`;

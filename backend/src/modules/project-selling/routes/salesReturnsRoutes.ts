@@ -8,7 +8,7 @@ import {
   rowToSalesReturnApi,
   softDeleteSalesReturn,
   upsertSalesReturn,
-} from '../../../services/salesReturnsService.js';
+} from '../services/salesReturnsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const salesReturnsRouter = Router();

@@ -7,7 +7,7 @@ import {
   getProcurementDashboardMetrics,
   listVendorPriceHistory,
   lookupQuotationItemRates,
-} from '../../../services/quotationIntelligenceService.js';
+} from '../services/quotationIntelligenceService.js';
 
 export const quotationIntelligenceRouter = Router();
 

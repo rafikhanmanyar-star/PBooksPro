@@ -2,7 +2,7 @@ import type pg from 'pg';
 import type {
   OffsiteStorageProvider,
   StorageProviderConfig,
-} from '../../../services/backup/storage/types.js';
+} from '../../backup/services/backup/storage/types.js';
 import { DocumentRepository } from '../repositories/DocumentRepository.js';
 import type { DocumentMetadataRow } from '../types/index.js';
 
@@ -42,7 +42,7 @@ export class DocumentStorageService {
     const cfg = r2ConfigFromEnv();
     if (!cfg) return null;
     const { S3CompatibleStorageProvider } = await import(
-      '../../../services/backup/storage/s3CompatibleProvider.js'
+      '../../backup/services/backup/storage/s3CompatibleProvider.js'
     );
     return new S3CompatibleStorageProvider('cloudflare_r2', cfg);
   }

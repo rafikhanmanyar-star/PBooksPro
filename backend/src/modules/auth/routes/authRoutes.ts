@@ -17,7 +17,7 @@ import {
   auditContextFromRequest,
   recordLoginEvent,
   recordLogoutEvent,
-} from '../../../services/enterpriseAuditService.js';
+} from '../../organization/services/enterpriseAuditService.js';
 import { publicIntrospectionLimiter } from '../../../middleware/introspectionGuard.js';
 import type { MatchedUserAccount } from '../../../services/auth/userTenantService.js';
 import {

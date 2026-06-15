@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { PersonalTaskRow } from '../../../services/personalTasksService.js';
+import type { PersonalTaskRow } from '../services/personalTasksService.js';
 
 const TASK_COLS = `t.id, t.user_id, t.title, t.description, t.created_date, t.target_date, t.status, t.progress, t.priority, t.created_at, t.updated_at`;
 

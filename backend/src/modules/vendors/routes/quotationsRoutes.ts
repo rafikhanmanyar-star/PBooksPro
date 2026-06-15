@@ -8,7 +8,7 @@ import {
   rowToQuotationApi,
   softDeleteQuotation,
   upsertQuotation,
-} from '../../../services/quotationsService.js';
+} from '../services/quotationsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const quotationsRouter = Router();

@@ -1,6 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
-import type { OffsiteUploadRow, OffsiteUploadStatus } from '../../../services/backup/backupOffsiteService.js';
+import type { OffsiteUploadRow, OffsiteUploadStatus } from '../services/backup/backupOffsiteService.js';
 
 const SETTINGS_ID = 'default';
 

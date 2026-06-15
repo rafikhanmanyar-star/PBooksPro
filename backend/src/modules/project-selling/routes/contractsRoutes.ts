@@ -15,7 +15,7 @@ import {
   getRetentionMonitoringDashboard,
   releaseRetention,
   validateRetentionThresholdForContract,
-} from '../../../services/contractRetentionService.js';
+} from '../../vendors/services/contractRetentionService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const contractsRouter = Router();

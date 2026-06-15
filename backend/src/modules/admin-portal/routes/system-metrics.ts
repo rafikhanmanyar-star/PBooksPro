@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { AdminRequest } from '../../../adminPortal/middleware/adminAuthMiddleware.js';
 import { getDatabaseService } from '../../../adminPortal/adminPortalDb.js';
-import { getGlobalOnlineUserCount } from '../../../services/presenceService.js';
+import { getGlobalOnlineUserCount } from '../../organization/services/presenceService.js';
 import { AdminSystemMetricsRepository } from '../repositories/AdminTenantRepository.js';
 import os from 'os';
 

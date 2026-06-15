@@ -7,7 +7,7 @@ import {
   getQuotationReferenceForInput,
   recordQuotationPriceOverride,
   validateQuotationRate,
-} from '../../../services/quotationValidationService.js';
+} from '../services/quotationValidationService.js';
 
 export const quotationValidationRouter = Router();
 

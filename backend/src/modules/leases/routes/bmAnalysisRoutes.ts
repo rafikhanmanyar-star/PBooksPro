@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool } from '../../../db/pool.js';
-import { getBmAnalysisReportJson } from '../../../services/bmAnalysisReportService.js';
+import { getBmAnalysisReportJson } from '../services/bmAnalysisReportService.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 
 export const bmAnalysisRouter = Router();
