@@ -1,21 +1,6 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeTenantLedgerReport } from '../../../reportEngines/index.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
-
-type TenantLedgerEngineModule = {
-  computeTenantLedgerReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => {
-    rows: unknown[];
-    totals: { debit: number; credit: number };
-    closingBalance: number;
-  };
-};
-
-async function loadTenantLedgerEngine(): Promise<TenantLedgerEngineModule> {
-  return loadReportEngine<TenantLedgerEngineModule>('tenantLedger');
-}
 
 export async function getTenantLedgerReportJson(
   client: pg.PoolClient,
@@ -31,7 +16,6 @@ export async function getTenantLedgerReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeTenantLedgerReport } = await loadTenantLedgerEngine();
 
   const sortKey = filters.sortKey === 'date' ? 'date' : null;
   const sortDirection =

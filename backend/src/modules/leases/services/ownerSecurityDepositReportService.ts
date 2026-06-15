@@ -1,17 +1,6 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeOwnerSecurityDepositReport } from '../../../reportEngines/index.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
-
-type OwnerSecurityDepositEngineModule = {
-  computeOwnerSecurityDepositReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => unknown[];
-};
-
-async function loadOwnerSecurityDepositEngine(): Promise<OwnerSecurityDepositEngineModule> {
-  return loadReportEngine<OwnerSecurityDepositEngineModule>('ownerSecurityDeposit');
-}
 
 const VALID_SORT_KEYS = new Set([
   'date',
@@ -40,7 +29,6 @@ export async function getOwnerSecurityDepositReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeOwnerSecurityDepositReport } = await loadOwnerSecurityDepositEngine();
   const sortKey = filters.sortKey || 'date';
   const rows = computeOwnerSecurityDepositReport(state as never, {
     startDate: filters.startDate,

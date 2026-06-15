@@ -1,20 +1,9 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeRentalReceivableReport } from '../../../reportEngines/index.js';
 import { listInvoices, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { listContacts, rowToContactApi } from '../../crm/services/contactsService.js';
 import { listBuildings, rowToBuildingApi } from '../../properties/services/buildingsService.js';
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
-
-type RentalReceivableEngineModule = {
-  computeRentalReceivableReport: (
-    input: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => unknown[];
-};
-
-async function loadRentalReceivableEngine(): Promise<RentalReceivableEngineModule> {
-  return loadReportEngine<RentalReceivableEngineModule>('rentalReceivable');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -41,9 +30,8 @@ export async function getRentalReceivableReportJson(
   tenantId: string,
   filters: { buildingId?: string }
 ) {
-  const engine = await loadRentalReceivableEngine();
   const input = await loadRentalReceivableStateInput(client, tenantId);
-  const propertyReceivables = engine.computeRentalReceivableReport(input, {
+  const propertyReceivables = computeRentalReceivableReport(input, {
     buildingId: filters.buildingId ?? 'all',
   });
   return { propertyReceivables };

@@ -1,17 +1,6 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeBmAnalysisReport } from '../../../reportEngines/index.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
-
-type BmAnalysisEngineModule = {
-  computeBmAnalysisReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => { reportData: unknown[]; bmDetailsByBuilding: Record<string, unknown> };
-};
-
-async function loadBmAnalysisEngine(): Promise<BmAnalysisEngineModule> {
-  return loadReportEngine<BmAnalysisEngineModule>('bmAnalysis');
-}
 
 export async function getBmAnalysisReportJson(
   client: pg.PoolClient,
@@ -26,7 +15,6 @@ export async function getBmAnalysisReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeBmAnalysisReport } = await loadBmAnalysisEngine();
   const { reportData, bmDetailsByBuilding } = computeBmAnalysisReport(state as never, {
     startDate: filters.startDate,
     endDate: filters.endDate,

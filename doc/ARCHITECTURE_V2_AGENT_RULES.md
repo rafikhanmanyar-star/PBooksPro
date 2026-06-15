@@ -449,7 +449,7 @@ Do **not** duplicate server KPI/report data in AppContext when a React Query hoo
 | Edit here | Generated copy (do not edit) |
 |-----------|------------------------------|
 | `shared/financial-core/` | `backend/src/financial/` |
-| `shared/report-engines/` | `backend/dist/*.mjs` (transitional bundles) |
+| `shared/report-engines/` | `backend/src/reportEngines/index.ts` (build via `ensure-shared-report-engines.mjs`) |
 | `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` |
 
 After editing `shared/`: `npm run build:backend`
@@ -458,7 +458,7 @@ After editing `shared/`: `npm run build:backend`
 
 1. Engine in `shared/report-engines/` (no React imports)
 2. Re-export shim in `components/reports/` if needed
-3. Backend `*ReportService.ts` using `loadReportEngine()` or module service
+3. Backend `*ReportService.ts` importing from `reportEngines/index.ts` or module service
 4. Route under `/api/v1/reports/` with RBAC
 5. Custom/dynamic reports: extend `modules/reporting/`
 

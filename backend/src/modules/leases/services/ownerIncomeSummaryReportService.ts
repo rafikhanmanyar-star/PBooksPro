@@ -1,17 +1,6 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeOwnerIncomeSummaryReport } from '../../../reportEngines/index.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
-
-type OwnerIncomeSummaryEngineModule = {
-  computeOwnerIncomeSummaryReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => unknown[];
-};
-
-async function loadOwnerIncomeSummaryEngine(): Promise<OwnerIncomeSummaryEngineModule> {
-  return loadReportEngine<OwnerIncomeSummaryEngineModule>('ownerIncomeSummary');
-}
 
 export async function getOwnerIncomeSummaryReportJson(
   client: pg.PoolClient,
@@ -25,7 +14,6 @@ export async function getOwnerIncomeSummaryReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeOwnerIncomeSummaryReport } = await loadOwnerIncomeSummaryEngine();
   const summaries = computeOwnerIncomeSummaryReport(state as never, {
     startDate: filters.startDate,
     endDate: filters.endDate,

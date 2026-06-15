@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeClientLedgerReport } from '../../../reportEngines/index.js';
 import { loadBalanceSheetStateInput } from '../../accounting/services/balanceSheetReportService.js';
 import { listContacts, rowToContactApi } from '../../crm/services/contactsService.js';
 
@@ -7,22 +7,6 @@ type ClientLedgerSelection =
   | { kind: 'all' }
   | { kind: 'owner'; ownerId: string }
   | { kind: 'unit'; unitId: string };
-
-type ClientLedgerEngineModule = {
-  computeClientLedgerReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => {
-    rows: unknown[];
-    agreementSummaries: unknown[];
-    totals: { debit: number; credit: number };
-    closingBalance: number;
-  };
-};
-
-async function loadClientLedgerEngine(): Promise<ClientLedgerEngineModule> {
-  return loadReportEngine<ClientLedgerEngineModule>('clientLedger');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -65,7 +49,6 @@ export async function getClientLedgerReportJson(
   }
 ) {
   const state = await loadClientLedgerStateInput(client, tenantId, filters.endDate);
-  const { computeClientLedgerReport } = await loadClientLedgerEngine();
   const selection = parseSelection(
     filters.selectionKind ?? 'all',
     filters.ownerId,

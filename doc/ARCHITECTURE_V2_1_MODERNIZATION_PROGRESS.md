@@ -199,24 +199,24 @@ Architecture v2.1 **launch-scope modernization** (documentation, SQLite removal,
 | What’s done | What’s next (your choice) |
 |-------------|---------------------------|
 | Tracks A–E implementation | **Production release:** `npm run release:production` after staging + E.2 manual QA |
-| Staging installers (API Server + API Client v2.1) | **Track F P4:** Retire esbuild report `.mjs` bundles → direct `shared/report-engines` imports |
+| Staging installers (API Server + API Client v2.1) | **Production release:** `npm run release:production` after staging + E.2 manual QA |
 | 81 automated Track E checks | **Track F P5:** RLS, BullMQ (explicitly deferred) |
-| | **Optional:** Platform flat services (`services/billing/*`, `services/auth/*`, …) |
+| **Track F P4** — report engines via `shared/report-engines` + static imports | **Optional:** Platform flat services (`services/billing/*`, `services/auth/*`, …) |
 
 ---
 
-## Track F — Post-launch ← **current engineering track** (on request)
+## Track F — Post-launch
 
-See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md). **Recommended first item:** P4 report engine bundle retirement (13 esbuild bundles via `loadReportEngine`).
+See [`ARCHITECTURE_V2_POST_LAUNCH.md`](ARCHITECTURE_V2_POST_LAUNCH.md).
 
-| Priority | Item | Effort | Notes |
+| Priority | Item | Status | Notes |
 |----------|------|--------|-------|
-| **P4** | Replace `backend/dist/*Engine.mjs` with direct `shared/report-engines` imports | Medium | Touches `loadReportEngine.ts`, `backend/package.json` build, 13 report services |
-| P5 | PostgreSQL RLS | Large | `SET app.tenant_id` + policies |
-| P5 | BullMQ schedulers | Large | Replace `setInterval` email/backup/report schedulers |
-| Optional | Platform `services/*` strangler | Medium | Billing, auth, dashboard subfolders still flat |
+| **P4** | Report engines: `shared/report-engines` → static `reportEngines/index` imports | **Done** (2026-06-15) | `scripts/ensure-shared-report-engines.mjs`; removed 13 `dist/*Engine.mjs` + `loadReportEngine.ts` |
+| P5 | PostgreSQL RLS | Planned | `SET app.tenant_id` + policies |
+| P5 | BullMQ schedulers | Planned | Replace `setInterval` email/backup/report schedulers |
+| Optional | Platform `services/*` strangler | Planned | Billing, auth, dashboard subfolders still flat |
 
-**P4 starting points:** `backend/src/reportEngines/loadReportEngine.ts`, `shared/report-engines/`, `scripts/ensure-*-engine.mjs`.
+**P4 verify:** `npm run verify:track-f-p4` (after `npm run build:backend`).
 
 ---
 

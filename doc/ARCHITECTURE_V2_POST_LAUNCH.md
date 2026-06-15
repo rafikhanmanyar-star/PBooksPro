@@ -10,7 +10,7 @@ Tracked items intentionally deferred after commercial launch scope.
 | Field-level sync conflicts | Planned | After LWW (`change_log` + `version`) proven in production |
 | Distributed workers | Planned | Depends on BullMQ |
 | Retire `/api` alias | **Done** | Clients normalized to `/api/v1` |
-| Retire esbuild report bundles | Planned | 13 bundles; `loadReportEngine.ts` — first Track F item after v2.1 Tracks A–E |
+| Retire esbuild report bundles | **Done** (P4) | Single `ensure-shared-report-engines.mjs`; static imports via `backend/src/reportEngines/index.ts` |
 | Tenant domain strangler (flat `services/*.ts`) | **Mostly done** | E.3 batches 3–12; platform subfolders (`billing/`, `auth/`, …) remain flat |
 | Payroll → journal_entries unification | Planned | `payrollLedger` remains separate exception |
 
@@ -22,7 +22,7 @@ These items were **scaffolded or partially wired** for commercial launch. Most d
 |------|-------|------------------------------|
 | `TenantRepository` + `AuditMutation` + `recordDomainMutation` | Yes | No — repos unused by legacy services; `withAudit()` never called; `recordDomainMutation` only on bills/invoices |
 | `/api/v1` with deprecated `/api` alias | Yes | Client yes; alias still active |
-| `shared/financial-core` + `shared/report-engines` | Yes | Backend still uses esbuild `.mjs` bundles for reports |
+| `shared/financial-core` + `shared/report-engines` | Yes | Backend imports via `reportEngines/index.ts` (build-time bundle from `shared/report-engines/serverEntry.ts`) |
 | `FinancialPostingService` + `JournalRepository` | Yes | Bill/invoice/transaction/journal only; not PEV/payroll/investor |
 | Accounting period `locked` status | Yes | Yes (posting gateway) |
 | `deleted_by` soft-delete columns | Yes | Partial — columns exist; not all services use `TenantRepository.softDelete()` |

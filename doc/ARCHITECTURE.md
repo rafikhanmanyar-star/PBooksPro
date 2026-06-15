@@ -42,7 +42,7 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | `core/repositories/` (sync/audit infra) | **`ChangeLogRepository`**, **`SyncQueueRepository`**, **`AuditEventRepository`**, **`TenantChartRepository`**, **`TenantJournalMaintenanceRepository`**, **`TenantWipeRepository`** |
 | `FinancialPostingService` + `JournalRepository` | Wired for journal, bill, invoice, transaction, **PEV**, and **investor journal** GL mirrors |
 | `/api/v1` mount + client normalization | Implemented; **`/api` alias removed** (v2 canonical prefix only) |
-| `shared/financial-core/` + `shared/report-engines/` | Packages exist; backend loads esbuild `.mjs` bundles via **`reportEngines/loadReportEngine.ts`** |
+| `shared/financial-core/` + `shared/report-engines/` | Packages exist; backend uses **`reportEngines/index.ts`** (compiled from `shared/report-engines` at build time) |
 | Accounting period `locked` status | Migration + enforcement in posting gateway |
 | `deleted_by` columns | Migration applied |
 | `analytics_snapshots` + dashboard API + scheduler | Implemented; dashboard also uses legacy metrics/KPI paths in parallel |
@@ -64,7 +64,7 @@ Architecture v2 was planned as an **incremental strangler**, not a big-bang rewr
 | **`change_log` in incremental sync** | **`GET /state/changes`** includes `changeLog[]`; **Electron client merges `changeLog` in `loadStateViaIncrementalSync()`** via `services/api/changeLogMerge.ts` (AppState) and **`services/api/payrollChangeLogMerge.ts`** (payroll localStorage) |
 | **Documents on R2** | Phase 3 ✅ — `document_metadata` only; legacy `documents` blocked by trigger (migration 111) |
 | **Domain module services** | Repositories + routes migrated; some flat `services/*` wrappers remain as delegation shims (acceptable) |
-| **Report engines** | Logic in `shared/report-engines/`; backend uses centralized **`loadReportEngine()`** over esbuild bundles (direct TS import deferred — see post-launch doc) |
+| **Report engines** | Logic in `shared/report-engines/`; backend **`reportEngines/index.ts`** static imports (build bundles via `ensure-shared-report-engines.mjs`) |
 | **GL posting gateway** | Bills, invoices, transactions, **PEV**, **investor journal** via `FinancialPostingService`; payroll journal backfill still separate |
 | **Audit unification** | Priority financial/CRM mutations unified; admin/billing/backup paths still use `appendAuditEvent` directly |
 | **Admin portal `system.ts`** | Pool stats / health only (no tenant SQL); optional future repo slice |
@@ -583,7 +583,7 @@ Endpoints are relative to base URL (e.g. `apiClient.get('/dashboard/snapshots')`
 - **Calculation source of truth:** `shared/report-engines/` and `shared/financial-core/`
 - **UI rule:** report components preview/format only — no new calculation logic in `components/reports/`
 - Legacy shims in `components/reports/*Engine.ts` and `services/financialEngine/` re-export from `shared/` during migration
-- Backend still bundles some engines to `backend/dist/*.mjs` via `scripts/ensure-*-engine.mjs` (planned retirement — import `shared/` directly)
+- Backend report services import **`reportEngines/index.ts`** (source: `shared/report-engines/serverEntry.ts`, built by `ensure-shared-report-engines.mjs`)
 
 ### Dashboard (v2)
 
@@ -669,7 +669,7 @@ Do not use legacy paths for new development. All schema changes go through Postg
 | Package | Contents | Backend consumption |
 |---------|----------|---------------------|
 | `shared/financial-core/` | journal ledger, trial balance, validation, reconciliation | Copied to `backend/src/financial/` via `ensure-shared-financial-cores.mjs` |
-| `shared/report-engines/` | P&L, balance sheet, cash flow, ledger reports | Bundled to `backend/dist/*.mjs` via `ensure-*-engine.mjs` (transitional) |
+| `shared/report-engines/` | P&L, balance sheet, cash flow, ledger reports | Backend via `reportEngines/index.ts` + `ensure-shared-report-engines.mjs` |
 | `shared/rbac/permissions.ts` | Permission definitions | Copied to `backend/src/auth/permissions.ts` |
 
 **Never edit AUTO-GENERATED backend copies directly.** Edit `shared/` and regenerate.

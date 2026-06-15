@@ -1,17 +1,6 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeServiceChargesDeductionReport } from '../../../reportEngines/index.js';
 import { loadOwnerRentalIncomeStateInput } from './ownerRentalIncomeReportService.js';
-
-type ServiceChargesEngineModule = {
-  computeServiceChargesDeductionReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => unknown[];
-};
-
-async function loadServiceChargesDeductionEngine(): Promise<ServiceChargesEngineModule> {
-  return loadReportEngine<ServiceChargesEngineModule>('serviceChargesDeduction');
-}
 
 export async function getServiceChargesDeductionReportJson(
   client: pg.PoolClient,
@@ -27,7 +16,6 @@ export async function getServiceChargesDeductionReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeServiceChargesDeductionReport } = await loadServiceChargesDeductionEngine();
   const rows = computeServiceChargesDeductionReport(state as never, {
     startDate: filters.startDate,
     endDate: filters.endDate,

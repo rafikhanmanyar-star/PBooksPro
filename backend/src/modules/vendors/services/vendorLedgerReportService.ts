@@ -1,25 +1,10 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeVendorLedgerReport } from '../../../reportEngines/index.js';
 import { listTransactions, rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 import { listBills, rowToBillApi } from '../../vendors/services/billsService.js';
 import { listBuildings, rowToBuildingApi } from '../../properties/services/buildingsService.js';
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
 import { listVendors, rowToVendorApi } from './vendorsService.js';
-
-type VendorLedgerEngineModule = {
-  computeVendorLedgerReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => {
-    rows: unknown[];
-    totals: { bill: number; paid: number };
-    closingBalance: number;
-  };
-};
-
-async function loadVendorLedgerEngine(): Promise<VendorLedgerEngineModule> {
-  return loadReportEngine<VendorLedgerEngineModule>('vendorLedger');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -61,7 +46,6 @@ export async function getVendorLedgerReportJson(
   }
 ) {
   const state = await loadVendorLedgerStateInput(client, tenantId, filters.endDate);
-  const { computeVendorLedgerReport } = await loadVendorLedgerEngine();
 
   const context =
     filters.context === 'Rental' || filters.context === 'Project' ? filters.context : undefined;

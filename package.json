@@ -100,6 +100,7 @@
     "clean:dist": "node scripts/clean-dist.cjs",
     "verify:dist-bundle-integrity": "node scripts/verify-dist-bundle-integrity.mjs",
     "verify:track-e2": "powershell -ExecutionPolicy Bypass -File scripts/verify-realtime-track-e.ps1",
+    "verify:track-f-p4": "node scripts/verify-track-f-p4.mjs",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowJournalCore.test.ts",
     "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",

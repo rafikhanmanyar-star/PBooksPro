@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeBalanceSheetReport } from '../../../reportEngines/index.js';
 import { listAccounts, rowToAccountApi } from './accountsService.js';
 import { listTransactions, rowToTransactionApi } from './transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from './categoriesService.js';
@@ -12,22 +12,6 @@ import { listProjects, rowToProjectApi } from '../../project-selling/services/pr
 import { listBuildings, rowToBuildingApi } from '../../properties/services/buildingsService.js';
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
 import { loadJournalLedgerInput } from './journalLedgerLoadService.js';
-
-type BalanceSheetEngineModule = {
-  computeBalanceSheetReport: (
-    state: Record<string, unknown>,
-    options: {
-      asOfDate: string;
-      selectedProjectId: string;
-      selectedBuildingId?: string;
-      useJournalLedger?: boolean;
-    }
-  ) => Record<string, unknown>;
-};
-
-async function loadBalanceSheetEngine(): Promise<BalanceSheetEngineModule> {
-  return loadReportEngine<BalanceSheetEngineModule>('balanceSheet');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -102,7 +86,6 @@ export async function getBalanceSheetReportJson(
   options?: { includeDebug?: boolean; selectedBuildingId?: string }
 ) {
   const state = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
-  const { computeBalanceSheetReport } = await loadBalanceSheetEngine();
   const selectedBuildingId = options?.selectedBuildingId ?? 'all';
   const report = computeBalanceSheetReport(state as never, {
     asOfDate,

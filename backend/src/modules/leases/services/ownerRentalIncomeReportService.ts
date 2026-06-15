@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeOwnerRentalIncomeReport } from '../../../reportEngines/index.js';
 import { listTransactions, rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from '../../accounting/services/categoriesService.js';
 import { listBills, rowToBillApi } from '../../vendors/services/billsService.js';
@@ -8,21 +8,6 @@ import { listContacts, rowToContactApi } from '../../crm/services/contactsServic
 import { listBuildings, rowToBuildingApi } from '../../properties/services/buildingsService.js';
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
 import { listRentalAgreements, rowToRentalAgreementApi } from './rentalAgreementsService.js';
-
-type OwnerRentalIncomeEngineModule = {
-  computeOwnerRentalIncomeReport: (
-    state: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => {
-    openingBalance: number;
-    reportData: unknown[];
-    fullLedgerClosingBalance: number;
-  };
-};
-
-async function loadOwnerRentalIncomeEngine(): Promise<OwnerRentalIncomeEngineModule> {
-  return loadReportEngine<OwnerRentalIncomeEngineModule>('ownerRentalIncome');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -73,7 +58,6 @@ export async function getOwnerRentalIncomeReportJson(
   }
 ) {
   const state = await loadOwnerRentalIncomeStateInput(client, tenantId, filters.endDate);
-  const { computeOwnerRentalIncomeReport } = await loadOwnerRentalIncomeEngine();
   const sortKey = filters.sortKey || 'date';
   const validSortKeys = new Set([
     'date',

@@ -10,3 +10,4 @@ export * from './rentalReceivableReportEngine';
 export * from './ownerIncomeSummaryReportEngine';
 export * from './ownerSecurityDepositReportEngine';
 export * from './serviceChargesDeductionReportEngine';
+export * from './rentalBillsDashboardEngine';

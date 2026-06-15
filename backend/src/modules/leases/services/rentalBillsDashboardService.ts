@@ -1,5 +1,5 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeRentalBillsDashboard } from '../../../reportEngines/index.js';
 import { listTransactions, rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 import { listCategories, rowToCategoryApi, fetchPlSubTypesForTenant } from '../../accounting/services/categoriesService.js';
 import { listBills, rowToBillApi } from '../../vendors/services/billsService.js';
@@ -7,22 +7,6 @@ import { listBuildings, rowToBuildingApi } from '../../properties/services/build
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
 import { listRentalAgreements, rowToRentalAgreementApi } from './rentalAgreementsService.js';
 import { listVendors, rowToVendorApi } from '../../vendors/services/vendorsService.js';
-
-type RentalBillsDashboardEngineModule = {
-  computeRentalBillsDashboard: (
-    input: Record<string, unknown>,
-    filters: Record<string, unknown>
-  ) => {
-    tree: unknown[];
-    summary: Record<string, unknown>;
-    rows: unknown[];
-    totalRows: number;
-  };
-};
-
-async function loadRentalBillsDashboardEngine(): Promise<RentalBillsDashboardEngineModule> {
-  return loadReportEngine<RentalBillsDashboardEngineModule>('rentalBillsDashboard');
-}
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -71,7 +55,6 @@ export async function getRentalBillsDashboardJson(
   }
 ) {
   const state = await loadRentalBillsDashboardStateInput(client, tenantId);
-  const { computeRentalBillsDashboard } = await loadRentalBillsDashboardEngine();
 
   const validViewBy = new Set(['building', 'property', 'vendor', 'bearer']);
   const viewBy = validViewBy.has(filters.viewBy) ? filters.viewBy : 'building';

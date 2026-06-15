@@ -1,18 +1,7 @@
 import type pg from 'pg';
-import { loadReportEngine } from '../../../reportEngines/loadReportEngine.js';
+import { computeProfitLossReport } from '../../../reportEngines/index.js';
 import { loadBalanceSheetStateInput } from './balanceSheetReportService.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../../constants/globalSystemChart.js';
-
-type ProfitLossEngineModule = {
-  computeProfitLossReport: (
-    state: Record<string, unknown>,
-    opts: { startDate: string; endDate: string; selectedProjectId: string; selectedBuildingId?: string }
-  ) => Record<string, unknown>;
-};
-
-async function loadProfitLossEngine(): Promise<ProfitLossEngineModule> {
-  return loadReportEngine<ProfitLossEngineModule>('profitLoss');
-}
 
 async function mergePlCategoryMappings(
   client: pg.PoolClient,
@@ -104,7 +93,6 @@ export async function computeProfitLossFromPrepared(
   selectedProjectId: string,
   selectedBuildingId: string = 'all'
 ): Promise<ProfitLossReportJson> {
-  const { computeProfitLossReport } = await loadProfitLossEngine();
   const r = computeProfitLossReport(prepared.state, {
     startDate: from,
     endDate: to,
