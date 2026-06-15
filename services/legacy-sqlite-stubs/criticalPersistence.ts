@@ -1,5 +1,3 @@
-import { legacySqliteNoopAsync } from './_helpers';
-
 export async function flushAppStateToDatabase(): Promise<void> {
-  await legacySqliteNoopAsync();
+  /* no-op — PostgreSQL mode persists via API */
 }

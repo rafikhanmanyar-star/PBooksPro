@@ -2,29 +2,11 @@
  * API URL configuration for the app.
  *
  * Architecture v2.1: Desktop and Cloud editions use apiClient → Express API → PostgreSQL.
- * Legacy offline SQLite requires an explicit build flag (`VITE_LOCAL_ONLY=true`).
  *
  * When the app is opened from another PC (e.g. http://192.168.1.105:5173),
  * the API is derived from the same host on port 3000 (e.g. http://192.168.1.105:3000/api),
  * so no IP needs to be hardcoded.
  */
-
-import { IS_LEGACY_SQLITE_BUILD } from './runtimeMode';
-import {
-  PBOOKS_SESSION_DATA_SOURCE_KEY,
-  clearSessionDataSource,
-  ensureLegacyOfflineApiSessionMarked,
-  setSessionDataSource,
-  type SessionDataSource,
-} from './sessionDataSource';
-
-export {
-  PBOOKS_SESSION_DATA_SOURCE_KEY,
-  clearSessionDataSource,
-  ensureLegacyOfflineApiSessionMarked,
-  setSessionDataSource,
-  type SessionDataSource,
-};
 
 /** Default HTTP port for LAN API (must match backend). */
 export const DEFAULT_LAN_API_PORT = 3000;
@@ -33,6 +15,26 @@ export const STAGING_LAN_API_PORT = 3001;
 
 /** Persisted by the API login screen / setBaseUrl so Electron (file://) can reach a LAN server without rebuilding. */
 export const PBOOKS_API_BASE_STORAGE_KEY = 'pbooks_api_base_url';
+
+/** @deprecated Offline SQLite removed — key retained for legacy localStorage reads. */
+export const PBOOKS_SESSION_DATA_SOURCE_KEY = 'pbooks_session_data_source';
+
+/**
+ * @deprecated Offline SQLite was removed in Architecture v2.1 Phase 4. Always false.
+ * Use isAccountingBackedByRemoteApi() or isPostgresApiMode() from config/dataMode.ts.
+ */
+export function isLocalOnlyMode(): boolean {
+  return false;
+}
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function setSessionDataSource(_source: 'sqlite' | 'postgres_api'): void {}
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function clearSessionDataSource(): void {}
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function ensureLegacyOfflineApiSessionMarked(): void {}
 
 export function isProductionLocalApiUrl(url: string): boolean {
   if (!url) return false;
@@ -178,7 +180,6 @@ export function isStagingEnvironment(): boolean {
   if (v === 'true' || v === true) return true;
   const apiUrl = (import.meta.env.VITE_API_URL as string) || '';
   if (apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com')) return true;
-  // Local staging API on same machine (production uses port 3000)
   if (/:3001(\/|$)/.test(apiUrl)) return true;
   return false;
 }
@@ -186,32 +187,6 @@ export function isStagingEnvironment(): boolean {
 /** Display name for window title / login screen (staging vs production). */
 export function getAppDisplayName(): string {
   return isStagingEnvironment() ? 'PBooks Pro Staging' : 'PBooks Pro';
-}
-
-/**
- * Architecture v2.1: PostgreSQL-only by default.
- *
- * Returns true only when the build explicitly sets `VITE_LOCAL_ONLY=true`
- * (legacy offline SQLite scripts: `npm run electron:offline:*`).
- * All standard Desktop and Cloud builds use `VITE_LOCAL_ONLY=false` and always return false here.
- *
- * @deprecated Legacy SQLite offline mode retained temporarily for migration tooling only.
- * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
- */
-export function isLocalOnlyMode(): boolean {
-  if (!IS_LEGACY_SQLITE_BUILD) return false;
-
-  if (typeof window !== 'undefined') {
-    try {
-      if (localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY) === 'postgres_api') {
-        return false;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return true;
 }
 
 /**
@@ -227,5 +202,5 @@ export function isAccountingBackedByRemoteApi(): boolean {
   } catch {
     return false;
   }
-  return !isLocalOnlyMode();
+  return true;
 }

@@ -23,12 +23,6 @@ function toStubPath(resolved) {
 }
 
 export function legacySqliteStubPlugin() {
-  const sqliteEnabled = process.env.VITE_LOCAL_ONLY === 'true';
-
-  if (sqliteEnabled) {
-    return { name: 'legacy-sqlite-full' };
-  }
-
   return {
     name: 'legacy-sqlite-stub',
     enforce: 'pre',
