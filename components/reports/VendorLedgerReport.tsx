@@ -29,7 +29,6 @@ import {
     type VendorLedgerRow,
     type VendorLedgerContext,
 } from './vendorLedgerReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchVendorLedgerReport } from '../../services/api/financialReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -57,8 +56,7 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const bills = useBills();
     const transactions = useTransactions();
     const { print: triggerPrint } = usePrintContext();
-    const localOnly = isLocalOnlyMode();
-
+    
     // Filters
     const [dateRange, setDateRange] = useState<DateRangeOption>('all');
     const [startDate, setStartDate] = useState('2000-01-01');
@@ -172,11 +170,6 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerPayload(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -202,7 +195,6 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
             cancelled = true;
         };
     }, [
-        localOnly,
         startDate,
         endDate,
         selectedVendorId,
@@ -226,18 +218,18 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
         [ledgerEngineState, startDate, endDate, selectedVendorId, selectedBuildingId, searchQuery, context, dateSort]
     );
 
-    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
+    const reportData = (serverPayload?.rows ?? localResult.rows);
 
     const totals = useMemo(() => {
-        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        if (serverPayload?.totals) return serverPayload.totals;
         return localResult.totals;
-    }, [localOnly, serverPayload, localResult.totals]);
+    }, [serverPayload, localResult.totals]);
 
     const closingBalance = useMemo(() => {
         if (selectedVendorId === 'all') return 0;
-        if (!localOnly && serverPayload) return serverPayload.closingBalance;
+        if (serverPayload) return serverPayload.closingBalance;
         return localResult.closingBalance;
-    }, [selectedVendorId, localOnly, serverPayload, localResult.closingBalance]);
+    }, [selectedVendorId, serverPayload, localResult.closingBalance]);
 
     const selectionSummary = useMemo(() => {
         const vendorLabel =
@@ -367,10 +359,10 @@ const VendorLedgerReport: React.FC<VendorLedgerReportProps> = ({ context }) => {
                     </div>
                 </div>
 
-                {!localOnly && loading && (
+                {loading && (
                     <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
                 )}
-                {!localOnly && fetchError && (
+                {fetchError && (
                     <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
                 )}
 

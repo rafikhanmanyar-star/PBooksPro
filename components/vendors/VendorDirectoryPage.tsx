@@ -2,7 +2,6 @@ import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSele
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { Vendor, Bill, Transaction, Page, TransactionType } from '../../types';
 import ContactForm from '../settings/ContactForm';
 import VendorLedger from './VendorLedger';
@@ -58,7 +57,7 @@ const AddVendorSection: React.FC<{
     const handleSubmit = async (vendorData: Partial<Vendor> | any) => {
         const localId = `vendor_${Date.now()}`;
         let payload = { ...vendorData, id: localId } as Vendor;
-        if (!isLocalOnlyMode() && isAuthenticated) {
+        if (isAuthenticated) {
             try {
                 const merged = await getAppStateApiService().saveVendor({
                     ...vendorData,
@@ -328,7 +327,7 @@ const VendorDirectoryPage: React.FC = () => {
     const handleUpdateVendor = async (vendorData: Partial<Vendor> | any) => {
         if (!selectedVendor) return;
         let payload = { ...selectedVendor, ...vendorData } as Vendor;
-        if (!isLocalOnlyMode() && isAuthenticated) {
+        if (isAuthenticated) {
             try {
                 const merged = await getAppStateApiService().updateVendor(selectedVendor.id, {
                     ...payload,
@@ -348,7 +347,7 @@ const VendorDirectoryPage: React.FC = () => {
         if (!selectedVendor) return;
         const confirmed = await showConfirm(`Are you sure you want to delete vendor "${selectedVendor.name}"? This cannot be undone.`, { title: 'Delete Vendor', confirmLabel: 'Delete', cancelLabel: 'Cancel' });
         if (confirmed) {
-            if (!isLocalOnlyMode() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
                     await getAppStateApiService().deleteVendor(selectedVendor.id, selectedVendor.version);
                 } catch (err: any) {
@@ -693,11 +692,9 @@ const VendorDirectoryPage: React.FC = () => {
                                             <Button
                                                 variant="secondary"
                                                 onClick={() => setIsAdvanceModalOpen(true)}
-                                                disabled={isLocalOnlyMode()}
+                                                disabled={false}
                                                 title={
-                                                    isLocalOnlyMode()
-                                                        ? 'Supplier advances need the PostgreSQL API (offline mode is not supported).'
-                                                        : 'Record prepaid money to this supplier'
+                                                     'Record prepaid money to this supplier'
                                                 }
                                                 className="!py-1.5 !px-3 !text-xs !border-ds-warning/30 !bg-[color:var(--badge-partial-bg)] hover:!bg-app-table-hover !text-[color:var(--badge-partial-text)] disabled:opacity-50"
                                             >

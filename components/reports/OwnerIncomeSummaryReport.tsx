@@ -21,7 +21,6 @@ import {
     computeOwnerIncomeSummaryReport,
     type OwnerSummary,
 } from './ownerIncomeSummaryReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchOwnerIncomeSummaryReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -67,17 +66,11 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         setDateRange('custom');
     };
 
-    const localOnly = isLocalOnlyMode();
-    const [serverSummaries, setServerSummaries] = useState<OwnerSummary[] | null>(null);
+        const [serverSummaries, setServerSummaries] = useState<OwnerSummary[] | null>(null);
     const [loading, setLoading] = useState(false);
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerSummaries(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -100,7 +93,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery]);
+    }, [startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery]);
 
     const localReportData = useMemo(
         () =>
@@ -114,7 +107,7 @@ const OwnerIncomeSummaryReport: React.FC = () => {
         [rentalState, startDate, endDate, selectedBuildingId, selectedOwnerId, searchQuery]
     );
 
-    const reportData = localOnly ? localReportData : (serverSummaries ?? localReportData);
+    const reportData = (serverSummaries ?? localReportData);
 
     const totals = useMemo(() => {
         return reportData.reduce((acc, curr) => ({
@@ -271,10 +264,10 @@ const OwnerIncomeSummaryReport: React.FC = () => {
                         />
                     </div>
                 </div>
-                {!localOnly && loading && (
+                {loading && (
                     <p className="text-sm text-app-muted mt-2 px-1">Loading summary from server…</p>
                 )}
-                {!localOnly && fetchError && (
+                {fetchError && (
                     <p className="text-sm text-danger mt-2 px-1">Failed to load report: {fetchError}</p>
                 )}
             </div>

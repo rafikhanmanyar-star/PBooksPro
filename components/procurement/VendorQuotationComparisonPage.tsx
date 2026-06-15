@@ -7,7 +7,6 @@ import Select from '../ui/Select';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchQuotationComparison } from '../../services/quotationIntelligenceApi';
 import type { VendorQuotationComparisonRow } from '../../types';
 
@@ -82,9 +81,7 @@ const VendorQuotationComparisonPage: React.FC = () => {
         categoryId: categoryId || undefined,
         itemName: itemName || undefined,
       };
-      if (!isLocalOnlyMode()) {
-        return fetchQuotationComparison(filters);
-      }
+              return fetchQuotationComparison(filters);
       return localComparison(state.quotations, state.vendors, filters);
     },
     staleTime: 30_000,

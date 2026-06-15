@@ -29,7 +29,6 @@ import {
     computeTenantLedgerReport,
     type TenantLedgerItem,
 } from './tenantLedgerReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchTenantLedgerReport } from '../../services/api/rentalReportsApi';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'thisYear' | 'custom';
@@ -54,8 +53,7 @@ const TenantLedgerReport: React.FC = () => {
     const dispatch = useDispatchOnly();
     const { showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
-    const localOnly = isLocalOnlyMode();
-
+    
     const now = new Date();
     const [dateRangeType, setDateRangeType] = useState<DateRangeOption>('thisYear');
     const [startDate, setStartDate] = useState(() => toLocalDateString(new Date(now.getFullYear(), 0, 1)));
@@ -162,11 +160,6 @@ const TenantLedgerReport: React.FC = () => {
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerPayload(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -191,7 +184,7 @@ const TenantLedgerReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, startDate, endDate, selectedTenantId, searchQuery, groupBy, sortConfig]);
+    }, [startDate, endDate, selectedTenantId, searchQuery, groupBy, sortConfig]);
 
     const localResult = useMemo(
         () =>
@@ -210,7 +203,7 @@ const TenantLedgerReport: React.FC = () => {
         [contacts, invoices, transactions, categories, startDate, endDate, selectedTenantId, searchQuery, groupBy, sortConfig]
     );
 
-    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
+    const reportData = (serverPayload?.rows ?? localResult.rows);
 
     const requestSort = (key: keyof TenantLedgerItem) => {
         if (key !== 'date') return;
@@ -219,9 +212,9 @@ const TenantLedgerReport: React.FC = () => {
     };
 
     const totals = useMemo(() => {
-        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        if (serverPayload?.totals) return serverPayload.totals;
         return localResult.totals;
-    }, [localOnly, serverPayload, localResult.totals]);
+    }, [serverPayload, localResult.totals]);
 
     const selectionSummary = useMemo(() => {
         const tenantName =
@@ -230,7 +223,7 @@ const TenantLedgerReport: React.FC = () => {
                 : contacts.find(c => c.id === selectedTenantId)?.name ?? 'Selected tenant';
         const closing =
             selectedTenantId !== 'all'
-                ? !localOnly && serverPayload
+                ? serverPayload
                     ? serverPayload.closingBalance
                     : localResult.closingBalance
                 : 0;
@@ -241,7 +234,7 @@ const TenantLedgerReport: React.FC = () => {
             totalCredit: totals.credit,
             closing,
         };
-    }, [reportData, selectedTenantId, contacts, totals.debit, totals.credit, localOnly, serverPayload, localResult.closingBalance]);
+    }, [reportData, selectedTenantId, contacts, totals.debit, totals.credit, serverPayload, localResult.closingBalance]);
 
     const alertsCount = useMemo(() => {
         const overdueInvoices = invoices.filter(inv => {
@@ -475,10 +468,10 @@ const TenantLedgerReport: React.FC = () => {
                     </div>
                 </div>
 
-                {!localOnly && loading && (
+                {loading && (
                     <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
                 )}
-                {!localOnly && fetchError && (
+                {fetchError && (
                     <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
                 )}
 

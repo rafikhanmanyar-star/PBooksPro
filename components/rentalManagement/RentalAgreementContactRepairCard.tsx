@@ -3,7 +3,6 @@ import { useDispatchOnly, useRentalAgreements } from '../../hooks/useSelectiveSt
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { computeRentalAgreementContactRepairs } from '../../services/repairRentalAgreementContact';
 import type { AppAction } from '../../types';
 import Button from '../ui/Button';
@@ -24,7 +23,7 @@ const RentalAgreementContactRepairCard: React.FC = () => {
     [rentalAgreements]
   );
 
-  const useApi = !isLocalOnlyMode() && isAuthenticated;
+  const useApi = isAuthenticated;
 
   const run = async () => {
     if (useApi) {

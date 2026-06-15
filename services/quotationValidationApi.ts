@@ -1,6 +1,5 @@
 import type { QuotationValidationResult } from '../shared/quotation-validation/types';
 import { apiClient } from './api/client';
-import { isLocalOnlyMode } from '../config/apiUrl';
 
 export async function recordQuotationPriceOverrideApi(input: {
   quotationId?: string;
@@ -16,7 +15,6 @@ export async function recordQuotationPriceOverrideApi(input: {
   varianceAmount?: number;
   variancePercentage?: number;
 }): Promise<void> {
-  if (isLocalOnlyMode()) return;
   await apiClient.post('/quotation-validation/overrides', input);
 }
 

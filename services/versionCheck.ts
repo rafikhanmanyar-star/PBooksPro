@@ -3,8 +3,6 @@
  * Compares the build-time version with /version.json served from the static host.
  */
 
-import { isLocalOnlyMode } from '../config/apiUrl';
-
 export type DeploymentVersionInfo = {
   version: string;
   buildTime: string;
@@ -20,7 +18,6 @@ function isElectronClient(): boolean {
 
 function shouldRunVersionCheck(): boolean {
   if (typeof window === 'undefined') return false;
-  if (isLocalOnlyMode()) return false;
   if (isElectronClient()) return false;
   return true;
 }

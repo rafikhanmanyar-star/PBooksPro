@@ -1,6 +1,5 @@
 import { useMemo } from 'react';
 import { useLicense } from '../../../context/LicenseContext';
-import { isLocalOnlyMode } from '../../../config/apiUrl';
 import {
   EXECUTIVE_ACCORDION_SECTIONS,
   EXECUTIVE_MODULE_NAV,
@@ -10,7 +9,6 @@ import type { ExecutiveModuleId } from '../../../types/executiveMobile.types';
 
 function isModuleLicensed(item: ExecutiveNavItem, hasModule: (key: string) => boolean): boolean {
   if (!item.licenseKey) return true;
-  if (isLocalOnlyMode()) return true;
   return hasModule(item.licenseKey);
 }
 

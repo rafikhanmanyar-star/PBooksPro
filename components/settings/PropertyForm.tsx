@@ -13,7 +13,6 @@ import BuildingForm from './BuildingForm';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 // Note: useEntityFormModal removed to avoid circular dependency - using local modal pattern instead
 
 interface PropertyFormProps {
@@ -114,7 +113,7 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
 
     const handleGenericSubmit = (type: 'CONTACT' | 'BUILDING') => async (data: any) => {
         if (type === 'CONTACT') {
-            if (!isLocalOnlyMode() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
                     const saved = await getAppStateApiService().saveContact({
                         ...data,
@@ -133,7 +132,7 @@ const PropertyForm: React.FC<PropertyFormProps> = ({ onSubmit, onCancel, onDelet
                 setOwnerId(newId);
             }
         } else {
-            if (!isLocalOnlyMode() && isAuthenticated) {
+            if (isAuthenticated) {
                 try {
                     const saved = await getAppStateApiService().saveBuilding({ ...data });
                     dispatch({ type: 'ADD_BUILDING', payload: { ...saved, id: saved.id } });

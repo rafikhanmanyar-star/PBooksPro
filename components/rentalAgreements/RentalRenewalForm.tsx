@@ -9,7 +9,6 @@ import AmountInput from '../common/AmountInput';
 import { ICONS } from '../../constants';
 import { getFormBackgroundColorStyle } from '../../utils/formColorUtils';
 import { toLocalDateString } from '../../utils/dateUtils';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   agreementDateToYmd,
   ymdAddDays,
@@ -79,7 +78,7 @@ const RentalRenewalForm: React.FC<RentalRenewalFormProps> = ({ renewFrom, onClos
       await showAlert('Only an active agreement can be renewed. Refresh the list and try again.');
       return;
     }
-    if (!isLocalOnlyMode() && (renewFrom.version == null || !Number.isFinite(renewFrom.version))) {
+    if ((renewFrom.version == null || !Number.isFinite(renewFrom.version))) {
       await showAlert('Agreement version is missing. Please refresh the page and try again.');
       return;
     }

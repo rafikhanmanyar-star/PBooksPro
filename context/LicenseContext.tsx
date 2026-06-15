@@ -2,7 +2,6 @@
 import React, { createContext, useState, useContext, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import useDatabaseLicense from '../hooks/useDatabaseLicense';
 import { useAuth } from './AuthContext';
-import { isLocalOnlyMode } from '../config/apiUrl';
 
 interface LicenseContextType {
     isRegistered: boolean;
@@ -20,8 +19,6 @@ const LicenseContext = createContext<LicenseContextType | undefined>(undefined);
 
 const TRIAL_DURATION_DAYS = 30;
 
-/** In local-only mode, all these modules are enabled for testing. */
-const LOCAL_ONLY_MODULES = ['real_estate', 'rental'];
 
 /** Generate a short unique ID; works in HTTP and older browsers where crypto.randomUUID may be missing. */
 function generateDeviceId(): string {
@@ -97,15 +94,8 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     useEffect(() => {
         // Local-only: full license so all features can be tested (no expiry, all modules)
-        if (isLocalOnlyMode() && isAuthenticated) {
-            setIsRegistered(true);
-            setIsExpired(false);
-            setDaysRemaining(999);
-            return;
-        }
-
         // LAN / API without cloud license payload: do not assume valid — wait for server or treat as unknown
-        if (!isLocalOnlyMode() && isAuthenticated && !cloudLicense) {
+        if (isAuthenticated && !cloudLicense) {
             setIsRegistered(false);
             setIsExpired(false);
             setDaysRemaining(0);
@@ -163,7 +153,6 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const hasModule = useCallback((moduleKey: string) => {
         if (!isAuthenticated) return false;
-        if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES.includes(moduleKey);
         const mods = cloudLicense?.modules;
         if (!mods?.length) return false;
         if (mods.includes('all')) return true;
@@ -172,7 +161,6 @@ export const LicenseProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const effectiveModules = useMemo(() => {
         if (!isAuthenticated) return [];
-        if (isLocalOnlyMode()) return LOCAL_ONLY_MODULES;
         return cloudLicense?.modules?.length ? cloudLicense.modules : [];
     }, [isAuthenticated, cloudLicense?.modules]);
 

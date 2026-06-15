@@ -9,7 +9,7 @@ import { X, Banknote, Loader2, AlertCircle } from 'lucide-react';
 import { PayrollEmployee, Payslip, PayrollRun, PayrollStatus } from '../types';
 import { storageService } from '../services/storageService';
 import { Account, Transaction, TransactionType, AccountType } from '../../../types';
-import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollApi } from '../../../services/api/payrollApi';
 import { syncPayrollFromServer } from '../services/payrollSync';
 import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
@@ -157,7 +157,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!payslip || !employee || !tenantId) return;
-    if (!isLocalOnlyMode() && recordLock.viewOnly) return;
+    if (recordLock.viewOnly) return;
     if (!salaryCategory) {
       setError('Salary expense category not found. Please contact support.');
       return;

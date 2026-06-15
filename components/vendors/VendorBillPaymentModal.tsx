@@ -12,7 +12,6 @@ import DatePicker from '../ui/DatePicker';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ContractorLedgerAdvance, contractorApi, type VendorBillSettlementRow } from '../../services/api/contractorApi';
 import { allocateFifoAcrossVendorBills, type BillAllocationPlan } from '../../utils/vendorAdvanceAllocation';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
@@ -138,8 +137,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             !applyPrepaidFifo ||
             supplierPartiesMixed ||
             !selectedSorted.length ||
-            !supplierAdvances.length ||
-            isLocalOnlyMode()
+            !supplierAdvances.length 
         ) {
             return new Map<string, BillAllocationPlan>();
         }
@@ -179,8 +177,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
             manualSettlementSplit &&
             selectedSorted.length === 1 &&
             applyPrepaidFifo &&
-            !supplierPartiesMixed &&
-            !isLocalOnlyMode()
+            !supplierPartiesMixed
         ) {
             const bill = selectedSorted[0];
             const adjustments = supplierAdvances
@@ -225,8 +222,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         advancesLoaded && supplierAdvances.some((a) => a.remainingAmount > EPS);
 
     const advanceSettlementPath =
-        !isLocalOnlyMode() &&
-        selectedSorted.length > 0 &&
+        !selectedSorted.length > 0 &&
         (!!editSettlement || (applyPrepaidFifo && !supplierPartiesMixed && hasPrepaidFifoRows));
 
     useEffect(() => {
@@ -235,7 +231,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
 
     useEffect(() => {
         let cancel = false;
-        if (!isOpen || isLocalOnlyMode()) {
+        if (!isOpen ) {
             setSupplierAdvances([]);
             setAdvancesLoaded(false);
             return;
@@ -354,8 +350,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         const selected = pendingBills.filter((b) => selectedBillIds.has(b.id));
         const sumDue = Math.round(selected.reduce((acc, b) => acc + (b.amount - b.paidAmount), 0) * 100) / 100;
         if (
-            !isLocalOnlyMode() &&
-            advanceSettlementPath &&
+            !advanceSettlementPath &&
             !editSettlement &&
             !manualSettlementSplit &&
             selected.length > 0 &&
@@ -690,20 +685,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                 if (b) updatedBillsForWhatsApp.push(computeBillAfterPayment(b, amt));
             }
 
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-                showToast(`Payment recorded for ${transactions.length} bills.`, 'success');
-                await offerConstructionBillPaymentWhatsApp({
-                    state,
-                    updatedBills: updatedBillsForWhatsApp,
-                    showConfirm,
-                    showAlert,
-                    openChat,
-                });
-                onPaymentSuccess?.();
-                onClose();
-                return;
-            }
+            
 
             try {
                 const apiService = getAppStateApiService();
@@ -875,8 +857,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                         </div>
                     </div>
 
-                    {!isLocalOnlyMode() &&
-                        advancesLoaded &&
+                    {!advancesLoaded &&
                         (supplierAdvances.some((a) => a.remainingAmount > EPS) || !!editSettlement) && (
                         <div className={`${backupAlertSuccess} mb-3 p-3 text-xs leading-relaxed space-y-2`}>
                             <p className="font-semibold text-sm text-app-text">

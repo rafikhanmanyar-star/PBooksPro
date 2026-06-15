@@ -38,7 +38,6 @@ import {
   computeRentalBillsDashboard,
   type RentalBillsDashboardRow,
 } from './rentalBillsDashboardEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   fetchRentalBillsDashboard,
   type RentalBillsDashboardApiResult,
@@ -124,8 +123,7 @@ const RentalBillsDashboard: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const localOnly = isLocalOnlyMode();
-  const [serverDash, setServerDash] = useState<RentalBillsDashboardApiResult | null>(null);
+    const [serverDash, setServerDash] = useState<RentalBillsDashboardApiResult | null>(null);
   const [dashLoading, setDashLoading] = useState(false);
   const [dashFetchError, setDashFetchError] = useState<string | null>(null);
 
@@ -162,11 +160,6 @@ const RentalBillsDashboard: React.FC = () => {
   );
 
   useEffect(() => {
-    if (localOnly) {
-      setServerDash(null);
-      setDashFetchError(null);
-      return;
-    }
     let cancelled = false;
     setDashLoading(true);
     setDashFetchError(null);
@@ -197,9 +190,9 @@ const RentalBillsDashboard: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, viewBy, statusFilter, searchQuery, tabFilter, typeFilter, selectedNode, sortConfig, currentPage]);
+  }, [viewBy, statusFilter, searchQuery, tabFilter, typeFilter, selectedNode, sortConfig, currentPage]);
 
-  const activeDash = localOnly ? localDash : serverDash;
+  const activeDash = serverDash;
   const treeData = (activeDash?.tree ?? []) as ARTreeNode[];
   const summaryStats = activeDash?.summary ?? {
     totalOutstanding: 0,
@@ -208,20 +201,12 @@ const RentalBillsDashboard: React.FC = () => {
     paidBillsCount: 0,
     changePercent: 0,
   };
-  const paginatedRows: RentalBillsDashboardRow[] = localOnly
-    ? localDash.rows
-    : ((serverDash?.rows ?? []) as unknown as RentalBillsDashboardRow[]);
-  const sortedBills = localOnly
-    ? localDash.sortedBills
-    : paginatedRows.filter((r): r is { kind: 'bill'; bill: Bill } => r.kind === 'bill').map((r) => r.bill as Bill);
-  const paymentRows = localOnly
-    ? localDash.paymentRows
-    : paginatedRows
+  const paginatedRows: RentalBillsDashboardRow[] = ((serverDash?.rows ?? []) as unknown as RentalBillsDashboardRow[]);
+  const sortedBills = paginatedRows.filter((r): r is { kind: 'bill'; bill: Bill } => r.kind === 'bill').map((r) => r.bill as Bill);
+  const paymentRows = paginatedRows
         .filter((r): r is { kind: 'payment'; payment: Transaction; bill: Bill } => r.kind === 'payment')
         .map((r) => ({ payment: r.payment as Transaction, bill: r.bill as Bill }));
-  const unpaidBillsForBulk = localOnly
-    ? localDash.unpaidBills
-    : bills.filter(
+  const unpaidBillsForBulk = bills.filter(
         (b) => !b.projectId && getEffectiveBillPaymentDisplay(b, transactions).balance > 0.01
       );
   const totalEntries = activeDash?.totalRows ?? 0;
@@ -584,10 +569,10 @@ const RentalBillsDashboard: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full min-h-0 bg-background">
-      {!localOnly && dashLoading && (
+      {dashLoading && (
         <p className="px-5 pt-3 text-sm text-app-muted">Loading bills dashboard from server…</p>
       )}
-      {!localOnly && dashFetchError && (
+      {dashFetchError && (
         <p className="px-5 pt-3 text-sm text-ds-danger">Server dashboard failed: {dashFetchError}</p>
       )}
       {/* Summary Cards */}

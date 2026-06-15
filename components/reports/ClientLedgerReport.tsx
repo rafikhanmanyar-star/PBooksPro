@@ -27,7 +27,6 @@ import {
     type ClientLedgerTreeSelection,
     type ClientAgreementSummary,
 } from './clientLedgerReportEngine';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchClientLedgerReport } from '../../services/api/financialReportsApi';
 import { usePrintReport } from '../../hooks/usePrintReport';
 
@@ -45,8 +44,7 @@ const ClientLedgerReport: React.FC = () => {
     const whatsAppMode = useStateSelector((s) => s.whatsAppMode);
     const { showAlert } = useNotification();
     const { openChat } = useWhatsApp();
-    const localOnly = isLocalOnlyMode();
-
+    
     const printReport = usePrintReport();
     const handlePrint = () => printReport({ elementId: 'print-area' });
     
@@ -174,11 +172,6 @@ const ClientLedgerReport: React.FC = () => {
     const [fetchError, setFetchError] = useState<string | null>(null);
 
     useEffect(() => {
-        if (localOnly) {
-            setServerPayload(null);
-            setFetchError(null);
-            return;
-        }
         let cancelled = false;
         setLoading(true);
         setFetchError(null);
@@ -201,7 +194,7 @@ const ClientLedgerReport: React.FC = () => {
         return () => {
             cancelled = true;
         };
-    }, [localOnly, startDate, endDate, ledgerSelection, sortConfig]);
+    }, [startDate, endDate, ledgerSelection, sortConfig]);
 
     const localResult = useMemo(
         () =>
@@ -215,16 +208,14 @@ const ClientLedgerReport: React.FC = () => {
         [ledgerEngineState, startDate, endDate, ledgerSelection, sortConfig]
     );
 
-    const reportData = localOnly ? localResult.rows : (serverPayload?.rows ?? localResult.rows);
-    const agreementSummaries: ClientAgreementSummary[] = localOnly
-        ? localResult.agreementSummaries
-        : (serverPayload?.agreementSummaries ?? localResult.agreementSummaries);
+    const reportData = (serverPayload?.rows ?? localResult.rows);
+    const agreementSummaries: ClientAgreementSummary[] = (serverPayload?.agreementSummaries ?? localResult.agreementSummaries);
 
     const closingBalance = useMemo(() => {
         if (ledgerSelection.kind === 'all') return 0;
-        if (!localOnly && serverPayload) return serverPayload.closingBalance;
+        if (serverPayload) return serverPayload.closingBalance;
         return localResult.closingBalance;
-    }, [ledgerSelection.kind, localOnly, serverPayload, localResult.closingBalance]);
+    }, [ledgerSelection.kind, serverPayload, localResult.closingBalance]);
 
     const requestSort = (key: keyof ClientLedgerItem) => {
         let direction: 'asc' | 'desc' = 'asc';
@@ -235,9 +226,9 @@ const ClientLedgerReport: React.FC = () => {
     };
 
     const totals = useMemo(() => {
-        if (!localOnly && serverPayload?.totals) return serverPayload.totals;
+        if (serverPayload?.totals) return serverPayload.totals;
         return localResult.totals;
-    }, [localOnly, serverPayload, localResult.totals]);
+    }, [serverPayload, localResult.totals]);
 
 
     const handleExport = () => {
@@ -382,10 +373,10 @@ const ClientLedgerReport: React.FC = () => {
                     </ReportToolbar>
                 </div>
 
-                {!localOnly && loading && (
+                {loading && (
                     <p className="text-sm text-app-muted px-6 no-print">Loading report from server…</p>
                 )}
-                {!localOnly && fetchError && (
+                {fetchError && (
                     <p className="text-sm text-rose-600 px-6 no-print">Server report failed: {fetchError}. Showing local data.</p>
                 )}
 

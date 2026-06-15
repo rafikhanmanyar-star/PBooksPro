@@ -8,7 +8,6 @@
 
 import React, { Suspense } from 'react';
 import { useCompany } from '../../context/CompanyContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import Loading from '../ui/Loading';
 
 const CompanyLoginScreen = React.lazy(() => import('./CompanyLoginScreen'));
@@ -21,9 +20,7 @@ interface Props {
 export const CompanyGate: React.FC<Props> = ({ children }) => {
   const companyCtx = useCompany();
 
-  if (!isLocalOnlyMode()) {
-    return <>{children}</>;
-  }
+      return <>{children}</>;
 
   if (companyCtx.isLoading || companyCtx.screen === 'loading') {
     return <Loading message="Loading..." />;

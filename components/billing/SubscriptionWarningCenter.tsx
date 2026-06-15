@@ -5,7 +5,6 @@ import {
   type LicenseEnforcement,
   type LicenseWarning,
 } from '../../services/api/subscriptionBillingApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 
 const severityStyles: Record<LicenseWarning['severity'], string> = {
   info: 'border-blue-200 bg-blue-50 text-blue-800',
@@ -19,11 +18,7 @@ const SubscriptionWarningCenter: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (isLocalOnlyMode()) {
-      setLoading(false);
-      return;
-    }
-    void (async () => {
+        void (async () => {
       try {
         const status = await subscriptionBillingApi.getEnforcement();
         setData(status);
@@ -34,14 +29,6 @@ const SubscriptionWarningCenter: React.FC = () => {
       }
     })();
   }, []);
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-        Local mode — subscription enforcement is not applied.
-      </div>
-    );
-  }
 
   if (loading) {
     return (

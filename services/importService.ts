@@ -6,7 +6,7 @@ import type { ProgressContextType } from '../context/ProgressContext';
 import * as XLSX from 'xlsx';
 import { normalizeNameForComparison } from '../utils/stringUtils';
 import { IMPORT_SCHEMAS } from './importSchemas';
-import { AppStateRepository } from './database/repositories/appStateRepository';
+import { AppStateRepository } from './legacy-sqlite/repositories/appStateRepository';
 import { toLocalDateString } from '../utils/dateUtils';
 
 type ProgressReporter = ProgressContextType;
@@ -2720,7 +2720,7 @@ export const runImportProcess = async (
 
     // Save to database
     progress.updateProgress(96, 'Initializing database...');
-    const { getDatabaseService } = await import('./database/databaseService');
+    const { getDatabaseService } = await import('./legacy-sqlite/databaseService');
 
     // Ensure database is initialized before saving
     const dbService = getDatabaseService();

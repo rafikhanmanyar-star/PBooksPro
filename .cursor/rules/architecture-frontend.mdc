@@ -1,38 +1,84 @@
 ---
-description: Frontend Architecture v2 — /api/v1 client, shared engines, dashboard snapshots
+description: Frontend Architecture v2.1 — /api/v1 client, shared engines, dashboard snapshots
 globs: "{components/**,hooks/**,services/**,context/**,modules/**,stores/**}/*.{ts,tsx}"
 alwaysApply: false
 ---
 
-# Frontend Architecture (v2)
+# Frontend Architecture (v2.1)
+
+**Agent rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §9 · **Real-time:** `doc/ARCHITECTURE.md#real-time-first-architecture`
+
+## Real-Time First (mandatory)
+
+Multi-user ERP — screens must update when any user in the org mutates data. **Never** rely on local-only state or manual page refresh.
+
+| Concern | Reference |
+|---------|-----------|
+| Socket client | `core/socket.ts` — `connectRealtimeSocket()`, `getRealtimeSocket()` |
+| Global entity events | `context/AppContext.tsx` — `entity_created` / `entity_updated` / `entity_deleted` / `financial.posted` |
+| Change log merge | `services/api/changeLogMerge.ts` |
+| React Query + socket | `hooks/useUserNotifications.ts`, `modules/executive-mobile/hooks/useMobileNotifications.ts` |
+
+### React Query on socket events
+
+New server-backed hooks **must** subscribe and invalidate (or `setQueryData`) on relevant events:
+
+```typescript
+useEffect(() => {
+  const socket = getRealtimeSocket();
+  if (!socket) return;
+  const onEvent = (payload: { tenantId?: string; type?: string }) => {
+    if (payload.tenantId && payload.tenantId !== currentTenantId) return;
+    void queryClient.invalidateQueries({ queryKey: ['your-entity-key'] });
+  };
+  socket.on('entity_updated', onEvent);
+  socket.on('entity_created', onEvent);
+  socket.on('entity_deleted', onEvent);
+  return () => {
+    socket.off('entity_updated', onEvent);
+    socket.off('entity_created', onEvent);
+    socket.off('entity_deleted', onEvent);
+  };
+}, [currentTenantId, queryClient]);
+```
+
+**MUST NOT:** local-only business entity updates; refresh button as primary sync; polling-only mutation propagation.
 
 ## State Management
 
 | Layer | Use when |
 |-------|----------|
-| useStateSelector / domain hooks | AppContext slices — preferred for new code |
-| React Query (hooks/queries/) | Server data, dashboard snapshots, reports |
-| Zustand (stores/) | Ephemeral UI state |
-| AppContext reducer | Core entities that persist/sync |
+| `useStateSelector` / `context/domains/` hooks | AppContext slices — **preferred for new code** |
+| React Query (`hooks/queries/`) | Server data, dashboard snapshots, reports |
+| Zustand (`stores/`) | Ephemeral UI-only state |
+| AppContext reducer | Core entities that persist via API sync |
+
+Do not duplicate server-fetched KPI/report data in AppContext when React Query exists.
 
 ## API Client
 
-- Base URL: `/api/v1` (config/apiUrl.ts normalizeApiBaseUrl)
-- apiClient in services/api/client.ts
-- Repos: services/api/repositories/*Api.ts
+- Base URL: `/api/v1` (`config/apiUrl.ts` → `normalizeApiBaseUrl()`)
+- Singleton: `services/api/client.ts` (`apiClient`)
+- Repos: `services/api/repositories/*Api.ts` with `normalize*FromApi()`
+
+All Desktop and Cloud editions use `apiClient` → PostgreSQL via Express API.
 
 ## Report & Financial Logic
 
-- Source of truth: shared/report-engines/, shared/financial-core/
-- components/reports/ = UI + re-export shims only — no new calculation logic
-- Dashboard (API mode): useDashboardSnapshots → GET /dashboard/snapshots
+- Source of truth: `shared/report-engines/`, `shared/financial-core/`
+- `components/reports/` = UI + re-export shims only — **no new calculation logic**
+- Dashboard: `useDashboardSnapshots` → `GET /dashboard/snapshots`
 
-## Navigation
+## Navigation (not React Router)
 
-Page union in types.ts → PAGE_GROUPS + lazyWithRetry in App.tsx → Sidebar
+`Page` union in `types.ts` → `PAGE_GROUPS` + `lazyWithRetry` in `App.tsx` → Sidebar / `utils/appNavigation.ts`
 
 ## New Feature Checklist
 
-Types → API repo → React Query hook → UI → navigation → usePermissions()
+1. Types → API repo → React Query hook (if server-backed) → **socket listener + invalidateQueries** → UI → navigation → `usePermissions()`
+2. Styling: Tailwind + `styles/design-tokens.css`; modals: `hooks/useEntityFormModal`
 
-Full guide: doc/ARCHITECTURE.md §3.
+## Deprecated (do not use for new development)
+
+- `VITE_LOCAL_ONLY` / `isLocalOnlyMode()` — offline SQLite mode removed from active architecture
+- `services/database/` — legacy SQLite access; use `apiClient` instead

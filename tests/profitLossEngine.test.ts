@@ -6,7 +6,7 @@ import type { AppState, Category, Transaction, Account, Project } from '../types
 import { TransactionType, AccountType } from '../types';
 import { computeProfitLossReport } from '../components/reports/profitLossEngine';
 import { computeProjectProfitLossTotals } from '../components/reports/projectProfitLossComputation';
-import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../services/database/resolveProfitDistributionExpenseCategory';
+import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../constants/profitDistributionCategory';
 
 function baseState(overrides: Partial<AppState> = {}): AppState {
   const incomeCat: Category = {

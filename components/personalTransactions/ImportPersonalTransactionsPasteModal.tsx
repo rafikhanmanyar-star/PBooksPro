@@ -9,7 +9,6 @@ import {
   getPersonalIncomeCategories,
   getPersonalExpenseCategories } from './personalCategoriesService';
 import { bulkImportPersonalTransactions, listPersonalTransactions } from './personalTransactionsService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   parseExcelPaste,
   type ParsedPasteLine } from './importPaste/personalTransactionImportPaste';
@@ -86,7 +85,7 @@ const ImportPersonalTransactionsPasteModal: React.FC<ImportPersonalTransactionsP
   );
 
   const existingTransactions = useMemo(() => {
-    const rows = listPersonalTransactions({ limit: 25000 }, isLocalOnlyMode() ? undefined : personalTransactions);
+    const rows = listPersonalTransactions({ limit: 25000 }, personalTransactions);
     return rows.map((t) => ({
       transactionDate: t.transactionDate,
       amount: t.amount,

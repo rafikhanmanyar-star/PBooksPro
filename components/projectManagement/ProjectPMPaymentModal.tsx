@@ -13,7 +13,6 @@ import { useNotification } from '../../context/NotificationContext';
 import { CURRENCY } from '../../constants';
 import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
 
@@ -221,27 +220,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 }
             });
 
-            if (isLocalOnlyMode()) {
-                // Local-only: persist via dispatch (reducer updates bills via applyTransactionEffect; UPDATE_BILL syncs PM allocations)
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-                billsToUpdate.forEach(bill => {
-                    dispatch({ type: 'UPDATE_BILL', payload: bill });
-                    const relatedAllocation = state.pmCycleAllocations?.find(a => a.billId === bill.id);
-                    if (relatedAllocation) {
-                        dispatch({
-                            type: 'UPDATE_PM_CYCLE_ALLOCATION',
-                            payload: {
-                                ...relatedAllocation,
-                                paidAmount: bill.paidAmount || 0,
-                                status: bill.status === InvoiceStatus.PAID ? 'paid' : bill.status === InvoiceStatus.PARTIALLY_PAID ? 'partially_paid' : 'unpaid'
-                            }
-                        });
-                    }
-                });
-                showToast(`Payment recorded for ${transactions.length} allocation(s).`, "success");
-                billsForWhatsApp = [...billsToUpdate];
-            } else {
-                try {
+            try {
                     const apiService = getAppStateApiService();
                     const savedTransactions: Transaction[] = [];
                     const failedBills: { billId: string; error: any }[] = [];
@@ -308,7 +287,6 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     await showAlert(`Payment failed: ${error.message || 'An unexpected error occurred while processing payments.'}`);
                     return;
                 }
-            }
 
         } else {
             // EQUITY TRANSFER to PM Project
@@ -392,13 +370,7 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                 });
             });
 
-            if (isLocalOnlyMode()) {
-                dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-                billsToUpdate.forEach(bill => dispatch({ type: 'UPDATE_BILL', payload: bill }));
-                showToast(`Transferred ${transactions.length / 2} allocation(s) to PM equity.`, "success");
-                billsForWhatsApp = [...billsToUpdate];
-            } else {
-                try {
+            try {
                     const apiService = getAppStateApiService();
                     const savedTransactions: Transaction[] = [];
                     const failedBills: { billId: string; error: any }[] = [];
@@ -454,7 +426,6 @@ const ProjectPMPaymentModal: React.FC<ProjectPMPaymentModalProps> = ({
                     await showAlert(`Transfer failed: ${error.message || 'An unexpected error occurred while processing transfers.'}`);
                     return;
                 }
-            }
         }
 
         if (billsForWhatsApp.length > 0) {

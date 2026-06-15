@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { MetricCard, ChartCard } from '../analytics';
 import { apiClient } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import type { QuotationComplianceMetrics } from '../../shared/quotation-validation/types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -35,21 +34,11 @@ const VendorQuotationComplianceWidget: React.FC = () => {
         ...(dateTo ? { dateTo } : {}),
         ...(vendorId ? { vendorId } : {}),
       }),
-    enabled: !isLocalOnlyMode(),
+    enabled: true,
     staleTime: 60_000,
   });
 
   const metrics = data ?? emptyMetrics;
-
-  if (isLocalOnlyMode()) {
-    return (
-      <ChartCard title="Vendor Quotation Compliance">
-        <p className="text-sm text-app-muted p-4">
-          Compliance analytics require API mode with PostgreSQL override audit data.
-        </p>
-      </ChartCard>
-    );
-  }
 
   return (
     <ChartCard

@@ -2,7 +2,6 @@
  * Journal-based cash flow for local SQLite (Electron) and LAN/API (delegates to REST).
  */
 
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchCashFlowReport } from '../api/financialReportsApi';
 import { roundMoney } from './validation';
 import {
@@ -223,9 +222,6 @@ export async function fetchCashFlowReportUnified(options: {
   buildingId?: string;
   costCenterId?: string;
 }): Promise<CashFlowReportResult> {
-  if (isLocalOnlyMode()) {
-    return fetchLocalCashFlowFromJournal(options.tenantId, options);
-  }
   return fetchCashFlowReport({
     from: options.from,
     to: options.to,

@@ -6,7 +6,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
-import { getApiBaseUrl, isLocalOnlyMode, setSessionDataSource, clearSessionDataSource } from '../config/apiUrl';
+import { getApiBaseUrl, setSessionDataSource } from '../config/apiUrl';
 import {
   clearDemoSessionFlags,
   markDemoSessionActive,
@@ -22,7 +22,6 @@ import { trackEvent } from '../services/analytics/trackEvent';
 import { resetDemoTourSession } from '../services/tours/demoTourSession';
 import { apiClient } from '../services/api/client';
 import { logger } from '../services/logger';
-import { useCompanyOptional } from './CompanyContext';
 import { applyDisplayTimezoneFromProfile, setDisplayTimeZoneUserContext } from '../utils/dateUtils';
 import { persistInterfaceMode } from '../utils/interfaceModePreference';
 
@@ -70,20 +69,6 @@ export type PendingCompanySelection = {
 
 export type CompanySwitchRequest = {
   companies: CompanySummary[];
-};
-
-const LOCAL_USER: User = {
-  id: 'local-user',
-  username: 'admin',
-  name: 'Administrator',
-  role: 'Admin',
-  tenantId: 'local',
-};
-
-const LOCAL_TENANT: Tenant = {
-  id: 'local',
-  name: 'Local',
-  companyName: 'Local',
 };
 
 export interface AuthState {
@@ -207,24 +192,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     companySwitchRequest: null,
   });
 
-  // Multi-company integration: derive user from CompanyContext in local-only mode
-  const companyCtx = useCompanyOptional();
-
   /**
    * Check license status. Throws on error so callers (e.g. LicenseContext) don't treat fallback as valid data.
    * Defined before smart/unified/login so hooks can reference it safely.
    */
   const checkLicenseStatus = useCallback(async () => {
-    if (isLocalOnlyMode()) {
-      return {
-        isValid: true,
-        daysRemaining: 999,
-        licenseType: 'perpetual',
-        licenseStatus: 'active',
-        isExpired: false,
-        modules: ['real_estate', 'rental'],
-      };
-    }
     const response = await apiClient.get<{
       isValid?: boolean;
       licenseType?: string;
@@ -245,52 +217,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Shows login page immediately so the user can type credentials while save/API/cleanup run in the background.
    */
   const logout = useCallback(async () => {
-    // Local-only: save all data to SQLite first, then clear state (prevents loss of agreements etc. on logout)
-    if (isLocalOnlyMode()) {
-      if (typeof window !== 'undefined') {
-        try {
-          clearSessionDataSource();
-        } catch {
-          /* ignore */
-        }
-        try {
-          logger.logCategory('auth', '💾 Saving data to SQLite before logout (local-only)...');
-          await new Promise<void>((resolve) => {
-            const handleSaveComplete = () => {
-              window.removeEventListener('state-saved-for-logout', handleSaveComplete);
-              resolve();
-            };
-            window.addEventListener('state-saved-for-logout', handleSaveComplete);
-            window.dispatchEvent(new CustomEvent('save-state-before-logout'));
-            setTimeout(() => {
-              window.removeEventListener('state-saved-for-logout', handleSaveComplete);
-              logger.warnCategory('auth', '⚠️ State save timeout, proceeding with logout');
-              resolve();
-            }, 30000);
-          });
-          logger.logCategory('auth', '✅ Data saved, clearing session');
-        } catch (e) {
-          logger.errorCategory('auth', 'Save before logout failed:', e);
-        }
-      }
-      setState({
-        isAuthenticated: false,
-        user: null,
-        tenant: null,
-        isLoading: false,
-        isInitializing: false,
-        error: null,
-        pendingCompanySelection: null,
-        companySwitchRequest: null,
-      });
-      syncDisplayTimezoneFromUser(null);
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('tenant_id');
-        localStorage.removeItem('user_id');
-      }
-      return;
-    }
-
     clearDemoSessionFlags();
 
     // Set flag FIRST to prevent heartbeat from re-creating sessions
@@ -359,7 +285,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Heartbeat mechanism - keeps session alive by updating last_activity
    */
   useEffect(() => {
-    if (!state.isAuthenticated || isLocalOnlyMode()) return;
+    if (!state.isAuthenticated) return;
 
     // Reset logout flag on fresh login so heartbeat works normally
     loggingOutRef.current = false;
@@ -406,7 +332,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Handle app close/refresh - attempt to logout gracefully
    */
   useEffect(() => {
-    if (!state.isAuthenticated || isLocalOnlyMode()) return;
+    if (!state.isAuthenticated) return;
 
     const handleBeforeUnload = async (event: BeforeUnloadEvent) => {
       // Attempt to logout when app is closing
@@ -456,7 +382,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Network disconnect detection
    */
   useEffect(() => {
-    if (!state.isAuthenticated || isLocalOnlyMode()) return;
+    if (!state.isAuthenticated) return;
 
     const handleOnline = () => {
       logger.logCategory('auth', 'Network connection restored');
@@ -499,39 +425,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const checkAuth = async () => {
       try {
-        // Local-only mode: derive user from CompanyContext (multi-company)
-        if (isLocalOnlyMode()) {
-          const companyUser = companyCtx?.authenticatedUser;
-          const activeCompany = companyCtx?.activeCompany;
-          // Only authenticated when user has logged in via company login (select company → login)
-          const isAuthenticated = !!companyUser;
-
-          const user: User | null = companyUser
-            ? { id: companyUser.id, username: companyUser.username, name: companyUser.name, role: companyUser.role, tenantId: 'local' }
-            : null;
-
-          const tenant: Tenant | null = activeCompany
-            ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
-            : null;
-
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('tenant_id', 'local');
-            if (user) localStorage.setItem('user_id', user.id);
-            else localStorage.removeItem('user_id');
-          }
-          if (isMounted) {
-            setState({
-              isAuthenticated,
-              user,
-              tenant,
-              isLoading: false,
-              isInitializing: false,
-              error: null,
-            });
-          }
-          return;
-        }
-
         // Website live demo: enter directly — never show the organization login picker.
         if (
           isWebsiteDemoEntry() ||
@@ -625,7 +518,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         window.removeEventListener('auth:expired', handleAuthExpired);
       }
     };
-  }, [logout, companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
+  }, [logout]);
 
   /**
    * Lookup tenants by organization email (Step 1 of login flow)
@@ -660,41 +553,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Smart login - requires tenantId (Step 2 of login flow)
    */
   const smartLogin = useCallback(async (username: string, password: string, tenantId: string) => {
-    if (isLocalOnlyMode()) {
-      const companyUser = companyCtx?.authenticatedUser;
-      const activeCompany = companyCtx?.activeCompany;
-      const user: User = companyUser
-        ? {
-            id: companyUser.id,
-            username: companyUser.username,
-            name: companyUser.name,
-            role: companyUser.role,
-            tenantId: 'local',
-            displayTimezone: companyUser.displayTimezone,
-          }
-        : LOCAL_USER;
-      const tenant: Tenant = activeCompany
-        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
-        : LOCAL_TENANT;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('tenant_id', 'local');
-        localStorage.setItem('user_id', user.id);
-      }
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        user,
-        tenant,
-        isLoading: false,
-        error: null,
-      }));
-      syncDisplayTimezoneFromUser(user);
-      setSessionDataSource('sqlite');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:login-success'));
-      }
-      return;
-    }
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     logger.logCategory('auth', '🔐 Starting smart login:', { username: username.substring(0, 10) + '...', hasPassword: !!password, tenantId });
 
@@ -787,7 +645,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       throw error;
     }
-  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany]);
+  }, []);
 
   /**
    * Apply a successful auth session (JWT + user + tenant) after login or MFA.
@@ -979,41 +837,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     username: string,
     password: string
   ): Promise<LoginResult> => {
-    if (isLocalOnlyMode()) {
-      const companyUser = companyCtx?.authenticatedUser;
-      const activeCompany = companyCtx?.activeCompany;
-      const user: User = companyUser
-        ? {
-            id: companyUser.id,
-            username: companyUser.username,
-            name: companyUser.name,
-            role: companyUser.role,
-            tenantId: 'local',
-            displayTimezone: companyUser.displayTimezone,
-          }
-        : LOCAL_USER;
-      const tenant: Tenant = activeCompany
-        ? { id: 'local', name: activeCompany.company_name, companyName: activeCompany.company_name }
-        : LOCAL_TENANT;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('tenant_id', 'local');
-        localStorage.setItem('user_id', user.id);
-      }
-      setState(prev => ({
-        ...prev,
-        isAuthenticated: true,
-        user,
-        tenant,
-        isLoading: false,
-        error: null,
-      }));
-      syncDisplayTimezoneFromUser(user);
-      setSessionDataSource('sqlite');
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('auth:login-success'));
-      }
-      return { status: 'authenticated' };
-    }
     setState(prev => ({ ...prev, isLoading: true, error: null, pendingCompanySelection: null }));
 
     try {
@@ -1057,7 +880,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }));
       throw error;
     }
-  }, [companyCtx?.authenticatedUser, companyCtx?.activeCompany, parseAuthLoginResponse]);
+  }, [applyAuthSession, parseAuthLoginResponse]);
 
   const selectCompany = useCallback(async (
     companyId: string,

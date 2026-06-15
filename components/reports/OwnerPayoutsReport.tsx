@@ -193,7 +193,6 @@ const OwnerPayoutsReport: React.FC = () => {
     );
 
     const {
-        localOnly,
         result: ledgerResult,
         loading: ledgerLoading,
         updating: ledgerUpdating,
@@ -550,12 +549,12 @@ const OwnerPayoutsReport: React.FC = () => {
                         <Card className="flex flex-col flex-1 min-h-0 min-w-0 border-0 rounded-none shadow-none">
                             <div className="flex-shrink-0">
                                 <ReportHeader />
-                                {!localOnly && (ledgerLoading || ledgerUpdating) && (
+                                {(ledgerLoading || ledgerUpdating) && (
                                     <p className="px-6 pt-2 text-sm text-app-muted">
                                         {ledgerUpdating ? 'Updating ledger…' : 'Loading ledger from server…'}
                                     </p>
                                 )}
-                                {!localOnly && ledgerFetchError && (
+                                {ledgerFetchError && (
                                     <p className="px-6 pt-2 text-sm text-ds-danger">
                                         Server report failed: {ledgerFetchError}. Showing empty ledger until refresh.
                                     </p>
@@ -800,7 +799,7 @@ const OwnerPayoutsReport: React.FC = () => {
                         transactionToEdit={transactionToEdit}
                         onClose={() => {
                             setTransactionToEdit(null);
-                            if (!localOnly) {
+                            {
                                 beginLedgerUpdating();
                                 window.setTimeout(() => requestLedgerRefresh(), 400);
                             }
@@ -815,7 +814,7 @@ const OwnerPayoutsReport: React.FC = () => {
                     isOpen={!!serviceChargeEditTransaction}
                     onClose={() => {
                         setServiceChargeEditTransaction(null);
-                        if (!localOnly) {
+                        {
                             beginLedgerUpdating();
                             window.setTimeout(() => requestLedgerRefresh(), 400);
                         }

@@ -1,5 +1,4 @@
 import { toLocalDateString } from '../utils/dateUtils';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import { RentalAgreementsApiRepository } from './api/repositories/rentalAgreementsApi';
 import { normalizeInvoiceFromApi } from './api/repositories/invoicesApi';
 import {
@@ -107,74 +106,7 @@ export async function executeRentalRenewal(
   const primary = primaryOwnerIdFromShares(shares);
   const ownerId = primary ?? prop?.ownerId ?? old.ownerId;
 
-  if (isLocalOnlyMode()) {
-    const oldUpdated: RentalAgreement = {
-      ...old,
-      status: RentalAgreementStatus.RENEWED,
-    };
-    dispatch({ type: 'UPDATE_RENTAL_AGREEMENT', payload: oldUpdated });
-    const newA: RentalAgreement = {
-      id: newId,
-      agreementNumber,
-      contactId: old.contactId,
-      propertyId: old.propertyId,
-      startDate: new Date(form.startDate).toISOString(),
-      endDate: new Date(form.endDate).toISOString(),
-      monthlyRent: form.monthlyRent,
-      rentDueDate: form.rentDueDate,
-      status: RentalAgreementStatus.ACTIVE,
-      description: form.description,
-      securityDeposit: undefined,
-      brokerId: undefined,
-      brokerFee: undefined,
-      ownerId: ownerId || undefined,
-      previousAgreementId: old.id,
-    };
-    dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newA });
-    dispatch({
-      type: 'UPDATE_AGREEMENT_SETTINGS',
-      payload: { ...state.agreementSettings, nextNumber: nextSeq },
-    });
-    if (form.generateFirstMonthRentInvoice && form.monthlyRent > 0) {
-      const rSet = state.rentalInvoiceSettings;
-      const invPrefix = rSet?.prefix || 'INV-';
-      const nextNum = rSet?.nextNumber || 1;
-      const padding = rSet?.padding || 5;
-      const { number: invNum, afterNext } = getNextInvNumber(nextNum, invPrefix, padding, state.invoices);
-      const rentCat = state.categories.find((c) => c.name === 'Rental Income');
-      const startSlice = (form.startDate || '').slice(0, 10);
-      const monthName = new Date(
-        startSlice.length >= 10 ? `${startSlice}T12:00:00` : form.startDate
-      ).toLocaleString('default', { month: 'long', year: 'numeric' });
-      const bId = prop?.buildingId;
-      const proRated = proRataFirstMonthRent(form.monthlyRent, startSlice);
-      const inv: Invoice = {
-        id: `inv-rent-renew-${Date.now()}`,
-        invoiceNumber: invNum,
-        contactId: old.contactId,
-        invoiceType: InvoiceType.RENTAL,
-        amount: proRated,
-        paidAmount: 0,
-        status: InvoiceStatus.UNPAID,
-        issueDate: new Date(form.startDate).toISOString(),
-        dueDate: new Date(form.startDate).toISOString(),
-        description: `Rent for ${monthName} [Rental]`,
-        propertyId: old.propertyId,
-        buildingId: bId,
-        categoryId: rentCat?.id,
-        agreementId: newId,
-        rentalMonth: new Date(form.startDate).toISOString().slice(0, 7),
-      };
-      dispatch({ type: 'ADD_INVOICE', payload: inv });
-      dispatch({
-        type: 'UPDATE_RENTAL_INVOICE_SETTINGS',
-        payload: { ...rSet, nextNumber: afterNext, prefix: invPrefix, padding },
-      });
-    }
-    return;
-  }
-
-  if (!isLocalOnlyMode() && (old.version == null || !Number.isFinite(old.version))) {
+  if ((old.version == null || !Number.isFinite(old.version))) {
     throw new Error('Agreement version is missing. Please refresh the rental agreements list and try again.');
   }
   const api = new RentalAgreementsApiRepository();

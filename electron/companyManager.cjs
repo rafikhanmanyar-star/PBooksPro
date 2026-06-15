@@ -2,6 +2,9 @@
  * PBooks Pro - Company Manager
  * Manages multi-company SQLite databases via a central master_index.db.
  * Each company gets its own isolated .db file under data/companies/.
+ *
+ * @deprecated Legacy SQLite support retained temporarily.
+ * Do not use for new development. Desktop Edition uses apiClient → PostgreSQL.
  */
 
 const { ipcMain, dialog } = require('electron');
@@ -58,7 +61,7 @@ function getSchemaPath() {
   const fromCwd = path.join(process.cwd(), 'electron', 'schema.sql');
   if (fs.existsSync(fromCwd)) return fromCwd;
 
-  // Dev fallback: generate from services/database/schema.ts if present
+  // Dev fallback: generate from services/legacy-sqlite/schema.ts if present
   const schemaTsPath = path.join(process.cwd(), 'services', 'database', 'schema.ts');
   if (fs.existsSync(schemaTsPath)) {
     try {

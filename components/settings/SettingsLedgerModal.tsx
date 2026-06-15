@@ -6,7 +6,6 @@ import TransactionItem from '../transactions/TransactionItem';
 import { TransactionType, LoanSubtype, AccountType } from '../../types';
 import Button from '../ui/Button';
 import { CURRENCY } from '../../constants';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 
 interface SettingsLedgerModalProps {
     isOpen: boolean;
@@ -37,7 +36,7 @@ const SettingsLedgerModal: React.FC<SettingsLedgerModalProps> = ({ isOpen, onClo
     } | null>(null);
 
     useEffect(() => {
-        if (!isOpen || entityType !== 'contact' || !entityId || isLocalOnlyMode()) {
+        if (!isOpen || entityType !== 'contact' || !entityId ) {
             setContractorLedger(null);
             return;
         }

@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Cloud, Save, Wifi, Shield, KeyRound } from 'lucide-react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useNotification } from '../../context/NotificationContext';
 import {
@@ -59,7 +58,7 @@ const BackupStorageSettingsPage: React.FC = () => {
   }, []);
 
   const load = useCallback(async () => {
-    if (isLocalOnlyMode() || !canRead) {
+    if (!canRead) {
       setLoading(false);
       return;
     }
@@ -121,16 +120,6 @@ const BackupStorageSettingsPage: React.FC = () => {
       setTesting(false);
     }
   };
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className="p-4 sm:p-6">
-        <div className="max-w-2xl mx-auto rounded-lg border border-app-border bg-app-bg p-4 text-sm text-app-muted">
-          Offsite storage settings are available in LAN / server mode with PostgreSQL.
-        </div>
-      </div>
-    );
-  }
 
   if (!canRead) {
     return (

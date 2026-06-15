@@ -24,7 +24,6 @@ import {
 import { storageService } from './services/storageService';
 import { PayrollEmployee } from './types';
 import { useAuth } from '../../context/AuthContext';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { syncPayrollFromServer } from './services/payrollSync';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import ReportHeader from '../reports/ReportHeader';
@@ -52,9 +51,7 @@ const PayrollReport: React.FC = () => {
     setIsLoading(true);
     const load = async () => {
       try {
-        if (!isLocalOnlyMode()) {
-          await syncPayrollFromServer(tenantId);
-        }
+                  await syncPayrollFromServer(tenantId);
         storageService.init(tenantId);
         setEmployees(storageService.getEmployees(tenantId));
         setRuns(storageService.getPayrollRuns(tenantId));

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import {
   acquireRecordLock,
   forceRecordLock,
@@ -77,7 +76,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
   }, []);
 
   useEffect(() => {
-    if (!enabled || !recordId || isLocalOnlyMode()) {
+    if (!enabled || !recordId) {
       setViewOnly(false);
       setIsEditing(true);
       setLockedByName(null);
@@ -91,7 +90,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
 
     const releaseIfHeld = () => {
       const h = heldRef.current;
-      if (h && !isLocalOnlyMode()) {
+      if (h) {
         void releaseRecordLock(h.recordType, h.recordId);
       }
       clearHeld();
@@ -134,7 +133,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
   }, [enabled, recordId, recordType, currentUserId, opts.currentUserName, clearHeld, setHeld]);
 
   useEffect(() => {
-    if (!holdLock || !recordId || isLocalOnlyMode()) return;
+    if (!holdLock || !recordId) return;
     const t = window.setInterval(() => {
       void refreshRecordLock(recordType, recordId).catch(() => {});
     }, HEARTBEAT_MS);
@@ -142,7 +141,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
   }, [holdLock, recordId, recordType]);
 
   useEffect(() => {
-    if (!enabled || !recordId || isLocalOnlyMode()) return;
+    if (!enabled || !recordId) return;
     const t = window.setInterval(() => {
       void (async () => {
         try {
@@ -176,7 +175,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
   }, [enabled, recordId, recordType, viewOnly, holdLock, currentUserId]);
 
   useEffect(() => {
-    if (!enabled || !recordId || isLocalOnlyMode()) return;
+    if (!enabled || !recordId) return;
     const socket = getRealtimeSocket();
     if (!socket) return;
     const onAcquired = (payload: {
@@ -243,7 +242,7 @@ export function useRecordLock(opts: UseRecordLockOptions): RecordLockUiState & {
   const assertCanEdit = useCallback(() => !viewOnly && isEditing, [viewOnly, isEditing]);
 
   let bannerMode: 'self' | 'other' | null = null;
-  if (enabled && recordId && !isLocalOnlyMode()) {
+  if (enabled && recordId) {
     if (holdLock && !viewOnly) bannerMode = 'self';
     else if (viewOnly && lockedByName) bannerMode = 'other';
   }

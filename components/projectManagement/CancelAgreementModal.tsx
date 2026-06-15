@@ -2,7 +2,6 @@
 import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { ProjectAgreement, AccountType, InvoiceStatus, ProjectAgreementStatus } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { ProjectAgreementsApiRepository } from '../../services/api/repositories/projectAgreementsApi';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
@@ -73,8 +72,7 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
             type: 'CANCEL_PROJECT_AGREEMENT',
             payload,
         });
-        if (!isLocalOnlyMode()) {
-            try {
+        try {
                 const cancelled: ProjectAgreement = {
                     ...agreement,
                     status: ProjectAgreementStatus.CANCELLED,
@@ -92,7 +90,6 @@ const CancelAgreementModal: React.FC<CancelAgreementModalProps> = ({ isOpen, onC
             } catch {
                 /* local state already updated; user can refresh */
             }
-        }
         onClose();
         } finally {
             setIsSubmitting(false);

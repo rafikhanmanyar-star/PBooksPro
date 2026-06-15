@@ -6,8 +6,6 @@ import PersonalCategoriesSettingsPanel from './PersonalCategoriesSettingsPanel';
 import PersonalTransactionsTab from './PersonalTransactionsTab';
 import MyWalletsTab from './MyWalletsTab';
 import MyTasksTab from './MyTasksTab';
-import { seedPersonalCategoriesIfEmpty } from './personalCategoriesService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
@@ -38,12 +36,6 @@ const PersonalTransactionsPage: React.FC = () => {
 
   const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
   const isAdmin = isAdminRole(effectiveRole);
-
-  useEffect(() => {
-    if (isAdmin && isLocalOnlyMode()) {
-      seedPersonalCategoriesIfEmpty();
-    }
-  }, [isAdmin]);
 
   useEffect(() => {
     if (!TABS.includes(activeTab)) {

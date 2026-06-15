@@ -1,7 +1,5 @@
 import { useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { useCompanyOptional } from '../context/CompanyContext';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import {
   type Permission,
   permissionsForRole,
@@ -13,15 +11,11 @@ import {
 
 export function usePermissions() {
   const { user } = useAuth();
-  const companyCtx = useCompanyOptional();
 
   const role = useMemo(() => {
     if (user?.role) return user.role;
-    if (isLocalOnlyMode() && companyCtx?.authenticatedUser?.role) {
-      return companyCtx.authenticatedUser.role;
-    }
     return 'Read Only User';
-  }, [user?.role, companyCtx?.authenticatedUser?.role]);
+  }, [user?.role]);
 
   return useMemo(() => {
     const enterpriseRole = resolveEnterpriseRole(role);

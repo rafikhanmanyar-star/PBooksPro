@@ -19,7 +19,6 @@ import {
   useDashboardMetrics,
   useDashboardSnapshots,
 } from '../../hooks/useDashboardMetrics';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import {
   DashboardFilterBar,
   DASHBOARD_METRIC_ICONS,
@@ -61,7 +60,7 @@ const DashboardPage: React.FC = () => {
   const metricsQuery = useDashboardMetrics(isAuthenticated && isAdmin && isDashboardActive);
   const snapshotsQuery = useDashboardSnapshots(
     undefined,
-    isAuthenticated && isAdmin && isDashboardActive && !isLocalOnlyMode()
+    isAuthenticated && isAdmin && isDashboardActive
   );
   const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin && isDashboardActive);
   const activityQuery = useDashboardActivity(5, isAuthenticated && isDashboardActive);
@@ -230,7 +229,7 @@ const DashboardPage: React.FC = () => {
             </div>
           ))}
 
-          <ReportDashboardWidgets enabled={isAuthenticated && isAdmin && !isLocalOnlyMode()} />
+          <ReportDashboardWidgets enabled={isAuthenticated && isAdmin} />
 
           {customizeMode && (
             <Button variant="secondary" onClick={resetKpiGroups} className="text-xs no-print">

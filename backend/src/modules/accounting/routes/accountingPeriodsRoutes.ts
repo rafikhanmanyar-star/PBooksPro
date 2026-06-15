@@ -16,6 +16,7 @@ import {
   logAccountingPeriodOpened,
   logAccountingPeriodReopened,
 } from '../../../services/fiscalPeriodCloseService.js';
+import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
 
 const openBodySchema = z.object({
   startDate: z.string().min(1),
@@ -84,7 +85,13 @@ accountingPeriodsRouter.post('/accounting-periods/open', requireLedgerRole, asyn
       });
       return row;
     });
-    sendSuccess(res, rowToAccountingPeriodApi(result), 201);
+    const apiRow = rowToAccountingPeriodApi(result);
+    emitEntityEvent(tenantId, 'created', 'accounting_period', {
+      data: apiRow,
+      id: apiRow.id,
+      sourceUserId: req.userId,
+    });
+    sendSuccess(res, apiRow, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'PERIOD_ERROR', msg);
@@ -114,8 +121,30 @@ accountingPeriodsRouter.post(
           performYearEndTransfer: parsed.data.performYearEndTransfer,
         })
       );
+      const apiRow = rowToAccountingPeriodApi(result.period);
+      emitEntityEvent(tenantId, 'updated', 'accounting_period', {
+        data: apiRow,
+        id: apiRow.id,
+        sourceUserId: req.userId,
+      });
+      if (result.closingJournalEntryId) {
+        emitFinancialPosted(tenantId, {
+          journalEntryId: result.closingJournalEntryId,
+          sourceModule: 'accounting_period_close',
+          sourceId: id,
+          sourceUserId: req.userId,
+        });
+      }
+      if (result.yearEndTransferJournalEntryId) {
+        emitFinancialPosted(tenantId, {
+          journalEntryId: result.yearEndTransferJournalEntryId,
+          sourceModule: 'accounting_period_year_end',
+          sourceId: id,
+          sourceUserId: req.userId,
+        });
+      }
       sendSuccess(res, {
-        period: rowToAccountingPeriodApi(result.period),
+        period: apiRow,
         closingJournalEntryId: result.closingJournalEntryId,
         yearEndTransferJournalEntryId: result.yearEndTransferJournalEntryId,
         totals: result.totals,
@@ -146,7 +175,13 @@ accountingPeriodsRouter.post(
         });
         return updated;
       });
-      sendSuccess(res, rowToAccountingPeriodApi(row));
+      const apiRow = rowToAccountingPeriodApi(row);
+      emitEntityEvent(tenantId, 'updated', 'accounting_period', {
+        data: apiRow,
+        id: apiRow.id,
+        sourceUserId: req.userId,
+      });
+      sendSuccess(res, apiRow);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       sendFailure(res, 400, 'PERIOD_REOPEN_ERROR', msg);

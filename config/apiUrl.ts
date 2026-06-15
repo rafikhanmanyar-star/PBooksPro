@@ -1,11 +1,11 @@
 /**
  * API URL configuration for the app.
  *
+ * Architecture v2.1: Desktop and Cloud editions use apiClient → Express API → PostgreSQL.
+ *
  * When the app is opened from another PC (e.g. http://192.168.1.105:5173),
  * the API is derived from the same host on port 3000 (e.g. http://192.168.1.105:3000/api),
  * so no IP needs to be hardcoded.
- *
- * Set VITE_API_URL for remote API (not used in local-only mode).
  */
 
 /** Default HTTP port for LAN API (must match backend). */
@@ -16,52 +16,25 @@ export const STAGING_LAN_API_PORT = 3001;
 /** Persisted by the API login screen / setBaseUrl so Electron (file://) can reach a LAN server without rebuilding. */
 export const PBOOKS_API_BASE_STORAGE_KEY = 'pbooks_api_base_url';
 
-/**
- * Offline desktop build (`VITE_LOCAL_ONLY=true`) can still sign in against PBooks API Server (PostgreSQL).
- * When set to `postgres_api`, `isLocalOnlyMode()` is false so REST sync + Socket.IO run.
- * Local company files set `sqlite` before reload.
- */
+/** @deprecated Offline SQLite removed — key retained for legacy localStorage reads. */
 export const PBOOKS_SESSION_DATA_SOURCE_KEY = 'pbooks_session_data_source';
 
-export type SessionDataSource = 'sqlite' | 'postgres_api';
-
-export function setSessionDataSource(source: SessionDataSource): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(PBOOKS_SESSION_DATA_SOURCE_KEY, source);
-  } catch {
-    /* ignore */
-  }
-}
-
-export function clearSessionDataSource(): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.removeItem(PBOOKS_SESSION_DATA_SOURCE_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
 /**
- * Older offline builds could save a PostgreSQL JWT but still treat the app as local-only (no sync, no Socket.IO).
- * If we find a non-local tenant token and no explicit session mode, assume API session.
+ * @deprecated Offline SQLite was removed in Architecture v2.1 Phase 4. Always false.
+ * Use isAccountingBackedByRemoteApi() or isPostgresApiMode() from config/dataMode.ts.
  */
-export function ensureLegacyOfflineApiSessionMarked(): void {
-  if (typeof window === 'undefined') return;
-  const v = import.meta.env.VITE_LOCAL_ONLY;
-  if (v !== 'true' && v !== true) return;
-  try {
-    if (localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY)) return;
-    const token = localStorage.getItem('auth_token');
-    const tid = localStorage.getItem('tenant_id');
-    if (token && tid && tid !== 'local') {
-      localStorage.setItem(PBOOKS_SESSION_DATA_SOURCE_KEY, 'postgres_api');
-    }
-  } catch {
-    /* ignore */
-  }
+export function isLocalOnlyMode(): boolean {
+  return false;
 }
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function setSessionDataSource(_source: 'sqlite' | 'postgres_api'): void {}
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function clearSessionDataSource(): void {}
+
+/** @deprecated No-op — offline SQLite session switching removed. */
+export function ensureLegacyOfflineApiSessionMarked(): void {}
 
 export function isProductionLocalApiUrl(url: string): boolean {
   if (!url) return false;
@@ -207,7 +180,6 @@ export function isStagingEnvironment(): boolean {
   if (v === 'true' || v === true) return true;
   const apiUrl = (import.meta.env.VITE_API_URL as string) || '';
   if (apiUrl.includes('-staging') || apiUrl.includes('staging.onrender.com')) return true;
-  // Local staging API on same machine (production uses port 3000)
   if (/:3001(\/|$)/.test(apiUrl)) return true;
   return false;
 }
@@ -218,41 +190,8 @@ export function getAppDisplayName(): string {
 }
 
 /**
- * Local-only: SQLite + Electron offline builds (set `VITE_LOCAL_ONLY=true` in build scripts).
- * LAN / API: set `VITE_LOCAL_ONLY=false` (required for packaged API client, and for dev when using .env).
- *
- * When the variable is **unset**: browser tabs on `http:` / `https:` are treated as API-capable so
- * transaction mutations POST to PostgreSQL. Otherwise a dev server without `.env` would skip API sync
- * (optimistic UI only — data lost on refresh, other users never see changes). `file://` (Electron)
- * stays local-only unless `VITE_LOCAL_ONLY=false` is baked into the build, or the user chose
- * organization server sign-in (`pbooks_session_data_source=postgres_api`).
- */
-export function isLocalOnlyMode(): boolean {
-  const v = import.meta.env.VITE_LOCAL_ONLY;
-  if (v === 'false' || v === false) return false;
-
-  if (typeof window !== 'undefined') {
-    try {
-      if (localStorage.getItem(PBOOKS_SESSION_DATA_SOURCE_KEY) === 'postgres_api') {
-        return false;
-      }
-    } catch {
-      /* ignore */
-    }
-  }
-
-  if (v === 'true' || v === true) return true;
-  if (typeof window !== 'undefined') {
-    const p = window.location.protocol;
-    if (p === 'http:' || p === 'https:') return false;
-  }
-  return true;
-}
-
-/**
- * True when transactions, payroll payments, and related operational data must persist via REST to PostgreSQL
- * (valid JWT + non-offline tenant + session is treated as API-backed — same cases where {@link isLocalOnlyMode} is false).
- * Offline SQLite / local-tenant workflows return false here so mutations stay on the desktop storage layer only.
+ * True when transactions, payroll payments, and related operational data must persist via REST to PostgreSQL.
+ * Requires a valid JWT and non-local tenant id.
  */
 export function isAccountingBackedByRemoteApi(): boolean {
   if (typeof window === 'undefined') return false;
@@ -263,5 +202,5 @@ export function isAccountingBackedByRemoteApi(): boolean {
   } catch {
     return false;
   }
-  return !isLocalOnlyMode();
+  return true;
 }

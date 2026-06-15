@@ -7,7 +7,7 @@ alwaysApply: true
 
 ## Tech Stack
 - **Frontend**: React 18, TypeScript, Vite, Tailwind CSS
-- **Backend**: Express, PostgreSQL (production), SQLite (local/dev)
+- **Backend**: Express, PostgreSQL (Desktop Edition, Cloud Edition, staging, production)
 - **Build**: `@/*` path alias maps to project root
 
 ## Imports
@@ -17,7 +17,7 @@ alwaysApply: true
 ## Multi-Tenant
 - All tenant-scoped data uses `tenant_id`; v2 repositories extend `TenantRepository`
 - `authMiddleware` sets `req.tenantId`, `req.userId` on authenticated routes
-- See `doc/ARCHITECTURE.md` (v2) for full layer and placement rules
+- See `doc/ARCHITECTURE_V2_AGENT_RULES.md` for agent compliance; `doc/ARCHITECTURE.md` for full guide
 
 ## Environments
 - Staging (`staging` branch, port 3001) and production (`main`, port 3000) are separate

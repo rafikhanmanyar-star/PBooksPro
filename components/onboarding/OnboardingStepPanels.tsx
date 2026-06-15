@@ -18,7 +18,6 @@ import { ContactType, PrintSettings, TransactionType } from '../../types';
 import { accountingPeriodsApi } from '../../services/api/accountingPeriodsApi';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { apiClient } from '../../services/api/client';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useAuth } from '../../context/AuthContext';
 import { ASSIGNABLE_ROLES } from '../../shared/rbac/permissions';
 import type { OnboardingStepId } from '../../shared/onboarding/onboardingSteps';
@@ -344,14 +343,14 @@ export async function applyOnboardingStepActions(
     const ps = state.stepData.company_info as Partial<PrintSettings> | undefined;
     if (ps && ps.companyName) {
       dispatch({ type: 'UPDATE_PRINT_SETTINGS', payload: { ...ps } as PrintSettings });
-      if (!isLocalOnlyMode() && isAuthenticated) {
+      if (isAuthenticated) {
         const settingsRepo = await import('../../services/api/repositories/appSettingsApi').then((m) => new m.AppSettingsApiRepository());
         await settingsRepo.bulkUpsert({ printSettings: ps });
       }
     }
   }
 
-  if (stepId === 'fiscal_year' && !isLocalOnlyMode() && isAuthenticated) {
+  if (stepId === 'fiscal_year' && isAuthenticated) {
     const fy = state.stepData.fiscal_year as { fiscalStartMonth?: number; startDate?: string; endDate?: string };
     const bounds =
       fy?.startDate && fy?.endDate
@@ -375,7 +374,7 @@ export async function applyOnboardingStepActions(
 
     let ownerId = '';
     if (ps.ownerName?.trim()) {
-      if (!isLocalOnlyMode() && isAuthenticated) {
+      if (isAuthenticated) {
         const saved = await api.saveContact({
           name: ps.ownerName.trim(),
           type: ContactType.OWNER,
@@ -393,7 +392,7 @@ export async function applyOnboardingStepActions(
     }
 
     let buildingId = '';
-    if (!isLocalOnlyMode() && isAuthenticated) {
+    if (isAuthenticated) {
       const b = await api.saveBuilding({ name: ps.buildingName.trim(), description: '' });
       buildingId = b.id;
       dispatch({ type: 'ADD_BUILDING', payload: b });
@@ -403,7 +402,7 @@ export async function applyOnboardingStepActions(
     }
 
     if (ownerId && buildingId) {
-      if (!isLocalOnlyMode() && isAuthenticated) {
+      if (isAuthenticated) {
         const prop = await api.saveProperty({
           name: ps.propertyName.trim(),
           ownerId,
@@ -430,7 +429,7 @@ export async function applyOnboardingStepActions(
   if (stepId === 'user_setup') {
     const u = state.stepData.user_setup as Record<string, string> | undefined;
     if (!u?.username?.trim() || !u?.name?.trim() || !u?.password?.trim()) return;
-    if (!isLocalOnlyMode() && isAuthenticated) {
+    if (isAuthenticated) {
       await apiClient.post('/users', {
         username: u.username.trim(),
         name: u.name.trim(),
@@ -449,7 +448,7 @@ export async function applyOnboardingStepActions(
     const cash = accounts.find((a) => a.name.toLowerCase().includes('cash')) ?? accounts[0];
     if (!cash) return;
     const today = new Date().toISOString().slice(0, 10);
-    if (!isLocalOnlyMode() && isAuthenticated) {
+    if (isAuthenticated) {
       await api.saveTransaction({
         type: TransactionType.INCOME,
         amount,

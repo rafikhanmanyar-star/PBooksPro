@@ -1,5 +1,5 @@
 
-import React, { useEffect, useLayoutEffect, useState, useMemo, useRef, Suspense, useCallback, useTransition } from 'react';
+import React, { useEffect, useState, useMemo, useRef, Suspense, useCallback, useTransition } from 'react';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
@@ -21,13 +21,11 @@ import BillingCheckoutPage from './components/billing/BillingCheckoutPage';
 import LegalDocumentPage from './components/legal/LegalDocumentPage';
 import { parseAppSpecialRoute, SETTINGS_ROUTE_SECTIONS } from './utils/appNavigation';
 import { useAuth } from './context/AuthContext';
-import { getApiBaseUrl, isLanBackendApi, isLocalOnlyMode, getAppDisplayName } from './config/apiUrl';
+import { getApiBaseUrl, isLanBackendApi, getAppDisplayName } from './config/apiUrl';
 import { apiClient } from './services/api/client';
 import { resolveReachableApiBaseUrl } from './services/lanDiscovery';
 import { useCompanyOptional } from './context/CompanyContext';
-// Initialize Sync Service removed
 import UpdateNotification from './components/ui/UpdateNotification';
-import { getUnifiedDatabaseService } from './services/database/unifiedDatabaseService';
 import {
   connectionMonitorStub as _connectionMonitor,
   syncManagerStub as _syncManager,
@@ -44,7 +42,6 @@ const getOfflineLockManager = () => _offlineLockManager;
 const getRealtimeSyncHandler = () => _realtimeSyncHandler;
 const getWebSocketClient = () => _websocketClient as any;
 import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
-import { createBackup, restoreBackup } from './services/backupService';
 import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import Loading from './components/ui/Loading';
@@ -60,7 +57,6 @@ import { navPerfLog } from './utils/navPerfLogger';
 import { lazyWithRetry } from './utils/lazyWithRetry';
 import { PrintController } from './components/print/PrintController';
 import { ensureReportPrintStyles } from './services/printService';
-import SchemaBlockedScreen from './components/diagnostics/SchemaBlockedScreen';
 import StabilityBanner from './components/stability/StabilityBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
 import CompanySelectionScreen from './components/auth/CompanySelectionScreen';
@@ -95,8 +91,6 @@ const ExecutiveMobileShell = lazyWithRetry(() => import('./modules/executive-mob
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 const PersonalTransactionsPage = lazyWithRetry(() => import('./components/personalTransactions/PersonalTransactionsPage'));
 const AccountingPage = lazyWithRetry(() => import('./components/accounting/AccountingPage'));
-
-const SetPasswordModal = lazyWithRetry(() => import('./components/company/SetPasswordModal'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -158,12 +152,9 @@ const App: React.FC = () => {
     ensureReportPrintStyles();
   }, []);
 
-  /** Local-only: block UI when main-process schema validation reports a critical failure. */
-  const [schemaGate, setSchemaGate] = useState<'unset' | 'ok' | { errors: string[] }>('ok');
-
   /** LAN / API: discover + persisted server reachability (skipped for hosted cloud API URLs). */
   const [lanServerPhase, setLanServerPhase] = useState<'checking' | 'need-server' | 'ready'>(() =>
-    isLocalOnlyMode() || !isLanBackendApi() ? 'ready' : 'checking'
+    !isLanBackendApi() ? 'ready' : 'checking'
   );
   const [lanServerLost, setLanServerLost] = useState(false);
 
@@ -183,7 +174,7 @@ const App: React.FC = () => {
   }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
 
   useEffect(() => {
-    if (isLocalOnlyMode() || !isLanBackendApi()) return;
+    if (!isLanBackendApi()) return;
     let cancelled = false;
     void (async () => {
       const configured = getApiBaseUrl();
@@ -204,39 +195,6 @@ const App: React.FC = () => {
     window.addEventListener('pbooks:server-unreachable', h);
     return () => window.removeEventListener('pbooks:server-unreachable', h);
   }, []);
-
-  useLayoutEffect(() => {
-    if (isLocalOnlyMode() && companyCtx?.activeCompany) {
-      setSchemaGate('unset');
-    } else if (!companyCtx?.activeCompany) {
-      setSchemaGate('ok');
-    }
-  }, [companyCtx?.activeCompany?.id]);
-
-  useEffect(() => {
-    if (!isLocalOnlyMode() || !companyCtx?.activeCompany) {
-      return;
-    }
-    let mounted = true;
-    (async () => {
-      const { fetchSchemaHealth } = await import('./services/database/schemaHealth');
-      const h = await fetchSchemaHealth();
-      if (!mounted) return;
-      if (h?.blocking) {
-        setSchemaGate({
-          errors: [
-            ...(h.errors || []),
-            ...(h.integrityOk === false ? ['SQLite integrity_check failed'] : []),
-          ],
-        });
-      } else {
-        setSchemaGate('ok');
-      }
-    })();
-    return () => {
-      mounted = false;
-    };
-  }, [companyCtx?.activeCompany?.id]);
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
@@ -263,7 +221,7 @@ const App: React.FC = () => {
 
   // API mode: closing the custom numpad avoids stray state; pair with login-screen focus recovery after logout
   useEffect(() => {
-    if (isLocalOnlyMode() || authInitializing) return;
+    if (authInitializing) return;
     if (!isAuthenticated) {
       closeKeyboard();
       document.body.style.overflow = 'unset';
@@ -357,79 +315,60 @@ const App: React.FC = () => {
   // Initialize database services (unified database, connection monitor, sync manager)
   // OPTIMIZED: Batch all service initialization to reduce mount time
   useEffect(() => {
-    // In multi-company mode, skip service init until a company DB is open
-    if (isLocalOnlyMode() && companyCtx && !companyCtx.activeCompany) {
-      return;
-    }
-
     let isMounted = true;
 
     const initializeServices = async () => {
       try {
         devLogger.log('[App] Initializing database services...');
 
-        const [unifiedDb] = await Promise.all([
-          getUnifiedDatabaseService().initialize(),
-        ]);
+        const connectionMonitor = getConnectionMonitor();
+        const lockManager = getLockManager();
+        const offlineLockManager = getOfflineLockManager();
+        const realtimeSyncHandler = getRealtimeSyncHandler();
 
-        if (!isMounted) return;
-        devLogger.log('[App] ✅ Unified database service initialized');
+        connectionMonitor.startMonitoring({
+          onStatusChange: (status: ConnectionStatus) => devLogger.log(`[App] Connection: ${status}`),
+          onOnline: () => devLogger.log('[App] ✅ Online'),
+          onOffline: () => devLogger.log('[App] ⚠️ Offline'),
+        });
+        realtimeSyncHandler.initialize();
 
-        // Skip cloud/sync/WebSocket init when in local-only mode
-        if (!isLocalOnlyMode()) {
-          const connectionMonitor = getConnectionMonitor();
-          const lockManager = getLockManager();
-          const offlineLockManager = getOfflineLockManager();
-          const realtimeSyncHandler = getRealtimeSyncHandler();
-
-          connectionMonitor.startMonitoring({
-            onStatusChange: (status: ConnectionStatus) => devLogger.log(`[App] Connection: ${status}`),
-            onOnline: () => devLogger.log('[App] ✅ Online'),
-            onOffline: () => devLogger.log('[App] ⚠️ Offline'),
-          });
-          realtimeSyncHandler.initialize();
-
-          if (isAuthenticated) {
-            const wsClient = getWebSocketClient();
-            const token = apiClient.getToken();
-            const tenantId = apiClient.getTenantId();
-            if (token && tenantId && !apiClient.isTokenExpired()) {
-              wsClient.connect(token, tenantId);
-              devLogger.log('[App] ✅ WebSocket connecting');
-            }
+        if (isAuthenticated) {
+          const wsClient = getWebSocketClient();
+          const token = apiClient.getToken();
+          const tenantId = apiClient.getTenantId();
+          if (token && tenantId && !apiClient.isTokenExpired()) {
+            wsClient.connect(token, tenantId);
+            devLogger.log('[App] ✅ WebSocket connecting');
           }
         }
 
         devLogger.log('[App] ✅ All services initialized');
       } catch (error) {
         console.error('[App] ❌ Service initialization failed:', error);
-        // Don't block app from loading - services will retry or work in degraded mode
       }
     };
 
     initializeServices();
 
-    // Cleanup on unmount
     return () => {
       isMounted = false;
-      if (!isLocalOnlyMode()) {
-        try {
-          getSyncManager().destroy();
-          getConnectionMonitor().destroy();
-          getLockManager().destroy();
-          getOfflineLockManager().destroy();
-          getRealtimeSyncHandler().destroy();
-          getWebSocketClient().disconnect();
-        } catch (e) {
-          // Ignore cleanup errors
-        }
+      try {
+        getSyncManager().destroy();
+        getConnectionMonitor().destroy();
+        getLockManager().destroy();
+        getOfflineLockManager().destroy();
+        getRealtimeSyncHandler().destroy();
+        getWebSocketClient().disconnect();
+      } catch (e) {
+        // Ignore cleanup errors
       }
     };
-  }, [companyCtx?.screen]); // Re-run when company screen transitions to 'app'
+  }, [companyCtx?.screen, isAuthenticated]);
 
   // Set user context for offline lock manager when authenticated (skip in local-only)
   useEffect(() => {
-    if (!isLocalOnlyMode() && isAuthenticated && user && tenant) {
+    if (isAuthenticated && user && tenant) {
       const offlineLockManager = getOfflineLockManager();
       offlineLockManager.setUserContext(user.id, tenant.id);
       devLogger.log('[App] ✅ User context set');
@@ -438,7 +377,7 @@ const App: React.FC = () => {
 
   // Connect WebSocket when authenticated and set up real-time sync (skip in local-only)
   useEffect(() => {
-    if (!isAuthenticated || isLocalOnlyMode()) return;
+    if (!isAuthenticated) return;
 
     const wsClient = getWebSocketClient();
     const token = apiClient.getToken();
@@ -779,8 +718,7 @@ const App: React.FC = () => {
   // Startup only — do not use login isLoading here or ApiLoginScreen unmounts during sign-in/MFA.
   if (authInitializing) {
     const demoEntryPending =
-      !isLocalOnlyMode() &&
-      (isWebsiteDemoEntry() || readStoredDemoAuth() !== null);
+      isWebsiteDemoEntry() || readStoredDemoAuth() !== null;
     return (
       <Loading
         message={demoEntryPending ? 'Opening live demo…' : 'Checking authentication...'}
@@ -789,7 +727,7 @@ const App: React.FC = () => {
   }
 
   // LAN / API: ensure backend is reachable (discover) before sign-in; reconnect flow when connection drops
-  if (!isLocalOnlyMode() && isLanBackendApi()) {
+  if (isLanBackendApi()) {
     if (lanServerPhase === 'checking') {
       return <Loading message="Connecting to server..." />;
     }
@@ -806,7 +744,7 @@ const App: React.FC = () => {
     }
   }
 
-  if (!isLocalOnlyMode() && pendingCompanySelection) {
+  if (pendingCompanySelection) {
     return (
       <CompanySelectionScreen
         mode="login"
@@ -818,7 +756,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (!isLocalOnlyMode() && companySwitchRequest) {
+  if (companySwitchRequest) {
     return (
       <CompanySelectionScreen
         mode="switch"
@@ -829,7 +767,7 @@ const App: React.FC = () => {
   }
 
   // LAN / API mode: require server login (CompanyGate only applies in local-only mode)
-  if (!isLocalOnlyMode() && !isAuthenticated) {
+  if (!isAuthenticated) {
     return <ApiLoginScreen />;
   }
 
@@ -847,27 +785,9 @@ const App: React.FC = () => {
     return <PaymentSuccessPage />;
   }
 
-  // Local-only builds never show cloud login (CompanyContext + company user login instead).
-
   // BLOCK APP IF EXPIRED (only if authenticated)
   if (isAuthenticated && isExpired) {
     return <LicenseLockScreen />;
-  }
-
-  // Local-only: schema integrity / critical validation (before heavy data load)
-  if (isAuthenticated && isLocalOnlyMode() && companyCtx?.activeCompany && schemaGate === 'unset') {
-    return <Loading message="Checking database…" />;
-  }
-  if (isAuthenticated && isLocalOnlyMode() && companyCtx?.activeCompany && schemaGate !== 'ok' && schemaGate !== 'unset') {
-    return (
-      <SchemaBlockedScreen
-        errors={schemaGate.errors}
-        onOpenSettingsBackup={() => {
-          dispatch({ type: 'SET_PAGE', payload: 'settings' });
-          window.dispatchEvent(new CustomEvent('open-backup-restore-section'));
-        }}
-      />
-    );
   }
 
   // Show loading shell while initial data loads (improves LCP/INP after login)
@@ -890,12 +810,6 @@ const App: React.FC = () => {
       {isDemoModeActive() && <DemoProductTour />}
       <OnboardingGate />
       <PrintController />
-      {/* Force password change modal for new company admin */}
-      {isLocalOnlyMode() && companyCtx?.forcePasswordChange && (
-        <Suspense fallback={null}>
-          <SetPasswordModal />
-        </Suspense>
-      )}
       <div
         className="flex h-screen bg-app-bg overflow-hidden font-sans text-app-text overscroll-none"
         onContextMenu={(e) => {

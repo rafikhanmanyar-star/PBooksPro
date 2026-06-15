@@ -5,7 +5,6 @@
 
 import type { CreateJournalEntryInput, JournalLineInput, JournalEntryRow, JournalLineRow } from './types';
 import { roundMoney, validateBalanced, swapLinesForReversal } from './validation';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { journalApi } from '../api/journalApi';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 
@@ -114,9 +113,7 @@ export async function createJournalEntry(input: CreateJournalEntryInput): Promis
   const err = validateBalanced(input.lines);
   if (err) throw new Error(err);
 
-  if (!isLocalOnlyMode()) {
-    return journalApi.createJournalEntry(input);
-  }
+      return journalApi.createJournalEntry(input);
 
   const tenantId = input.tenantId ?? '';
   await assertAccountsExistForTenant(tenantId, input.lines.map((l) => l.accountId));
@@ -139,13 +136,11 @@ export async function getJournalEntryWithLines(
   journalEntryId: string,
   tenantId: string
 ): Promise<{ entry: JournalEntryRow; lines: JournalLineRow[] } | null> {
-  if (!isLocalOnlyMode()) {
-    const raw = await journalApi.getJournalEntryWithLines(journalEntryId);
+      const raw = await journalApi.getJournalEntryWithLines(journalEntryId);
     if (!raw) return null;
     const e = raw.entry as unknown as JournalEntryRow;
     const lines = (raw.lines || []) as unknown as JournalLineRow[];
     return { entry: e, lines };
-  }
 
   const bridge = getBridge();
   const e = await bridge.query(
@@ -168,9 +163,7 @@ export async function getJournalEntryWithLines(
  * True if this journal was already reversed (one reversal per original).
  */
 export async function isJournalReversed(originalJournalEntryId: string): Promise<boolean> {
-  if (!isLocalOnlyMode()) {
-    return journalApi.isJournalReversed(originalJournalEntryId);
-  }
+      return journalApi.isJournalReversed(originalJournalEntryId);
 
   const bridge = getBridge();
   const r = await bridge.query(
@@ -189,9 +182,7 @@ export async function reverseJournalEntry(
   reason: string,
   createdBy: string | null
 ): Promise<{ reversalJournalEntryId: string }> {
-  if (!isLocalOnlyMode()) {
-    return journalApi.reverseJournalEntry(originalJournalEntryId, reason);
-  }
+      return journalApi.reverseJournalEntry(originalJournalEntryId, reason);
 
   if (!reason?.trim()) throw new Error('Reversal reason is required.');
 

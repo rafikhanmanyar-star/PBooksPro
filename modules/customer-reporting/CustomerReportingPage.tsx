@@ -9,7 +9,6 @@ import {
   useUnits,
 } from '../../hooks/useSelectiveState';
 import { ContactType } from '../../types';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import { exportJsonToExcel } from '../../services/exportService';
 import { downloadCustomReportExport } from '../../services/api/customReportsApi';
@@ -39,7 +38,7 @@ const TABS: { id: CustomerReportTab; label: string }[] = [
 const CustomerReportingPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { showToast, showAlert } = useNotification();
-  const localOnly = isLocalOnlyMode();
+  const localOnly = false;
   const printReport = usePrintReport();
 
   const filters = useCustomerReportingFiltersStore((s) => s.filters);

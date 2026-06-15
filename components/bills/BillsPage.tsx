@@ -24,7 +24,6 @@ import { openDocumentById } from '../../services/documentUploadService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { isVendorSettlementCashMirrorReference } from '../../config/vendorSettlementRefs';
 import {
     contractorApi,
@@ -353,7 +352,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     useEffect(() => {
         let cancel = false;
-        if (!selectedNode || selectedNode.type !== 'vendor' || isLocalOnlyMode()) {
+        if (!selectedNode || selectedNode.type !== 'vendor') {
             setVendorSidebarAdvances([]);
             return () => {
                 cancel = true;
@@ -375,7 +374,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     useEffect(() => {
         const onRecorded = (ev: Event) => {
             const d = (ev as CustomEvent<{ vendorId?: string }>).detail;
-            if (!selectedNode || selectedNode.type !== 'vendor' || isLocalOnlyMode()) return;
+            if (!selectedNode || selectedNode.type !== 'vendor') return;
             if (d?.vendorId !== selectedNode.id) return;
             contractorApi
                 .getAdvances(selectedNode.id)
@@ -460,10 +459,6 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     }, []);
 
     useEffect(() => {
-        if (isLocalOnlyMode()) {
-            setVendorSettlementsRows([]);
-            return;
-        }
         const ids = baseBills.map((b) => b.id).filter(Boolean);
         if (ids.length === 0) {
             setVendorSettlementsRows([]);
@@ -708,7 +703,6 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
         // Supplier prepaid advances (PostgreSQL API): show in vendor drill-down; not stored as table rows.
         if (
-            !isLocalOnlyMode() &&
             selectedNode?.type === 'vendor' &&
             vendorSidebarAdvances.length > 0 &&
             (typeFilter === 'All' || typeFilter === 'Payments')
@@ -907,7 +901,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     };
 
     const handleRecordPayment = (bill: Bill) => {
-        if (!isLocalOnlyMode() && bill.vendorId && bill.status !== InvoiceStatus.PAID) {
+        if (bill.vendorId && bill.status !== InvoiceStatus.PAID) {
             const vendorEntity = vendorMap.get(bill.vendorId);
             if (vendorEntity) {
                 setBillForAdvancePay(bill);
@@ -959,7 +953,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     }, [selectedBillsList, vendorMap]);
 
     const useVendorAdvancePayModal =
-        !isLocalOnlyMode() && !!bulkPayVendor && selectedBillsList.length > 0;
+        !!bulkPayVendor && selectedBillsList.length > 0;
 
     const restrictToBillIdsForVendorPay = useMemo((): string[] | null => {
         if (!bulkPayVendor) return null;
@@ -1078,11 +1072,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     {projectContext && (
                         <Button
                             variant="secondary"
-                            disabled={!sidebarVendorForAdvance || isLocalOnlyMode()}
+                            disabled={!sidebarVendorForAdvance}
                             title={
-                                isLocalOnlyMode()
-                                    ? 'Supplier advances require the PostgreSQL API.'
-                                    : sidebarVendorForAdvance
+                                sidebarVendorForAdvance
                                       ? `Record prepaid advance to ${sidebarVendorForAdvance.name}`
                                       : 'Select a vendor under Directories to record an advance.'
                             }

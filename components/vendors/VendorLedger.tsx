@@ -6,7 +6,6 @@ import { ICONS, CURRENCY } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { exportJsonToExcel } from '../../services/exportService';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { contractorApi } from '../../services/api/contractorApi';
 import {
     prepaidAppliedToBillNotInTransactions,
@@ -67,7 +66,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     useEffect(() => {
         let cancel = false;
-        if (!vendorId || isLocalOnlyMode()) {
+        if (!vendorId) {
             setSupplierAdvances([]);
             return () => {
                 cancel = true;
@@ -89,7 +88,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     useEffect(() => {
         const onRecorded = (ev: Event) => {
             const d = (ev as CustomEvent<{ vendorId?: string }>).detail;
-            if (d?.vendorId !== vendorId || !vendorId || isLocalOnlyMode()) return;
+            if (d?.vendorId !== vendorId || !vendorId ) return;
             contractorApi
                 .getAdvances(vendorId)
                 .then(setSupplierAdvances)
@@ -344,7 +343,7 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
 
     return (
         <div className="flex flex-col h-full min-h-0">
-            {!isLocalOnlyMode() && supplierAdvances.length > 0 && (
+            {supplierAdvances.length > 0 && (
                 <p className="text-[11px] text-app-text bg-[color:var(--badge-partial-bg)] border border-ds-warning/30 rounded-md px-2 py-1.5 mb-2 shrink-0">
                     Prepaid advances and hybrid bill settlements show both cash payments and Supplier prepaid applied
                     lines where part of the bill was cleared from prepaid (no duplicate bank transaction).

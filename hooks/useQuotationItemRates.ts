@@ -1,7 +1,6 @@
 import { useCallback } from 'react';
 import { useFinancialReportAppState } from './useSelectiveState';
 import type { QuotationItemRateLookup } from '../types';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import { fetchQuotationItemRates } from '../services/quotationIntelligenceApi';
 
 function localRateLookup(
@@ -76,14 +75,11 @@ export function useQuotationItemRates(vendorId: string) {
   const lookupRates = useCallback(
     async (categoryId: string, itemName?: string): Promise<QuotationItemRateLookup> => {
       if (!vendorId || !categoryId) return {};
-      if (!isLocalOnlyMode()) {
-        try {
-          return await fetchQuotationItemRates({ vendorId, categoryId, itemName });
-        } catch {
-          // fall through to local
-        }
+      try {
+        return await fetchQuotationItemRates({ vendorId, categoryId, itemName });
+      } catch {
+        return localRateLookup(state, vendorId, categoryId, itemName);
       }
-      return localRateLookup(state, vendorId, categoryId, itemName);
     },
     [state, vendorId]
   );

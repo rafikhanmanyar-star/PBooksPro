@@ -3,7 +3,6 @@ import { HardHat } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useNotification } from '../../context/NotificationContext';
 import { useContracts, useProjects, useVendors } from '../../hooks/useSelectiveState';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import { exportJsonToExcel } from '../../services/exportService';
 import ReportHeader from '../../components/reports/ReportHeader';
@@ -40,8 +39,7 @@ const QUICK_REPORTS = [
 const ConstructionReportingPage: React.FC = () => {
   const { isAuthenticated } = useAuth();
   const { showToast, showAlert } = useNotification();
-  const localOnly = isLocalOnlyMode();
-  const printReport = usePrintReport();
+    const printReport = usePrintReport();
 
   const filters = useConstructionReportingFiltersStore((s) => s.filters);
   const activeTab = useConstructionReportingFiltersStore((s) => s.activeTab);
@@ -58,7 +56,7 @@ const ConstructionReportingPage: React.FC = () => {
   const pageSize = 50;
   const [drawerId, setDrawerId] = useState<string | null>(null);
 
-  const enabled = isAuthenticated && !localOnly && generated;
+  const enabled = isAuthenticated && generated;
   const summaryQuery = useConstructionReportingSummary(filters, enabled);
   const tabQuery = useConstructionReportTab(activeTab, filters, page, pageSize, enabled);
 
@@ -91,13 +89,9 @@ const ConstructionReportingPage: React.FC = () => {
   const selectClass = 'text-xs rounded-lg border border-app-border bg-app-toolbar px-2 py-1.5 text-app-text max-w-[160px]';
 
   const handleGenerate = useCallback(() => {
-    if (localOnly) {
-      void showAlert('Vendor Reporting Center requires LAN/API mode.', { title: 'API mode required' });
-      return;
-    }
     setPage(1);
     setGenerated(true);
-  }, [localOnly, setGenerated, showAlert]);
+  }, [setGenerated, showAlert]);
 
   const handleQuickReport = useCallback((label: string) => {
     const tabMap: Record<string, ConstructionReportTab> = {
@@ -151,9 +145,7 @@ const ConstructionReportingPage: React.FC = () => {
         <ReportingActionsBar onGenerate={handleGenerate} onExportPdf={handlePrint} onExportExcel={handleExportExcel} onPrint={handlePrint} loading={summaryQuery.isFetching} quickReportLabels={QUICK_REPORTS} onQuickReport={handleQuickReport} />
       </div>
 
-      {localOnly && <div className="rounded-xl border border-ds-warning/30 bg-app-highlight p-3 text-sm no-print">Connect to the API server for full Vendor Reporting Center features.</div>}
-
-      {generated && !localOnly && (
+      {generated && (
         <>
           <div className="no-print space-y-4">
             <ReportingKpiStrip kpis={summaryQuery.data?.kpis} loading={summaryQuery.isLoading} />

@@ -2,7 +2,10 @@
  * Electron preload exposes sqliteBridge on window (local-only mode).
  * Single declaration — do not redeclare in service files (strictNullChecks merge conflicts).
  */
-import type { SchemaHealthResult } from '../services/database/schemaHealth';
+type SchemaHealthResult = {
+  ok: boolean;
+  issues?: string[];
+};
 
 export {};
 

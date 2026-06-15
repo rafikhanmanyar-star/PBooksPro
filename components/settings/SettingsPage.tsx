@@ -28,9 +28,6 @@ import UpdateCheck from './UpdateCheck';
 import AboutSection from './AboutSection';
 import { useFeatures } from '../../hooks/useFeatures';
 import { navigateToSettingsHome } from '../../utils/appNavigation';
-import { CompanyManagementSection } from '../company/CompanyManagementSection';
-import DbHealthPanel from '../diagnostics/DbHealthPanel';
-import ManualJournalEntrySection from './ManualJournalEntrySection';
 import InterfaceModeSettingsSection from './InterfaceModeSettingsSection';
 import ProcurementSettingsSection from './ProcurementSettingsSection';
 import AccountingPeriodsSection from './AccountingPeriodsSection';
@@ -45,8 +42,6 @@ import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
 import { dataManagementApi } from '../../services/api/repositories/dataManagementApi';
-import { getDatabaseService } from '../../services/database/databaseService';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useCompanyOptional } from '../../context/CompanyContext';
 import { useSpellCheckerOptional, SPELLCHECK_LANGUAGE_OPTIONS } from '../../context/SpellCheckerContext';
 import { useTheme } from '../../context/ThemeContext';
@@ -226,21 +221,13 @@ const SettingsPage: React.FC = () => {
     const perms = usePermissions();
     const onboarding = useOnboardingOptional();
 
-    const showUserManagement =
-        perms.canManageUsers || perms.canReadUsers || (isLocalOnlyMode() && !!companyCtx?.activeCompany);
-    const showPermissionManagement = perms.canReadPermissions || isLocalOnlyMode();
+    const showUserManagement = perms.canManageUsers || perms.canReadUsers;
+    const showPermissionManagement = perms.canReadPermissions;
     const showBillingPortal =
-        !isLocalOnlyMode() && (perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers);
+        perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers;
 
     // Grouped Categories for Sidebar
     const categoryGroups = [
-        ...(isLocalOnlyMode() ? [{
-            title: 'Company',
-            items: [
-                { id: 'company-manage', label: 'Company Management', icon: ICONS.briefcase || '🏢' },
-                { id: 'db-health', label: 'Database Health', icon: ICONS.archive },
-            ]
-        }] : []),
         {
             title: 'General',
             items: [
@@ -251,7 +238,7 @@ const SettingsPage: React.FC = () => {
                 ...(onboarding?.canManage
                   ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
                   : []),
-                ...(perms.enterpriseRole === 'super_admin' && !isLocalOnlyMode()
+                ...(perms.enterpriseRole === 'super_admin'
                   ? [
                       { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
                       { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
@@ -264,15 +251,11 @@ const SettingsPage: React.FC = () => {
                 ...(showPermissionManagement ? [
                     { id: 'permissions', label: 'Permissions', icon: ICONS.lock },
                 ] : []),
-                ...(perms.canReadAuditLogs && !isLocalOnlyMode()
+                ...(perms.canReadAuditLogs
                   ? [{ id: 'audit-trail', label: 'Audit Trail', icon: ICONS.fileText }]
                   : []),
-                ...(!isLocalOnlyMode()
-                  ? [{ id: 'privacy', label: 'Privacy Center', icon: ICONS.shield || '🛡️' }]
-                  : []),
-                ...(!isLocalOnlyMode()
-                  ? [{ id: 'mfa', label: 'Two-Factor Auth', icon: ICONS.lock || '🔐' }]
-                  : []),
+                { id: 'privacy', label: 'Privacy Center', icon: ICONS.shield || '🛡️' },
+                { id: 'mfa', label: 'Two-Factor Auth', icon: ICONS.lock || '🔐' },
                 { id: 'backup', label: 'Backup Center', icon: ICONS.download },
                 { id: 'data', label: 'Data Management', icon: ICONS.trash },
                 { id: 'about', label: 'About', icon: ICONS.info },
@@ -283,8 +266,7 @@ const SettingsPage: React.FC = () => {
             title: 'Financial',
             items: [
                 { id: 'accounts', label: 'Chart of Accounts', icon: ICONS.wallet },
-                ...(!isLocalOnlyMode() ? [{ id: 'accounting-periods', label: 'Accounting Periods', icon: ICONS.lock }] : []),
-                ...(isLocalOnlyMode() ? [{ id: 'gl-journal', label: 'Journal entry (GL)', icon: ICONS.fileText }] : []),
+                { id: 'accounting-periods', label: 'Accounting Periods', icon: ICONS.lock },
             ]
         },
         {
@@ -574,39 +556,12 @@ const SettingsPage: React.FC = () => {
     const handleClearTransactions = async () => {
         try {
             console.log('🗑️ Starting clear transactions process...');
+            console.log('📡 Clearing transactions from server...');
+            const result = await dataManagementApi.clearTransactions();
+            console.log('✅ Server cleared:', result.details);
 
-            const dbService = getDatabaseService();
-            if (!dbService.isReady()) {
-                showAlert('Local database is not ready. Please try again.', { title: 'Error' });
-                throw new Error('Database not ready');
-            }
-
-            if (isLocalOnlyMode()) {
-                // Local-only: clear only local SQLite; no API
-                console.log('💾 Clearing transactions from local database...');
-                dbService.clearTransactionData();
-                console.log('✅ Local database cleared');
-            } else {
-                // With API: clear cloud first, then local
-                console.log('📡 Clearing transactions from cloud database...');
-                const result = await dataManagementApi.clearTransactions();
-                console.log('✅ Cloud database cleared:', result.details);
-                console.log('💾 Clearing transactions from local database...');
-                dbService.clearTransactionData();
-                console.log('✅ Local database cleared');
-            }
-
-            // Update in-memory state
-            console.log('🔄 Updating application state...');
             dispatch({ type: 'RESET_TRANSACTIONS' });
-            console.log('✅ Application state updated');
-
-            showToast(
-                isLocalOnlyMode()
-                    ? 'Successfully cleared transaction data from local database.'
-                    : 'Successfully cleared transaction data from local and cloud databases.',
-                'success'
-            );
+            showToast('Successfully cleared transaction data from the server.', 'success');
         } catch (error: any) {
             console.error('❌ Error clearing transactions:', error);
             showAlert(
@@ -626,30 +581,9 @@ const SettingsPage: React.FC = () => {
         }
 
         try {
-            const tenantId = authTenant?.id;
-
-            if (isLocalOnlyMode()) {
-                const dbService = getDatabaseService();
-                if (!dbService.isReady()) {
-                    showAlert('Local database is not ready. Please try again.', { title: 'Error' });
-                    return;
-                }
-                dbService.clearAllData(tenantId);
-            } else {
-                await dataManagementApi.factoryReset();
-                const dbService = getDatabaseService();
-                if (dbService.isReady()) {
-                    dbService.clearAllData(tenantId);
-                }
-            }
-
+            await dataManagementApi.factoryReset();
             dispatch({ type: 'LOAD_SAMPLE_DATA' });
-            showToast(
-                isLocalOnlyMode()
-                    ? 'Organization data has been reset locally.'
-                    : 'Organization data has been reset on the server.',
-                'success'
-            );
+            showToast('Organization data has been reset on the server.', 'success');
             setTimeout(() => window.location.reload(), 800);
         } catch (error: unknown) {
             const message = error instanceof Error ? error.message : 'Failed to reset organization data.';
@@ -891,9 +825,7 @@ const SettingsPage: React.FC = () => {
             {renderToggle('Enable Beep on Save', 'Play a sound notification when transactions or records are saved successfully.', enableBeepOnSave, (val) => dispatch({ type: 'TOGGLE_BEEP_ON_SAVE', payload: val }))}
             {renderToggle('Date Preservation', 'Remember the last used date in forms to speed up data entry for past records.', enableDatePreservation, (val) => dispatch({ type: 'TOGGLE_DATE_PRESERVATION', payload: val }))}
 
-            {!isLocalOnlyMode() && (
-                <InterfaceModeSettingsSection />
-            )}
+            <InterfaceModeSettingsSection />
 
             <div className="p-5 bg-app-card rounded-xl border border-app-border shadow-ds-card">
                 <h4 className="font-semibold text-app-text mb-1">Date display time zone</h4>
@@ -1390,14 +1322,14 @@ const SettingsPage: React.FC = () => {
                                 <BackupRestorePage />
                             </Suspense>
                         )}
-                        {activeCategory === 'privacy' && !isLocalOnlyMode() && (
+                        {activeCategory === 'privacy' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                     <PrivacyCenter />
                                 </Suspense>
                             </div>
                         )}
-                        {activeCategory === 'mfa' && !isLocalOnlyMode() && (
+                        {activeCategory === 'mfa' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
                                     <MfaSettingsSection />
@@ -1430,22 +1362,13 @@ const SettingsPage: React.FC = () => {
                                 <AssetsManagement />
                             </Suspense>
                         )}
-                        {activeCategory === 'company-manage' && isLocalOnlyMode() && companyCtx && (
-                            <CompanyManagementSection />
-                        )}
-                        {activeCategory === 'db-health' && isLocalOnlyMode() && (
-                            <DbHealthPanel />
-                        )}
-                        {activeCategory === 'gl-journal' && isLocalOnlyMode() && (
-                            <ManualJournalEntrySection />
-                        )}
                         {activeCategory === 'permissions' && showPermissionManagement && (
                             <PermissionManagementSection />
                         )}
-                        {activeCategory === 'audit-trail' && perms.canReadAuditLogs && !isLocalOnlyMode() && (
+                        {activeCategory === 'audit-trail' && perms.canReadAuditLogs && (
                             <EnterpriseAuditViewer key={authTenant?.id ?? 'no-tenant'} />
                         )}
-                        {activeCategory === 'accounting-periods' && !isLocalOnlyMode() && (
+                        {activeCategory === 'accounting-periods' && (
                             <AccountingPeriodsSection isAdmin={perms.canManageUsers} />
                         )}
                     </div>

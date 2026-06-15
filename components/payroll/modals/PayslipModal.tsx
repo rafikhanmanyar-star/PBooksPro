@@ -10,7 +10,6 @@ import { payrollApi } from '../../../services/api/payrollApi';
 import { useAuth } from '../../../context/AuthContext';
 import { Account, Category, Project, Transaction, TransactionType, AccountType } from '../../../types';
 import { apiClient } from '../../../services/api/client';
-import { isAccountingBackedByRemoteApi, isLocalOnlyMode } from '../../../config/apiUrl';
 import { formatDate, formatCurrency, calculateAmount, roundToTwo } from '../utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from '../utils/payslipPaymentState';
 import { resolvePayslipAssignment, formatPayslipAssignmentDisplay } from '../utils/payslipAssignment';
@@ -96,10 +95,7 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
 
   // In local-only mode, accounts come from AppContext (local DB). Otherwise fetch from API if needed.
   useEffect(() => {
-    if (isLocalOnlyMode()) {
-      if (isOpen && accounts.length === 0) setIsLoadingAccounts(false);
-      return;
-    }
+    
     if (!isOpen || isLoadingAccounts) return;
     if (accounts.length > 0 && !showPaymentForm) return;
 

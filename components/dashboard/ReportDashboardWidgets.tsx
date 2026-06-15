@@ -5,7 +5,6 @@ import {
   type ReportDashboardPin,
 } from '../../services/api/reportDesignerApi';
 import { generateCustomReport } from '../../services/api/customReportsApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import ReportChartPreview from '../../modules/report-designer/components/ReportChartPreview';
 
 function buildPinPayload(pin: ReportDashboardPin): Record<string, unknown> {
@@ -108,11 +107,11 @@ const ReportDashboardWidgets: React.FC<Props> = ({ enabled = true }) => {
   const pinsQuery = useQuery({
     queryKey: ['reportDashboardPins'],
     queryFn: fetchReportDashboardPins,
-    enabled: enabled && !isLocalOnlyMode(),
+    enabled: enabled,
   });
 
   const pins = pinsQuery.data ?? [];
-  if (isLocalOnlyMode() || !enabled) return null;
+  if (!enabled) return null;
   if (pinsQuery.isLoading) {
     return (
       <div className="h-32 rounded-2xl bg-app-toolbar/40 animate-pulse border border-app-border" />

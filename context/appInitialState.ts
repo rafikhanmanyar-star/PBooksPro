@@ -1,6 +1,6 @@
 import type { AppState, Account, Category, User } from '../types';
-import { MANDATORY_SYSTEM_ACCOUNTS } from '../services/database/mandatorySystemAccounts';
-import { MANDATORY_SYSTEM_CATEGORIES } from '../services/database/mandatorySystemCategories';
+import { MANDATORY_SYSTEM_ACCOUNTS } from '../constants/mandatorySystemAccounts';
+import { MANDATORY_SYSTEM_CATEGORIES } from '../constants/mandatorySystemCategories';
 
 const SYSTEM_ACCOUNTS: Account[] = MANDATORY_SYSTEM_ACCOUNTS;
 

@@ -18,7 +18,6 @@ import { formatDate, toLocalDateString } from '../../utils/dateUtils';
 import ProjectTransactionModal from '../dashboard/ProjectTransactionModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { fetchProfitLossReport } from '../../services/api/financialReportsApi';
 import { useReportTenantId } from '../../hooks/useReportTenantId';
 
@@ -72,13 +71,12 @@ const ProjectProfitLossReport: React.FC = () => {
     [entityFilterId, projects, buildings]
   );
 
-  const localOnly = isLocalOnlyMode();
-  const tenantId = useReportTenantId();
+    const tenantId = useReportTenantId();
   const [serverReport, setServerReport] = useState<ProfitLossReportResult | null>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (localOnly || !tenantId) {
+    if (!tenantId) {
       setServerReport(null);
       return;
     }
@@ -103,7 +101,7 @@ const ProjectProfitLossReport: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [localOnly, tenantId, startDate, endDate, entityScope]);
+  }, [tenantId, startDate, endDate, entityScope]);
 
   const handleRangeChange = (type: ReportDateRange) => {
     setDateRange(type);
@@ -140,7 +138,7 @@ const ProjectProfitLossReport: React.FC = () => {
       }),
     [reportState, startDate, endDate, entityScope]
   );
-  const report = !localOnly ? serverReport : clientReport;
+  const report = !clientReport;
 
   const validationErrors = useMemo(
     () => report?.validation.issues.filter((iss) => iss.severity === 'error') ?? [],
@@ -244,7 +242,7 @@ const ProjectProfitLossReport: React.FC = () => {
 
   const projectLabel = entityLabel;
 
-  if (!localOnly && !report) {
+  if (!report) {
     return (
       <div className="flex flex-col h-full space-y-4">
         <ReportToolbar
@@ -310,7 +308,7 @@ const ProjectProfitLossReport: React.FC = () => {
             <br />
             {formatDate(startDate)} — {formatDate(endDate)}
           </p>
-          {!localOnly && loading && (
+          {loading && (
             <p className="text-center text-xs text-app-muted mb-2">Loading from server…</p>
           )}
 

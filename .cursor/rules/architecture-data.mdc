@@ -1,41 +1,54 @@
 ---
-description: Data layer Architecture v2 — shared packages, sync metadata, R2 documents, snapshots
-globs: "{database/migrations/**,services/database/**,shared/**,components/reports/*Engine.ts}"
+description: Data layer Architecture v2.1 — PostgreSQL-only, shared packages, sync metadata, R2 documents
+globs: "{database/migrations/**,shared/**,components/reports/*Engine.ts}"
 alwaysApply: false
 ---
 
-# Data Layer Architecture (v2)
+# Data Layer Architecture (v2.1)
 
-## PostgreSQL
+**Agent rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §10
 
-- Migrations: database/migrations/NNN_name.sql
-- Tenant tables: tenant_id + indexes; soft delete via deleted_at + deleted_by
+## PostgreSQL (single database engine)
 
-## v2 Tables (launch scope)
+- Migrations: `database/migrations/NNN_name.sql` (lexicographic order)
+- Tenant tables: `tenant_id` + indexes; soft delete via `deleted_at` + `deleted_by`
+- Multi-step writes: `withTransaction()` from `backend/src/db/pool.ts`
+- Idempotent where possible; never drop columns/tables without explicit plan
+- **Never** add SQLite migrations or schema for new features
 
-- accounting_periods.status includes locked
-- document_metadata (R2 storage_key)
-- sync_queue + change_log (LWW sync)
-- analytics_snapshots (dashboard KPIs)
+## v2 Schema (launch scope)
 
-## Shared Packages (edit here, not backend copies)
+- `accounting_periods.status` includes `locked`
+- `document_metadata` (R2 `storage_key`) — no new inline BLOB columns
+- `sync_queue` + `change_log` (LWW sync via `recordDomainMutation()`)
+- `analytics_snapshots` (dashboard KPIs)
 
-| Source | Backend copy |
-|--------|----------------|
-| shared/financial-core/ | backend/src/financial/ (AUTO-GENERATED) |
-| shared/report-engines/ | backend/dist/*.mjs via ensure-*-engine.mjs (transitional) |
-| shared/rbac/permissions.ts | backend/src/auth/permissions.ts |
+## Shared Packages (edit source, not copies)
 
-Regenerate: npm run build:backend
+| Source | Generated (do not edit) |
+|--------|-------------------------|
+| `shared/financial-core/` | `backend/src/financial/` |
+| `shared/report-engines/` | `backend/dist/*.mjs` (transitional) |
+| `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` |
 
-## SQLite (local-only)
+After edits: `npm run build:backend`
 
-services/database/schema.ts → npm run electron:extract-schema → electron/schema.sql
+## Financial Reporting
 
-## New Report
+All statement calculations in `shared/financial-core/` or `shared/report-engines/` only — never in components, routes, or repositories.
 
-1. Engine in shared/report-engines/ (no React)
-2. ReportService + route under /api/v1/reports/
-3. RBAC permission in shared/rbac/
+## New Report Checklist
 
-Full guide: doc/ARCHITECTURE.md §4.
+1. Engine in `shared/report-engines/` (no React imports)
+2. Re-export shim in `components/reports/` if UI needs old path
+3. Backend `*ReportService.ts` + route under `/api/v1/reports/` with RBAC
+4. Custom reports: extend `modules/reporting/`
+
+## Legacy SQLite (deprecated — do not extend)
+
+| Component | Location |
+|-----------|----------|
+| Local schema | `services/database/schema.ts` |
+| Schema extraction | `npm run electron:extract-schema` |
+| SQLite bridge | `electron/sqliteBridge.cjs` |
+| SQLite sync | `services/database/schemaSync.ts` |

@@ -6,7 +6,6 @@
  */
 
 import type { Document } from '../types';
-import { isLocalOnlyMode } from '../config/apiUrl';
 import { apiClient } from './api/client';
 
 const ACCEPTED_TYPES = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
@@ -57,7 +56,7 @@ export async function uploadEntityDocument(
     uploadedBy: currentUserId,
   };
 
-  const useCloudApi = !isLocalOnlyMode() && typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+  const useCloudApi = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
   if (useCloudApi) {
     try {
       const created = await apiClient.post<Document>('/documents', {
@@ -123,10 +122,6 @@ export async function openDocumentById(
     } catch {
       await showAlert('Failed to open document.');
     }
-    return;
-  }
-  if (isLocalOnlyMode()) {
-    await showAlert('Document file is only available locally. Re-attach the file if it is missing.');
     return;
   }
   try {

@@ -4,36 +4,13 @@ import react from '@vitejs/plugin-react'
 import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, resolve } from 'path'
 import { generateBuildVersionMeta } from './scripts/generate-build-version.mjs'
+import { legacySqliteStubPlugin } from './scripts/vite-legacy-sqlite-stub-plugin.mjs'
 
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(resolve(__dirname, 'package.json'), 'utf-8'));
 const buildVersionMeta = generateBuildVersionMeta();
 
-// Plugin to suppress sql.js Node.js module warnings
-// These warnings are harmless - sql.js handles Node.js modules internally
-const suppressSqlJsWarnings = () => {
-  return {
-    name: 'suppress-sqljs-warnings',
-    enforce: 'pre' as const,
-    resolveId(id: string, importer: string | undefined) {
-      // If sql.js is trying to import Node.js modules, provide empty stubs
-      if (importer && (importer.includes('sql.js') || importer.includes('sql-wasm.js'))) {
-        if (id === 'fs' || id === 'path' || id === 'crypto') {
-          // Return a virtual module ID that resolves to an empty module
-          return `\0${id}-stub`;
-        }
-      }
-      return null;
-    },
-    load(id: string) {
-      // Provide empty stubs for Node.js modules when imported by sql.js
-      if (id === '\0fs-stub' || id === '\0path-stub' || id === '\0crypto-stub') {
-        return 'export default {};';
-      }
-      return null;
-    }
-  };
-};
+// Plugin to inject build version meta — sql.js stubbing handled by legacySqliteStubPlugin
 
 const isElectronBuild = process.env.VITE_ELECTRON_BUILD === 'true';
 
@@ -63,7 +40,7 @@ export default defineConfig({
   },
   assetsInclude: isElectronBuild ? [] : ['**/*.wasm'],
   optimizeDeps: {
-    exclude: isElectronBuild ? [] : ['sql.js'],
+    exclude: ['sql.js'],
     include: ['react', 'react-dom'],
     esbuildOptions: {
       define: {
@@ -72,22 +49,27 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': resolve(__dirname, './'),
-    },
+    alias: [
+      {
+        find: resolve(__dirname, 'services/legacy-sqlite'),
+        replacement: resolve(__dirname, 'services/legacy-sqlite-stubs'),
+      },
+      {
+        find: '@',
+        replacement: resolve(__dirname, './'),
+      },
+    ],
     dedupe: ['react', 'react-dom'],
   },
   build: {
     cssCodeSplit: true,
     commonjsOptions: {
-      include: isElectronBuild ? [/node_modules/] : [/sql\.js/, /node_modules/],
+      include: [/node_modules/],
       transformMixedEsModules: true,
       esmExternals: true
     },
     rollupOptions: {
-      // In Electron builds, externalize sql.js (loaded separately). Do not externalize socket.io-client:
-      // AppContext/useRecordLock import core/socket; a bare "socket.io-client" import breaks in the renderer.
-      external: isElectronBuild ? ['sql.js'] : [],
+      external: [],
       onwarn(warning, warn) {
         if (warning.code === 'UNUSED_EXTERNAL_IMPORT') return
         warn(warning)
@@ -108,7 +90,6 @@ export default defineConfig({
           }
           if (id.includes('node_modules')) {
             if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
-            if (!isElectronBuild && id.includes('sql.js')) return 'vendor-db';
             if (id.includes('xlsx')) return 'vendor-xlsx';
             if (id.includes('google/genai')) return 'vendor-ai';
             return 'vendor-base';
@@ -121,8 +102,8 @@ export default defineConfig({
     },
   },
   plugins: [
+    legacySqliteStubPlugin(),
     react(),
-    ...(isElectronBuild ? [] : [suppressSqlJsWarnings()]),
     {
       name: 'remove-external-resources',
       transformIndexHtml(html) {

@@ -4,7 +4,7 @@
  */
 
 import type { AppState } from '../../types';
-import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../database/resolveProfitDistributionExpenseCategory';
+import { CANONICAL_PROFIT_DISTRIBUTION_EXPENSE_CATEGORY_ID } from '../../constants/profitDistributionCategory';
 
 export function getProfitLossExcludedCategoryIds(state: Pick<AppState, 'categories'>): Set<string> {
   const ids = new Set<string>();

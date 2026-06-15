@@ -8,7 +8,6 @@
 import React, { useEffect, useState } from 'react';
 import { useConnectionStatus } from '../../hooks/useConnectionStatus';
 import { isMobileDevice } from '../../utils/platformDetection';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { apiClient } from '../../services/api/client';
 const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: (_t?: string, _tid?: string) => {}, disconnect: () => {}, getDebugState: () => ({ status: 'disconnected' as const, serverUrl: '', tenantId: null }) });
 const getConnectionMonitor = () => ({ getStatus: () => 'online' as const, checkStatus: async () => 'online' as const, subscribe: (_l: any) => () => {} });
@@ -28,7 +27,6 @@ const ConnectionStatusIndicator: React.FC<ConnectionStatusIndicatorProps> = ({
   const [hasAuth, setHasAuth] = useState(false);
 
   useEffect(() => {
-    if (isLocalOnlyMode()) return;
     const checkAuth = () => {
       const token = apiClient.getToken();
       const tenantId = apiClient.getTenantId();
@@ -40,21 +38,6 @@ const ConnectionStatusIndicator: React.FC<ConnectionStatusIndicatorProps> = ({
     const interval = setInterval(checkAuth, 30000);
     return () => clearInterval(interval);
   }, []);
-
-  if (isLocalOnlyMode()) {
-    return (
-      <div className={`flex items-center gap-2 ${className}`}>
-        <div
-          className="w-2 h-2 rounded-full bg-emerald-500"
-          title="Local database"
-          aria-label="Local database"
-        />
-        {showLabel && (
-          <span className="text-xs font-medium text-slate-600 hidden sm:flex">Local DB</span>
-        )}
-      </div>
-    );
-  }
 
   const handleReconnect = async () => {
     try {

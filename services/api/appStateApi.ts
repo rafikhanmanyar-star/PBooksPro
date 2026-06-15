@@ -599,14 +599,11 @@ export class AppStateApiService {
     applyChangeLogToMergedState(merged, response.changeLog);
 
     try {
-      const { isLocalOnlyMode } = await import('../../config/apiUrl');
-      const { getCurrentTenantId } = await import('../database/tenantUtils');
-      if (!isLocalOnlyMode()) {
-        const tid = getCurrentTenantId();
-        if (tid && response.changeLog?.length) {
-          const { applyPayrollChangeLogToStorage } = await import('./payrollChangeLogMerge');
-          await applyPayrollChangeLogToStorage(tid, response.changeLog);
-        }
+      const { getCurrentTenantId } = await import('../sessionContext');
+      const tid = getCurrentTenantId();
+      if (tid && response.changeLog?.length) {
+        const { applyPayrollChangeLogToStorage } = await import('./payrollChangeLogMerge');
+        await applyPayrollChangeLogToStorage(tid, response.changeLog);
       }
     } catch (e) {
       logger.warnCategory('sync', 'payroll changeLog merge skipped', e);
@@ -715,20 +712,17 @@ export class AppStateApiService {
     }
 
     try {
-      const { isLocalOnlyMode } = await import('../../config/apiUrl');
-      const { getCurrentTenantId } = await import('../database/tenantUtils');
+      const { getCurrentTenantId } = await import('../sessionContext');
       const { storageService } = await import('../../components/payroll/services/storageService');
-      if (!isLocalOnlyMode()) {
-        const tid = getCurrentTenantId();
-        const ent = response.entities as Record<string, unknown[]> | undefined;
-        if (tid && ent) {
-          const hasPayroll = Object.entries(ent).some(
-            ([k, v]) => (k.startsWith('payroll_') || k === 'payslips') && Array.isArray(v) && v.length > 0
-          );
-          if (hasPayroll) {
-            storageService.init(tid);
-            storageService.applyPayrollIncrementalEntities(tid, ent);
-          }
+      const tid = getCurrentTenantId();
+      const ent = response.entities as Record<string, unknown[]> | undefined;
+      if (tid && ent) {
+        const hasPayroll = Object.entries(ent).some(
+          ([k, v]) => (k.startsWith('payroll_') || k === 'payslips') && Array.isArray(v) && v.length > 0
+        );
+        if (hasPayroll) {
+          storageService.init(tid);
+          storageService.applyPayrollIncrementalEntities(tid, ent);
         }
       }
     } catch (e) {

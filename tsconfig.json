@@ -20,9 +20,13 @@
     "allowJs": true,
     "resolveJsonModule": true,
     "jsx": "react-jsx",
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "services/legacy-sqlite/*": [
+        "./services/legacy-sqlite-stubs/*"
       ]
     },
     "allowImportingTsExtensions": true,

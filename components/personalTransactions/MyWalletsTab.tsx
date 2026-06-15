@@ -2,7 +2,6 @@ import { usePersonalFinanceState } from '../../hooks/useSelectiveState';
 import React, { useMemo } from 'react';
 import { getPersonalBalancesByAccount } from './personalTransactionsService';
 import { CURRENCY } from '../../constants';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 
 function formatAmount(amount: number): string {
   const sign = amount >= 0 ? '' : '-';
@@ -19,9 +18,7 @@ const MyWalletsTab: React.FC = () => {
     return map;
   }, [accounts]);
 
-  const balancesByAccount = getPersonalBalancesByAccount(
-    !isLocalOnlyMode() ? personalTransactions : undefined
-  );
+  const balancesByAccount = getPersonalBalancesByAccount(personalTransactions);
 
   const rows = useMemo(
     () =>

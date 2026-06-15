@@ -7,11 +7,8 @@ import {
   PersonalCategory,
   getPersonalIncomeCategories,
   getPersonalExpenseCategories,
-  setPersonalIncomeCategories,
-  setPersonalExpenseCategories,
   replacePersonalCategoriesApi } from './personalCategoriesService';
 import { ICONS } from '../../constants';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useOffline } from '../../context/OfflineContext';
 import { useNotification } from '../../context/NotificationContext';
 
@@ -58,7 +55,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
   const [editor, setEditor] = useState<EditorState>({ open: false });
   const [formName, setFormName] = useState('');
 
-  const editsDisabled = isOffline && !isLocalOnlyMode();
+  const editsDisabled = isOffline;
 
   const bumpList = useCallback(() => {
     setListVersion((v) => v + 1);
@@ -103,12 +100,7 @@ const PersonalCategoriesSettingsPanel: React.FC = () => {
   const persistType = useCallback(
     async (kind: CategoryKind, next: PersonalCategory[]): Promise<boolean> => {
       try {
-        if (isLocalOnlyMode()) {
-          if (kind === 'Income') setPersonalIncomeCategories(next);
-          else setPersonalExpenseCategories(next);
-        } else {
-          await replacePersonalCategoriesApi(kind, next);
-        }
+        await replacePersonalCategoriesApi(kind, next);
         bumpList();
         return true;
       } catch (e: unknown) {

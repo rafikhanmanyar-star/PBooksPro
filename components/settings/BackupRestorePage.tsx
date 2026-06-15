@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from 'react';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import Tabs from '../ui/Tabs';
 import ExportDataModal from './ExportDataModal';
 import CompanyBackupRestore from '../company/CompanyBackupRestore';
@@ -9,11 +8,9 @@ import BackupStorageSettingsPage from './BackupStorageSettingsPage';
 import TenantRestoreWizard from './TenantRestoreWizard';
 import DisasterRecoveryCenter from './DisasterRecoveryCenter';
 import BackupSecurityPage from './BackupSecurityPage';
-import { useCompanyOptional } from '../../context/CompanyContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import ImportExportWizard from './ImportExportWizard';
 
-const DESKTOP_BACKUP_TABS = ['Backup and Restore', 'Import', 'Selective Export'] as const;
 const CLOUD_BACKUP_TABS = [
     'Backup and Restore',
     'Backup History',
@@ -26,22 +23,20 @@ const CLOUD_BACKUP_TABS = [
 ] as const;
 
 const BackupRestorePage: React.FC = () => {
-    const companyCtx = useCompanyOptional();
     const perms = usePermissions();
-    const localMode = isLocalOnlyMode();
     const canManageBackups = perms.canManageBackups;
 
     const [activeTab, setActiveTab] = useState<string>('Backup and Restore');
     const [isExportDataModalOpen, setIsExportDataModalOpen] = useState(false);
 
     const backupTabs = useMemo(
-        () => [...(localMode ? DESKTOP_BACKUP_TABS : CLOUD_BACKUP_TABS)],
-        [localMode]
+        () => [...(CLOUD_BACKUP_TABS)],
+        []
     );
 
     const renderBackupRestore = () => {
-        const showSqliteCompanyBackup = localMode && !!companyCtx?.activeCompany && canManageBackups;
-        const showPostgresBackup = !localMode && canManageBackups;
+        const showSqliteCompanyBackup = false;
+        const showPostgresBackup = canManageBackups;
         return (
             <div className="p-4 sm:p-6">
                 <div className="max-w-2xl mx-auto">
@@ -53,22 +48,16 @@ const BackupRestorePage: React.FC = () => {
                         ) : (
                             <>
                                 <h4 className="text-lg font-semibold text-app-text mb-1">
-                                    {localMode ? 'Company Backup' : 'PostgreSQL Backup'}
+                                    {'PostgreSQL Backup'}
                                 </h4>
                                 <p className="text-sm text-app-muted mb-4">
-                                    {localMode
-                                        ? 'Create and restore backups of your current company database. Backups are stored locally and can be restored anytime.'
-                                        : 'Download encrypted full-database backups or export your organization for tenant restore.'}
+                                    {'Download encrypted full-database backups or export your organization for tenant restore.'}
                                 </p>
                                 <div className="py-8 px-4 text-center rounded-lg bg-app-surface-2/80 border border-app-border">
                                     <p className="text-sm text-app-muted">
-                                        {localMode && !companyCtx?.activeCompany
-                                            ? 'Select or create a company to manage backups.'
-                                            : !canManageBackups
+                                        {!canManageBackups
                                                 ? 'Backup and restore requires Company Admin or Super Admin permissions.'
-                                                : localMode
-                                                    ? 'Company backup is unavailable in this session.'
-                                                    : 'PostgreSQL backup is unavailable. Check API server configuration (DATABASE_URL, ENABLE_DB_BACKUP_RESTORE, pg_dump on PATH).'}
+                                                : 'PostgreSQL backup is unavailable. Check API server configuration (DATABASE_URL, ENABLE_DB_BACKUP_RESTORE, pg_dump on PATH).'}
                                     </p>
                                 </div>
                             </>

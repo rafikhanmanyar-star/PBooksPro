@@ -7,7 +7,6 @@ import AmountInput from '../common/AmountInput';
 import { formatRoundedNumber } from '../../utils/numberUtils';
 import { parseAmount } from '../../utils/numberFormatting';
 import { computeBankAccountProjectBalances } from './bankAccountReportBalances';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 
 const LEGACY_STORAGE_VERSION = 1;
 
@@ -201,9 +200,7 @@ const AccountConsistencyReport: React.FC = () => {
         return any ? sum : null;
     }, [rows, actualInputs]);
 
-    const storageHint = isLocalOnlyMode()
-        ? 'Amounts are saved in your local database with this company file.'
-        : 'Amounts are saved to the server database for this tenant.';
+    const storageHint =  'Amounts are saved to the server database for this tenant.';
 
     const numSelectable = 'select-text cursor-text';
 

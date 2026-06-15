@@ -7,7 +7,6 @@ import type { BillPrintData } from '../print/BillPrintTemplate';
 import { Invoice, Bill, InvoiceStatus, Contact, Property, InvoiceType, ContactType, RentalAgreement, Project, TransactionType, Category, Unit, ProjectAgreement, Building, RecurringInvoiceTemplate, ProjectAgreementStatus, ContractStatus, Contract, ContractExpenseCategoryItem, Vendor } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { useRecordLock, isAdminRole } from '../../hooks/useRecordLock';
 import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
@@ -85,7 +84,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const recordLock = useRecordLock({
     recordType: type === 'invoice' ? 'invoice' : 'bill',
     recordId: itemToEdit?.id,
-    enabled: Boolean(itemToEdit?.id) && !isLocalOnlyMode(),
+    enabled: Boolean(itemToEdit?.id),
     currentUserId: state.currentUser?.id,
     currentUserName: state.currentUser?.name,
     userRole: state.currentUser?.role,
@@ -906,7 +905,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
     if (type === 'bill') {
       const newId = `vendor_${Date.now()}`;
       let newVendor = { ...data, id: newId } as Vendor;
-      if (!isLocalOnlyMode() && isAuthenticated) {
+      if (isAuthenticated) {
         try {
           const merged = await getAppStateApiService().saveVendor({
             ...newVendor,
@@ -1110,7 +1109,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDelete = async () => {
     if (!itemToEdit) return;
-    if (itemToEdit && !isLocalOnlyMode() && recordLock.viewOnly) {
+    if (itemToEdit && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
       return;
     }
@@ -1223,7 +1222,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const handleSubmit = async (e: React.FormEvent, skipClose = false) => {
     if (e) e.preventDefault();
 
-    if (itemToEdit?.id && !isLocalOnlyMode() && recordLock.viewOnly) {
+    if (itemToEdit?.id && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot save' });
       return;
     }
@@ -1704,7 +1703,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               {itemToEdit ? 'Edit Invoice' : 'New Invoice'}
               {number && <span className="text-slate-400 font-semibold">#{number}</span>}
             </h2>
-            {itemToEdit && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && (
+            {itemToEdit && recordLock.bannerMode === 'self' && (
               <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1">
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 Editing by you ({state.currentUser?.name || 'You'})
@@ -2960,10 +2959,10 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const billFormBody = (
     <>
-      {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'self' && !isRentalLayout && (
+      {itemToEdit?.id && recordLock.bannerMode === 'self' && !isRentalLayout && (
         <RecordLockBanner mode="self" currentUserName={state.currentUser?.name} />
       )}
-      {itemToEdit?.id && !isLocalOnlyMode() && recordLock.bannerMode === 'other' && (
+      {itemToEdit?.id && recordLock.bannerMode === 'other' && (
         <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
       )}
       {isPartiallyPaid && type === 'bill' && (

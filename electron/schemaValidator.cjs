@@ -1,6 +1,6 @@
 /**
  * PBooks Pro — Database schema validation & non-destructive repair (SQLite / better-sqlite3).
- * Expected schema is parsed from electron/schema.sql (extracted from services/database/schema.ts).
+ * Expected schema is parsed from electron/schema.sql (extracted from services/legacy-sqlite/schema.ts).
  */
 
 const fs = require('fs');

@@ -1,18 +1,26 @@
 /**
  * PBooks Pro - Electron Main Process
  * Desktop wrapper for the PBooks Pro web application.
- * Multi-company architecture: uses companyManager for DB management.
+ * Architecture v2.1: PostgreSQL via apiClient by default.
+ * Legacy SQLite loads only when PBOOKS_ENABLE_SQLITE=1 (electron:offline:* scripts).
  */
 
 const { app, BrowserWindow, shell, ipcMain, dialog, Menu, MenuItem, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const sqliteBridge = require('./sqliteBridge.cjs');
-const companyManager = require('./companyManager.cjs');
 const stability = require('./stability.cjs');
 const spellChecker = require('./spellChecker.cjs');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
 const { isStagingClient, applyStagingPrereleaseFeed } = require('./stagingUpdateFeed.cjs');
+
+/** @deprecated Legacy SQLite — set only via electron:offline:* scripts */
+const SQLITE_ENABLED = process.env.PBOOKS_ENABLE_SQLITE === '1';
+let sqliteBridge = null;
+let companyManager = null;
+if (SQLITE_ENABLED) {
+  sqliteBridge = require('./sqliteBridge.cjs');
+  companyManager = require('./companyManager.cjs');
+}
 
 let mainWindow = null;
 let autoUpdater = null;
@@ -37,8 +45,10 @@ app.commandLine.appendSwitch('disk-cache-dir', path.join(app.getPath('userData')
 
 // Register IPC handlers BEFORE app.whenReady so they're available when renderer loads
 stability.setupMainCrashHandlers();
-sqliteBridge.setupHandlers();
-companyManager.setupHandlers(sqliteBridge);
+if (SQLITE_ENABLED) {
+  sqliteBridge.setupHandlers();
+  companyManager.setupHandlers(sqliteBridge);
+}
 stability.registerIpcHandlers({
   getMainWindow: () => mainWindow,
   sqliteBridge,
@@ -131,16 +141,17 @@ ipcMain.handle('whatsapp:share-pdf-open-chat', async (_event, payload) => {
   return { ok: true, clipboardOk, path: fullPath };
 });
 
-// Migrate existing single-DB users to multi-company on first launch
-const migratedCompanyId = companyManager.migrateExistingSingleDb();
-if (migratedCompanyId) {
-  // Auto-open the migrated company so the user sees their data immediately
-  companyManager.getActiveCompany(); // ensure master is ready
-  const result = sqliteBridge.openDb(
-    companyManager.getCompanyById(migratedCompanyId).db_file_path
-  );
-  if (result) {
-    console.log('[Main] Auto-opened migrated company');
+// Migrate existing single-DB users to multi-company on first launch (legacy SQLite only)
+if (SQLITE_ENABLED) {
+  const migratedCompanyId = companyManager.migrateExistingSingleDb();
+  if (migratedCompanyId) {
+    companyManager.getActiveCompany();
+    const result = sqliteBridge.openDb(
+      companyManager.getCompanyById(migratedCompanyId).db_file_path
+    );
+    if (result) {
+      console.log('[Main] Auto-opened migrated company');
+    }
   }
 }
 
@@ -548,6 +559,7 @@ app.whenReady().then(() => {
  * Automatic backup of the active company DB on close (keep last 5).
  */
 function createAutoBackup() {
+  if (!SQLITE_ENABLED || !sqliteBridge || !companyManager) return;
   try {
     console.log('[Main] createAutoBackup starting');
     const activeCompany = companyManager.getActiveCompany();
@@ -599,8 +611,10 @@ app.on('window-all-closed', () => {
   }
   if (process.platform !== 'darwin') {
     createAutoBackup();
-    sqliteBridge.close();
-    companyManager.closeMasterDb();
+    if (SQLITE_ENABLED && sqliteBridge && companyManager) {
+      sqliteBridge.close();
+      companyManager.closeMasterDb();
+    }
     app.quit();
   }
 });
@@ -610,15 +624,17 @@ app.on('before-quit', () => {
   stability.stopWatchdog();
   stability.stopMemoryMonitor();
   createAutoBackup();
-  try {
-    if (typeof sqliteBridge.commitAllPending === 'function') {
-      sqliteBridge.commitAllPending();
+  if (SQLITE_ENABLED && sqliteBridge && companyManager) {
+    try {
+      if (typeof sqliteBridge.commitAllPending === 'function') {
+        sqliteBridge.commitAllPending();
+      }
+    } catch (e) {
+      console.error('[Main] commitAllPending before close:', e);
     }
-  } catch (e) {
-    console.error('[Main] commitAllPending before close:', e);
+    sqliteBridge.close();
+    companyManager.closeMasterDb();
   }
-  sqliteBridge.close();
-  companyManager.closeMasterDb();
 });
 
 app.on('activate', () => {

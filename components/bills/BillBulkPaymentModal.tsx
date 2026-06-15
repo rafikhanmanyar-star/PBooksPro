@@ -12,7 +12,6 @@ import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import AmountInput from '../common/AmountInput';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { computeBillAfterPayment, offerConstructionBillPaymentWhatsApp } from '../../utils/constructionBillPaymentWhatsApp';
@@ -165,28 +164,7 @@ const BillBulkPaymentModal: React.FC<BillBulkPaymentModalProps> = ({ isOpen, onC
             return;
         }
 
-        if (isLocalOnlyMode()) {
-            // Local-only: persist via dispatch only (reducer + persistence write to local DB; bills updated by applyTransactionEffect)
-            dispatch({ type: 'BATCH_ADD_TRANSACTIONS', payload: transactions });
-            showToast(`Processed bulk payment for ${transactions.length} bills.`, 'success');
-            const updatedBills = selectedBills
-                .map((bill) => {
-                    const payAmount = parseFloat(payments[bill.id] || '0');
-                    if (payAmount <= 0) return null;
-                    return computeBillAfterPayment(bill, payAmount);
-                })
-                .filter(Boolean) as Bill[];
-            await offerConstructionBillPaymentWhatsApp({
-                state,
-                updatedBills,
-                showConfirm,
-                showAlert,
-                openChat,
-            });
-            if (onPaymentComplete) onPaymentComplete();
-            else onClose();
-            return;
-        }
+        
 
         try {
             // Cloud: save via API first to catch conflicts early

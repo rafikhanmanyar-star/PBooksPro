@@ -1,31 +1,46 @@
 ---
-description: PBooks Pro Architecture v2 — layers, runtime modes, strangler migration, where new code belongs
+description: PBooks Pro Architecture v2.1 — Desktop/Cloud editions, PostgreSQL-only, where new code belongs
 alwaysApply: true
 ---
 
-# Architecture Overview (v2)
+# Architecture Overview (v2.1)
+
+**Agent rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` · **Full guide:** `doc/ARCHITECTURE.md`
 
 Monorepo: React/Vite at root, Express/PostgreSQL in `backend/`, Electron in `electron/`, shared packages in `shared/`.
 
-## Layer Stack
+**Single source of truth:** PostgreSQL.
+
+## Runtime Architecture
+
+**Desktop Edition**
 
 ```
-Electron → React → apiClient (/api/v1) or SQLite IPC → Express → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+Electron → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+**Cloud Edition**
+
+```
+Browser → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
 ```
 
 Shared calculation logic: `shared/financial-core/`, `shared/report-engines/`.
 
-## Runtime Modes
+## Editions & Environments
 
-| Mode | Trigger | Data path |
-|------|---------|-----------|
-| Offline SQLite | `VITE_LOCAL_ONLY=true` | Electron → sqliteBridge → services/database/ |
-| LAN/API client | `VITE_LOCAL_ONLY=false` | apiClient → /api/v1 :3000/:3001 → PostgreSQL |
-| API server | backend/dist/index.js | PostgreSQL + migrations on startup |
+| Edition | Client | API port | Database |
+|---------|--------|----------|----------|
+| Desktop (production) | Electron | 3000 | `pbookspro` |
+| Desktop (staging) | Electron | 3001 | `pBookspro_Staging` |
+| Cloud | Browser | 3000 / 3001 | PostgreSQL |
+| API server | — | 3000 / 3001 | PostgreSQL |
 
-## Strangler: New Code Uses v2
+> **Deprecated:** Offline SQLite (`VITE_LOCAL_ONLY`, `sqliteBridge`, `services/database/`). Do not extend.
 
-Legacy `backend/src/routes/` + flat `services/` still exist as delegates. **New features** go in `backend/src/modules/<domain>/` with `TenantRepository` subclasses.
+## Strangler: New Code Uses v2.1
+
+Legacy `backend/src/routes/` + flat `services/` are thin delegates only. **New features** go in `backend/src/modules/<domain>/` with `TenantRepository` subclasses.
 
 ## Where to Put New Code
 
@@ -33,7 +48,7 @@ Legacy `backend/src/routes/` + flat `services/` still exist as delegates. **New 
 |---------|----------|
 | Domain API | `backend/src/modules/<domain>/` (routes, services, repositories) |
 | GL writes | `FinancialPostingService` only |
-| Migrations | `database/migrations/NNN_name.sql` |
+| Migrations | `database/migrations/NNN_name.sql` (PostgreSQL only) |
 | Financial/report logic | `shared/financial-core/`, `shared/report-engines/` |
 | API client | `services/api/` (base `/api/v1`) |
 | UI | `components/<domain>/` or `modules/<feature>/` |
@@ -49,6 +64,7 @@ Legacy `backend/src/routes/` + flat `services/` still exist as delegates. **New 
 - SQL in routes; direct GL writes outside FinancialPostingService
 - Missing tenant_id; editing AUTO-GENERATED backend/financial files
 - New calculation logic in components/ (use shared/report-engines/)
-- Broad useAppContext() in new code
+- Broad useAppContext() in new code; new handlers in legacy flat routes
+- SQLite code or schemas for new development
 
-Post-launch deferred: see doc/ARCHITECTURE_V2_POST_LAUNCH.md. Full guide: doc/ARCHITECTURE.md.
+Post-launch deferred: `doc/ARCHITECTURE_V2_POST_LAUNCH.md`. Detailed agent checklists: `doc/ARCHITECTURE_V2_AGENT_RULES.md`.

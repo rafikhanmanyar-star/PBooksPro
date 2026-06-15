@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { InvoicesApiRepository } from '../../services/api/repositories/invoicesApi';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { queryKeys } from './queryKeys';
 
 /**
@@ -16,6 +15,6 @@ export function useInvoicesApiListQuery(
   return useQuery({
     queryKey: queryKeys.invoices.apiList(key),
     queryFn: () => repo.findAll(filters),
-    enabled: enabled && !isLocalOnlyMode(),
+    enabled: enabled,
   });
 }

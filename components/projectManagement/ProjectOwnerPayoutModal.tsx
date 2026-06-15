@@ -3,9 +3,7 @@ import { useDispatchOnly, useProjectReportAppState } from '../../hooks/useSelect
 import React, { useState, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import { Contact, TransactionType, Transaction, SalesReturnStatus, ProjectAgreement } from '../../types';
-import { flushAppStateToDatabase } from '../../services/database/criticalPersistence';
 import { _getAppState } from '../../context/appStateStore';
-import { isLocalOnlyMode } from '../../config/apiUrl';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -166,38 +164,7 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
         const transactionId = Date.now().toString();
         const newTx: Transaction = { ...refundTransaction, id: transactionId };
 
-        if (isLocalOnlyMode()) {
-            flushSync(() => {
-                dispatch({ type: 'ADD_TRANSACTION', payload: newTx });
-                if (salesReturn) {
-                    const totalRefunded = Math.round(
-                        state.transactions
-                            .filter(
-                                (tx) =>
-                                    tx.contactId === client.id &&
-                                    (tx.categoryId ? refundCategoryIdSet.has(tx.categoryId) : false) &&
-                                    tx.description?.includes(`Sales Return #${salesReturn.returnNumber}`)
-                            )
-                            .reduce((sum, tx) => sum + tx.amount, 0) + numAmount
-                    );
-                    const isFullyRefunded = totalRefunded >= salesReturn.refundAmount - 0.001;
-                    if (isFullyRefunded && salesReturn.status !== SalesReturnStatus.REFUNDED) {
-                        dispatch({
-                            type: 'MARK_RETURN_REFUNDED',
-                            payload: { returnId: salesReturn.id, refundDate: date },
-                        });
-                    }
-                }
-            });
-            try {
-                await flushAppStateToDatabase(_getAppState());
-            } catch (e) {
-                const msg = e instanceof Error ? e.message : String(e);
-                await showAlert(`Could not save refund to the database: ${msg}`);
-                return;
-            }
-        } else {
-            try {
+        try {
                 const api = getAppStateApiService();
                 const saved = await api.saveTransaction(newTx);
                 flushSync(() => {
@@ -227,7 +194,6 @@ const ProjectOwnerPayoutModal: React.FC<ProjectOwnerPayoutModalProps> = ({ isOpe
                 await showAlert(`Failed to save refund: ${msg}`);
                 return;
             }
-        }
 
         setTimeout(() => {
             onClose();

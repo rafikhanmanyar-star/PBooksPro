@@ -3,7 +3,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { objectToDbFormat } from '../services/database/columnMapper';
+import { objectToDbFormat } from '../services/legacy-sqlite/columnMapper';
 import { formatDate, toLocalDateString, toDateOnly, tryParseSqlUtcMidnightIsoToYyyyMmDd } from '../utils/dateUtils';
 import { stringifyApiJsonBody } from '../utils/apiJsonSerialize';
 
