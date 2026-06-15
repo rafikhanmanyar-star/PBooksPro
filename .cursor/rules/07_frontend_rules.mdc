@@ -1,6 +1,6 @@
 ---
-description: Frontend Architecture V2.1 — apiClient, React Query, real-time, navigation
-globs: "{components/**,hooks/**,services/**,context/**,modules/**,stores/**}/*.{ts,tsx}"
+description: Frontend Architecture V2.1 — apiClient, React Query, real-time, navigation, state
+globs: "{components/**,hooks/**,services/**,context/**,modules/**,stores/**,config/apiUrl.ts}/*.{ts,tsx}"
 alwaysApply: false
 ---
 
@@ -8,46 +8,101 @@ alwaysApply: false
 
 **Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §9
 
-## API client
+## API client (PostgreSQL path only)
 
-- Base: `/api/v1` (`config/apiUrl.ts` → `normalizeApiBaseUrl()`)
 - Singleton: `services/api/client.ts` (`apiClient`)
-- Repos: `services/api/repositories/*Api.ts` with `normalize*FromApi()`
-- Desktop and Cloud both use PostgreSQL via Express API — no offline DB path
+- Base URL: `/api/v1` via `config/apiUrl.ts` → `normalizeApiBaseUrl()`
+- Staging port **3001**, production **3000** — enforced in client config
+- Per-entity: `services/api/repositories/*Api.ts` with `normalize*FromApi()`
+- Desktop (Electron) and Cloud (Browser) both use `apiClient` → Express → PostgreSQL
+
+### BANNED for new development
+
+- `VITE_LOCAL_ONLY`, `isLocalOnlyMode()`
+- `services/database/`, `sqliteBridge`
+- Offline SQLite data paths
 
 ## State management
 
 | Layer | Use when |
 |-------|----------|
-| `useStateSelector` / `context/domains/` | AppContext slices — preferred for new code |
-| React Query (`hooks/queries/`) | Server data, reports, dashboard |
+| `useStateSelector` / `context/domains/` | AppContext slices — **preferred for new code** |
+| React Query (`hooks/queries/`) | Server data, snapshots, reports |
 | Zustand (`stores/`) | Ephemeral UI-only state |
+| AppContext reducer | Core entities synced via API + change log |
 
-Do not duplicate server KPIs in AppContext when React Query exists.
+Do **not** duplicate server KPI/report data in AppContext when React Query exists.
 
 ## Real-time (mandatory)
 
-See `03_realtime_sync.mdc`. New server-backed hooks must invalidate on socket events.
+See `03_realtime_sync.mdc`. Every new server-backed hook **must**:
 
-## Reports & financial UI
+1. Use `getRealtimeSocket()` from `core/socket.ts`
+2. Filter `payload.tenantId === currentTenantId`
+3. `invalidateQueries` or `setQueryData` on `entity_created` / `entity_updated` / `entity_deleted` / `financial.posted`
 
-- Import display logic from shared shims; no new calculation in components
-- Dashboard: `useDashboardSnapshots`
+References:
 
-## Navigation
+| Concern | File |
+|---------|------|
+| Socket connect | `core/socket.ts` |
+| Global entity events | `context/AppContext.tsx` |
+| Change log merge | `services/api/changeLogMerge.ts` |
+| Query invalidation map | `services/realtime/entityQueryInvalidation.ts` |
+| Notifications pattern | `hooks/useUserNotifications.ts` |
+| Record locks | `hooks/useRecordLock.ts` |
+| Connection UI | `components/ui/ConnectionStatusIndicator.tsx` |
 
-`Page` union in `types.ts` → `PAGE_GROUPS` + `lazyWithRetry` in `App.tsx` → Sidebar / `utils/appNavigation.ts`
+## Report & financial UI
 
-## New feature flow
+- Calculations: `shared/report-engines/`, `shared/financial-core/` only
+- `components/reports/` — preview, format, re-export shims — **no new math**
+- Dashboard: `useDashboardSnapshots` → `GET /dashboard/snapshots`
+- Reports fetch JSON from `/api/v1/reports/...`
 
-```
-types → *Api.ts → React Query hook → socket listener → UI → navigation → usePermissions()
-```
+## Navigation (not React Router)
 
-Styling: Tailwind + `styles/design-tokens.css`; modals: `hooks/useEntityFormModal`
+1. Add to `Page` union in `types.ts`
+2. `PAGE_GROUPS` + `lazyWithRetry` in `App.tsx`
+3. Sidebar entry + `utils/appNavigation.ts`
 
-## BANNED for new development
+## New frontend feature checklist
 
-- `VITE_LOCAL_ONLY`, `isLocalOnlyMode()`, `services/database/`
+1. Types in `types/` or `types.ts`
+2. API repo in `services/api/`
+3. React Query hook in `hooks/queries/` (if server-backed)
+4. **Socket listener → invalidateQueries** for entity type
+5. UI in `components/<domain>/` or `modules/<feature>/`
+6. Navigation wiring
+7. `usePermissions()` for action gating
+8. Styling: Tailwind + `styles/design-tokens.css`
+9. Entity modals: `hooks/useEntityFormModal`
+
+## Incremental sync
+
+- `GET /state/changes` + `changeLogMerge.ts` for AppState merge
+- `payrollChangeLogMerge.ts` for payroll localStorage slice
+- Respect LWW `version` when merging
+
+## Styling & UX
+
+- Tailwind CSS; `lucide-react` icons
+- Design system: `doc/DESIGN_SYSTEM.md`
+- Avoid inline `style` except dynamic values
+
+## MUST NOT
+
 - Broad `useAppContext()` for new features
-- Local-only entity mutations without socket path
+- Local-only business entity mutations
+- Manual refresh / F5 as primary multi-user sync
+- Polling-only mutation sync
+- New calculation logic in components
+- Direct fetch bypassing `apiClient` for tenant data
+
+## Full-stack wiring
+
+```
+featureApi.ts → useFeature.ts (+ socket useEffect) → FeaturePage.tsx → Page union + Sidebar
+```
+
+Backend must emit `emitEntityEvent()` for the entity type your hook invalidates.

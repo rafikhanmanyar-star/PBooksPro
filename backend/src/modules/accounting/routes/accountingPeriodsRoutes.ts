@@ -5,18 +5,14 @@ import { requireLedgerRole, requireOrgUserAdmin } from '../../../middleware/auth
 import { sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
 import { withTransaction } from '../../../db/pool.js';
 import {
-  createAccountingPeriod,
   getAccountingPeriodById,
   listAccountingPeriods,
+  openAccountingPeriod,
   reopenAccountingPeriod,
   rowToAccountingPeriodApi,
 } from '../services/accountingPeriodService.js';
-import {
-  closeAccountingPeriod,
-  logAccountingPeriodOpened,
-  logAccountingPeriodReopened,
-} from '../services/fiscalPeriodCloseService.js';
-import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
+import { closeAccountingPeriod } from '../services/fiscalPeriodCloseService.js';
+import { emitEntityEvent } from '../../../core/realtime.js';
 
 const openBodySchema = z.object({
   startDate: z.string().min(1),
@@ -77,14 +73,9 @@ accountingPeriodsRouter.post('/accounting-periods/open', requireLedgerRole, asyn
     return;
   }
   try {
-    const result = await withTransaction(async (client) => {
-      const row = await createAccountingPeriod(client, tenantId, parsed.data);
-      await logAccountingPeriodOpened(client, tenantId, row.id, req.userId ?? null, {
-        startDate: parsed.data.startDate,
-        endDate: parsed.data.endDate,
-      });
-      return row;
-    });
+    const result = await withTransaction((client) =>
+      openAccountingPeriod(client, tenantId, parsed.data, req.userId ?? null)
+    );
     const apiRow = rowToAccountingPeriodApi(result);
     emitEntityEvent(tenantId, 'created', 'accounting_period', {
       data: apiRow,
@@ -127,22 +118,6 @@ accountingPeriodsRouter.post(
         id: apiRow.id,
         sourceUserId: req.userId,
       });
-      if (result.closingJournalEntryId) {
-        emitFinancialPosted(tenantId, {
-          journalEntryId: result.closingJournalEntryId,
-          sourceModule: 'accounting_period_close',
-          sourceId: id,
-          sourceUserId: req.userId,
-        });
-      }
-      if (result.yearEndTransferJournalEntryId) {
-        emitFinancialPosted(tenantId, {
-          journalEntryId: result.yearEndTransferJournalEntryId,
-          sourceModule: 'accounting_period_year_end',
-          sourceId: id,
-          sourceUserId: req.userId,
-        });
-      }
       sendSuccess(res, {
         period: apiRow,
         closingJournalEntryId: result.closingJournalEntryId,
@@ -167,14 +142,9 @@ accountingPeriodsRouter.post(
     }
     const id = String(req.params.id ?? '');
     try {
-      const row = await withTransaction(async (client) => {
-        const updated = await reopenAccountingPeriod(client, tenantId, id, req.userId ?? null);
-        await logAccountingPeriodReopened(client, tenantId, id, req.userId ?? null, {
-          startDate: String(updated.start_date).slice(0, 10),
-          endDate: String(updated.end_date).slice(0, 10),
-        });
-        return updated;
-      });
+      const row = await withTransaction((client) =>
+        reopenAccountingPeriod(client, tenantId, id, req.userId ?? null)
+      );
       const apiRow = rowToAccountingPeriodApi(row);
       emitEntityEvent(tenantId, 'updated', 'accounting_period', {
         data: apiRow,

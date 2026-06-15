@@ -1,48 +1,94 @@
 ---
-description: Reporting rules — shared engines, API report services, dashboard snapshots
-globs: "{shared/report-engines/**,components/reports/**,backend/src/modules/**/services/*Report*.ts,backend/src/reportEngines/**}"
+description: Reporting rules — shared engines, API report services, dashboard snapshots, custom reports
+globs: "{shared/report-engines/**,shared/financial-core/**,components/reports/**,backend/src/modules/**/services/*Report*.ts,backend/src/reportEngines/**,backend/src/modules/reporting/**,backend/src/modules/dashboard/**}"
 alwaysApply: false
 ---
 
 # Reporting Rules (V2.1)
 
-**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §5
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` §5 · `doc/ARCHITECTURE.md` § Financial Reporting Rules
 
 ## Calculation source of truth
 
-| Package | Contents |
-|---------|----------|
-| `shared/financial-core/` | Trial balance, journal ledger, validation, cash flow journal |
-| `shared/report-engines/` | P&L, balance sheet, ledgers, rental reports |
+| Package | Reports / logic |
+|---------|-----------------|
+| `shared/financial-core/` | Trial balance, journal ledger, validation, reconciliation |
+| `shared/report-engines/` | Balance sheet, P&L, cash flow, ledgers, rental reports |
 
-**MUST NOT** add new report math in `components/`, routes, or repositories.
+### Prohibited locations for calculation logic
+
+- React components (`components/reports/` = UI + re-export shims only)
+- Route handlers
+- Repositories
+- Backend report services (orchestration only — import engines, do not reimplement formulas)
+
+### Statements that must not duplicate logic
+
+Balance Sheet, Income Statement, P&L, Cash Flow, Trial Balance, General Ledger, Subsidiary Ledgers, Financial Position Statement
 
 ## Backend report pipeline (Track F P4)
 
-1. Engine logic: `shared/report-engines/` (+ re-export shims in `components/reports/`)
-2. Build: `scripts/ensure-shared-report-engines.mjs` → `reportEngines.compiled.js`
-3. Import: `backend/src/reportEngines/index.ts` (static imports)
-4. Service: `modules/<domain>/services/*ReportService.ts`
-5. Route: `/api/v1/reports/...` with RBAC
+```
+shared/report-engines/serverEntry.ts
+  → scripts/ensure-shared-report-engines.mjs
+  → backend/src/report-engines/reportEngines.compiled.js
+  → backend/src/reportEngines/index.ts (static exports)
+  → modules/<domain>/services/*ReportService.ts
+  → /api/v1/reports/... routes
+```
 
-Verify: `npm run verify:track-f-p4` after backend changes.
+Verify: `npm run verify:track-f-p4` after backend report changes.
 
-## UI layer
+### Report services (examples)
 
-- `components/reports/` = presentation + re-export shims only
-- Dashboard KPIs: `useDashboardSnapshots` → `GET /dashboard/snapshots` (not raw AppState scans)
-- Custom reports: `modules/reporting/`
+| Report | Service module |
+|--------|----------------|
+| Balance sheet | `modules/accounting/services/balanceSheetReportService.ts` |
+| P&L | `modules/accounting/services/profitLossReportService.ts` |
+| Cash flow | `modules/accounting/services/cashFlowReportService.ts` |
+| Vendor ledger | `modules/vendors/services/vendorLedgerReportService.ts` |
+| Tenant ledger | `modules/leases/services/tenantLedgerReportService.ts` |
+| Rental bills dashboard | `modules/leases/services/rentalBillsDashboardService.ts` |
+
+Import pattern:
+
+```typescript
+import { computeBalanceSheetReport } from '../../../reportEngines/index.js';
+```
 
 ## New report checklist
 
-1. Engine in `shared/report-engines/` (no React imports)
-2. Add export to `shared/report-engines/serverEntry.ts`
-3. Backend `*ReportService.ts` + route under `/api/v1`
-4. RBAC permission in `shared/rbac/permissions.ts`
-5. Frontend hook + socket invalidation if live lists depend on report inputs
+1. Engine logic in `shared/report-engines/` (no React imports)
+2. Export from `shared/report-engines/serverEntry.ts`
+3. Re-export shim in `components/reports/` if UI needs legacy import path
+4. `*ReportService.ts` loads state from PostgreSQL, calls engine function
+5. Route under `/api/v1/reports/` with `requirePermission()`
+6. Frontend hook fetches JSON; socket invalidation if underlying lists must live-update
+
+## Dashboard (KPIs)
+
+- **Do not** scan raw `AppState` for KPIs in API mode
+- Use `analytics_snapshots` + `GET /dashboard/snapshots`
+- Frontend: `useDashboardSnapshots` → `dashboardSnapshotsApi.ts`
+- Scheduler writes snapshots in `modules/dashboard/`
+
+## Custom report builder
+
+- `modules/reporting/` — metadata → SQL compiler → repository → service
+- Extend query builder; do not add ad-hoc SQL in routes
+
+## UI layer
+
+- Formatting, charts, export (PDF/Excel) allowed in components
+- `compute*` functions imported from shared shims or API JSON only
 
 ## MUST NOT
 
-- `loadReportEngine()` or per-engine `dist/*Engine.mjs` bundles (retired)
-- Duplicate formulas in backend services
-- Client-side-only financial statements for API mode
+- `loadReportEngine()` or `backend/dist/*Engine.mjs` (retired)
+- New formulas in `components/reports/*Engine.ts` (move to `shared/report-engines/`)
+- Client-side financial statements from local SQLite (removed)
+- Duplicate `roundMoney` / ledger math outside `shared/financial-core/`
+
+## Tests
+
+- `tests/balanceSheetEngine.test.ts`, `tests/profitLossEngine.test.ts` — run against `components/reports/` engines (same logic as shared)

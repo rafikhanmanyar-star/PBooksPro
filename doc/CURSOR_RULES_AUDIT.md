@@ -139,3 +139,5 @@ A feature is **not complete** unless it includes:
 5. Enforced **Real-Time First**, **PostgreSQL-only**, and **completion checklist** across all domain rules.
 
 **Total rules after regeneration:** 15 files (11 governance + 4 operational).
+
+**Regenerated (2026-06-15):** Full rule content expanded from `doc/ARCHITECTURE.md` and `doc/ARCHITECTURE_V2_AGENT_RULES.md` — not stub summaries.

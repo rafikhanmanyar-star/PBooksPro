@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
@@ -69,9 +70,7 @@ quotationsRouter.post('/quotations', async (req: AuthedRequest, res) => {
       upsertQuotation(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', {
-        serverVersion: result.row.version,
-      });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToQuotationApi(result.row);
@@ -99,7 +98,15 @@ quotationsRouter.delete('/quotations/:id', async (req: AuthedRequest, res) => {
       softDeleteQuotation(client, tenantId, id, expectedVersion)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Version conflict');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getQuotationById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

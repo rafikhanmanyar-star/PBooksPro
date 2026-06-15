@@ -1,5 +1,6 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
+import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { AccountingPeriodRepository } from '../repositories/AccountingPeriodRepository.js';
 
 export type AccountingPeriodStatus = 'open' | 'closed' | 'locked';
@@ -118,6 +119,29 @@ export async function createAccountingPeriod(
   return repo.insertPeriod(client, randomUUID(), start, end);
 }
 
+/** Open a fiscal period with standard domain audit + change_log. */
+export async function openAccountingPeriod(
+  client: pg.PoolClient,
+  tenantId: string,
+  input: { startDate: string; endDate: string },
+  actorUserId: string | null
+): Promise<AccountingPeriodRow> {
+  const row = await createAccountingPeriod(client, tenantId, input);
+  const apiRow = rowToAccountingPeriodApi(row);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'accounting_periods',
+    entityType: 'accounting_period',
+    entityId: row.id,
+    action: 'create',
+    auditAction: 'open',
+    summary: `Accounting period opened ${apiRow.startDate} – ${apiRow.endDate}`,
+    newValue: apiRow,
+  });
+  return row;
+}
+
 export async function markAccountingPeriodClosed(
   client: pg.PoolClient,
   tenantId: string,
@@ -143,7 +167,26 @@ export async function reopenAccountingPeriod(
   periodId: string,
   actorUserId: string | null
 ): Promise<AccountingPeriodRow> {
+  const before = await getAccountingPeriodById(client, tenantId, periodId);
+  if (!before) throw new Error('Period not found or not closed.');
+
   const row = await new AccountingPeriodRepository(tenantId).reopen(client, periodId, actorUserId);
   if (!row) throw new Error('Period not found or not closed.');
+
+  const oldApi = rowToAccountingPeriodApi(before);
+  const newApi = rowToAccountingPeriodApi(row);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId,
+    module: 'accounting_periods',
+    entityType: 'accounting_period',
+    entityId: periodId,
+    action: 'update',
+    auditAction: 'reopen',
+    summary: `Accounting period reopened ${newApi.startDate} – ${newApi.endDate}`,
+    oldValue: oldApi,
+    newValue: newApi,
+  });
+
   return row;
 }

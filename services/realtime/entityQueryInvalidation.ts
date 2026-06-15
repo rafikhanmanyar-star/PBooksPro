@@ -91,6 +91,7 @@ async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<vo
     queryClient.invalidateQueries({ queryKey: ['vendors'] }),
     queryClient.invalidateQueries({ queryKey: ['contacts'] }),
     queryClient.invalidateQueries({ queryKey: ['contracts'] }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }),
     queryClient.invalidateQueries({ queryKey: ['payroll'] }),
     queryClient.invalidateQueries({ queryKey: ['documents'] }),
     invalidateSellingAnalytics(queryClient),
@@ -161,6 +162,10 @@ export async function invalidateQueriesForEntityEvent(
 
   if (entityType === 'contract') {
     await queryClient.invalidateQueries({ queryKey: ['contracts'] });
+  }
+
+  if (entityType === 'project') {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
   }
 
   if (entityType === 'user') {

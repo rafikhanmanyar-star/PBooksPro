@@ -1,5 +1,5 @@
 ---
-description: PostgreSQL-only database rules — migrations, tenant scope, sync metadata
+description: PostgreSQL-only database rules — migrations, tenant scope, sync metadata, shared packages
 globs: "{database/migrations/**,backend/**/repositories/**,shared/**}"
 alwaysApply: false
 ---
@@ -10,35 +10,46 @@ alwaysApply: false
 
 ## Single database engine
 
-**PostgreSQL** is the only supported database for Desktop Edition, Cloud Edition, staging, and production.
+PostgreSQL is the **only** supported database for Desktop Edition, Cloud Edition, staging, and production.
 
 ### BANNED for new work
 
-- SQLite schemas, migrations, or sync
-- `sqliteBridge`, `services/database/`, `VITE_LOCAL_ONLY`
-- `npm run electron:extract-schema` / local schema generation
+- SQLite schemas, migrations, or sync logic
+- `sqliteBridge` (`electron/sqliteBridge.cjs`)
+- `services/database/`, `services/database/schema.ts`
+- `VITE_LOCAL_ONLY`, `isLocalOnlyMode()`
+- `npm run electron:extract-schema`
+- `services/database/schemaSync.ts`
 - Inline BLOB columns for new documents (use R2 + `document_metadata`)
+
+Legacy SQLite under `tools/legacy/` is for one-off migrations only — not bundled in API client builds.
 
 ## Migrations
 
 - Path: `database/migrations/NNN_descriptive_name.sql`
-- Applied in lexicographic order via `backend/src/migrate.ts`
+- Applied lexicographically via `backend/src/migrate.ts`
 - Idempotent where possible: `IF NOT EXISTS`, `IF EXISTS`
-- Never drop columns/tables without explicit plan
-- Multi-step writes: `withTransaction()` from `backend/src/db/pool.ts`
+- Never drop columns/tables without explicit plan and backup
+- Multi-step writes: `withTransaction(client => …)` from `backend/src/db/pool.ts`
+
+Commands: `npm run db:migrate:staging` | `db:migrate:production` | `db:migrate:lan`
 
 ## Multi-tenant schema
 
-- Business tables: `tenant_id` + index `(tenant_id, …)`
+- Business tables: `tenant_id` NOT NULL + index `(tenant_id, …)`
 - Soft delete: `deleted_at` + `deleted_by` via `TenantRepository.softDelete()`
-- LWW: `version` column where `recordDomainMutation()` applies
+- LWW: `version` + `updated_at` where `recordDomainMutation()` applies
+- Accounting periods: `status` includes `locked`
 
 ## Launch-scope tables
 
-- `accounting_periods.status` includes `locked`
-- `document_metadata` + R2 storage
-- `sync_queue` + `change_log`
-- `analytics_snapshots`
+| Table / feature | Purpose |
+|-----------------|---------|
+| `accounting_periods` | Period open/closed/locked |
+| `document_metadata` | R2 `storage_key` — no new inline `file_data` |
+| `sync_queue` + `change_log` | LWW sync via `recordDomainMutation()` |
+| `analytics_snapshots` | Dashboard KPIs |
+| `audit_events` | Unified audit trail |
 
 ## Shared package sync
 
@@ -46,6 +57,37 @@ alwaysApply: false
 |-------------|-------------------------|
 | `shared/financial-core/` | `backend/src/financial/` |
 | `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` |
+| `shared/rbac/mfaPolicy.ts` | `backend/src/auth/mfaPolicy.ts` |
 | `shared/report-engines/` | `backend/src/reportEngines/index.ts` via `ensure-shared-report-engines.mjs` |
+| `shared/quotation-validation/` | `backend/src/quotationValidation/` |
+| `shared/contract-retention/` | `backend/src/contractRetention/` |
 
-After shared edits: `npm run build:backend`
+Regenerate: `node scripts/ensure-shared-financial-cores.mjs` and `node scripts/ensure-shared-report-engines.mjs` (run via `npm run build:backend`)
+
+## Change log sync (API path)
+
+- Written by `recordDomainMutation()` and bulk mutation services
+- `GET /state/changes` includes `changeLog[]`
+- Client merge: `services/api/changeLogMerge.ts`, `services/api/payrollChangeLogMerge.ts`
+- LWW: HTTP 409 on stale `version`
+
+## Documents
+
+- Metadata: `document_metadata` (tenant-scoped)
+- Files: R2 via `DocumentStorageService` in `modules/documents/`
+- Legacy `documents` table: read-only archive (migration 111 trigger)
+
+## Repository pattern
+
+```typescript
+export class BillRepository extends TenantRepository {
+  async findById(id: string) {
+    return this.query<BillRow>(
+      `SELECT * FROM bills WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+      [this.tenantId, id]
+    );
+  }
+}
+```
+
+Every query must include `tenant_id = $1` (or equivalent) from repository constructor — never from client input.

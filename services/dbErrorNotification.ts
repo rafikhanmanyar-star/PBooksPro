@@ -118,7 +118,9 @@ export function notifyApiConflictIfUserFacing(
       'This record was updated on the server. Refresh to load the latest version, then try again.' +
       (serverMsg ? `\n\n${serverMsg}` : '');
   } else if (code === 'CONFLICT') {
-    userMsg = 'Another change conflicts with yours. Refresh and try again.' + (serverMsg ? `\n\n${serverMsg}` : '');
+    userMsg =
+      serverMsg ||
+      'This record was modified by another user. Please reload.';
   }
 
   window.dispatchEvent(

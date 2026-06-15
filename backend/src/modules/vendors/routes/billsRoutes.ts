@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
@@ -19,7 +19,29 @@ import { reverseVendorBillAdvanceSettlement } from '../services/vendorBillAdvanc
 import { replaceVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceReplaceService.js';
 import { listVendorBillSettlementsForBills } from '../services/vendorBillSettlementReadService.js';
 import { rowToTransactionApi } from '../../accounting/services/transactionsService.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
+
+const VENDOR_SETTLEMENT_SOURCE_MODULE = 'vendor_bill_advance_clearing';
+
+function emitVendorSettlementFinancialPosted(
+  tenantId: string,
+  userId: string | undefined,
+  journalEntries: { journalEntryId: string; billId?: string }[]
+): void {
+  const seen = new Set<string>();
+  for (const entry of journalEntries) {
+    const jeId = String(entry.journalEntryId ?? '').trim();
+    if (!jeId || seen.has(jeId)) continue;
+    seen.add(jeId);
+    emitFinancialPosted(tenantId, {
+      journalEntryId: jeId,
+      sourceModule: VENDOR_SETTLEMENT_SOURCE_MODULE,
+      sourceId: entry.billId ?? null,
+      sourceUserId: userId,
+    });
+  }
+}
 
 export const billsRouter = Router();
 
@@ -111,7 +133,7 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
       upsertBill(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToBillApi(result.row);
@@ -239,6 +261,7 @@ billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) 
           sourceUserId: req.userId,
         });
       }
+      emitVendorSettlementFinancialPosted(tenantId, req.userId, out.journalEntries);
       sendSuccess(res, {
         journalEntries: out.journalEntries,
         bills: apiBills,
@@ -294,6 +317,10 @@ billsRouter.post('/bills/vendor-settlement/reverse', async (req: AuthedRequest, 
           });
         }
       }
+
+      emitVendorSettlementFinancialPosted(tenantId, req.userId, [
+        { journalEntryId: result.reversalJournalEntryId },
+      ]);
 
       sendSuccess(res, {
         reversalJournalEntryId: result.reversalJournalEntryId,
@@ -422,6 +449,11 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
         });
       }
 
+      emitVendorSettlementFinancialPosted(tenantId, req.userId, [
+        { journalEntryId: result.reverse.reversalJournalEntryId },
+        ...result.settle.journalEntries,
+      ]);
+
       sendSuccess(res, {
         bills: result.bills.map((b) => rowToBillApi(b)),
         reversalJournalEntryId: result.reverse.reversalJournalEntryId,
@@ -450,7 +482,7 @@ billsRouter.put('/bills/:id', async (req: AuthedRequest, res) => {
       upsertBill(client, tenantId, body, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToBillApi(result.row);
@@ -493,7 +525,15 @@ billsRouter.delete('/bills/:id', async (req: AuthedRequest, res) => {
       )
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getBillById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

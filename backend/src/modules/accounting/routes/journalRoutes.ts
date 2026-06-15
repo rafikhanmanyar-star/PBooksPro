@@ -10,7 +10,10 @@ import {
   getJournalWithLines,
   isJournalReversed,
 } from '../services/journalService.js';
-import { createFinancialPostingService } from '../services/FinancialPostingService.js';
+import {
+  postManualJournalWithAudit,
+  reverseManualJournalWithAudit,
+} from '../services/manualJournalService.js';
 import { getTrialBalanceReportPayload } from '../services/trialBalanceReportService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
@@ -57,18 +60,15 @@ journalRouter.post('/transactions/journal', requireLedgerRole, async (req: Authe
   const createdBy = body.createdBy ?? req.userId ?? null;
   try {
     const result = await withTransaction((client) =>
-      createFinancialPostingService(tenantId).postManualJournal(
-        client,
-        { ...body, createdBy },
-        { actorUserId: req.userId }
-      )
+      postManualJournalWithAudit(client, tenantId, { ...body, createdBy }, req.userId ?? null)
     );
-    emitEntityEvent(tenantId, 'created', 'payment', {
-      data: { journalEntryId: result.journalEntryId },
+    emitEntityEvent(tenantId, 'created', 'journal_entry', {
+      data: result.emitPayload,
       id: result.journalEntryId,
       sourceUserId: req.userId,
+      version: result.emitPayload.version,
     });
-    sendSuccess(res, result, 201);
+    sendSuccess(res, { journalEntryId: result.journalEntryId }, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'JOURNAL_ERROR', msg);
@@ -185,19 +185,21 @@ journalRouter.post('/transactions/journal/:id/reverse', requireLedgerRole, async
   const createdBy = req.userId ?? null;
   try {
     const result = await withTransaction((client) =>
-      createFinancialPostingService(tenantId).reverseJournal(
-        client,
-        id,
-        parsed.data.reason,
-        createdBy
-      )
+      reverseManualJournalWithAudit(client, tenantId, id, parsed.data.reason, createdBy)
     );
-    emitEntityEvent(tenantId, 'updated', 'payment', {
-      data: { originalJournalEntryId: id, reversalJournalEntryId: result.reversalJournalEntryId },
+    emitEntityEvent(tenantId, 'updated', 'journal_entry', {
+      data: result.originalEmitPayload,
       id,
       sourceUserId: req.userId,
+      version: result.originalEmitPayload.version,
     });
-    sendSuccess(res, result, 201);
+    emitEntityEvent(tenantId, 'created', 'journal_entry', {
+      data: result.reversalEmitPayload,
+      id: result.reversalJournalEntryId,
+      sourceUserId: req.userId,
+      version: result.reversalEmitPayload.version,
+    });
+    sendSuccess(res, { reversalJournalEntryId: result.reversalJournalEntryId }, 201);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'JOURNAL_ERROR', msg);

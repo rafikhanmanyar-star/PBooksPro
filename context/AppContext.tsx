@@ -32,6 +32,14 @@ import {
     invalidateQueriesForFinancialPosted,
 } from '../services/realtime/entityQueryInvalidation';
 import type { RealtimeEntityPayload } from '../services/realtime/realtimePayload';
+import {
+  normalizeRemoteContactRow,
+  normalizeRemoteContractRow,
+  normalizeRemoteProjectRow,
+  normalizeRemoteVendorRow,
+  resolveDeletedEntityId,
+  shouldApplyRemoteEntityPatch,
+} from '../services/realtime/normalizeRemoteEntity';
 import { toLocalDateString } from '../utils/dateUtils';
 import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
@@ -1844,21 +1852,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             if (isOwnMutation) {
                 return;
             }
-            /* Apply bill/invoice patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
+            /* Apply entity patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
             if (payload.type === 'unit' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
+                const deletedId = resolveDeletedEntityId(payload, d);
                 if (deletedId) {
                     baseDispatch({
                         type: 'DELETE_UNIT',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (payload.type === 'contract' && payload.action === 'deleted') {
+                const deletedId = resolveDeletedEntityId(payload, d);
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_CONTRACT',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (payload.type === 'vendor' && payload.action === 'deleted') {
+                const deletedId = resolveDeletedEntityId(payload, d);
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_VENDOR',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (payload.type === 'contact' && payload.action === 'deleted') {
+                const deletedId = resolveDeletedEntityId(payload, d);
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_CONTACT',
+                        payload: deletedId,
+                        _isRemote: true,
+                    } as AppAction);
+                }
+            } else if (payload.type === 'project' && payload.action === 'deleted') {
+                const deletedId = resolveDeletedEntityId(payload, d);
+                if (deletedId) {
+                    baseDispatch({
+                        type: 'DELETE_PROJECT',
                         payload: deletedId,
                         _isRemote: true,
                     } as AppAction);
@@ -1993,6 +2028,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     baseDispatch({
                         type: exists ? 'UPDATE_PLAN_AMENITY' : 'ADD_PLAN_AMENITY',
                         payload: amenity,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'contract') {
+                    const contract = normalizeRemoteContractRow(d as Record<string, unknown>);
+                    const existing = latestStateRef.current.contracts?.find((c) => c.id === contract.id);
+                    if (!shouldApplyRemoteEntityPatch(existing, contract.version)) {
+                        return;
+                    }
+                    const exists = !!existing;
+                    baseDispatch({
+                        type: exists ? 'UPDATE_CONTRACT' : 'ADD_CONTRACT',
+                        payload: contract,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'vendor') {
+                    const vendor = normalizeRemoteVendorRow(d as Record<string, unknown>);
+                    const existing = latestStateRef.current.vendors?.find((v) => v.id === vendor.id);
+                    if (!shouldApplyRemoteEntityPatch(existing, vendor.version)) {
+                        return;
+                    }
+                    const exists = !!existing;
+                    baseDispatch({
+                        type: exists ? 'UPDATE_VENDOR' : 'ADD_VENDOR',
+                        payload: vendor,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'contact') {
+                    const contact = normalizeRemoteContactRow(d as Record<string, unknown>);
+                    const existing = latestStateRef.current.contacts?.find((c) => c.id === contact.id);
+                    if (!shouldApplyRemoteEntityPatch(existing, contact.version)) {
+                        return;
+                    }
+                    const exists = !!existing;
+                    baseDispatch({
+                        type: exists ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
+                        payload: contact,
+                        _isRemote: true,
+                    } as AppAction);
+                } else if (payload.type === 'project') {
+                    const project = normalizeRemoteProjectRow(d as Record<string, unknown>);
+                    const existing = latestStateRef.current.projects?.find((p) => p.id === project.id);
+                    if (!shouldApplyRemoteEntityPatch(existing, project.version)) {
+                        return;
+                    }
+                    const exists = !!existing;
+                    baseDispatch({
+                        type: exists ? 'UPDATE_PROJECT' : 'ADD_PROJECT',
+                        payload: project,
                         _isRemote: true,
                     } as AppAction);
                 }

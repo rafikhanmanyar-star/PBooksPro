@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
+import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
+import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
@@ -110,7 +111,7 @@ contractsRouter.post('/contracts', async (req: AuthedRequest, res) => {
       upsertContract(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
+      sendVersionConflict(res, result.row.version);
       return;
     }
     const apiRow = rowToContractApi(result.row);
@@ -185,12 +186,21 @@ contractsRouter.post('/contracts/:id/release-retention', requirePermission('cont
     return;
   }
   const { id } = req.params;
-  const body = req.body as { amount?: number; fullRelease?: boolean; releaseDate?: string };
+  const body = req.body as {
+    amount?: number;
+    fullRelease?: boolean;
+    releaseDate?: string;
+    version?: number;
+  };
   try {
     const result = await withTransaction((client) =>
       releaseRetention(client, tenantId, id, req.userId ?? null, body)
     );
-    const apiRow = rowToContractApi(result);
+    if (result.conflict) {
+      sendVersionConflict(res, result.row.version);
+      return;
+    }
+    const apiRow = rowToContractApi(result.row);
     emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow);
   } catch (e) {
@@ -214,7 +224,15 @@ contractsRouter.delete('/contracts/:id', async (req: AuthedRequest, res) => {
       softDeleteContract(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
     );
     if (result.conflict) {
-      sendFailure(res, 409, 'CONFLICT', 'Version conflict');
+      await respondVersionConflict(res, async () => {
+        const pool = getPool();
+        const c = await pool.connect();
+        try {
+          return (await getContractById(c, tenantId, id))?.version;
+        } finally {
+          c.release();
+        }
+      });
       return;
     }
     if (!result.ok) {

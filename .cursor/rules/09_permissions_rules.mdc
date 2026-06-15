@@ -1,56 +1,100 @@
 ---
-description: RBAC permissions — shared definitions, route guards, frontend checks
-globs: "{shared/rbac/**,backend/src/middleware/rbac*,hooks/usePermissions*,components/**/Permission*}"
+description: RBAC permissions — shared definitions, route guards, frontend UI gating
+globs: "{shared/rbac/**,backend/src/middleware/rbac*,backend/src/auth/permissions.ts,hooks/usePermissions*,components/**/*Permission*}"
 alwaysApply: false
 ---
 
 # Permissions Rules (V2.1)
 
-**Authority:** `00_architecture_authority.mdc`
+**Authority:** `00_architecture_authority.mdc` · **Detail:** `doc/ARCHITECTURE_V2_AGENT_RULES.md`
 
 ## Source of truth
 
-- **Edit:** `shared/rbac/permissions.ts`
-- **Generated:** `backend/src/auth/permissions.ts` (AUTO-GENERATED — do not edit)
-- After changes: `npm run build:backend`
+| Edit | Generated (never edit) |
+|------|------------------------|
+| `shared/rbac/permissions.ts` | `backend/src/auth/permissions.ts` |
+| `shared/rbac/mfaPolicy.ts` | `backend/src/auth/mfaPolicy.ts` |
+
+After permission changes: `npm run build:backend`
+
+Tests: `backend/src/auth/permissions.test.ts`
+
+## Permission naming
+
+Format: `domain.action` or `feature.subfeature.action`
+
+Examples:
+
+- `financial.write`
+- `reports.trial_balance.read`
+- `users.manage`
+- `payroll.read`
+
+Add new constants to `shared/rbac/permissions.ts` and map to roles in `buildPermissionMatrix()`.
 
 ## Backend guards
 
 ```typescript
-requirePermission('financial.write')
-requirePermission('reports.trial_balance.read')
-requireCompanyAdmin()
-requirePayrollAccessForPayrollPaths()
+router.post('/', requirePermission('financial.write'), async (req, res) => { ... });
+router.get('/trial-balance', requirePermission('reports.trial_balance.read'), ...);
 ```
 
-Mount-level or per-route on `modules/<domain>/routes/`.
+Additional guards:
 
-## Frontend
+- `requireCompanyAdmin()` — tenant admin operations
+- `requireRole('accountant')` — legacy role checks (prefer permissions)
+- `requirePayrollAccessForPayrollPaths()` — payroll route mount
+- `requireFinancialWriteForFinancialPaths()` — GL mutation paths
+- `rbacMiddleware` — method-aware checks
 
-- `hooks/usePermissions.ts` / `usePermission()` for UI gating
-- Hide actions user cannot perform; backend must still enforce
+Mount order: `authMiddleware` → `requireActiveSubscription()` → domain guards → `requirePermission()`
 
-## Role matrix (summary)
+## Frontend gating
 
-| Role | Typical scope |
+```typescript
+const { hasPermission } = usePermissions();
+if (!hasPermission('financial.write')) return null;
+```
+
+- Hide UI actions user cannot perform
+- **Backend must still enforce** — UI gating is not security
+
+## Role summary
+
+| Role | Typical access |
 |------|----------------|
-| `super_admin` | All permissions |
-| `company_admin` | Tenant admin + users |
+| `super_admin` | All permissions + cross-tenant admin |
+| `company_admin` | Tenant admin, users, settings |
 | `accountant` | Financial write, reports, audit read |
-| `sales_user` | Project selling subset |
-| `read_only_user` | Read reports, no write |
+| `sales_user` | Project selling, marketing plans |
+| `read_only_user` | Read reports, no writes |
+| `project_manager` | Limited financial read (e.g. P&L only) |
 
-Full matrix: `shared/rbac/permissions.ts` + tests in `backend/src/auth/permissions.test.ts`
+Full matrix: `shared/rbac/permissions.ts`
 
 ## New feature checklist
 
-1. Add permission constants to `shared/rbac/permissions.ts`
-2. `npm run build:backend`
-3. Guard backend route with `requirePermission()`
-4. Gate frontend UI with `usePermissions()`
+1. Define permission constant(s) in `shared/rbac/permissions.ts`
+2. Assign to roles in permission matrix
+3. `npm run build:backend`
+4. `requirePermission()` on every mutating route
+5. `usePermissions()` on UI actions
+6. Test with `read_only_user` and domain role (e.g. sales_user)
+
+## Payroll & financial exceptions
+
+- Payroll routes: `requirePayrollAccessForPayrollPaths()`
+- Trial balance / GL reports: specific `reports.*.read` permissions
+- Project manager: restricted financial statement access
 
 ## MUST NOT
 
-- Hardcode role name strings without using permission constants
-- Skip backend guards because UI hides the button
+- Hardcode role strings in routes without permission constants
+- Skip backend guard because UI hides button
 - Edit `backend/src/auth/permissions.ts` directly
+- Grant `financial.write` without understanding GL impact
+
+## Reference
+
+- Middleware: `backend/src/middleware/rbacMiddleware.ts`
+- Tests: `backend/src/middleware/rbacMiddleware.test.ts`

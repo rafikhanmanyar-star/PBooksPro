@@ -23,6 +23,7 @@ export type RealtimeEntityType =
   | 'settings'
   | 'account'
   | 'transaction'
+  | 'journal_entry'
   | 'category'
   | 'bill'
   | 'recurring_invoice_template'
