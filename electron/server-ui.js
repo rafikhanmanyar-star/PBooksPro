@@ -197,12 +197,25 @@
     }
     $('appVer').textContent = st.appVersion || '—';
     const running = st.running;
-    $('statusBadge').textContent = running ? 'Running' : 'Stopped';
-    $('statusBadge').className = 'badge ' + (running ? 'badge-ok' : 'badge-warn');
+    const migrating = st.migrating;
+    const desktopSetup = st.desktopDatabaseSetup === true;
+    const migrateBtn = $('btnMigrate');
+    const desktopHint = $('desktopSetupHint');
+    if (migrateBtn) {
+      migrateBtn.style.display = desktopSetup ? 'inline-block' : 'none';
+      migrateBtn.disabled = migrating || running;
+      migrateBtn.textContent = migrating ? 'Initializing database…' : 'Initialize database';
+    }
+    if (desktopHint) {
+      desktopHint.style.display = desktopSetup ? 'block' : 'none';
+    }
+    $('statusBadge').textContent = migrating ? 'Database setup' : running ? 'Running' : 'Stopped';
+    $('statusBadge').className =
+      'badge ' + (migrating ? 'badge-warn' : running ? 'badge-ok' : 'badge-warn');
     $('listenUrl').textContent = st.listenUrl || '—';
     renderAddressList(st);
-    $('btnStart').disabled = running;
-    $('btnStop').disabled = !running;
+    $('btnStart').disabled = running || migrating;
+    $('btnStop').disabled = !running || migrating;
     const port = st.port || 3000;
     const healthUrl = 'http://127.0.0.1:' + port + '/health';
     const hl = $('healthLink');
@@ -220,6 +233,13 @@
 
   $('btnStart').onclick = () => ui.startServer().then(refresh);
   $('btnStop').onclick = () => ui.stopServer().then(refresh);
+  $('btnMigrate').onclick = async () => {
+    const r = await ui.runMigrations();
+    await refresh();
+    if (r && r.ok === false && r.message) {
+      window.alert(r.message);
+    }
+  };
   $('btnEnv').onclick = () => ui.openEnvFolder();
   $('btnCheckUp').onclick = async () => {
     $('updatePanel').style.display = 'block';

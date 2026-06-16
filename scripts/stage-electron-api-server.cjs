@@ -113,6 +113,7 @@ DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pBookspro_Staging
 JWT_SECRET=change-me-staging-secret-at-least-16-chars
 PORT=3001
 NODE_ENV=production
+APP_EDITION=desktop
 # Staging test logins skip MFA (production keeps MFA enforced)
 DISABLE_MFA_ENFORCEMENT=true
 # LAN staging: skip Paddle/subscription gates on POST (onboarding, etc.)
@@ -128,6 +129,9 @@ DATABASE_URL=postgresql://postgres:@127.0.0.1:5432/pbookspro
 JWT_SECRET=change-me-to-a-long-random-string
 PORT=3000
 NODE_ENV=production
+APP_EDITION=desktop
+# On-prem installs: skip Paddle/subscription gates (cloud SaaS uses APP_EDITION=cloud on Render)
+DISABLE_SUBSCRIPTION_ENFORCEMENT=true
 # Backups are stored under AppData (set automatically by the API Server app if omitted)
 # BACKUP_STORAGE_PATH=
 `;

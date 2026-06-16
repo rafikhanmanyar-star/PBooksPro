@@ -274,6 +274,45 @@ npm run dev:backend:production
 
 ---
 
+## Tenant organization reset (admin)
+
+Full wipe of **all organization business data** for one tenant while **preserving users**, RBAC roles/assignments, and subscriptions. Re-bootstraps a fresh chart of accounts. Use for presentation prep or when Settings → Factory Reset leaves procurement data (PO/GRN) behind.
+
+**Env files:** `--env staging` loads `.env.staging`. `--env production` prefers `.env.production.render` (cloud) when present, else `.env.production`.
+
+**Preview counts (no changes):**
+
+```powershell
+node scripts/reset-tenant-data.mjs --tenant pakland --env production --dry-run
+node scripts/reset-tenant-data.mjs --tenant pakland --env staging --dry-run
+```
+
+**Execute reset (requires `--confirm`):**
+
+```powershell
+node scripts/reset-tenant-data.mjs --tenant pakland --env production --confirm
+node scripts/reset-tenant-data.mjs --tenant pakland --env staging --confirm
+```
+
+`--tenant` matches tenant `id`, `name`, or `company_name` (partial match; use exact id if multiple match).
+
+**What is wiped:** transactions, invoices, bills, PO/GRN, quotations, projects, contacts, vendors, documents, reports, workflow approvals, journal/GL, accounts (then re-bootstrapped), and related tenant tables.
+
+**What is preserved:** `users`, `user_tenants`, RBAC roles/permissions, `tenants` record, subscriptions.
+
+After reset, have all users **log out and log back in** before seeding demo data.
+
+**Seed presentation data (after reset):**
+
+```powershell
+node scripts/seed-pakland-demo.mjs --production
+node scripts/verify-pakland-seed.mjs
+```
+
+Staging: omit `--production`. Seeds projects, units, selling/rental, procurement, construction, investors, PM cycle, payroll, and personal data; then posts GL journal mirrors (~15–20 min on cloud).
+
+---
+
 ## PostgreSQL API: migrate, run server, run web client
 
 ### 1. Install backend dependencies (once)

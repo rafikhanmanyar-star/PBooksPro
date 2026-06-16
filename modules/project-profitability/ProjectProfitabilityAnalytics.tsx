@@ -147,7 +147,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
         focusedProjectId != null ? projects.find((p) => p.id === focusedProjectId)?.name : null;
 
     return (
-        <div className="flex flex-col h-full min-h-0 space-y-4 bg-app-bg">
+        <div className="flex flex-col h-full min-h-0 overflow-y-auto space-y-4 bg-app-bg p-2 sm:p-3 md:p-4">
             <div className="flex flex-col gap-3 shrink-0">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -227,7 +227,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                 </div>
             )}
 
-            <div id="project-profitability-print" className="flex-1 min-h-0 flex flex-col gap-4 overflow-hidden">
+            <div id="project-profitability-print" className="flex flex-col gap-4">
                 <div className="report-print-only">
                     <ReportHeader reportTitle="Project Profitability Analytics" />
                     <p className="text-center text-sm text-slate-600 mt-2">
@@ -307,7 +307,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
                     </div>
                 )}
 
-                <div className="flex-1 min-h-0 overflow-auto border border-app-border rounded-2xl bg-app-card">
+                <div className="border border-app-border rounded-2xl bg-app-card">
                     <ProfitabilityDataTable
                         rows={filteredRows}
                         isLoading={summaryQuery.isLoading}
