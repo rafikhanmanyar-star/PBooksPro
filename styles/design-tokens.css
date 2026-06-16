@@ -9,7 +9,7 @@
 
 :root {
   /* ─── Layout (runtime / viewport) ─── */
-  --sidebar-width: 16rem;
+  --sidebar-width: 17.5rem;
   --content-padding: 1rem;
   --content-padding-lg: 1.5rem;
   --viewport-compact: 0;

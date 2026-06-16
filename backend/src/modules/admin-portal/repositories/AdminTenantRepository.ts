@@ -113,10 +113,20 @@ export class AdminTenantRepository {
 
   async listTenantUsers(tenantId: string): Promise<unknown[]> {
     const { rows } = await this.pool().query(
-      `SELECT id, username, name, role, email, is_active, login_status, last_login, created_at
-       FROM users
-       WHERE tenant_id = $1
-       ORDER BY CASE WHEN role = 'Admin' THEN 0 ELSE 1 END, created_at ASC`,
+      `SELECT u.id, u.username, u.name, u.role, u.email, u.is_active, u.login_status, u.last_login, u.created_at,
+              (
+                u.role IN ('SUPER_ADMIN', 'super_admin', 'Super Admin')
+                OR EXISTS (
+                  SELECT 1 FROM rbac_user_roles ur
+                  INNER JOIN rbac_roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id
+                  WHERE ur.tenant_id = u.tenant_id AND ur.user_id = u.id AND r.slug = 'super_admin'
+                )
+              ) AS is_tenant_super_admin
+       FROM users u
+       WHERE u.tenant_id = $1
+       ORDER BY
+         CASE WHEN u.role IN ('SUPER_ADMIN', 'super_admin', 'Super Admin', 'Admin') THEN 0 ELSE 1 END,
+         u.created_at ASC`,
       [tenantId]
     );
     return rows;

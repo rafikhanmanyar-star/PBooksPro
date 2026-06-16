@@ -1,8 +1,14 @@
 // @ts-nocheck
 import { Router } from 'express';
 import { AdminRequest } from '../../../adminPortal/middleware/adminAuthMiddleware.js';
+import { requireAdminPortalSuperAdmin } from '../../../adminPortal/middleware/requireAdminPortalSuperAdmin.js';
 import { LicenseService, DEFAULT_LICENSE_MODULES } from '../../../adminPortal/licenseService.js';
 import { AdminTenantRepository } from '../repositories/AdminTenantRepository.js';
+import {
+  createTenantSuperAdminUser,
+  promoteTenantUserToSuperAdmin,
+  UserIdentityConflictError,
+} from '../services/adminTenantSuperUserService.js';
 import bcrypt from 'bcryptjs';
 
 const router = Router();
@@ -169,7 +175,12 @@ router.get('/:id/users', async (req: AdminRequest, res) => {
     const users = await tenantRepo.listTenantUsers(tenantId);
     const usersWithAdminFlag = users.map((user: any) => ({
       ...user,
-      is_tenant_admin: user.role === 'Admin' || user.email === tenant.email,
+      is_tenant_admin:
+        user.is_tenant_super_admin ||
+        user.role === 'Admin' ||
+        user.role === 'SUPER_ADMIN' ||
+        user.role === 'super_admin' ||
+        user.email === tenant.email,
     }));
     res.json(usersWithAdminFlag);
   } catch (error: any) {
@@ -244,6 +255,83 @@ router.post('/:id/users/:userId/force-logout', async (req: AdminRequest, res) =>
     res.status(500).json({ error: 'Failed to force logout' });
   }
 });
+
+router.post(
+  '/:id/users/:userId/promote-super-admin',
+  requireAdminPortalSuperAdmin(),
+  async (req: AdminRequest, res) => {
+    try {
+      const { id: tenantId, userId } = req.params;
+      if (!(await tenantRepo.tenantExists(tenantId))) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+      const updated = await promoteTenantUserToSuperAdmin(tenantId, userId);
+      res.json({
+        success: true,
+        message: 'User promoted to tenant Super Admin',
+        user: updated,
+      });
+    } catch (error: unknown) {
+      const err = error as { code?: string; message?: string };
+      if (err.code === 'NOT_FOUND') {
+        return res.status(404).json({ error: 'User not found' });
+      }
+      if (err.code === 'RBAC_NOT_MIGRATED') {
+        return res.status(503).json({ error: err.message ?? 'RBAC not available for tenant' });
+      }
+      console.error('Error promoting tenant super admin:', error);
+      res.status(500).json({ error: 'Failed to promote user' });
+    }
+  }
+);
+
+router.post(
+  '/:id/users/super-admin',
+  requireAdminPortalSuperAdmin(),
+  async (req: AdminRequest, res) => {
+    try {
+      const tenantId = req.params.id;
+      const { name, email, password, username } = req.body ?? {};
+      if (!name?.trim() || !email?.trim() || !password) {
+        return res.status(400).json({ error: 'Name, email, and password are required' });
+      }
+      if (!(await tenantRepo.tenantExists(tenantId))) {
+        return res.status(404).json({ error: 'Tenant not found' });
+      }
+      const created = await createTenantSuperAdminUser(tenantId, {
+        name: String(name),
+        email: String(email),
+        password: String(password),
+        username: username ? String(username) : undefined,
+      });
+      res.status(201).json({
+        success: true,
+        message: 'Tenant Super Admin created',
+        user: created,
+      });
+    } catch (error: unknown) {
+      if (error instanceof UserIdentityConflictError) {
+        return res.status(409).json({ error: error.message });
+      }
+      const err = error as { code?: string; message?: string };
+      if (err.code === 'VALIDATION') {
+        return res.status(400).json({ error: err.message ?? 'Invalid input' });
+      }
+      if (err.code === 'QUOTA') {
+        return res.status(409).json({ error: err.message ?? 'User limit reached' });
+      }
+      if (err.code === 'RBAC_NOT_MIGRATED') {
+        return res.status(503).json({ error: err.message ?? 'RBAC not available for tenant' });
+      }
+      const pgErr = error as { code?: string };
+      if (pgErr.code === '23505') {
+        return res.status(409).json({ error: 'Email or username is already in use' });
+      }
+      console.error('Error creating tenant super admin:', error);
+      res.status(500).json({ error: 'Failed to create Super Admin user' });
+    }
+  }
+);
 
 router.get('/:id/modules', async (req: AdminRequest, res) => {
   try {

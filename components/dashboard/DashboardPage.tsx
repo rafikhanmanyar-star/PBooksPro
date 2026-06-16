@@ -6,6 +6,7 @@ import ReportFooter from '../reports/ReportFooter';
 import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useKpis } from '../../context/KPIContext';
 import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../hooks/useRecordLock';
 import Button from '../ui/Button';
 import { formatRoundedNumber } from '../../utils/numberUtils';
 import { formatDate } from '../../utils/dateUtils';
@@ -17,8 +18,11 @@ import {
   useDashboardActivity,
   useDashboardCharts,
   useDashboardMetrics,
+  useDashboardSessionLoad,
   useDashboardSnapshots,
+  refetchDashboardQueries,
 } from '../../hooks/useDashboardMetrics';
+import { useDashboardRefreshPending } from '../../hooks/useDashboardRefreshPending';
 import {
   DashboardFilterBar,
   DASHBOARD_METRIC_ICONS,
@@ -48,9 +52,9 @@ const DashboardPage: React.FC = () => {
   const currentPage = useStateSelector((s) => s.currentPage);
   const projects = useStateSelector((s) => s.projects);
   const buildings = useStateSelector((s) => s.buildings);
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { allKpis, openDrilldown } = useKpis();
-  const isAdmin = currentUser?.role === 'Admin';
+  const isAdmin = isAdminRole(user?.role || currentUser?.role);
   const isDashboardActive = currentPage === 'dashboard';
 
   const [greeting, setGreeting] = useState('');
@@ -64,6 +68,20 @@ const DashboardPage: React.FC = () => {
   );
   const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin && isDashboardActive);
   const activityQuery = useDashboardActivity(5, isAuthenticated && isDashboardActive);
+  const hasPendingRefresh = useDashboardRefreshPending();
+
+  useDashboardSessionLoad({
+    isAuthenticated,
+    isDashboardActive,
+    isAdmin,
+    userId: user?.id,
+    queries: {
+      metrics: metricsQuery,
+      snapshots: snapshotsQuery,
+      charts: chartsQuery,
+      activity: activityQuery,
+    },
+  });
 
   const kpiGroupOrder = useDashboardPreferencesStore((s) => s.kpiGroupOrder);
   const setKpiGroupOrder = useDashboardPreferencesStore((s) => s.setKpiGroupOrder);
@@ -93,6 +111,15 @@ const DashboardPage: React.FC = () => {
     },
     [allKpis, openDrilldown]
   );
+
+  const handleRefreshDashboard = useCallback(() => {
+    void refetchDashboardQueries({
+      metrics: isAdmin ? metricsQuery : undefined,
+      snapshots: isAdmin ? snapshotsQuery : undefined,
+      charts: isAdmin ? chartsQuery : undefined,
+      activity: activityQuery,
+    });
+  }, [isAdmin, metricsQuery, snapshotsQuery, chartsQuery, activityQuery]);
 
   const handleExportCsv = useCallback(() => {
     if (metricsQuery.data) exportDashboardMetricsCsv(metricsQuery.data);
@@ -155,12 +182,17 @@ const DashboardPage: React.FC = () => {
             </Button>
           )}
           <Button
-            variant="secondary"
-            onClick={() => metricsQuery.refetch()}
+            variant={hasPendingRefresh ? 'danger' : 'secondary'}
+            onClick={handleRefreshDashboard}
             className="text-xs gap-1"
-            disabled={metricsQuery.isFetching}
+            disabled={metricsQuery.isFetching || activityQuery.isFetching}
+            title={
+              hasPendingRefresh
+                ? 'New transactions in the system — refresh to update the dashboard'
+                : 'Refresh dashboard'
+            }
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${metricsQuery.isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${metricsQuery.isFetching || activityQuery.isFetching ? 'animate-spin' : ''}`} />
             Refresh
           </Button>
           {metrics && (

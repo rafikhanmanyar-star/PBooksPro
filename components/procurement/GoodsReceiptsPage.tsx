@@ -7,9 +7,11 @@ import { usePermissions } from '../../hooks/usePermissions';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useNotification } from '../../context/NotificationContext';
 import { fetchGoodsReceiptById, fetchPoReceiptContext } from '../../services/goodsReceiptsApi';
+import { fetchPurchaseOrderById } from '../../services/purchaseOrdersApi';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import {
   DEFAULT_GRN_WHATSAPP_TEMPLATE,
+  buildPoLineCategoryNameMap,
   formatGrnLinesForWhatsApp,
   sumGrnLineTotal,
 } from '../../utils/grnWhatsApp';
@@ -54,7 +56,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
   onInitialPoConsumed,
 }) => {
   const state = useFinancialReportAppState();
-  const { vendors, projects, whatsAppTemplates, whatsAppMode } = state;
+  const { vendors, projects, categories, whatsAppTemplates, whatsAppMode } = state;
   const perms = usePermissions();
   const { openChat } = useWhatsApp();
   const { showConfirm, showAlert } = useNotification();
@@ -214,8 +216,11 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
     }
     try {
       const full = await resolveGrnWithLines(grn);
-      const po = purchaseOrders.find((p) => p.id === full.purchaseOrderId);
+      const po =
+        purchaseOrders.find((p) => p.id === full.purchaseOrderId) ??
+        (await fetchPurchaseOrderById(full.purchaseOrderId));
       const project = projects.find((p) => p.id === full.projectId);
+      const categoryNameByPoLineId = buildPoLineCategoryNameMap(po?.items, categories);
       const template = whatsAppTemplates.goodsReceiptConfirmation || DEFAULT_GRN_WHATSAPP_TEMPLATE;
       const message = WhatsAppService.generateGoodsReceiptConfirmation(
         template,
@@ -225,7 +230,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
         full.receivedDate,
         sumGrnLineTotal(full.lines),
         project?.name ?? '',
-        formatGrnLinesForWhatsApp(full.lines)
+        formatGrnLinesForWhatsApp(full.lines, categoryNameByPoLineId)
       );
       sendOrOpenWhatsApp(
         { contact: vendor, message, phoneNumber: vendor.contactNo },

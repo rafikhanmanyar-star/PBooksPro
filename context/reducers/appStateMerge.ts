@@ -59,11 +59,16 @@ export function mergeInvoicesWithServerBaseline(base: Invoice[], server: Invoice
 /** Same merge policy as invoices: keep optimistic bill rows until the server acknowledges them with a version. */
 export function mergeBillsWithServerBaseline(base: Bill[], server: Bill[]): Bill[] {
     const serverIds = new Set(server.map((b) => b.id).filter(Boolean));
+    const serverBillNumbers = new Set(
+        server.map((b) => b.billNumber?.trim().toLowerCase()).filter((n): n is string => !!n)
+    );
     const out = [...server];
     for (const bill of base) {
         if (!bill.id || serverIds.has(bill.id)) continue;
         const hadServerVersion = typeof bill.version === 'number' && bill.version >= 1;
         if (hadServerVersion) continue;
+        const num = bill.billNumber?.trim().toLowerCase();
+        if (num && serverBillNumbers.has(num)) continue;
         out.push(bill);
     }
     return out;

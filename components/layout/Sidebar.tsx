@@ -497,32 +497,35 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             )}
 
                             {/* User Info with logout */}
-                            <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
-                                    {userName.charAt(0).toUpperCase()}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
-                                        {userName}
-                                    </div>
-                                    {organizationName && (
-                                        <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
-                                            {organizationName}
-                                        </div>
-                                    )}
-                                    {effectiveRole && (
-                                        <div className="text-[10px] text-slate-400 truncate capitalize">
-                                            {effectiveRole}
-                                        </div>
-                                    )}
-                                </div>
+                            <div className="relative p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
                                 <button
                                     onClick={handleLogout}
-                                    className="flex items-center justify-center p-2 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors touch-manipulation"
+                                    className="absolute top-2 right-2 flex items-center justify-center p-1.5 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors touch-manipulation"
                                     title="Logout"
+                                    aria-label="Logout"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
                                 </button>
+                                <div className="flex items-start gap-3 pr-9 min-w-0">
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                        {userName.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-semibold text-white leading-tight mb-0.5 break-words" title={userName}>
+                                            {userName}
+                                        </div>
+                                        {organizationName && (
+                                            <div className="text-xs font-medium text-indigo-300 leading-snug mb-0.5 line-clamp-2 break-words" title={organizationName}>
+                                                {organizationName}
+                                            </div>
+                                        )}
+                                        {effectiveRole && (
+                                            <div className="text-[10px] text-slate-400 capitalize">
+                                                {effectiveRole}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Users logged in (below login area) */}
@@ -769,33 +772,36 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             )}
 
                             <div className="space-y-2">
-                                <div className="flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
-                                        {userName.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-semibold text-white truncate leading-tight mb-0.5" title={userName}>
-                                            {userName}
-                                        </div>
-                                        {organizationName && (
-                                            <div className="text-xs font-medium text-indigo-300 truncate mb-0.5" title={organizationName}>
-                                                {organizationName}
-                                            </div>
-                                        )}
-                                        {effectiveRole && (
-                                            <div className="text-[10px] text-slate-400 truncate capitalize">
-                                                {effectiveRole}
-                                            </div>
-                                        )}
-                                    </div>
+                                <div className="relative p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
                                     <button
                                         type="button"
                                         onClick={handleLogout}
-                                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-slate-700 text-xs font-medium text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors shrink-0"
+                                        className="absolute top-2 right-2 flex items-center justify-center p-1.5 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors"
+                                        title="Logout"
+                                        aria-label="Logout"
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                                        <span>Logout</span>
                                     </button>
+                                    <div className="flex items-start gap-3 pr-9 min-w-0">
+                                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                            {userName.charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="text-sm font-semibold text-white leading-tight mb-0.5 break-words" title={userName}>
+                                                {userName}
+                                            </div>
+                                            {organizationName && (
+                                                <div className="text-xs font-medium text-indigo-300 leading-snug mb-0.5 line-clamp-2 break-words" title={organizationName}>
+                                                    {organizationName}
+                                                </div>
+                                            )}
+                                            {effectiveRole && (
+                                                <div className="text-[10px] text-slate-400 capitalize">
+                                                    {effectiveRole}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {showLoggedInUsersRow && (

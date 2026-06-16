@@ -11,6 +11,8 @@ import {
 } from '../analytics';
 import Button from '../ui/Button';
 import { useDashboardCharts } from '../../hooks/useDashboardMetrics';
+import { clearDashboardRefreshPending } from '../../stores/dashboardRefreshIndicatorStore';
+import { useDashboardRefreshPending } from '../../hooks/useDashboardRefreshPending';
 import {
   CHART_WIDGET_LABELS,
   type DashboardChartWidgetId,
@@ -33,6 +35,7 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({ enabled
   const [chartYear, setChartYear] = useState(CURRENT_YEAR);
   const [layoutReady, setLayoutReady] = useState(false);
   const { data, isFetching, isError, refetch } = useDashboardCharts(chartYear, enabled);
+  const hasPendingRefresh = useDashboardRefreshPending();
 
   const chartWidgetOrder = useDashboardPreferencesStore((s) => s.chartWidgetOrder);
   const hiddenChartWidgets = useDashboardPreferencesStore((s) => s.hiddenChartWidgets);
@@ -213,10 +216,17 @@ const DashboardChartsSection: React.FC<DashboardChartsSectionProps> = ({ enabled
         <div className="flex items-center gap-2">
           {yearSelector}
           <Button
-            variant="secondary"
-            onClick={() => refetch()}
+            variant={hasPendingRefresh ? 'danger' : 'secondary'}
+            onClick={() => {
+              void refetch().then(() => clearDashboardRefreshPending());
+            }}
             className="text-xs h-8 px-2"
             disabled={isFetching}
+            title={
+              hasPendingRefresh
+                ? 'New transactions in the system — refresh to update charts'
+                : 'Refresh charts'
+            }
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? 'animate-spin' : ''}`} />
           </Button>
