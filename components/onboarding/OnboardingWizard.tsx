@@ -19,9 +19,12 @@ import {
   FirstTransactionStepPanel,
   FiscalYearStepPanel,
   PropertySetupStepPanel,
+  resolveCompanyInfoDefaults,
   UserSetupStepPanel,
   WelcomeStepPanel,
 } from './OnboardingStepPanels';
+import { usePrintSettings } from '../../hooks/useSelectiveState';
+import { useAuth } from '../../context/AuthContext';
 
 type Props = {
   state: OnboardingState;
@@ -43,7 +46,8 @@ const OnboardingWizard: React.FC<Props> = ({
   tenantName,
 }) => {
   const dispatch = useDispatchOnly();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, tenant, user } = useAuth();
+  const printSettings = usePrintSettings();
   const [busy, setBusy] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [draftData, setDraftData] = useState<Record<string, unknown>>(state.stepData);
@@ -75,11 +79,17 @@ const OnboardingWizard: React.FC<Props> = ({
     setBusy(true);
     try {
       const stepId = state.currentStep;
-      const stepPayload = draftData[stepId] as Record<string, unknown> | undefined;
+      let stepPayload = draftData[stepId] as Record<string, unknown> | undefined;
 
-      if (stepId === 'company_info' && !(stepPayload as { companyName?: string })?.companyName?.trim()) {
-        setStepError('Company name is required.');
-        return;
+      if (stepId === 'company_info') {
+        const saved = (stepPayload ?? {}) as Partial<{ companyName?: string }>;
+        const resolved = resolveCompanyInfoDefaults(saved, printSettings, tenant, user?.email);
+        if (!resolved.companyName?.trim()) {
+          setStepError('Company name is required.');
+          return;
+        }
+        stepPayload = resolved as Record<string, unknown>;
+        mergeStepData(stepId, resolved);
       }
       if (stepId === 'property_setup') {
         const ps = stepPayload as Record<string, string> | undefined;
@@ -91,7 +101,11 @@ const OnboardingWizard: React.FC<Props> = ({
         }
       }
 
-      await applyOnboardingStepActions(stepId, { ...effectiveState, stepData: draftData }, {
+      const stepDataForActions = stepPayload
+        ? { ...draftData, [stepId]: stepPayload }
+        : draftData;
+
+      await applyOnboardingStepActions(stepId, { ...effectiveState, stepData: stepDataForActions }, {
         dispatch,
         isAuthenticated,
       });
@@ -154,7 +168,7 @@ const OnboardingWizard: React.FC<Props> = ({
     }
   };
 
-  const isOptional = stepMeta.optional;
+  const isSkippable = stepMeta.skippable;
   const isLast = state.currentStep === 'completion';
 
   return (
@@ -221,13 +235,13 @@ const OnboardingWizard: React.FC<Props> = ({
               </Button>
             )}
             <div className="flex-1" />
-            {isOptional && !isLast && (
+            {isSkippable && !isLast && (
               <Button variant="secondary" onClick={() => void handleSkipStep()} disabled={busy}>
-                Skip step
+                Skip
               </Button>
             )}
             <button type="button" onClick={onSkipAll} className="text-sm text-slate-500 hover:text-slate-700 px-2">
-              Skip setup
+              Skip entire setup
             </button>
             <Button onClick={() => void handleContinue()} disabled={busy}>
               {busy ? 'Saving…' : isLast ? 'Go to dashboard' : 'Continue'}

@@ -43,12 +43,16 @@ export interface DashboardMetricsResponse {
 }
 
 export type DashboardDatePreset =
+  | 'all_time'
   | 'this_month'
   | 'last_month'
   | 'this_quarter'
   | 'this_year'
   | 'last_30_days'
   | 'custom';
+
+/** Earliest date used for dashboard "All time" preset (YYYY-MM-DD). */
+export const DASHBOARD_ALL_TIME_FROM = '2000-01-01';
 
 export interface MonthlyTrendPoint {
   month: string;

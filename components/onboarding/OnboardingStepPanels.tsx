@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Input from '../ui/Input';
 import AmountInput from '../common/AmountInput';
 import Textarea from '../ui/Textarea';
@@ -19,6 +19,7 @@ import { accountingPeriodsApi } from '../../services/api/accountingPeriodsApi';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { apiClient } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
+import type { Tenant } from '../../context/AuthContext';
 import { ASSIGNABLE_ROLES } from '../../shared/rbac/permissions';
 import type { OnboardingStepId } from '../../shared/onboarding/onboardingSteps';
 import type { OnboardingState } from '../../services/api/onboardingApi';
@@ -110,17 +111,73 @@ export const BusinessSetupStepPanel: React.FC<StepPanelProps> = ({ state, onStep
   );
 };
 
-export const CompanyInfoStepPanel: React.FC<StepPanelProps> = ({ state, onStepDataChange }) => {
-  const printSettings = usePrintSettings();
-  const saved = (state.stepData.company_info ?? {}) as Partial<PrintSettings>;
-  const [form, setForm] = useState<Partial<PrintSettings>>({
-    companyName: saved.companyName ?? printSettings.companyName ?? '',
-    companyAddress: saved.companyAddress ?? printSettings.companyAddress ?? '',
-    companyContact: saved.companyContact ?? printSettings.companyContact ?? '',
-    taxId: saved.taxId ?? printSettings.taxId ?? '',
+function formatRegistrationContact(tenant?: Tenant | null, userEmail?: string): string {
+  const parts: string[] = [];
+  const phone = tenant?.phone?.trim();
+  const email = tenant?.email?.trim() || userEmail?.trim();
+  if (phone) parts.push(phone);
+  if (email && email !== phone) parts.push(email);
+  return parts.join(' / ');
+}
+
+/** Merge onboarding draft, print settings, and organization registration fields. */
+export function resolveCompanyInfoDefaults(
+  saved: Partial<PrintSettings>,
+  printSettings: PrintSettings,
+  tenant?: Tenant | null,
+  userEmail?: string
+): Partial<PrintSettings> {
+  const registrationContact = formatRegistrationContact(tenant, userEmail);
+  return {
+    companyName:
+      saved.companyName?.trim() ||
+      printSettings.companyName?.trim() ||
+      tenant?.companyName?.trim() ||
+      tenant?.name?.trim() ||
+      '',
+    companyAddress:
+      saved.companyAddress?.trim() ||
+      printSettings.companyAddress?.trim() ||
+      tenant?.address?.trim() ||
+      '',
+    companyContact:
+      saved.companyContact?.trim() ||
+      printSettings.companyContact?.trim() ||
+      registrationContact,
+    taxId: saved.taxId?.trim() || printSettings.taxId?.trim() || '',
     showLogo: saved.showLogo ?? printSettings.showLogo ?? true,
     showDatePrinted: saved.showDatePrinted ?? printSettings.showDatePrinted ?? true,
-  });
+  };
+}
+
+export const CompanyInfoStepPanel: React.FC<StepPanelProps> = ({ state, onStepDataChange }) => {
+  const printSettings = usePrintSettings();
+  const { tenant, user } = useAuth();
+  const saved = (state.stepData.company_info ?? {}) as Partial<PrintSettings>;
+  const [form, setForm] = useState<Partial<PrintSettings>>(() =>
+    resolveCompanyInfoDefaults(saved, printSettings, tenant, user?.email)
+  );
+
+  // Seed wizard draft from displayed values (fixes Continue validation when fields are pre-filled).
+  useEffect(() => {
+    const next = resolveCompanyInfoDefaults(saved, printSettings, tenant, user?.email);
+    setForm(next);
+    onStepDataChange(next);
+    // Only re-run when org/print defaults change — not on each keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tenant?.id,
+    tenant?.companyName,
+    tenant?.name,
+    tenant?.email,
+    tenant?.phone,
+    tenant?.address,
+    user?.email,
+    printSettings.companyName,
+    printSettings.companyAddress,
+    printSettings.companyContact,
+    printSettings.taxId,
+  ]);
 
   const update = (field: keyof PrintSettings, value: string | boolean) => {
     const next = { ...form, [field]: value };

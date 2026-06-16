@@ -17,11 +17,12 @@ const REFETCH_MS = 120_000;
 
 export function useDashboardMetrics(enabled = true) {
   const filters = useDashboardFiltersStore((s) => s.filters);
+  const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
 
   return useQuery({
     queryKey: dashboardMetricsQueryKeys.metrics(filters),
     queryFn: () => dashboardMetricsApi.getMetrics(filters),
-    enabled,
+    enabled: enabled && hasHydrated,
     staleTime: STALE_MS,
     refetchInterval: REFETCH_MS,
     refetchIntervalInBackground: false,
@@ -30,11 +31,12 @@ export function useDashboardMetrics(enabled = true) {
 
 export function useDashboardCharts(year: number, enabled = true) {
   const filters = useDashboardFiltersStore((s) => s.filters);
+  const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
 
   return useQuery({
     queryKey: dashboardMetricsQueryKeys.charts(filters, year),
     queryFn: () => dashboardMetricsApi.getCharts(filters, year),
-    enabled,
+    enabled: enabled && hasHydrated,
     staleTime: STALE_MS,
     refetchInterval: REFETCH_MS,
     refetchIntervalInBackground: false,

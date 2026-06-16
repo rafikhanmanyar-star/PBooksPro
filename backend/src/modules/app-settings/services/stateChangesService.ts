@@ -92,7 +92,8 @@ export async function getStateChanges(
   client: pg.PoolClient,
   tenantId: string,
   sinceIso: string,
-  userRole?: string
+  userRole?: string,
+  userId?: string | null
 ): Promise<StateChangesPayload> {
   const since = sinceIso ? new Date(sinceIso) : new Date(0);
   if (Number.isNaN(since.getTime())) {
@@ -170,7 +171,7 @@ export async function getStateChanges(
       : Promise.resolve([]),
     listPmCycleAllocationsChangedSince(client, tenantId, since),
     listPlanAmenitiesChangedSince(client, tenantId, since),
-    listInstallmentPlansChangedSince(client, tenantId, since),
+    listInstallmentPlansChangedSince(client, tenantId, since, { userId, role: userRole }),
     listChangeLogSince(client, tenantId, since),
   ]);
 

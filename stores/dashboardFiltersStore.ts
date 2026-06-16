@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { DashboardComparisonPeriod, DashboardDatePreset, DashboardFilters } from '../types/dashboardMetrics.types';
+import { DASHBOARD_ALL_TIME_FROM } from '../types/dashboardMetrics.types';
 
 function toDateOnly(d: Date): string {
   const y = d.getFullYear();
@@ -14,6 +15,8 @@ export function resolveDatePreset(preset: DashboardDatePreset): { from: string; 
   const today = toDateOnly(now);
 
   switch (preset) {
+    case 'all_time':
+      return { from: DASHBOARD_ALL_TIME_FROM, to: today };
     case 'last_month': {
       const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const end = new Date(now.getFullYear(), now.getMonth(), 0);
@@ -41,6 +44,22 @@ export function resolveDatePreset(preset: DashboardDatePreset): { from: string; 
   }
 }
 
+function syncFiltersWithDatePreset(
+  filters: DashboardFilters,
+  datePreset: DashboardDatePreset,
+  customFrom?: string,
+  customTo?: string
+): DashboardFilters {
+  if (datePreset === 'custom' && customFrom && customTo) {
+    return { ...filters, from: customFrom, to: customTo };
+  }
+  if (datePreset === 'custom') {
+    return filters;
+  }
+  const range = resolveDatePreset(datePreset);
+  return { ...filters, from: range.from, to: range.to };
+}
+
 const defaultFilters = (): DashboardFilters => {
   const { from, to } = resolveDatePreset('this_month');
   return {
@@ -62,6 +81,7 @@ interface DashboardFiltersState {
   filters: DashboardFilters;
   datePreset: DashboardDatePreset;
   savedViews: { name: string; filters: DashboardFilters }[];
+  hasHydrated: boolean;
   setFilter: <K extends keyof DashboardFilters>(key: K, value: DashboardFilters[K]) => void;
   setDatePreset: (preset: DashboardDatePreset) => void;
   setDateRange: (from: string, to: string) => void;
@@ -69,7 +89,15 @@ interface DashboardFiltersState {
   saveView: (name: string) => void;
   loadView: (name: string) => void;
   deleteView: (name: string) => void;
+  refreshRollingPreset: () => void;
 }
+
+type PersistedDashboardFilters = {
+  savedViews: DashboardFiltersState['savedViews'];
+  datePreset: DashboardDatePreset;
+  customFrom?: string;
+  customTo?: string;
+};
 
 export const useDashboardFiltersStore = create<DashboardFiltersState>()(
   persist(
@@ -77,6 +105,7 @@ export const useDashboardFiltersStore = create<DashboardFiltersState>()(
       filters: defaultFilters(),
       datePreset: 'this_month',
       savedViews: [],
+      hasHydrated: false,
       setFilter: (key, value) =>
         set((s) => ({
           filters: { ...s.filters, [key]: value },
@@ -87,10 +116,12 @@ export const useDashboardFiltersStore = create<DashboardFiltersState>()(
           set({ datePreset: preset });
           return;
         }
-        const range = resolveDatePreset(preset);
         set((s) => ({
           datePreset: preset,
-          filters: { ...s.filters, from: range.from, to: range.to },
+          filters: {
+            ...syncFiltersWithDatePreset(s.filters, preset),
+            ...(preset === 'all_time' ? { comparisonPeriod: 'none' as DashboardComparisonPeriod } : {}),
+          },
         }));
       },
       setDateRange: (from, to) =>
@@ -99,6 +130,13 @@ export const useDashboardFiltersStore = create<DashboardFiltersState>()(
           filters: { ...s.filters, from, to },
         })),
       resetFilters: () => set({ filters: defaultFilters(), datePreset: 'this_month' }),
+      refreshRollingPreset: () => {
+        const { datePreset, filters } = get();
+        if (datePreset === 'custom') return;
+        const synced = syncFiltersWithDatePreset(filters, datePreset);
+        if (synced.from === filters.from && synced.to === filters.to) return;
+        set({ filters: synced });
+      },
       saveView: (name) => {
         const trimmed = name.trim();
         if (!trimmed) return;
@@ -115,7 +153,41 @@ export const useDashboardFiltersStore = create<DashboardFiltersState>()(
     }),
     {
       name: 'pbooks-dashboard-filters-v1',
-      partialize: (s) => ({ savedViews: s.savedViews, datePreset: s.datePreset }),
+      partialize: (s): PersistedDashboardFilters => ({
+        savedViews: s.savedViews,
+        datePreset: s.datePreset,
+        customFrom: s.datePreset === 'custom' ? s.filters.from : undefined,
+        customTo: s.datePreset === 'custom' ? s.filters.to : undefined,
+      }),
+      merge: (persisted, current) => {
+        const p = persisted as PersistedDashboardFilters | undefined;
+        if (!p) return current as DashboardFiltersState;
+        const datePreset = p.datePreset ?? current.datePreset;
+        const filters = syncFiltersWithDatePreset(
+          current.filters,
+          datePreset,
+          p.customFrom,
+          p.customTo
+        );
+        return {
+          ...current,
+          savedViews: p.savedViews ?? current.savedViews,
+          datePreset,
+          filters,
+        } as DashboardFiltersState;
+      },
+      onRehydrateStorage: () => () => {
+        useDashboardFiltersStore.setState({ hasHydrated: true });
+        useDashboardFiltersStore.getState().refreshRollingPreset();
+      },
     }
   )
 );
+
+if (typeof window !== 'undefined') {
+  useDashboardFiltersStore.persist.onFinishHydration(() => {
+    if (!useDashboardFiltersStore.getState().hasHydrated) {
+      useDashboardFiltersStore.setState({ hasHydrated: true });
+    }
+  });
+}

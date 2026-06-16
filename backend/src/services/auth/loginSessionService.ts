@@ -32,6 +32,9 @@ export type LoginCompanyPayload = {
   id: string;
   name: string;
   companyName: string;
+  email?: string;
+  phone?: string;
+  address?: string;
 };
 
 function formatUserPayload(account: MatchedUserAccount): LoginUserPayload {
@@ -51,10 +54,17 @@ function formatUserPayload(account: MatchedUserAccount): LoginUserPayload {
 }
 
 function formatCompanyPayload(account: MatchedUserAccount): LoginCompanyPayload {
+  const companyName = account.tenantCompanyName?.trim() || account.tenantName;
+  const email = account.tenantEmail?.trim() || undefined;
+  const phone = account.tenantPhone?.trim() || undefined;
+  const address = account.tenantAddress?.trim() || undefined;
   return {
     id: account.tenantId,
     name: account.tenantName,
-    companyName: account.tenantName,
+    companyName,
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+    ...(address ? { address } : {}),
   };
 }
 

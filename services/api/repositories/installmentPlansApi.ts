@@ -53,6 +53,15 @@ export class InstallmentPlansApiRepository {
   }
 
   /**
+   * Company admins and project managers who can receive marketing plan approvals.
+   */
+  async listApprovers(): Promise<Array<{ id: string; name: string; username: string; role: string }>> {
+    return apiClient.get<Array<{ id: string; name: string; username: string; role: string }>>(
+      '/installment-plans/approvers'
+    );
+  }
+
+  /**
    * Check if installment plan exists
    */
   async exists(id: string): Promise<boolean> {

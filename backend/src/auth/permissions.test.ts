@@ -6,6 +6,8 @@ import {
   permissionsForRole,
   buildPermissionMatrix,
   roleCanWriteProjectSelling,
+  roleCanViewAllMarketingPlans,
+  roleCanApproveMarketingPlans,
 } from './permissions.js';
 
 describe('permissions matrix', () => {
@@ -24,11 +26,26 @@ describe('permissions matrix', () => {
     assert.equal(roleHasPermission('Sales User', 'reports.profit_loss.read'), false);
     assert.equal(roleHasPermission('Sales User', 'financial.write'), false);
     assert.equal(roleHasPermission('Sales User', 'project_selling.read'), true);
+    assert.equal(roleHasPermission('Sales User', 'project_selling.catalog.write'), true);
     assert.equal(roleHasPermission('Sales User', 'project_selling.marketing_plans.write'), true);
     assert.equal(roleHasPermission('Sales User', 'project_selling.agreements.write'), true);
     assert.equal(roleHasPermission('Sales User', 'project_selling.invoices.write'), true);
     assert.equal(roleHasPermission('Sales User', 'project_selling.payments.receive'), true);
     assert.equal(roleCanWriteProjectSelling('Sales User'), true);
+  });
+
+  it('maps legacy Sales role to sales_user permissions', () => {
+    assert.equal(resolveEnterpriseRole('Sales'), 'sales_user');
+    assert.equal(roleHasPermission('Sales', 'project_selling.catalog.write'), true);
+    assert.equal(roleHasPermission('Sales', 'project_selling.read'), true);
+  });
+
+  it('marketing plan visibility roles', () => {
+    assert.equal(roleCanViewAllMarketingPlans('Admin'), true);
+    assert.equal(roleCanViewAllMarketingPlans('Project Manager'), true);
+    assert.equal(roleCanViewAllMarketingPlans('Sales User'), false);
+    assert.equal(roleCanApproveMarketingPlans('Admin'), true);
+    assert.equal(roleCanApproveMarketingPlans('Sales User'), false);
   });
 
   it('read only user can read reports but not write', () => {

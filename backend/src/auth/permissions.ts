@@ -42,6 +42,7 @@ export type Permission =
   | 'contracts.retention.release'
   | 'contracts.retention.override'
   | 'project_selling.read'
+  | 'project_selling.catalog.write'
   | 'project_selling.marketing_plans.write'
   | 'project_selling.agreements.write'
   | 'project_selling.invoices.write'
@@ -94,6 +95,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'contracts.retention.release',
   'contracts.retention.override',
   'project_selling.read',
+  'project_selling.catalog.write',
   'project_selling.marketing_plans.write',
   'project_selling.agreements.write',
   'project_selling.invoices.write',
@@ -129,8 +131,14 @@ export const PROJECT_SELLING_WRITE_PERMISSIONS: readonly Permission[] = [
   'project_selling.payments.receive',
 ] as const;
 
+/** Projects, units, and CRM contacts (leads/owners/clients) for marketing workflows. */
+export const PROJECT_SELLING_CATALOG_WRITE_PERMISSIONS: readonly Permission[] = [
+  'project_selling.catalog.write',
+] as const;
+
 export const PROJECT_SELLING_SALES_USER_PERMISSIONS: readonly Permission[] = [
   'project_selling.read',
+  ...PROJECT_SELLING_CATALOG_WRITE_PERMISSIONS,
   ...PROJECT_SELLING_WRITE_PERMISSIONS,
 ] as const;
 
@@ -169,6 +177,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'contracts.retention.release': 'Release contract retention',
   'contracts.retention.override': 'Override retention alerts',
   'project_selling.read': 'Project selling (read)',
+  'project_selling.catalog.write': 'Projects, units & sales contacts (configure)',
   'project_selling.marketing_plans.write': 'Marketing plans (create & submit)',
   'project_selling.agreements.write': 'Project agreements (create & convert)',
   'project_selling.invoices.write': 'Project selling invoices (create)',
@@ -340,6 +349,7 @@ const LEGACY_ROLE_TO_ENTERPRISE: Record<string, EnterpriseRole> = {
   team_lead: 'project_manager',
   task_contributor: 'read_only',
   sales_user: 'sales_user',
+  sales: 'sales_user',
   read_only: 'read_only',
   read_only_user: 'read_only',
   viewer: 'read_only',
@@ -369,6 +379,21 @@ export function roleCanWriteProjectSelling(role: string | undefined | null): boo
     roleHasPermission(role, 'financial.write') ||
     roleHasAnyPermission(role, [...PROJECT_SELLING_WRITE_PERMISSIONS])
   );
+}
+
+/** Company admin, super admin, and project managers see all marketing / installment plans. */
+export function roleCanViewAllMarketingPlans(role: string | undefined | null): boolean {
+  const enterprise = resolveEnterpriseRole(role);
+  return (
+    enterprise === 'super_admin' ||
+    enterprise === 'company_admin' ||
+    enterprise === 'project_manager'
+  );
+}
+
+/** Roles that may receive and act on marketing plan approval requests. */
+export function roleCanApproveMarketingPlans(role: string | undefined | null): boolean {
+  return roleCanViewAllMarketingPlans(role);
 }
 
 export type PermissionMatrixRow = {

@@ -230,6 +230,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     authMiddleware,
     requireActiveSubscription(),
     requireWriteOnMutations(
+      'project_selling.catalog.write',
       'project_selling.marketing_plans.write',
       'project_selling.agreements.write'
     ),
@@ -253,14 +254,22 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'project_selling.catalog.write',
+      'project_selling.marketing_plans.write',
+      'project_selling.agreements.write'
+    ),
     projectsRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireWriteOnMutations('project_selling.agreements.write'),
+    requireWriteOnMutations(
+      'project_selling.catalog.write',
+      'project_selling.marketing_plans.write',
+      'project_selling.agreements.write'
+    ),
     unitsRouter
   );
   app.use(

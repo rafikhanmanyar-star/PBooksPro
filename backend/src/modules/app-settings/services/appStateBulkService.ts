@@ -113,7 +113,8 @@ export async function getBulkAppState(
   client: pg.PoolClient,
   tenantId: string,
   entitiesQuery?: unknown,
-  userRole?: string
+  userRole?: string,
+  userId?: string | null
 ): Promise<Record<string, unknown>> {
   const filter = parseEntityFilter(entitiesQuery);
   const canAccessPersonalFinance = isAdminRole(userRole);
@@ -162,7 +163,7 @@ export async function getBulkAppState(
     wantEntity('budgets', filter) ? listBudgets(client, tenantId) : Promise.resolve([]),
     wantEntity('planAmenities', filter) ? listPlanAmenities(client, tenantId) : Promise.resolve([]),
     wantEntity('installmentPlans', filter)
-      ? listInstallmentPlans(client, tenantId)
+      ? listInstallmentPlans(client, tenantId, undefined, { userId, role: userRole })
       : Promise.resolve([]),
     wantEntity('rentalAgreements', filter)
       ? listRentalAgreements(client, tenantId)
@@ -322,7 +323,8 @@ export async function getBulkAppStateChunked(
   tenantId: string,
   limitRaw: unknown,
   offsetRaw: unknown,
-  userRole?: string
+  userRole?: string,
+  userId?: string | null
 ): Promise<BulkChunkResult> {
   const limit = Math.min(Math.max(Number(limitRaw) || 200, 1), 500);
   const offset = Math.max(Number(offsetRaw) || 0, 0);
@@ -332,7 +334,7 @@ export async function getBulkAppStateChunked(
   const totals: Record<string, number> = { transactions: txTotal };
 
   if (offset === 0) {
-    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES, userRole);
+    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES, userRole, userId);
     Object.assign(entities, staticState);
     for (const [key, val] of Object.entries(staticState)) {
       if (Array.isArray(val)) totals[key] = val.length;

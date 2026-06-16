@@ -6,6 +6,8 @@ import {
   resolveEnterpriseRole,
   roleHasPermission,
   roleCanWriteProjectSelling,
+  roleCanViewAllMarketingPlans,
+  roleCanApproveMarketingPlans,
   ENTERPRISE_ROLE_LABELS,
 } from '../shared/rbac/permissions';
 
@@ -42,6 +44,10 @@ export function usePermissions() {
       canReadAuditLogs: has('audit_logs.read'),
       canWriteFinancial: has('financial.write'),
       canReadProjectSelling: has('project_selling.read') || has('financial.write'),
+      canWriteProjectSellingCatalog:
+        has('project_selling.catalog.write') ||
+        has('project_selling.marketing_plans.write') ||
+        has('financial.write'),
       canWriteProjectSellingMarketingPlans:
         has('project_selling.marketing_plans.write') || has('financial.write'),
       canWriteProjectSellingAgreements:
@@ -51,6 +57,8 @@ export function usePermissions() {
       canReceiveProjectSellingPayments:
         has('project_selling.payments.receive') || has('financial.write'),
       canWriteProjectSelling: roleCanWriteProjectSelling(role),
+      canViewAllMarketingPlans: roleCanViewAllMarketingPlans(role) || has('financial.write'),
+      canApproveMarketingPlans: roleCanApproveMarketingPlans(role) || has('financial.write'),
       canReadPermissions: has('permissions.read'),
       canReadBackups: has('backups.read'),
       canManageBackups: has('backups.manage'),

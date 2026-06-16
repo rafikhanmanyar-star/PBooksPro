@@ -160,6 +160,10 @@ type UserTenantAccountRow = {
   name: string;
   password_hash: string;
   tenant_name: string;
+  tenant_company_name: string | null;
+  tenant_email: string | null;
+  tenant_phone: string | null;
+  tenant_address: string | null;
   display_timezone: string | null;
   interface_mode: string;
   email: string | null;
@@ -168,15 +172,20 @@ type UserTenantAccountRow = {
   rejection_reason: string | null;
 };
 
+const TENANT_ACCOUNT_SELECT = `u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
+              COALESCE(NULLIF(TRIM(t.company_name), ''), t.name) AS tenant_name,
+              t.company_name AS tenant_company_name,
+              t.email AS tenant_email, t.phone AS tenant_phone, t.address AS tenant_address,
+              u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
+              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason`;
+
 export class UserTenantRepository {
   async findAccountsByLoginIdentifier(
     db: pg.Pool | pg.PoolClient,
     normalizedIdentifier: string
   ): Promise<UserTenantAccountRow[]> {
     const r = await db.query<UserTenantAccountRow>(
-      `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
-              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+      `SELECT ${TENANT_ACCOUNT_SELECT}
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
        JOIN tenants t ON t.id = ut.tenant_id
@@ -221,9 +230,7 @@ export class UserTenantRepository {
     normalizedUsername: string
   ): Promise<UserTenantAccountRow | null> {
     const r = await db.query<UserTenantAccountRow>(
-      `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
-              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+      `SELECT ${TENANT_ACCOUNT_SELECT}
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
        JOIN tenants t ON t.id = ut.tenant_id
@@ -241,9 +248,7 @@ export class UserTenantRepository {
     normalizedIdentifier: string
   ): Promise<UserTenantAccountRow | null> {
     const r = await db.query<UserTenantAccountRow>(
-      `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
-              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+      `SELECT ${TENANT_ACCOUNT_SELECT}
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
        JOIN tenants t ON t.id = ut.tenant_id
@@ -262,9 +267,7 @@ export class UserTenantRepository {
     loginIdentifier: string | null
   ): Promise<UserTenantAccountRow | null> {
     const r = await db.query<UserTenantAccountRow>(
-      `SELECT u.id AS user_id, ut.tenant_id, ut.role, u.username, u.name, u.password_hash,
-              t.name AS tenant_name, u.display_timezone, u.interface_mode, u.email, u.last_tenant_id,
-              COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+      `SELECT ${TENANT_ACCOUNT_SELECT}
        FROM user_tenants ut
        JOIN users u ON u.id = ut.user_id
        JOIN tenants t ON t.id = ut.tenant_id
