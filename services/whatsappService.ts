@@ -244,6 +244,52 @@ export class WhatsAppService {
   }
 
   /**
+   * Generates purchase order message for vendor (lineItems should be pre-formatted).
+   */
+  static generatePurchaseOrder(
+    template: string,
+    contact: Contact | Vendor,
+    poNumber: string,
+    issueDate: string,
+    totalAmount: number,
+    projectName: string,
+    lineItems: string
+  ): string {
+    return this.replaceTemplateVariables(template, {
+      contactName: contact.name,
+      poNumber,
+      issueDate,
+      totalAmount: `${CURRENCY} ${totalAmount.toLocaleString()}`,
+      projectName: projectName || '—',
+      lineItems: lineItems || 'No line items.',
+    });
+  }
+
+  /**
+   * Generates goods receipt (GRN) confirmation for vendor (lineItems should be pre-formatted).
+   */
+  static generateGoodsReceiptConfirmation(
+    template: string,
+    contact: Contact | Vendor,
+    grnNumber: string,
+    poNumber: string,
+    receivedDate: string,
+    totalAmount: number,
+    projectName: string,
+    lineItems: string
+  ): string {
+    return this.replaceTemplateVariables(template, {
+      contactName: contact.name,
+      grnNumber,
+      poNumber,
+      receivedDate,
+      totalAmount: `${CURRENCY} ${totalAmount.toLocaleString()}`,
+      projectName: projectName || '—',
+      lineItems: lineItems || 'No line items.',
+    });
+  }
+
+  /**
    * Generates custom message with template variables
    */
   static generateCustomMessage(

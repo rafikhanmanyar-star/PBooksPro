@@ -14,6 +14,7 @@ interface BillProcurementLinksSectionProps {
   goodsReceiptId: string;
   excludeBillId?: string;
   poBillLines: BillPoLine[];
+  getCategoryName?: (categoryId?: string) => string | undefined;
   onPurchaseOrderChange: (poId: string) => void;
   onGoodsReceiptChange: (grnId: string) => void;
   onContextChange?: (ctx: PoBillingContext | null) => void;
@@ -35,6 +36,7 @@ const BillProcurementLinksSection: React.FC<BillProcurementLinksSectionProps> = 
   goodsReceiptId,
   excludeBillId,
   poBillLines,
+  getCategoryName,
   onPurchaseOrderChange,
   onGoodsReceiptChange,
   onContextChange,
@@ -221,6 +223,7 @@ const BillProcurementLinksSection: React.FC<BillProcurementLinksSectionProps> = 
                   <thead className="bg-app-surface text-app-muted">
                     <tr>
                       <th className="text-left px-2 py-1.5 font-medium">Item</th>
+                      <th className="text-left px-2 py-1.5 font-medium">Category</th>
                       <th className="text-right px-2 py-1.5 font-medium">Rcvd</th>
                       <th className="text-right px-2 py-1.5 font-medium">Billed</th>
                       <th className="text-right px-2 py-1.5 font-medium">Billable</th>
@@ -233,9 +236,13 @@ const BillProcurementLinksSection: React.FC<BillProcurementLinksSectionProps> = 
                     {ctx.lines.map((line) => {
                       const draft = poBillLines.find((l) => l.purchaseOrderLineId === line.id);
                       const label = line.itemName || line.description || 'Line item';
+                      const categoryLabel =
+                        getCategoryName?.(line.categoryId) ??
+                        (line.categoryId ? 'Category' : '—');
                       return (
                         <tr key={line.id} className="border-t border-app-border">
                           <td className="px-2 py-1.5">{label}</td>
+                          <td className="px-2 py-1.5 text-app-text">{categoryLabel}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{line.receivedQty}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums">{line.billedQty}</td>
                           <td className="px-2 py-1.5 text-right tabular-nums font-medium">
@@ -265,7 +272,7 @@ const BillProcurementLinksSection: React.FC<BillProcurementLinksSectionProps> = 
                   </tbody>
                   <tfoot className="border-t border-app-border bg-app-surface">
                     <tr>
-                      <td colSpan={6} className="px-2 py-1.5 text-right font-semibold">
+                      <td colSpan={7} className="px-2 py-1.5 text-right font-semibold">
                         Lines total
                       </td>
                       <td className="px-2 py-1.5 text-right font-semibold tabular-nums">

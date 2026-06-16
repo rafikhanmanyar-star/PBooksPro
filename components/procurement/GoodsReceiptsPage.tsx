@@ -4,8 +4,16 @@ import type { GoodsReceiptLine, TenantGoodsReceipt } from '../../types';
 import { useGoodsReceiptMutations, useGoodsReceipts } from '../../hooks/useGoodsReceipts';
 import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
 import { usePermissions } from '../../hooks/usePermissions';
-import { fetchPoReceiptContext } from '../../services/goodsReceiptsApi';
-import { CURRENCY } from '../../constants';
+import { useWhatsApp } from '../../context/WhatsAppContext';
+import { useNotification } from '../../context/NotificationContext';
+import { fetchGoodsReceiptById, fetchPoReceiptContext } from '../../services/goodsReceiptsApi';
+import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
+import {
+  DEFAULT_GRN_WHATSAPP_TEMPLATE,
+  formatGrnLinesForWhatsApp,
+  sumGrnLineTotal,
+} from '../../utils/grnWhatsApp';
+import { CURRENCY, ICONS } from '../../constants';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
@@ -17,11 +25,22 @@ function formatMoney(value: number) {
   return value.toLocaleString('en-US', { style: 'currency', currency: CURRENCY });
 }
 
+function mutationErrorMessage(e: unknown, fallback: string): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
+    return (e as { message: string }).message;
+  }
+  return fallback;
+}
+
 const statusBadge: Record<string, string> = {
   Draft: 'bg-app-toolbar text-app-muted border border-app-border',
   Posted: 'bg-[color:var(--badge-paid-bg)] text-ds-success',
   Closed: 'bg-primary/15 text-primary',
 };
+
+const iconBtnBase =
+  'inline-flex items-center justify-center shrink-0 size-8 rounded-md transition-colors';
 
 type GoodsReceiptsPageProps = {
   vendorId?: string;
@@ -35,8 +54,10 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
   onInitialPoConsumed,
 }) => {
   const state = useFinancialReportAppState();
-  const { vendors, projects } = state;
+  const { vendors, projects, whatsAppTemplates, whatsAppMode } = state;
   const perms = usePermissions();
+  const { openChat } = useWhatsApp();
+  const { showConfirm, showAlert } = useNotification();
   const [statusFilter, setStatusFilter] = useState('');
   const [editing, setEditing] = useState<TenantGoodsReceipt | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -130,7 +151,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
         lines,
       }));
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Failed to load PO lines.');
+      setFormError(mutationErrorMessage(e, 'Failed to load PO lines.'));
     } finally {
       setLoadingPo(false);
     }
@@ -172,16 +193,68 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
         setForm((f) => ({ ...f, id: saved.id, grnNumber: saved.grnNumber, version: saved.version }));
       }
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Failed to save goods receipt.');
+      setFormError(mutationErrorMessage(e, 'Failed to save goods receipt.'));
     }
   };
 
-  const handlePost = async (grn: TenantGoodsReceipt) => {
+  const resolveGrnWithLines = async (grn: TenantGoodsReceipt): Promise<TenantGoodsReceipt> => {
+    if (grn.lines?.length) return grn;
+    return fetchGoodsReceiptById(grn.id);
+  };
+
+  const sendGrnWhatsAppToVendor = async (grn: TenantGoodsReceipt) => {
+    const vendor = vendors.find((v) => v.id === grn.vendorId);
+    if (!vendor) {
+      await showAlert('Vendor not found for this goods receipt.');
+      return;
+    }
+    if (!vendor.contactNo) {
+      await showAlert('This vendor does not have a phone number saved.');
+      return;
+    }
     try {
-      await post.mutateAsync({ id: grn.id, version: grn.version });
+      const full = await resolveGrnWithLines(grn);
+      const po = purchaseOrders.find((p) => p.id === full.purchaseOrderId);
+      const project = projects.find((p) => p.id === full.projectId);
+      const template = whatsAppTemplates.goodsReceiptConfirmation || DEFAULT_GRN_WHATSAPP_TEMPLATE;
+      const message = WhatsAppService.generateGoodsReceiptConfirmation(
+        template,
+        vendor,
+        full.grnNumber,
+        po?.poNumber ?? full.purchaseOrderId,
+        full.receivedDate,
+        sumGrnLineTotal(full.lines),
+        project?.name ?? '',
+        formatGrnLinesForWhatsApp(full.lines)
+      );
+      sendOrOpenWhatsApp(
+        { contact: vendor, message, phoneNumber: vendor.contactNo },
+        () => whatsAppMode,
+        openChat
+      );
+    } catch (error) {
+      await showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
+    }
+  };
+
+  const offerGrnWhatsAppToVendor = async (grn: TenantGoodsReceipt) => {
+    const vendor = vendors.find((v) => v.id === grn.vendorId);
+    if (!vendor?.contactNo) return;
+    const ok = await showConfirm(
+      `Goods have been received under ${grn.grnNumber}. Send confirmation to ${vendor.name} via WhatsApp?`,
+      { title: 'Notify vendor', confirmLabel: 'Send WhatsApp', cancelLabel: 'Not now' }
+    );
+    if (ok) await sendGrnWhatsAppToVendor(grn);
+  };
+
+  const handlePost = async (grn: TenantGoodsReceipt) => {
+    setFormError(null);
+    try {
+      const posted = await post.mutateAsync({ id: grn.id, version: grn.version });
       void refetch();
+      await offerGrnWhatsAppToVendor(posted ?? grn);
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Failed to post goods receipt.');
+      setFormError(mutationErrorMessage(e, 'Failed to post goods receipt.'));
     }
   };
 
@@ -190,7 +263,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
       await close.mutateAsync({ id: grn.id, version: grn.version });
       void refetch();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Failed to close goods receipt.');
+      setFormError(mutationErrorMessage(e, 'Failed to close goods receipt.'));
     }
   };
 
@@ -200,7 +273,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
       await remove.mutateAsync(grn.id);
       void refetch();
     } catch (e) {
-      setFormError(e instanceof Error ? e.message : 'Failed to delete goods receipt.');
+      setFormError(mutationErrorMessage(e, 'Failed to delete goods receipt.'));
     }
   };
 
@@ -264,27 +337,42 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
                       {grn.status}
                     </span>
                   </td>
-                  <td className="px-4 py-2 text-right space-x-2">
-                    {grn.status === 'Draft' && perms.canEditGoodsReceipt && (
-                      <Button type="button" variant="secondary" onClick={() => openEdit(grn)}>
-                        Edit
-                      </Button>
-                    )}
-                    {grn.status === 'Draft' && perms.canPostGoodsReceipt && (
-                      <Button type="button" onClick={() => handlePost(grn)}>
-                        Post
-                      </Button>
-                    )}
-                    {grn.status === 'Posted' && perms.canCloseGoodsReceipt && (
-                      <Button type="button" variant="secondary" onClick={() => handleClose(grn)}>
-                        Close
-                      </Button>
-                    )}
-                    {grn.status === 'Draft' && perms.canEditGoodsReceipt && (
-                      <Button type="button" variant="danger" onClick={() => handleDelete(grn)}>
-                        Delete
-                      </Button>
-                    )}
+                  <td className="px-4 py-2 text-right">
+                    <div className="inline-flex flex-wrap items-center justify-end gap-1">
+                      {(grn.status === 'Posted' || grn.status === 'Closed') && (
+                        <button
+                          type="button"
+                          className={`${iconBtnBase} text-ds-success hover:bg-emerald-500/10`}
+                          title="Send receipt confirmation via WhatsApp"
+                          aria-label="WhatsApp"
+                          onClick={() => void sendGrnWhatsAppToVendor(grn)}
+                        >
+                          <span className="size-4 flex items-center justify-center [&_svg]:size-full">
+                            {ICONS.whatsapp}
+                          </span>
+                        </button>
+                      )}
+                      {grn.status === 'Draft' && perms.canEditGoodsReceipt && (
+                        <Button type="button" variant="secondary" size="sm" onClick={() => openEdit(grn)}>
+                          Edit
+                        </Button>
+                      )}
+                      {grn.status === 'Draft' && perms.canPostGoodsReceipt && (
+                        <Button type="button" size="sm" onClick={() => void handlePost(grn)} disabled={post.isPending}>
+                          Post
+                        </Button>
+                      )}
+                      {grn.status === 'Posted' && perms.canCloseGoodsReceipt && (
+                        <Button type="button" variant="secondary" size="sm" onClick={() => void handleClose(grn)}>
+                          Close
+                        </Button>
+                      )}
+                      {grn.status === 'Draft' && perms.canEditGoodsReceipt && (
+                        <Button type="button" variant="danger" size="sm" onClick={() => void handleDelete(grn)}>
+                          Delete
+                        </Button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );

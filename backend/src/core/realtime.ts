@@ -52,7 +52,8 @@ export type RealtimeEntityType =
   | 'report_definition'
   | 'custom_report_template'
   | 'approval_request'
-  | 'goods_receipt';
+  | 'goods_receipt'
+  | 'rbac_role';
 
 export type RealtimeAction = 'created' | 'updated' | 'deleted';
 

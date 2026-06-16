@@ -12,6 +12,8 @@ const WHATSAPP_TEMPLATE_KEYS: (keyof WhatsAppTemplates)[] = [
   'billToOwner',
   'billToTenant',
   'vendorGreeting',
+  'purchaseOrder',
+  'goodsReceiptConfirmation',
   'ownerPayoutLedger',
   'brokerPayoutLedger',
   'payoutConfirmation',
@@ -126,6 +128,18 @@ const MessagingTemplatesForm = forwardRef<MessagingTemplatesFormHandle, Messagin
             value={templates.vendorGreeting}
             onChange={(val) => handleTemplateChange('vendorGreeting', val)}
             placeholders={['{contactName}']}
+          />
+          <TemplateField
+            label="Purchase Order to Vendor"
+            value={templates.purchaseOrder || ''}
+            onChange={(val) => handleTemplateChange('purchaseOrder', val)}
+            placeholders={['{contactName}', '{poNumber}', '{issueDate}', '{projectName}', '{totalAmount}', '{lineItems}']}
+          />
+          <TemplateField
+            label="Goods Receipt (GRN) Confirmation"
+            value={templates.goodsReceiptConfirmation || ''}
+            onChange={(val) => handleTemplateChange('goodsReceiptConfirmation', val)}
+            placeholders={['{contactName}', '{grnNumber}', '{poNumber}', '{receivedDate}', '{projectName}', '{totalAmount}', '{lineItems}']}
           />
         </div>
 

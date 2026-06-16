@@ -26,8 +26,8 @@ import QuotationItemGrid from './QuotationItemGrid';
 interface QuotationFormProps {
   onClose: () => void;
   quotationToEdit?: Quotation;
-  vendorId: string;
-  vendorName: string;
+  vendorId?: string;
+  vendorName?: string;
   procurementSettings?: ProcurementSettings;
 }
 
@@ -64,9 +64,12 @@ const QuotationForm: React.FC<QuotationFormProps> = ({
   const entityFormModal = useEntityFormModal();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const vendor = vendors?.find((v) => v.id === vendorId);
+  const [selectedVendorId, setSelectedVendorId] = useState(vendorId || quotationToEdit?.vendorId || '');
+  const effectiveVendorId = vendorId || selectedVendorId;
+  const vendor = vendors?.find((v) => v.id === effectiveVendorId);
+  const allowVendorSelection = !vendorId && !quotationToEdit;
 
-  const [name, setName] = useState(vendorName);
+  const [name, setName] = useState(vendorName || vendor?.name || '');
   const [contactPerson, setContactPerson] = useState('');
   const [contactPhone, setContactPhone] = useState(vendor?.contactNo || '');
   const [contactEmail, setContactEmail] = useState('');
@@ -154,8 +157,21 @@ const QuotationForm: React.FC<QuotationFormProps> = ({
     }
   };
 
+  const handleVendorSelect = (nextVendor: (typeof vendors)[number] | null) => {
+    const id = nextVendor?.id || '';
+    setSelectedVendorId(id);
+    if (nextVendor) {
+      setName(nextVendor.name);
+      setContactPhone(nextVendor.contactNo || '');
+    }
+  };
+
   const handleSubmit = async () => {
     if (isSubmitting) return;
+    if (!effectiveVendorId) {
+      showAlert('Please select a vendor');
+      return;
+    }
     if (!name.trim()) {
       showAlert('Please enter vendor name');
       return;
@@ -229,7 +245,7 @@ const QuotationForm: React.FC<QuotationFormProps> = ({
       const isActive = status === 'Active' || status === 'Approved';
       const quotation: Quotation = {
         id: quotationId,
-        vendorId,
+        vendorId: effectiveVendorId,
         name: name.trim(),
         contactPerson: contactPerson.trim() || undefined,
         contactPhone: contactPhone.trim() || undefined,
@@ -279,7 +295,18 @@ const QuotationForm: React.FC<QuotationFormProps> = ({
       <section>
         <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Vendor Information</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Input label="Vendor" value={name} onChange={(e) => setName(e.target.value)} required />
+          {allowVendorSelection ? (
+            <ComboBox
+              label="Vendor"
+              items={vendors ?? []}
+              selectedId={selectedVendorId}
+              onSelect={handleVendorSelect}
+              placeholder="Select vendor"
+              entityType="vendor"
+            />
+          ) : (
+            <Input label="Vendor" value={name} onChange={(e) => setName(e.target.value)} required />
+          )}
           <Input label="Contact Person" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
           <Input label="Phone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
           <Input label="Email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />

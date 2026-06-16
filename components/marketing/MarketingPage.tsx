@@ -26,6 +26,7 @@ import { ICONS } from '../../constants';
 import { devLogger } from '../../utils/devLogger';
 import { useNotification } from '../../context/NotificationContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useProjectSellingCatalogBootstrap } from '../../hooks/useProjectSellingCatalogBootstrap';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
 import { usePrintContext } from '../../context/PrintContext';
 import { STANDARD_PRINT_STYLES } from '../../utils/printStyles';
@@ -278,6 +279,7 @@ const MarketingPage: React.FC = () => {
         canViewAllMarketingPlans,
         canApproveMarketingPlans,
     } = usePermissions();
+    useProjectSellingCatalogBootstrap();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();
     const printSettings = usePrintSettings();

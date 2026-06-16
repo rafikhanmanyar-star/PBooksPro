@@ -92,6 +92,8 @@ import {
   requireFinancialWriteOnMutations,
   requirePayrollAccessForPayrollPaths,
   requirePermissionWhenPathStartsWith,
+  requireProjectSellingCatalogAccess,
+  requireFinancialWriteOrProjectSellingCatalogOnMutations,
   requireRoleWhenPathStartsWith,
   requireWriteOnMutations,
 } from '../middleware/rbacMiddleware.js';
@@ -116,6 +118,7 @@ import { appUpdateRouter } from './appUpdateRoutes.js';
 import { dataManagementRouter } from './dataManagementRoutes.js';
 import { mobileRouter } from './mobileRoutes.js';
 import { notificationsRouter } from '../modules/notifications/routes/notificationsRoutes.js';
+import { rbacRolesRouter, rbacCatalogRouter, rbacUserRolesRouter } from '../modules/rbac/routes/rbacRoutes.js';
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
@@ -143,6 +146,9 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(`${prefix}/whatsapp`, authMiddleware, requireActiveSubscription(), whatsappRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), chatRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), permissionsRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), rbacRolesRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), rbacCatalogRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), rbacUserRolesRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), auditTrailRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), privacyRouter);
 
@@ -215,7 +221,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireFinancialWriteOrProjectSellingCatalogOnMutations,
     categoriesRouter
   );
   app.use(
@@ -229,11 +235,7 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireWriteOnMutations(
-      'project_selling.catalog.write',
-      'project_selling.marketing_plans.write',
-      'project_selling.agreements.write'
-    ),
+    requireProjectSellingCatalogAccess,
     contactsRouter
   );
   app.use(
@@ -254,22 +256,14 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireWriteOnMutations(
-      'project_selling.catalog.write',
-      'project_selling.marketing_plans.write',
-      'project_selling.agreements.write'
-    ),
+    requireProjectSellingCatalogAccess,
     projectsRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireWriteOnMutations(
-      'project_selling.catalog.write',
-      'project_selling.marketing_plans.write',
-      'project_selling.agreements.write'
-    ),
+    requireProjectSellingCatalogAccess,
     unitsRouter
   );
   app.use(

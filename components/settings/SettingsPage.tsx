@@ -34,6 +34,8 @@ import WorkflowSettingsSection from './WorkflowSettingsSection';
 import ApprovalQueuePanel from '../workflow/ApprovalQueuePanel';
 import AccountingPeriodsSection from './AccountingPeriodsSection';
 import PermissionManagementSection from './PermissionManagementSection';
+import RoleManagementSection from './RoleManagementSection';
+import PermissionCatalogSection from './PermissionCatalogSection';
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
 import { usePermissions } from '../../hooks/usePermissions';
 import CustomerBillingPortal from '../billing/CustomerBillingPortal';
@@ -225,6 +227,8 @@ const SettingsPage: React.FC = () => {
 
     const showUserManagement = perms.canManageUsers || perms.canReadUsers;
     const showPermissionManagement = perms.canReadPermissions;
+    const showRoleManagement = perms.canViewRoles;
+    const showPermissionCatalog = perms.canViewPermissionCatalog;
     const showBillingPortal =
         perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers;
 
@@ -254,7 +258,7 @@ const SettingsPage: React.FC = () => {
                         { id: 'users', label: 'User Management', icon: ICONS.users },
                     ] : []),
                     ...(showPermissionManagement ? [
-                        { id: 'permissions', label: 'Permissions', icon: ICONS.lock },
+                        { id: 'permissions', label: 'Permission Matrix', icon: ICONS.lock },
                     ] : []),
                     ...(perms.canReadAuditLogs
                       ? [{ id: 'audit-trail', label: 'Audit Trail', icon: ICONS.fileText }]
@@ -267,6 +271,19 @@ const SettingsPage: React.FC = () => {
                     { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
                 ]
             },
+            ...(showRoleManagement || showPermissionCatalog
+              ? [{
+                  title: 'Administration',
+                  items: [
+                    ...(showRoleManagement
+                      ? [{ id: 'role-management', label: 'Role Management', icon: ICONS.users }]
+                      : []),
+                    ...(showPermissionCatalog
+                      ? [{ id: 'permission-catalog', label: 'Permission Catalog', icon: ICONS.lock }]
+                      : []),
+                  ],
+                }]
+              : []),
             ...(!isSalesUser
               ? [{
                   title: 'Financial',
@@ -296,6 +313,8 @@ const SettingsPage: React.FC = () => {
         perms.enterpriseRole,
         showUserManagement,
         showPermissionManagement,
+        showRoleManagement,
+        showPermissionCatalog,
         perms.canReadAuditLogs,
         isSalesUser,
     ]);
@@ -1387,6 +1406,12 @@ const SettingsPage: React.FC = () => {
                         )}
                         {activeCategory === 'permissions' && showPermissionManagement && (
                             <PermissionManagementSection />
+                        )}
+                        {activeCategory === 'role-management' && showRoleManagement && (
+                            <RoleManagementSection />
+                        )}
+                        {activeCategory === 'permission-catalog' && showPermissionCatalog && (
+                            <PermissionCatalogSection />
                         )}
                         {activeCategory === 'audit-trail' && perms.canReadAuditLogs && (
                             <EnterpriseAuditViewer key={authTenant?.id ?? 'no-tenant'} />

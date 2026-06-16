@@ -1,5 +1,6 @@
 
 import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelectiveState';
+import { useProjectSellingCatalogBootstrap } from '../../hooks/useProjectSellingCatalogBootstrap';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -58,6 +59,7 @@ const assetGroups: AssetGroup[] = [
 
 const AssetsManagement: React.FC = () => {
         const appState = useEntityCatalogState();
+    useProjectSellingCatalogBootstrap();
     const appDispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
     /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */

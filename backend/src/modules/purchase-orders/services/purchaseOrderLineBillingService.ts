@@ -220,6 +220,7 @@ export async function listPoBillingLines(
       id: row.id,
       itemName: row.item_name ?? undefined,
       description: row.description ?? undefined,
+      categoryId: row.category_id ?? undefined,
       orderedQty,
       receivedQty,
       billedQty,

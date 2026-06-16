@@ -51,6 +51,7 @@ export type PoBillingLine = {
   id: string;
   itemName?: string;
   description?: string;
+  categoryId?: string;
   orderedQty: number;
   receivedQty: number;
   billedQty: number;

@@ -34,6 +34,8 @@ interface NotificationContextType {
   showConfirm: (message: string, options?: DialogOptions) => Promise<boolean>;
   showProgress: (message: string) => void;
   hideProgress: () => void;
+  /** @deprecated Prefer showToast / showAlert — kept for legacy settings components */
+  showNotification: (message: string, type?: NotificationType) => void;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -171,6 +173,17 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
     setProgressMessage(null);
   }, []);
 
+  const showNotification = useCallback(
+    (message: string, type: NotificationType = 'info') => {
+      if (type === 'error') {
+        void showAlert(message, { title: 'Notice' });
+        return;
+      }
+      showToast(message, type);
+    },
+    [showToast, showAlert]
+  );
+
   /**
    * Full-screen progress / modal dialogs sit above the entire app (z-[10000]). If they stay open
    * after logout, they block clicks and keyboard on the sign-in screen. Tear down whenever there
@@ -199,8 +212,8 @@ export const NotificationProvider: React.FC<{ children: ReactNode }> = ({ childr
   };
 
   const contextValue = useMemo(() => ({
-    showToast, showAlert, showConfirm, showProgress, hideProgress,
-  }), [showToast, showAlert, showConfirm, showProgress, hideProgress]);
+    showToast, showAlert, showConfirm, showProgress, hideProgress, showNotification,
+  }), [showToast, showAlert, showConfirm, showProgress, hideProgress, showNotification]);
 
   return (
     <NotificationContext.Provider value={contextValue}>

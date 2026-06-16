@@ -110,6 +110,10 @@ export type PayrollLedgerType = (typeof PAYROLL_LEDGER_TYPES)[number];
 
 syncFile('shared/rbac/permissions.ts', 'backend/src/auth/permissions.ts');
 
+syncFile('shared/rbac/permissionGroups.ts', 'backend/src/auth/permissionGroups.ts', (s) =>
+  s.replace("from './permissions.js'", "from './permissions.js'")
+);
+
 syncFile('shared/rbac/mfaPolicy.ts', 'backend/src/auth/mfaPolicy.ts', (s) =>
   s.replace("from './permissions'", "from './permissions.js'")
 );

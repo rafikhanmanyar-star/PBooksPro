@@ -12,6 +12,7 @@ import { validatePassword } from '../../../utils/passwordPolicy.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { ensureUserTenantMembership } from '../../../services/auth/userTenantService.js';
+import { syncUserRbacFromLegacyRole } from '../../rbac/services/rbacUserRoleService.js';
 import {
   assertUserIdentityAvailable,
   identityConflictApiDetails,
@@ -177,6 +178,7 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
         [id, tenantId, username, name.trim(), role, passwordHash, emailVal]
       );
       await ensureUserTenantMembership(client, id, tenantId, role);
+      await syncUserRbacFromLegacyRole(client, tenantId, id, role, req.userId ?? null);
       const row = rowToApi(r.rows[0]);
       await appendAuditEvent(client, {
         tenantId,
@@ -191,6 +193,7 @@ usersRouter.post('/users', requirePermission('users.manage'), requireResourceQuo
       });
       return row;
     });
+    invalidateAuthUserCache(id, tenantId);
     emitEntityEvent(tenantId, 'created', 'user', { data: created, sourceUserId: req.userId });
     sendSuccess(res, created, 201);
   } catch (e: unknown) {
@@ -269,6 +272,7 @@ usersRouter.put('/users/:id', requirePermission('users.manage'), async (req: Aut
 
       // Login JWT + authMiddleware read role from user_tenants — keep in sync with users.role.
       await ensureUserTenantMembership(client, id, tenantId, role);
+      await syncUserRbacFromLegacyRole(client, tenantId, id, role, req.userId ?? null);
 
       const apiRow = rowToApi(row);
       const roleChanged = before.role !== role;

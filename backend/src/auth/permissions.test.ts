@@ -6,6 +6,8 @@ import {
   permissionsForRole,
   buildPermissionMatrix,
   roleCanWriteProjectSelling,
+  roleCanReadProjectSellingCatalog,
+  roleCanWriteProjectSellingCatalog,
   roleCanViewAllMarketingPlans,
   roleCanApproveMarketingPlans,
 } from './permissions.js';
@@ -17,6 +19,8 @@ describe('permissions matrix', () => {
 
   it('super admin has all permissions including permissions.manage', () => {
     assert.equal(roleHasPermission('SUPER_ADMIN', 'permissions.manage'), true);
+    assert.equal(roleHasPermission('SUPER_ADMIN', 'permissions.view'), true);
+    assert.equal(roleHasPermission('SUPER_ADMIN', 'roles.manage'), true);
     assert.equal(roleHasPermission('SUPER_ADMIN', 'reports.trial_balance.read'), true);
   });
 
@@ -32,6 +36,8 @@ describe('permissions matrix', () => {
     assert.equal(roleHasPermission('Sales User', 'project_selling.invoices.write'), true);
     assert.equal(roleHasPermission('Sales User', 'project_selling.payments.receive'), true);
     assert.equal(roleCanWriteProjectSelling('Sales User'), true);
+    assert.equal(roleCanReadProjectSellingCatalog('Sales User'), true);
+    assert.equal(roleCanWriteProjectSellingCatalog('Sales User'), true);
   });
 
   it('maps legacy Sales role to sales_user permissions', () => {

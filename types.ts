@@ -1033,6 +1033,8 @@ export interface WhatsAppTemplates {
   billToOwner?: string;
   billToTenant?: string;
   vendorGreeting: string;
+  purchaseOrder?: string;
+  goodsReceiptConfirmation?: string;
   ownerPayoutLedger?: string;
   brokerPayoutLedger?: string;
   payoutConfirmation?: string;

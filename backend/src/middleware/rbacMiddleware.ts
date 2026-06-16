@@ -4,8 +4,11 @@ import { sendFailure } from '../utils/apiResponse.js';
 import {
   type EnterpriseRole,
   type Permission,
+  permissionSetHas,
   permissionsForRole,
   resolveEnterpriseRole,
+  roleCanReadProjectSellingCatalog,
+  roleCanWriteProjectSellingCatalog,
   roleHasAllPermissions,
   roleHasAnyPermission,
   roleHasPermission,
@@ -13,11 +16,18 @@ import {
 
 export { permissionsForRole, resolveEnterpriseRole, roleHasPermission };
 
+function requestHasPermission(req: AuthedRequest, permission: Permission): boolean {
+  const resolved = req.resolvedPermissions;
+  if (resolved && resolved.length > 0) {
+    return permissionSetHas(resolved, permission);
+  }
+  return roleHasPermission(req.role, permission);
+}
+
 /** Require a single permission (server-side enforcement). */
 export function requirePermission(permission: Permission): RequestHandler {
   return (req, res, next) => {
-    const role = (req as AuthedRequest).role;
-    if (roleHasPermission(role, permission)) {
+    if (requestHasPermission(req as AuthedRequest, permission)) {
       next();
       return;
     }
@@ -28,8 +38,8 @@ export function requirePermission(permission: Permission): RequestHandler {
 /** Require any one of the listed permissions. */
 export function requireAnyPermission(...permissions: Permission[]): RequestHandler {
   return (req, res, next) => {
-    const role = (req as AuthedRequest).role;
-    if (roleHasAnyPermission(role, permissions)) {
+    const authed = req as AuthedRequest;
+    if (permissions.some((p) => requestHasPermission(authed, p))) {
       next();
       return;
     }
@@ -40,8 +50,8 @@ export function requireAnyPermission(...permissions: Permission[]): RequestHandl
 /** Require all listed permissions. */
 export function requireAllPermissions(...permissions: Permission[]): RequestHandler {
   return (req, res, next) => {
-    const role = (req as AuthedRequest).role;
-    if (roleHasAllPermissions(role, permissions)) {
+    const authed = req as AuthedRequest;
+    if (permissions.every((p) => requestHasPermission(authed, p))) {
       next();
       return;
     }
@@ -111,6 +121,44 @@ export function requireWriteOnMutations(...permissions: Permission[]): RequestHa
     return requireAnyPermission('financial.write', ...permissions)(req, res, next);
   };
 }
+
+/**
+ * Projects, units, and sales contacts — read + write for project selling catalog.
+ * GET requires project_selling.read (or financial.write / catalog write bundle).
+ * Mutations require catalog.write, marketing_plans.write, agreements.write, or financial.write.
+ */
+export const requireProjectSellingCatalogAccess: RequestHandler = (req, res, next) => {
+  const role = (req as AuthedRequest).role;
+  const method = (req.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    if (roleCanReadProjectSellingCatalog(role)) {
+      next();
+      return;
+    }
+    sendFailure(res, 403, 'FORBIDDEN', 'Missing permission: project_selling.read');
+    return;
+  }
+  if (roleCanWriteProjectSellingCatalog(role)) {
+    next();
+    return;
+  }
+  sendFailure(res, 403, 'FORBIDDEN', 'Insufficient permissions for project selling catalog');
+};
+
+/** Categories: open read; sales users may create expense categories for marketing discounts. */
+export const requireFinancialWriteOrProjectSellingCatalogOnMutations: RequestHandler = (req, res, next) => {
+  const method = (req.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    next();
+    return;
+  }
+  return requireAnyPermission(
+    'financial.write',
+    'project_selling.catalog.write',
+    'project_selling.marketing_plans.write',
+    'project_selling.agreements.write'
+  )(req, res, next);
+};
 
 /** Payroll: GET requires payroll.read; mutations require payroll.write. */
 export const requirePayrollAccess: RequestHandler = (req, res, next) => {
