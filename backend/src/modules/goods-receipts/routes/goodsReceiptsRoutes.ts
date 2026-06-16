@@ -246,10 +246,10 @@ goodsReceiptsRouter.delete('/goods-receipts/:id', requireEdit, async (req: Authe
     return;
   }
   try {
-    const ok = await withTransaction((client) =>
+    const result = await withTransaction((client) =>
       softDeleteGoodsReceipt(client, tenantId, req.params.id, req.userId ?? null)
     );
-    if (!ok) {
+    if (!result.deleted) {
       sendFailure(res, 404, 'NOT_FOUND', 'Goods receipt not found');
       return;
     }
@@ -257,6 +257,14 @@ goodsReceiptsRouter.delete('/goods-receipts/:id', requireEdit, async (req: Authe
       id: req.params.id,
       sourceUserId: req.userId,
     });
+    if (result.purchaseOrder) {
+      emitEntityEvent(tenantId, 'updated', 'purchase_order', {
+        data: rowToPurchaseOrderApi(result.purchaseOrder),
+        id: result.purchaseOrder.id,
+        sourceUserId: req.userId,
+        version: result.purchaseOrder.version,
+      });
+    }
     sendSuccess(res, { deleted: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

@@ -63,10 +63,6 @@ function passesTenantScope(payload: RealtimeEntityPayload, ctx: InvalidateEntity
   return true;
 }
 
-function isOwnMutation(payload: RealtimeEntityPayload, ctx: InvalidateEntityEventContext): boolean {
-  return !!(payload.sourceUserId && ctx.currentUserId && payload.sourceUserId === ctx.currentUserId);
-}
-
 function isSettingsBulkRefresh(payload: RealtimeEntityPayload): boolean {
   const data = payload.data;
   return (
@@ -131,8 +127,6 @@ export async function invalidateQueriesForEntityEvent(
   if (SELLING_ANALYTICS_ENTITY_TYPES.has(entityType)) {
     await invalidateSellingAnalytics(queryClient);
   }
-
-  if (isOwnMutation(payload, ctx)) return;
 
   if (FINANCIAL_ENTITY_TYPES.has(entityType)) {
     await queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all });

@@ -425,10 +425,73 @@ export async function softDeleteGoodsReceipt(
 ) {
   const repo = new GoodsReceiptRepository(tenantId);
   const row = await repo.getById(client, id);
-  if (!row) return false;
-  if (row.status !== 'Draft') throw new Error('Only draft goods receipts can be deleted.');
+  if (!row) return { deleted: false as const };
+  if (!['Draft', 'Posted', 'Closed'].includes(row.status)) {
+    throw new Error(`Goods receipt in status "${row.status}" cannot be deleted.`);
+  }
+
+  const poRepo = new PurchaseOrderRepository(tenantId);
+  let updatedPo: Awaited<ReturnType<PurchaseOrderRepository['getById']>> | null = null;
+
+  if (row.status === 'Posted' || row.status === 'Closed') {
+    const lines = await new GoodsReceiptLineRepository(tenantId).listForGrn(client, id);
+    for (const line of lines) {
+      if (!line.purchase_order_line_id) continue;
+      const nextR = await client.query<{ qty: string }>(
+        `SELECT COALESCE(SUM(gl.received_qty), 0)::text AS qty
+         FROM goods_receipt_lines gl
+         JOIN goods_receipts gr ON gr.id = gl.goods_receipt_id AND gr.tenant_id = gl.tenant_id
+         WHERE gl.tenant_id = $1
+           AND gl.purchase_order_line_id = $2
+           AND gr.purchase_order_id = $3
+           AND gr.deleted_at IS NULL
+           AND gr.status IN ('Posted', 'Closed')
+           AND gr.id <> $4`,
+        [tenantId, line.purchase_order_line_id, row.purchase_order_id, id]
+      );
+      const nextReceivedQty = Number(nextR.rows[0]?.qty ?? 0);
+      const poLineR = await client.query<{ billed_qty: string }>(
+        `SELECT billed_qty::text
+         FROM purchase_order_lines
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, line.purchase_order_line_id]
+      );
+      const billedQty = Number(poLineR.rows[0]?.billed_qty ?? 0);
+      if (billedQty > nextReceivedQty + 0.0001) {
+        throw new Error(
+          'Cannot delete this posted goods receipt because billed quantity would exceed received quantity on linked PO lines.'
+        );
+      }
+      await client.query(
+        `UPDATE purchase_order_lines
+         SET received_qty = $3
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, line.purchase_order_line_id, nextReceivedQty]
+      );
+    }
+  }
+
   const ok = await repo.markDeleted(client, id);
-  if (!ok) return false;
+  if (!ok) return { deleted: false as const };
+
+  if (row.status === 'Posted' || row.status === 'Closed') {
+    const nextReceivedAmount = await repo.sumPostedReceivedAmountForPo(client, row.purchase_order_id);
+    updatedPo = await poRepo.updateReceivedAmount(client, row.purchase_order_id, nextReceivedAmount);
+    if (updatedPo) {
+      await recordDomainMutation(client, {
+        tenantId,
+        userId,
+        module: 'purchase_orders',
+        entityType: 'purchase_order',
+        entityId: updatedPo.id,
+        action: 'update',
+        auditAction: 'updated',
+        summary: `PO ${updatedPo.po_number} received amount updated after GRN reversal`,
+        newValue: rowToPurchaseOrderApi(updatedPo),
+        version: updatedPo.version,
+      });
+    }
+  }
 
   await recordDomainMutation(client, {
     tenantId,
@@ -441,7 +504,7 @@ export async function softDeleteGoodsReceipt(
     summary: `Goods receipt ${row.grn_number} deleted`,
     oldValue: rowToGoodsReceiptApi(row),
   });
-  return true;
+  return { deleted: true as const, purchaseOrder: updatedPo };
 }
 
 export async function getPoReceiptContext(

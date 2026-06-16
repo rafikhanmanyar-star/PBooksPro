@@ -16,6 +16,28 @@ export const WORKFLOW_ENTITY_TYPES: readonly WorkflowEntityType[] = [
   'variation_order',
 ] as const;
 
+export const WORKFLOW_ENTITY_LABELS: Record<WorkflowEntityType, string> = {
+  purchase_order: 'Purchase Order',
+  contract: 'Contract',
+  bill: 'Vendor Bill',
+  payment: 'Payment',
+  retention_release: 'Retention Release',
+  variation_order: 'Variation Order',
+};
+
+export const WORKFLOW_ENTITY_SHORT_LABELS: Record<WorkflowEntityType, string> = {
+  purchase_order: 'PO',
+  contract: 'Contract',
+  bill: 'Bill',
+  payment: 'Payment',
+  retention_release: 'Retention',
+  variation_order: 'Variation',
+};
+
+export function isWorkflowEntityType(type: string): type is WorkflowEntityType {
+  return (WORKFLOW_ENTITY_TYPES as readonly string[]).includes(type);
+}
+
 export type ApprovalRequestStatus =
   | 'pending'
   | 'approved'

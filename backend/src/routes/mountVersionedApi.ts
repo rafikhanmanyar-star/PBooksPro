@@ -277,6 +277,12 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
+    quotationIntelligenceRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
     requireFinancialWriteOnMutations,
     quotationsRouter
   );
@@ -286,12 +292,6 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     requireActiveSubscription(),
     requireFinancialWriteOnMutations,
     quotationValidationRouter
-  );
-  app.use(
-    prefix,
-    authMiddleware,
-    requireActiveSubscription(),
-    quotationIntelligenceRouter
   );
   app.use(
     prefix,

@@ -1,3 +1,5 @@
+import type { WorkflowEntityType } from '../shared/workflow/workflowTypes';
+
 export type InterfaceMode = 'auto' | 'full_erp' | 'executive_mobile';
 
 export type UnpostedTransactionStatus =
@@ -167,9 +169,13 @@ export type QuickActionId =
   | 'quick_capture'
   | 'construction_health';
 
+export type MobileLegacyApprovalType = 'pev' | 'installment_plan' | 'contractor_bill';
+
+export type MobileApprovalType = WorkflowEntityType | MobileLegacyApprovalType;
+
 export type MobileApprovalItem = {
   id: string;
-  type: 'pev' | 'installment_plan' | 'contractor_bill';
+  type: MobileApprovalType;
   title: string;
   subtitle?: string;
   amount?: number;
@@ -182,6 +188,12 @@ export type MobileApprovalItem = {
   requiresFullErp?: boolean;
   reviewedAt?: string;
   reviewedByName?: string;
+  /** Workflow approval request id (same as id for workflow-backed items). */
+  workflowRequestId?: string;
+  entityId?: string;
+  currentLevel?: number;
+  maxLevel?: number;
+  entityRef?: string;
 };
 
 export type MobileInstallmentPlanDetail = {
@@ -223,6 +235,9 @@ export type MobileNotificationItem = {
   body: string;
   severity: 'info' | 'warning' | 'urgent';
   createdAt: string;
-  actionType?: 'approval' | 'pev' | 'installment_plan' | 'unposted';
+  actionType?: 'approval' | 'approval_request' | 'pev' | 'installment_plan' | 'unposted' | 'contract';
   actionId?: string;
+  entityType?: string;
+  entityId?: string;
+  workflowEntityType?: string;
 };

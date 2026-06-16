@@ -53,7 +53,13 @@ export async function assertUserIsMarketingPlanApprover(
   approverUserId: string
 ): Promise<void> {
   const r = await client.query<{ role: string }>(
-    `SELECT role FROM users WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+    `SELECT ut.role
+     FROM user_tenants ut
+     INNER JOIN users u ON u.id = ut.user_id
+     WHERE ut.tenant_id = $1
+       AND ut.user_id = $2
+       AND u.deleted_at IS NULL
+       AND u.is_active = TRUE`,
     [tenantId, approverUserId]
   );
   const role = r.rows[0]?.role;
@@ -67,9 +73,12 @@ export async function listMarketingPlanApprovers(
   tenantId: string
 ): Promise<Array<{ id: string; name: string; username: string; role: string }>> {
   const r = await client.query<{ id: string; name: string; username: string; role: string }>(
-    `SELECT id, name, username, role
-     FROM users
-     WHERE tenant_id = $1 AND deleted_at IS NULL
+    `SELECT u.id, u.name, u.username, ut.role
+     FROM user_tenants ut
+     INNER JOIN users u ON u.id = ut.user_id
+     WHERE ut.tenant_id = $1
+       AND u.deleted_at IS NULL
+       AND u.is_active = TRUE
      ORDER BY name ASC, username ASC`,
     [tenantId]
   );

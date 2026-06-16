@@ -243,6 +243,39 @@ export async function getContractById(
   return new ContractRepository(tenantId).getById(client, id);
 }
 
+export async function recalculateContractStatusFromPayments(
+  client: pg.PoolClient,
+  tenantId: string,
+  contractId: string
+): Promise<void> {
+  const contract = await getContractById(client, tenantId, contractId);
+  if (!contract) return;
+  if (contract.status === 'Terminated') return;
+
+  const sumR = await client.query<{ sum: string | null }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS sum
+     FROM transactions
+     WHERE tenant_id = $1 AND contract_id = $2 AND deleted_at IS NULL`,
+    [tenantId, contractId]
+  );
+  const totalPaid = Number(sumR.rows[0]?.sum ?? 0);
+  const totalAmount = Number(contract.total_amount ?? 0);
+  const isFullyPaid = totalPaid >= totalAmount - 1.0;
+
+  let nextStatus = contract.status;
+  if (isFullyPaid && contract.status === 'Active') nextStatus = 'Completed';
+  else if (!isFullyPaid && contract.status === 'Completed') nextStatus = 'Active';
+
+  if (nextStatus === contract.status) return;
+
+  await client.query(
+    `UPDATE contracts
+     SET status = $3, version = version + 1, updated_at = NOW()
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+    [contractId, tenantId, nextStatus]
+  );
+}
+
 export async function getContractByIdIncludingDeleted(
   client: pg.PoolClient,
   tenantId: string,

@@ -978,6 +978,27 @@ export interface ComparativeBalanceSheetResult {
   compareMode: BalanceSheetCompareMode;
 }
 
+export function selectBalanceSheetView(
+  result: BalanceSheetReportResult | ComparativeBalanceSheetResult
+): {
+  report: BalanceSheetReportResult;
+  previousReport: BalanceSheetReportResult | null;
+  previousAsOfDate: string | null;
+} {
+  if ('current' in result && 'previous' in result) {
+    return {
+      report: result.current,
+      previousReport: result.previous,
+      previousAsOfDate: result.previousAsOfDate,
+    };
+  }
+  return {
+    report: result,
+    previousReport: null,
+    previousAsOfDate: null,
+  };
+}
+
 /** Run balance sheet for current and prior period (year or month). */
 export function computeComparativeBalanceSheetReport(
   state: BalanceSheetStateInput,

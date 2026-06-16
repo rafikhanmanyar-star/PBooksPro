@@ -14,10 +14,10 @@ import {
   computeComparativeBalanceSheetReport,
   BS_GROUP_LABELS,
   flattenBalanceSheetLines,
+  selectBalanceSheetView,
   type BalanceSheetLine,
   type BsGroupKey,
   type BalanceSheetReportResult,
-  type ComparativeBalanceSheetResult,
   type BalanceSheetCompareMode,
 } from './balanceSheetEngine';
 import { computeProjectFinancialPosition } from './projectFinancialPositionEngine';
@@ -54,12 +54,6 @@ function groupLinesByKey(lines: BalanceSheetLine[]): Map<BsGroupKey, BalanceShee
     m.set(line.groupKey, arr);
   }
   return m;
-}
-
-function isComparativeResult(
-  r: BalanceSheetReportResult | ComparativeBalanceSheetResult
-): r is ComparativeBalanceSheetResult {
-  return 'current' in r && 'previous' in r;
 }
 
 const FISCAL_START_MONTH = 1;
@@ -167,20 +161,10 @@ const ProjectBalanceSheetReport: React.FC = () => {
     });
   }, [reportState, engineOptions, compareMode]);
 
-  const report: BalanceSheetReportResult | null = serverReport
-    
-      ? clientResult.current
-      : clientResult;
-
-  const previousReport: BalanceSheetReportResult | null = serverPreviousReport
-    
-      ? clientResult.previous
-      : null;
-
-  const previousAsOfDate: string | null = serverPreviousDate
-    
-      ? clientResult.previousAsOfDate
-      : null;
+  const selectedView = useMemo(() => selectBalanceSheetView(clientResult), [clientResult]);
+  const report: BalanceSheetReportResult | null = selectedView.report;
+  const previousReport: BalanceSheetReportResult | null = selectedView.previousReport;
+  const previousAsOfDate: string | null = selectedView.previousAsOfDate;
 
   const projectAnalysisRows = useMemo(() => {
     if (!includeProjectAnalysis || !report) return [];

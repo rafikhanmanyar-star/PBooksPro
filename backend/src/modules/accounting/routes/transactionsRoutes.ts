@@ -17,6 +17,7 @@ import {
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
 import { getBillById, rowToBillApi } from '../../vendors/services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
+import { getContractById, rowToContractApi } from '../../vendors/services/contractsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { memoryCacheDeletePrefix } from '../../../utils/memoryCache.js';
 
@@ -26,9 +27,10 @@ async function emitRecalculatedInvoiceBillEvents(
   tenantId: string,
   userId: string | undefined,
   affectedInvoiceIds: string[],
-  affectedBillIds: string[]
+  affectedBillIds: string[],
+  affectedContractIds: string[] = []
 ): Promise<void> {
-  if (affectedInvoiceIds.length === 0 && affectedBillIds.length === 0) return;
+  if (affectedInvoiceIds.length === 0 && affectedBillIds.length === 0 && affectedContractIds.length === 0) return;
   const pool = getPool();
   const c = await pool.connect();
   try {
@@ -46,6 +48,15 @@ async function emitRecalculatedInvoiceBillEvents(
       if (billRow) {
         emitEntityEvent(tenantId, 'updated', 'bill', {
           data: rowToBillApi(billRow),
+          sourceUserId: userId,
+        });
+      }
+    }
+    for (const cid of affectedContractIds) {
+      const contractRow = await getContractById(c, tenantId, cid);
+      if (contractRow) {
+        emitEntityEvent(tenantId, 'updated', 'contract', {
+          data: rowToContractApi(contractRow),
           sourceUserId: userId,
         });
       }
@@ -157,7 +168,8 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
       tenantId,
       req.userId,
       result.affectedInvoiceIds,
-      result.affectedBillIds
+      result.affectedBillIds,
+      result.affectedContractIds
     );
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
   } catch (e) {
@@ -204,7 +216,8 @@ transactionsRouter.put('/transactions/:id', async (req: AuthedRequest, res) => {
       tenantId,
       req.userId,
       result.affectedInvoiceIds,
-      result.affectedBillIds
+      result.affectedBillIds,
+      result.affectedContractIds
     );
     sendSuccess(res, apiRow);
   } catch (e) {
@@ -274,6 +287,15 @@ transactionsRouter.post('/transactions/:id/approve', async (req: AuthedRequest, 
           });
         }
       }
+      if (result.row.contract_id) {
+        const contractRow = await getContractById(c, tenantId, result.row.contract_id);
+        if (contractRow) {
+          emitEntityEvent(tenantId, 'updated', 'contract', {
+            data: rowToContractApi(contractRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
     } finally {
       c.release();
     }
@@ -330,6 +352,15 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
         if (billRow) {
           emitEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(billRow),
+            sourceUserId: req.userId,
+          });
+        }
+      }
+      if (result.recalculatedContractId) {
+        const contractRow = await getContractById(c, tenantId, result.recalculatedContractId);
+        if (contractRow) {
+          emitEntityEvent(tenantId, 'updated', 'contract', {
+            data: rowToContractApi(contractRow),
             sourceUserId: req.userId,
           });
         }

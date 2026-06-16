@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { formatPgDateToYyyyMmDd, parseApiDateToYyyyMmDd } from '../../../utils/dateOnly.js';
 import { recalculateBillPaymentAggregates } from '../../vendors/services/billsService.js';
 import { recalculateInvoicePaymentAggregates } from '../../customers/services/invoicesService.js';
+import { recalculateContractStatusFromPayments } from '../../vendors/services/contractsService.js';
 import {
   assertExpenseProjectCashAvailable,
   type ExpenseCashValidationBatchContext,
@@ -75,15 +76,18 @@ async function recalculateAggregatesForLinkedIds(
   tenantId: string,
   invoiceIds: (string | null | undefined)[],
   billIds: (string | null | undefined)[],
-  payslipIds: (string | null | undefined)[] = []
+  payslipIds: (string | null | undefined)[] = [],
+  contractIds: (string | null | undefined)[] = []
 ): Promise<void> {
   const inv = [...new Set(invoiceIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
   const bills = [...new Set(billIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
   const slips = [...new Set(payslipIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
+  const contracts = [...new Set(contractIds.filter((x): x is string => !!x && String(x).trim() !== ''))];
   await Promise.all([
     ...inv.map((id) => recalculateInvoicePaymentAggregates(client, tenantId, id)),
     ...bills.map((id) => recalculateBillPaymentAggregates(client, tenantId, id)),
     ...slips.map((id) => recalculatePayslipPaymentFromLedger(client, tenantId, id)),
+    ...contracts.map((id) => recalculateContractStatusFromPayments(client, tenantId, id)),
   ]);
 }
 
@@ -444,7 +448,14 @@ export async function createTransaction(
     const afterSubmit = await getTransactionById(client, tenantId, row.id);
     if (afterSubmit) effectiveRow = afterSubmit;
   } else {
-    await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
+    await recalculateAggregatesForLinkedIds(
+      client,
+      tenantId,
+      [row.invoice_id],
+      [row.bill_id],
+      [row.payslip_id],
+      [row.contract_id]
+    );
     await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
     if (!skipJournalMirror) {
       await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
@@ -484,6 +495,7 @@ export async function updateTransaction(
   conflict: boolean;
   affectedInvoiceIds: string[];
   affectedBillIds: string[];
+  affectedContractIds: string[];
 }> {
   const before = await getTransactionById(client, tenantId, id);
   const p = pickBody(body);
@@ -563,29 +575,30 @@ export async function updateTransaction(
       clientVersion: expectedVersion,
     });
     if (lww.conflict) {
-      return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [] };
+      return { row: null, conflict: true, affectedInvoiceIds: [], affectedBillIds: [], affectedContractIds: [] };
     }
   }
 
   const locked = await new TransactionRepository(tenantId).getByIdForUpdate(client, id);
   if (!locked) {
-    return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
+    return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [], affectedContractIds: [] };
   }
 
   const row = await new TransactionRepository(tenantId).updateActive(client, id, fieldVals);
   if (!row) {
-    return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [] };
+    return { row: null, conflict: false, affectedInvoiceIds: [], affectedBillIds: [], affectedContractIds: [] };
   }
   await recalculateAggregatesForLinkedIds(client, tenantId, [before?.invoice_id, row.invoice_id], [before?.bill_id, row.bill_id], [
     before?.payslip_id,
     row.payslip_id,
-  ]);
+  ], [before?.contract_id, row.contract_id]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, before, row);
   if (!isVendorSettlementCashMirrorReference(row.reference)) {
     await syncTransactionJournalMirror(client, tenantId, row, row.user_id);
   }
   const affectedInvoiceIds = [...new Set([before?.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([before?.bill_id, row.bill_id].filter(Boolean))] as string[];
+  const affectedContractIds = [...new Set([before?.contract_id, row.contract_id].filter(Boolean))] as string[];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -599,7 +612,7 @@ export async function updateTransaction(
     newValue: { id: row.id, type: row.type, amount: row.amount },
     version: row.version,
   });
-  return { row, conflict: false, affectedInvoiceIds, affectedBillIds };
+  return { row, conflict: false, affectedInvoiceIds, affectedBillIds, affectedContractIds };
 }
 
 export async function upsertTransaction(
@@ -613,6 +626,7 @@ export async function upsertTransaction(
   wasInsert: boolean;
   affectedInvoiceIds: string[];
   affectedBillIds: string[];
+  affectedContractIds: string[];
 }> {
   const p = pickBody(body);
   if (!p.type) throw new Error('type is required.');
@@ -630,6 +644,7 @@ export async function upsertTransaction(
       wasInsert: true,
       affectedInvoiceIds: row.invoice_id ? [row.invoice_id] : [],
       affectedBillIds: row.bill_id ? [row.bill_id] : [],
+      affectedContractIds: row.contract_id ? [row.contract_id] : [],
     };
   }
 
@@ -648,6 +663,7 @@ export async function upsertTransaction(
         wasInsert: false,
         affectedInvoiceIds: [],
         affectedBillIds: [],
+        affectedContractIds: [],
       };
     }
   }
@@ -660,6 +676,7 @@ export async function upsertTransaction(
       wasInsert: false,
       affectedInvoiceIds: [],
       affectedBillIds: [],
+      affectedContractIds: [],
     };
   }
 
@@ -694,7 +711,7 @@ export async function upsertTransaction(
   await recalculateAggregatesForLinkedIds(client, tenantId, [existing.invoice_id, row.invoice_id], [existing.bill_id, row.bill_id], [
     existing.payslip_id,
     row.payslip_id,
-  ]);
+  ], [existing.contract_id, row.contract_id]);
   if (existing.deleted_at) {
     await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
   } else {
@@ -705,6 +722,7 @@ export async function upsertTransaction(
   }
   const affectedInvoiceIds = [...new Set([existing.invoice_id, row.invoice_id].filter(Boolean))] as string[];
   const affectedBillIds = [...new Set([existing.bill_id, row.bill_id].filter(Boolean))] as string[];
+  const affectedContractIds = [...new Set([existing.contract_id, row.contract_id].filter(Boolean))] as string[];
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id,
@@ -722,7 +740,7 @@ export async function upsertTransaction(
     newValue: { id: row.id, type: row.type, amount: row.amount },
     version: row.version,
   });
-  return { row, conflict: false, wasInsert: false, affectedInvoiceIds, affectedBillIds };
+  return { row, conflict: false, wasInsert: false, affectedInvoiceIds, affectedBillIds, affectedContractIds };
 }
 
 export async function softDeleteTransaction(
@@ -735,6 +753,7 @@ export async function softDeleteTransaction(
   conflict: boolean;
   recalculatedInvoiceId?: string | null;
   recalculatedBillId?: string | null;
+  recalculatedContractId?: string | null;
 }> {
   const row = await getTransactionById(client, tenantId, id);
   if (!row) return { ok: false, conflict: false };
@@ -748,6 +767,7 @@ export async function softDeleteTransaction(
   const invoiceId = row.invoice_id;
   const billId = row.bill_id;
   const payslipId = row.payslip_id;
+  const contractId = row.contract_id;
 
   await syncOwnerSummariesForTransactionChange(client, tenantId, row, null);
 
@@ -772,6 +792,7 @@ export async function softDeleteTransaction(
 
   let recalculatedInvoiceId: string | null = null;
   let recalculatedBillId: string | null = null;
+  let recalculatedContractId: string | null = null;
   if (invoiceId) {
     await recalculateInvoicePaymentAggregates(client, tenantId, invoiceId);
     recalculatedInvoiceId = invoiceId;
@@ -782,6 +803,10 @@ export async function softDeleteTransaction(
   }
   if (payslipId) {
     await recalculatePayslipPaymentFromLedger(client, tenantId, payslipId);
+  }
+  if (contractId) {
+    await recalculateContractStatusFromPayments(client, tenantId, contractId);
+    recalculatedContractId = contractId;
   }
 
   const after = await getTransactionByIdIncludingDeleted(client, tenantId, id);
@@ -798,7 +823,7 @@ export async function softDeleteTransaction(
     version: after?.version ?? row.version + 1,
   });
 
-  return { ok: true, conflict: false, recalculatedInvoiceId, recalculatedBillId };
+  return { ok: true, conflict: false, recalculatedInvoiceId, recalculatedBillId, recalculatedContractId };
 }
 
 export async function listTransactionsChangedSince(
@@ -818,7 +843,7 @@ export async function postTransactionAfterApproval(
 ): Promise<TransactionRow> {
   const row = await getTransactionById(client, tenantId, transactionId);
   if (!row) throw new Error('Transaction not found.');
-  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id]);
+  await recalculateAggregatesForLinkedIds(client, tenantId, [row.invoice_id], [row.bill_id], [row.payslip_id], [row.contract_id]);
   await syncOwnerSummariesForTransactionChange(client, tenantId, null, row);
   await syncTransactionJournalMirror(client, tenantId, row, actorUserId);
   const refreshed = await getTransactionById(client, tenantId, transactionId);

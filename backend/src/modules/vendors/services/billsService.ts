@@ -12,6 +12,7 @@ import {
   assertBillAllowedAgainstPurchaseOrder,
   recalculatePurchaseOrderBilling,
 } from '../../purchase-orders/services/purchaseOrderBillingService.js';
+import { recalculateContractStatusFromPayments } from './contractsService.js';
 
 export type BillRow = {
   id: string;
@@ -709,6 +710,9 @@ export async function recalculateBillPaymentAggregates(
   else newStatus = 'Unpaid';
 
   await new BillRepository(tenantId).setPaymentAggregates(client, billId, paid, newStatus);
+  if (b.contract_id) {
+    await recalculateContractStatusFromPayments(client, tenantId, b.contract_id);
+  }
 }
 
 async function maybeInitBillWorkflowDraft(
