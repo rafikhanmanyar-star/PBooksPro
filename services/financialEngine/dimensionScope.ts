@@ -132,7 +132,7 @@ export function resolveJournalLineDimensions(
   return {
     projectId: normalizeDimensionId(line.projectId) ?? normalizeDimensionId(entry.projectId),
     buildingId: normalizeDimensionId(line.buildingId) ?? normalizeDimensionId(entry.buildingId),
-    costCenterId: normalizeDimensionId(line.costCenterId) ?? normalizeDimensionId(entry.costCenterId),
+    costCenterId: normalizeDimensionId(line.costCenterId),
   };
 }
 
@@ -195,10 +195,8 @@ export function buildDimensionSql(
     params.push(s.costCenterId);
     const n = params.length;
     const p = dimensionSqlParam(n, paramStyle);
-    return ` AND COALESCE(
-      NULLIF(TRIM(${lineAlias}.cost_center_id), ''),
-      NULLIF(TRIM(${entryAlias}.cost_center_id), '')
-    ) = ${p}`;
+    // cost_center_id exists on journal_lines only (not journal_entries).
+    return ` AND NULLIF(TRIM(${lineAlias}.cost_center_id), '') = ${p}`;
   }
   return '';
 }

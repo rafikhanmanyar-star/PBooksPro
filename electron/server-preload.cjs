@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('apiServerUI', {
   getState: () => ipcRenderer.invoke('server:get-state'),
   startServer: () => ipcRenderer.invoke('server:start'),
   stopServer: () => ipcRenderer.invoke('server:stop'),
+  runMigrations: () => ipcRenderer.invoke('server:run-migrations'),
   getLogs: () => ipcRenderer.invoke('server:get-logs'),
   openEnvFolder: () => ipcRenderer.invoke('server:open-env-folder'),
   checkForUpdate: () => ipcRenderer.invoke('server:check-update'),

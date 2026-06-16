@@ -157,6 +157,7 @@
   <div class="row">
     <button id="btnStart" type="button">Start API</button>
     <button id="btnStop" type="button" class="secondary">Stop API</button>
+    <button id="btnMigrate" type="button" class="secondary" style="display: none;">Initialize database</button>
     <button id="btnEnv" type="button" class="secondary">Open config folder (.env)</button>
     <button id="btnCheckUp" type="button" class="secondary">Check for updates</button>
   </div>
@@ -178,7 +179,7 @@
   <div class="hint">Health: <a id="healthLink" href="#" target="_blank">/health</a></div>
   <div class="logs" id="logs"></div>
   <p class="hint" id="envPathHint"></p>
-  <p class="hint">Requires Node.js on PATH. Put <code>DATABASE_URL</code> and <code>JWT_SECRET</code> in <code>.env</code> in the folder above (copy from your dev project <code>backend/.env</code>).</p>
+  <p class="hint" id="desktopSetupHint">Desktop edition: set <code>DATABASE_URL</code> and <code>JWT_SECRET</code> in <code>.env</code> (Open config folder). Run <strong>Initialize database</strong> once on a new PostgreSQL database, then <strong>Start API</strong>. No separate Node.js install is required in the packaged API Server.</p>
 
   <script src="server-ui.js"></script>
 </body>

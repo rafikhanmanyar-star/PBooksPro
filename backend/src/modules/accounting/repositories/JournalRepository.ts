@@ -776,7 +776,7 @@ export class JournalRepository extends TenantRepository {
     const params: unknown[] = [this.tenantId, options.from, options.to];
     const resolvedProject = `COALESCE(NULLIF(TRIM(jl.project_id), ''), NULLIF(TRIM(je.project_id), ''))`;
     const resolvedBuilding = `COALESCE(NULLIF(TRIM(jl.building_id), ''), NULLIF(TRIM(je.building_id), ''))`;
-    const resolvedCostCenter = `COALESCE(NULLIF(TRIM(jl.cost_center_id), ''), NULLIF(TRIM(je.cost_center_id), ''))`;
+    const resolvedCostCenter = `NULLIF(TRIM(jl.cost_center_id), '')`;
     const dateJoin = `FROM journal_lines jl
       INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
       WHERE je.tenant_id = $1

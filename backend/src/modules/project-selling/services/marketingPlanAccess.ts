@@ -58,8 +58,7 @@ export async function assertUserIsMarketingPlanApprover(
      INNER JOIN users u ON u.id = ut.user_id
      WHERE ut.tenant_id = $1
        AND ut.user_id = $2
-       AND u.deleted_at IS NULL
-       AND u.is_active = TRUE`,
+       AND COALESCE(u.is_active, TRUE) = TRUE`,
     [tenantId, approverUserId]
   );
   const role = r.rows[0]?.role;
@@ -77,8 +76,7 @@ export async function listMarketingPlanApprovers(
      FROM user_tenants ut
      INNER JOIN users u ON u.id = ut.user_id
      WHERE ut.tenant_id = $1
-       AND u.deleted_at IS NULL
-       AND u.is_active = TRUE
+       AND COALESCE(u.is_active, TRUE) = TRUE
      ORDER BY name ASC, username ASC`,
     [tenantId]
   );

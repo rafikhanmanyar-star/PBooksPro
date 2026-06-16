@@ -13,6 +13,7 @@ const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils
 let mainWindow = null;
 let tray = null;
 let apiChild = null;
+let migrationChild = null;
 let allowQuit = false;
 let autoUpdater = null;
 const logLines = [];
@@ -164,10 +165,47 @@ function ensureWritableBackendDirs() {
   }
 }
 
+/** Desktop on-prem API Server (Electron). Cloud SaaS runs Express on Render without this shell. */
+function isDesktopApiServerEdition() {
+  const edition = String(getMergedEnv().APP_EDITION || 'desktop')
+    .trim()
+    .toLowerCase();
+  return edition !== 'cloud';
+}
+
+function getBackendNodeExecutable() {
+  if (app.isPackaged) return process.execPath;
+  return process.env.PBOOKS_NODE || 'node';
+}
+
+function spawnBackendProcess(scriptPath, env, logPrefix) {
+  const prefix = logPrefix || '[backend]';
+  const childEnv = { ...env };
+  if (app.isPackaged) {
+    childEnv.ELECTRON_RUN_AS_NODE = '1';
+    childEnv.ELECTRON_NO_ATTACH_CONSOLE = '1';
+  }
+  const child = spawn(getBackendNodeExecutable(), [scriptPath], {
+    cwd: getBackendRoot(),
+    env: childEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  child.stdout.on('data', (buf) => pushLog(buf.toString()));
+  child.stderr.on('data', (buf) => pushLog(buf.toString()));
+  child.on('error', (err) => {
+    pushLog(prefix + ' spawn error: ' + (err && err.message ? err.message : String(err)));
+  });
+  return child;
+}
+
 function getMergedEnvForApi() {
   const merged = getMergedEnv();
   merged.PORT = String(resolvePort(merged));
   merged.PBOOKS_USER_DATA_DIR = app.getPath('userData');
+  if (!merged.APP_EDITION?.trim()) {
+    merged.APP_EDITION = 'desktop';
+  }
   if (!merged.BACKUP_STORAGE_PATH?.trim()) {
     merged.BACKUP_STORAGE_PATH = path.join(getUserBackendConfigDir(), 'backups', 'pg');
   }
@@ -350,8 +388,75 @@ function isRunning() {
   return apiChild && !apiChild.killed;
 }
 
+function isMigrating() {
+  return migrationChild && !migrationChild.killed;
+}
+
+function runDatabaseMigrations() {
+  if (!isDesktopApiServerEdition()) {
+    return {
+      ok: false,
+      message: 'Database setup from this app is only available for the desktop (on-prem) API Server.',
+    };
+  }
+  if (isMigrating()) {
+    return { ok: false, message: 'Database setup is already running.' };
+  }
+  if (isRunning()) {
+    return { ok: false, message: 'Stop the API before running database setup.' };
+  }
+
+  const migrateJs = path.join(getBackendRoot(), 'dist', 'migrate.js');
+  if (!fs.existsSync(migrateJs)) {
+    const msg = 'Migration runner missing: ' + migrateJs;
+    pushLog('[error] ' + msg);
+    return { ok: false, message: msg };
+  }
+
+  ensureWritableBackendDirs();
+  ensureUserBackendEnv();
+  const env = getMergedEnvForApi();
+  if (!env.DATABASE_URL) {
+    const target = path.join(getUserBackendConfigDir(), '.env');
+    const msg =
+      'DATABASE_URL is not set. Copy your project backend/.env to: ' + target + ' (button: Open folder).';
+    pushLog('[error] ' + msg);
+    return { ok: false, message: msg };
+  }
+
+  pushLog('[db] Applying PostgreSQL schema migrations (desktop edition)…');
+  const child = spawnBackendProcess(migrateJs, env, '[db]');
+  migrationChild = child;
+
+  return new Promise((resolve) => {
+    child.on('exit', (code, signal) => {
+      migrationChild = null;
+      broadcast({ type: 'state' });
+      if (code === 0) {
+        pushLog('[db] Database setup finished successfully.');
+        resolve({ ok: true, message: 'Database schema is up to date.' });
+      } else {
+        const msg = `Database setup failed (exit code=${code ?? 'null'} signal=${signal ?? 'null'}).`;
+        pushLog('[error] ' + msg);
+        resolve({ ok: false, message: msg });
+      }
+    });
+    child.on('error', (err) => {
+      migrationChild = null;
+      broadcast({ type: 'state' });
+      const msg = err && err.message ? err.message : String(err);
+      pushLog('[db] spawn error: ' + msg);
+      resolve({ ok: false, message: msg });
+    });
+    broadcast({ type: 'state' });
+  });
+}
+
 function startApiServer() {
   if (isRunning()) return { ok: true, message: 'Already running' };
+  if (isMigrating()) {
+    return { ok: false, message: 'Wait for database setup to finish before starting the API.' };
+  }
 
   const indexJs = getIndexPath();
   if (!fs.existsSync(indexJs)) {
@@ -371,17 +476,9 @@ function startApiServer() {
     return { ok: false, message: msg };
   }
 
-  const cwd = getBackendRoot();
-  const child = spawn('node', [indexJs], {
-    cwd,
-    env,
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-  });
+  const child = spawnBackendProcess(indexJs, env, '[api]');
 
   apiChild = child;
-  child.stdout.on('data', (buf) => pushLog(buf.toString()));
-  child.stderr.on('data', (buf) => pushLog(buf.toString()));
   child.on('exit', (code, signal) => {
     pushLog(`[process] exited code=${code} signal=${signal}`);
     apiChild = null;
@@ -394,7 +491,7 @@ function startApiServer() {
   });
 
   pushLog(
-    `[config] MFA enforcement: ${env.DISABLE_MFA_ENFORCEMENT === 'true' ? 'OFF' : 'ON'} | JWT_SECRET: ${env.JWT_SECRET ? 'set' : 'MISSING'}`
+    `[config] edition=${env.APP_EDITION || 'desktop'} | MFA enforcement: ${env.DISABLE_MFA_ENFORCEMENT === 'true' ? 'OFF' : 'ON'} | JWT_SECRET: ${env.JWT_SECRET ? 'set' : 'MISSING'}`
   );
   pushLog('[api] started');
   broadcast({ type: 'state' });
@@ -460,6 +557,16 @@ function createTray() {
       label: 'Open config folder (.env)',
       click: () => openEnvFolder(),
     },
+    ...(isDesktopApiServerEdition()
+      ? [
+          {
+            label: 'Initialize / upgrade database',
+            click: () => {
+              void runDatabaseMigrations();
+            },
+          },
+        ]
+      : []),
     { type: 'separator' },
     {
       label: 'Quit',
@@ -501,20 +608,27 @@ ipcMain.handle('server:get-app-version', () => app.getVersion());
 ipcMain.handle('server:get-state', () => {
   const port = getPort();
   const addresses = getApiEndpointAddresses(port);
+  const desktopEdition = isDesktopApiServerEdition();
   return {
     running: isRunning(),
+    migrating: isMigrating(),
+    desktopEdition,
+    desktopDatabaseSetup: desktopEdition,
     port,
     listenUrl: 'http://127.0.0.1:' + port + ' (API /api, health /health)',
     addresses,
     appVersion: app.getVersion(),
     appName: app.getName(),
     userEnvDir: getUserBackendConfigDir(),
+    usesBundledNode: app.isPackaged,
   };
 });
 
 ipcMain.handle('server:start', () => startApiServer());
 
 ipcMain.handle('server:stop', () => stopApiServer());
+
+ipcMain.handle('server:run-migrations', () => runDatabaseMigrations());
 
 ipcMain.handle('server:get-logs', () => logLines.join(''));
 

@@ -20,6 +20,7 @@ import {
 
 /** Child tables first. Missing tables are skipped (savepoint per table). */
 const CLEAR_TRANSACTION_TABLES = [
+  'bill_po_lines',
   'vendor_bill_advance_clearings',
   'contractor_bill_adjustments',
   'contractor_bills',
@@ -31,7 +32,20 @@ const CLEAR_TRANSACTION_TABLES = [
   'transactions',
   'invoices',
   'bills',
+  'goods_receipt_lines',
+  'goods_receipts',
+  'purchase_order_lines',
+  'purchase_orders',
+  'quotation_comparison_session_quotations',
+  'quotation_comparison_sessions',
+  'quotation_items',
+  'quotation_attachments',
+  'quotation_price_overrides',
+  'vendor_price_history',
+  'vendor_performance_ratings',
   'quotations',
+  'approval_request_actions',
+  'approval_requests',
   'recurring_invoice_templates',
   'contracts',
   'rental_agreements',
@@ -40,6 +54,7 @@ const CLEAR_TRANSACTION_TABLES = [
 ] as const;
 
 const FACTORY_RESET_EXTRA_TABLES = [
+  'document_metadata',
   'documents',
   'budgets',
   'units',
@@ -73,6 +88,22 @@ const FACTORY_RESET_EXTRA_TABLES = [
   'personal_categories',
   'personal_tasks',
   'app_settings',
+  'report_dashboard_pins',
+  'report_favorites',
+  'report_shares',
+  'report_schedules',
+  'report_definitions',
+  'report_templates',
+  'user_notifications',
+  'chat_messages',
+  'sync_queue',
+  'change_log',
+  'unposted_transactions',
+  'whatsapp_menu_sessions',
+  'whatsapp_messages',
+  'whatsapp_configs',
+  'audit_events',
+  'login_events',
 ] as const;
 
 export type TenantWipeResult = {

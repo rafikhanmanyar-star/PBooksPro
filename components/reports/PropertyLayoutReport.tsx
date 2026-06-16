@@ -106,7 +106,8 @@ interface PropertyBoxData {
 }
 
 interface BuildingData {
-    code: string;
+    id: string;
+    name: string;
     floors: {
         index: number;
         label: string;
@@ -282,6 +283,7 @@ const PropertyLayoutReport: React.FC = () => {
     const layoutInputs = useMemo(
         () => ({
             properties,
+            buildings,
             selectedBuildingId,
             invoices,
             transactions,
@@ -296,6 +298,7 @@ const PropertyLayoutReport: React.FC = () => {
         }),
         [
             properties,
+            buildings,
             selectedBuildingId,
             invoices,
             transactions,
@@ -468,6 +471,7 @@ const PropertyLayoutReport: React.FC = () => {
     const data = useMemo(() => {
         const {
             properties: layoutProperties,
+            buildings: layoutBuildings,
             selectedBuildingId: layoutBuildingId,
             invoices: layoutInvoices,
             transactions: layoutTransactions,
@@ -487,8 +491,9 @@ const PropertyLayoutReport: React.FC = () => {
         // If properties exist, prioritize Rental View.
 
         if (layoutProperties.length > 0) {
-            const buildingsMap: { [code: string]: BuildingData } = {};
+            const buildingsMap: { [id: string]: BuildingData } = {};
             const floorGroupsByBuilding = new Map<string, Map<number, BuildingData['floors'][number]>>();
+            const buildingById = new Map(layoutBuildings.map((b) => [b.id, b]));
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
@@ -681,26 +686,32 @@ const PropertyLayoutReport: React.FC = () => {
                     brokerPayoutPending,
                 };
 
-                if (!buildingsMap[parsed.buildingCode]) {
-                    buildingsMap[parsed.buildingCode] = { code: parsed.buildingCode, floors: [], unconventional: [] };
-                    floorGroupsByBuilding.set(parsed.buildingCode, new Map());
+                if (!buildingsMap[prop.buildingId]) {
+                    const building = buildingById.get(prop.buildingId);
+                    buildingsMap[prop.buildingId] = {
+                        id: prop.buildingId,
+                        name: building?.name || 'Unknown Building',
+                        floors: [],
+                        unconventional: [],
+                    };
+                    floorGroupsByBuilding.set(prop.buildingId, new Map());
                 }
 
                 if (parsed.isUnconventional) {
-                    buildingsMap[parsed.buildingCode].unconventional.push(boxData);
+                    buildingsMap[prop.buildingId].unconventional.push(boxData);
                 } else {
-                    const floorGroups = floorGroupsByBuilding.get(parsed.buildingCode)!;
+                    const floorGroups = floorGroupsByBuilding.get(prop.buildingId)!;
                     let floorGroup = floorGroups.get(parsed.floorIndex);
                     if (!floorGroup) {
                         floorGroup = { index: parsed.floorIndex, label: parsed.floorLabel, units: [] };
-                        buildingsMap[parsed.buildingCode].floors.push(floorGroup);
+                        buildingsMap[prop.buildingId].floors.push(floorGroup);
                         floorGroups.set(parsed.floorIndex, floorGroup);
                     }
                     floorGroup.units.push(boxData);
                 }
             });
 
-            const sortedBuildings = Object.values(buildingsMap).sort((a, b) => a.code.localeCompare(b.code));
+            const sortedBuildings = Object.values(buildingsMap).sort((a, b) => a.name.localeCompare(b.name));
 
             sortedBuildings.forEach(b => {
                 b.floors.sort((f1, f2) => f2.index - f1.index);
@@ -1034,9 +1045,9 @@ const PropertyLayoutReport: React.FC = () => {
                     ) : (
                         <div className="space-y-8">
                             {data.data.map((group) => (
-                                <div key={group.code || group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-toolbar/30">
+                                <div key={group.id} className="break-inside-avoid border-2 border-app-border rounded-xl p-4 bg-app-toolbar/30">
                                     <h3 className="text-lg font-bold text-primary mb-4 border-b-2 border-primary/25 pb-1 pl-1 bg-primary/10 rounded-lg px-3 py-2 shadow-ds-card">
-                                        {data.type === 'RENTAL' ? `Building ${group.code}` : group.name}
+                                        {group.name}
                                     </h3>
                                     <div className="flex flex-col gap-4">
                                         {group.floors.map((floor: any) => (
