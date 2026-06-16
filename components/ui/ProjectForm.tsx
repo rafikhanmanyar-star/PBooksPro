@@ -1,5 +1,5 @@
 
-import { useProjects } from '../../hooks/useSelectiveState';
+import { useProjectReportAppState, useProjects } from '../../hooks/useSelectiveState';
 import React, { useState, useEffect, useMemo } from 'react';
 import { Project, ProjectStatus } from '../../types';
 import Input from '../ui/Input';
@@ -20,6 +20,7 @@ interface ProjectFormProps {
 
 const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete, projectToEdit, initialName }) => {
     const projects = useProjects();
+    const reportState = useProjectReportAppState();
     const { showAlert } = useNotification();
     const [name, setName] = useState(projectToEdit?.name || initialName || '');
     const [description, setDescription] = useState(projectToEdit?.description || '');
@@ -32,8 +33,8 @@ const ProjectForm: React.FC<ProjectFormProps> = ({ onSubmit, onCancel, onDelete,
 
     const booksClearForClose = useMemo(() => {
         if (!projectToEdit?.id) return false;
-        return suggestProjectClosed(state, projectToEdit.id, toLocalDateString(new Date()));
-    }, [projects, projectToEdit?.id]);
+        return suggestProjectClosed(reportState, projectToEdit.id, toLocalDateString(new Date()));
+    }, [reportState, projectToEdit?.id]);
 
     useEffect(() => {
         setStatus(projectToEdit?.status || 'Active');

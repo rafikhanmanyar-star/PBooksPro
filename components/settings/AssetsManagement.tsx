@@ -3,7 +3,7 @@ import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelective
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
-import { Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
+import { AppAction, Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
@@ -421,17 +421,20 @@ const AssetsManagement: React.FC = () => {
                 }
             }
 
+            const projectAlreadyOnServer = isAuthenticated || hasAuthToken;
             if (editingEntity) {
                 appDispatch({
                     type: 'UPDATE_PROJECT',
-                    payload: projectPayload
-                });
+                    payload: projectPayload,
+                    ...(projectAlreadyOnServer ? { _isRemote: true } : {}),
+                } as AppAction);
                 showToast('Project updated successfully', 'success');
             } else {
                 appDispatch({
                     type: 'ADD_PROJECT',
-                    payload: projectPayload
-                });
+                    payload: projectPayload,
+                    ...(projectAlreadyOnServer ? { _isRemote: true } : {}),
+                } as AppAction);
                 showToast('Project added successfully', 'success');
             }
         } else if (selectedType === 'building') {

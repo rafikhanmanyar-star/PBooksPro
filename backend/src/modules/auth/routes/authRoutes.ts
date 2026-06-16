@@ -561,10 +561,17 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
         sendFailure(res, 503, 'DEMO_NOT_PROVISIONED', 'Demo environment is being prepared. Please try again shortly.');
         return;
       }
-      const tenantRow = await pool.query<{ tenant_name: string }>(
-        `SELECT name AS tenant_name FROM tenants WHERE id = $1`,
+      const tenantRow = await pool.query<{
+        tenant_name: string;
+        company_name: string | null;
+        email: string | null;
+        phone: string | null;
+        address: string | null;
+      }>(
+        `SELECT name AS tenant_name, company_name, email, phone, address FROM tenants WHERE id = $1`,
         [tenantId]
       );
+      const tenant = tenantRow.rows[0];
       const account = {
         userId: demoUser.id,
         tenantId: demoUser.tenant_id,
@@ -572,7 +579,11 @@ authRouter.post('/auth/login', loginLimiter, async (req, res) => {
         username: demoUser.username,
         name: demoUser.name,
         passwordHash: '',
-        tenantName: tenantRow.rows[0]?.tenant_name ?? demoUser.tenant_id,
+        tenantName: tenant?.tenant_name ?? demoUser.tenant_id,
+        tenantCompanyName: tenant?.company_name ?? null,
+        tenantEmail: tenant?.email ?? null,
+        tenantPhone: tenant?.phone ?? null,
+        tenantAddress: tenant?.address ?? null,
         displayTimezone: demoUser.display_timezone ?? null,
         interfaceMode: demoUser.interface_mode ?? 'auto',
         email: demoUser.email,

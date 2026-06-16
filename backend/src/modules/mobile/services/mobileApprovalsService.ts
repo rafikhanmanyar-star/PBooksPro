@@ -13,6 +13,10 @@ import {
   upsertInstallmentPlan,
 } from '../../project-selling/services/installmentPlansService.js';
 import {
+  normalizeMarketingPlanStatus,
+  roleCanApproveMarketingPlans,
+} from '../../project-selling/services/marketingPlanAccess.js';
+import {
   type MobileApprovalItem,
   isPendingInstallmentPlan,
   marketingPlanVisibleToMobileUser,
@@ -40,11 +44,11 @@ export async function listMobileApprovals(
   role: string | undefined
 ): Promise<MobileApprovalItem[]> {
   const canApprovePeV = roleHasPermission(role, 'pev.approve');
-  const canApprovePlans = roleHasPermission(role, 'financial.write');
+  const canApprovePlans = roleCanApproveMarketingPlans(role);
 
   const [pevRows, planRows, contractorRows] = await Promise.all([
     listProjectExpenseVouchers(client, tenantId, { status: 'submitted' }),
-    listInstallmentPlans(client, tenantId),
+    listInstallmentPlans(client, tenantId, undefined, { userId, role }),
     client
       .query<{
         id: string;
@@ -160,13 +164,13 @@ export async function approveMobileApproval(
     return rowToPeVApi(row);
   }
   if (type === 'installment_plan') {
-    if (!roleHasPermission(role, 'financial.write')) {
+    if (!roleCanApproveMarketingPlans(role)) {
       throw new Error('Insufficient permissions to approve installment plans');
     }
-    const existing = await getInstallmentPlanById(client, tenantId, id);
+    const existing = await getInstallmentPlanById(client, tenantId, id, { userId, role });
     if (!existing) throw new Error('Installment plan not found');
-    if (!isPendingInstallmentPlan(existing.status, existing.approval_requested_to, userId)) {
-      throw new Error('Plan is not pending your approval');
+    if (normalizeMarketingPlanStatus(existing.status) !== 'pending approval') {
+      throw new Error('Plan is not pending approval');
     }
     const result = await upsertInstallmentPlan(
       client,
@@ -177,7 +181,8 @@ export async function approveMobileApproval(
         approvalReviewedById: userId,
         approvalReviewedAt: new Date().toISOString(),
       },
-      userId
+      userId,
+      role ?? null
     );
     return rowToInstallmentPlanApi(result.row);
   }
@@ -201,13 +206,13 @@ export async function rejectMobileApproval(
     return rowToPeVApi(row);
   }
   if (type === 'installment_plan') {
-    if (!roleHasPermission(role, 'financial.write')) {
+    if (!roleCanApproveMarketingPlans(role)) {
       throw new Error('Insufficient permissions to reject installment plans');
     }
-    const existing = await getInstallmentPlanById(client, tenantId, id);
+    const existing = await getInstallmentPlanById(client, tenantId, id, { userId, role });
     if (!existing) throw new Error('Installment plan not found');
-    if (!isPendingInstallmentPlan(existing.status, existing.approval_requested_to, userId)) {
-      throw new Error('Plan is not pending your approval');
+    if (normalizeMarketingPlanStatus(existing.status) !== 'pending approval') {
+      throw new Error('Plan is not pending approval');
     }
     const result = await upsertInstallmentPlan(
       client,
@@ -218,7 +223,8 @@ export async function rejectMobileApproval(
         approvalReviewedById: userId,
         approvalReviewedAt: new Date().toISOString(),
       },
-      userId
+      userId,
+      role ?? null
     );
     return rowToInstallmentPlanApi(result.row);
   }
@@ -274,8 +280,8 @@ export async function getMobileInstallmentPlanDetail(
   role: string | undefined,
   planId: string
 ): Promise<MobileInstallmentPlanDetail | null> {
-  const canReviewPlans = roleHasPermission(role, 'financial.write');
-  const row = await getInstallmentPlanById(client, tenantId, planId);
+  const canReviewPlans = roleCanApproveMarketingPlans(role);
+  const row = await getInstallmentPlanById(client, tenantId, planId, { userId, role });
   if (!row) return null;
   if (!marketingPlanVisibleToMobileUser(row, userId, canReviewPlans)) return null;
 
@@ -304,7 +310,7 @@ export async function getMobileInstallmentPlanDetail(
   const unit = unitR.rows[0];
   const unitLabel = unit?.name?.trim() || unit?.unit_number?.trim() || row.unit_id;
 
-  const pending = isPendingInstallmentPlan(row.status, row.approval_requested_to, userId);
+  const pending = normalizeMarketingPlanStatus(row.status) === 'pending approval';
   const api = rowToInstallmentPlanApi(row);
 
   return {

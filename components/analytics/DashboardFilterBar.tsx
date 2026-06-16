@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Calendar, Filter, RotateCcw } from 'lucide-react';
 import Button from '../ui/Button';
 import type { DashboardComparisonPeriod, DashboardDatePreset } from '../../types/dashboardMetrics.types';
@@ -6,6 +6,7 @@ import { useDashboardFiltersStore } from '../../stores/dashboardFiltersStore';
 import { DashboardSavedViews } from './DashboardSavedViews';
 
 const DATE_PRESETS: { id: DashboardDatePreset; label: string }[] = [
+  { id: 'all_time', label: 'All time' },
   { id: 'this_month', label: 'This month' },
   { id: 'last_month', label: 'Last month' },
   { id: 'this_quarter', label: 'This quarter' },
@@ -40,6 +41,14 @@ export const DashboardFilterBar: React.FC<DashboardFilterBarProps> = ({
   const setDatePreset = useDashboardFiltersStore((s) => s.setDatePreset);
   const setDateRange = useDashboardFiltersStore((s) => s.setDateRange);
   const resetFilters = useDashboardFiltersStore((s) => s.resetFilters);
+  const refreshRollingPreset = useDashboardFiltersStore((s) => s.refreshRollingPreset);
+
+  useEffect(() => {
+    refreshRollingPreset();
+    const onFocus = () => refreshRollingPreset();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refreshRollingPreset]);
 
   return (
     <div

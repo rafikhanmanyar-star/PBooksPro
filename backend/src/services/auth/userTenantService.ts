@@ -20,6 +20,10 @@ export type MatchedUserAccount = {
   name: string;
   passwordHash: string;
   tenantName: string;
+  tenantCompanyName: string | null;
+  tenantEmail: string | null;
+  tenantPhone: string | null;
+  tenantAddress: string | null;
   displayTimezone: string | null;
   interfaceMode: string;
   email: string | null;
@@ -46,6 +50,10 @@ function mapAccountRow(row: UserTenantAccountRow): MatchedUserAccount {
     name: row.name,
     passwordHash: row.password_hash,
     tenantName: row.tenant_name,
+    tenantCompanyName: row.tenant_company_name,
+    tenantEmail: row.tenant_email,
+    tenantPhone: row.tenant_phone,
+    tenantAddress: row.tenant_address,
     displayTimezone: row.display_timezone ?? null,
     interfaceMode: row.interface_mode ?? 'auto',
     email: row.email,

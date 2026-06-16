@@ -35,7 +35,10 @@ export type OnboardingStepMeta = {
   title: string;
   shortTitle: string;
   description: string;
+  /** Shown in the sidebar as "Optional" */
   optional?: boolean;
+  /** Shows a per-step Skip control in the wizard footer */
+  skippable?: boolean;
 };
 
 export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
@@ -50,18 +53,21 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     title: 'Business Setup',
     shortTitle: 'Business',
     description: 'Tell us how you run your property business.',
+    skippable: true,
   },
   {
     id: 'company_info',
     title: 'Company Information',
     shortTitle: 'Company',
     description: 'Legal name, address, and branding for documents.',
+    skippable: true,
   },
   {
     id: 'fiscal_year',
     title: 'Fiscal Year Setup',
     shortTitle: 'Fiscal year',
     description: 'Set your reporting year and open your first period.',
+    skippable: true,
   },
   {
     id: 'chart_of_accounts',
@@ -74,6 +80,7 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     title: 'Property Setup',
     shortTitle: 'Property',
     description: 'Add your first building and rental property.',
+    skippable: true,
   },
   {
     id: 'user_setup',
@@ -81,6 +88,7 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     shortTitle: 'Users',
     description: 'Invite teammates with the right roles.',
     optional: true,
+    skippable: true,
   },
   {
     id: 'first_transaction',
@@ -88,6 +96,7 @@ export const ONBOARDING_STEPS: OnboardingStepMeta[] = [
     shortTitle: 'Transaction',
     description: 'Record an opening balance or sample entry.',
     optional: true,
+    skippable: true,
   },
   {
     id: 'completion',
@@ -140,6 +149,7 @@ export function getStepsForFlow(flow: OnboardingFlow): OnboardingStepMeta[] {
         shortTitle: 'Invite Team',
         description: 'Add teammates with the right roles.',
         optional: false,
+        skippable: false,
       };
     }
     return base;

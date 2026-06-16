@@ -69,6 +69,20 @@ describe('rbacMiddleware', () => {
     assert.equal(called, true);
   });
 
+  it('allows Sales User POST for project selling catalog (projects/units/contacts)', () => {
+    const req = mockReq('POST', 'Sales User');
+    const res = mockRes();
+    let called = false;
+    requireWriteOnMutations(
+      'project_selling.catalog.write',
+      'project_selling.marketing_plans.write',
+      'project_selling.agreements.write'
+    )(req, res, () => {
+      called = true;
+    });
+    assert.equal(called, true);
+  });
+
   it('blocks Sales User POST for unrelated financial routes', () => {
     const req = mockReq('POST', 'Sales User');
     const res = mockRes();

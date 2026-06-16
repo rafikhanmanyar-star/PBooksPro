@@ -12,7 +12,7 @@ import ProjectForm from '../ui/ProjectForm';
 import UnitForm from '../settings/UnitForm';
 import ContactForm from '../settings/ContactForm';
 import Modal from '../ui/Modal';
-import { ContactType, Project, Unit } from '../../types';
+import { AppAction, ContactType, Project, Unit } from '../../types';
 import InstallmentConfigForm, { type InstallmentConfig } from '../settings/InstallmentConfigForm';
 import { ImportType } from '../../types';
 
@@ -82,7 +82,11 @@ const ProjectSettingsPage: React.FC = () => {
 
         switch (editingItem.type) {
             case 'projects':
-                dispatch({ type: isEdit ? 'UPDATE_PROJECT' : 'ADD_PROJECT', payload });
+                dispatch({
+                    type: isEdit ? 'UPDATE_PROJECT' : 'ADD_PROJECT',
+                    payload,
+                    _isRemote: (isAuthenticated || hasAuthToken),
+                } as AppAction);
                 break;
             case 'units':
                 dispatch({ type: isEdit ? 'UPDATE_UNIT' : 'ADD_UNIT', payload });

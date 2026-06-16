@@ -73,6 +73,15 @@ projectsRouter.post('/projects', requireResourceQuota('projects'), async (req: A
     emitEntityEvent(tenantId, 'created', 'project', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, 201);
   } catch (e) {
+    const pgCode = e && typeof e === 'object' && 'code' in e ? String((e as { code?: string }).code) : '';
+    if (pgCode === '23505') {
+      const detail = e instanceof Error ? e.message : String(e);
+      const msg = detail.includes('projects_tenant_name_unique')
+        ? 'A project with this name already exists.'
+        : 'This project already exists.';
+      sendFailure(res, 409, 'DUPLICATE', msg);
+      return;
+    }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
   }

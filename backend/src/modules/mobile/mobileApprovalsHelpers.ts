@@ -42,10 +42,13 @@ export function marketingPlanVisibleToMobileUser(
     approval_requested_to: string | null;
     approval_reviewed_by: string | null;
     approval_requested_at: Date | null;
+    user_id?: string | null;
   },
   userId: string,
   canReviewPlans: boolean
 ): boolean {
+  if (row.user_id === userId) return true;
+  if (canReviewPlans && normalizeStatus(row.status) === 'pending approval') return true;
   if (isPendingInstallmentPlan(row.status, row.approval_requested_to, userId)) {
     return canReviewPlans || row.approval_requested_to === userId;
   }

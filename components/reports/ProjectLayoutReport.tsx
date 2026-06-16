@@ -227,7 +227,7 @@ const ProjectLayoutReport: React.FC = () => {
     }, [state]);
 
     const projectPickerItems = useMemo(
-        () => data.data.map((p) => ({ id: p.id, name: p.name })),
+        () => [{ id: 'all', name: 'All projects' }, ...data.data.map((p) => ({ id: p.id, name: p.name }))],
         [data.data]
     );
 
@@ -235,12 +235,14 @@ const ProjectLayoutReport: React.FC = () => {
     const displayProjectId = useMemo(() => {
         const rows = data.data;
         if (rows.length === 0) return '';
+        if (selectedProjectId === 'all') return 'all';
         if (selectedProjectId && rows.some((p) => p.id === selectedProjectId)) return selectedProjectId;
         return rows[0].id;
     }, [data.data, selectedProjectId]);
 
     const visibleProjects = useMemo(() => {
         if (!displayProjectId) return [];
+        if (displayProjectId === 'all') return data.data;
         const one = data.data.find((p) => p.id === displayProjectId);
         return one ? [one] : [];
     }, [data.data, displayProjectId]);
@@ -330,8 +332,8 @@ const ProjectLayoutReport: React.FC = () => {
                         label={undefined}
                         items={projectPickerItems}
                         selectedId={displayProjectId}
-                        onSelect={(item) => setSelectedProjectId(item?.id ?? '')}
-                        placeholder="Search project…"
+                        onSelect={(item) => setSelectedProjectId(item?.id ?? 'all')}
+                        placeholder="All projects"
                         allowAddNew={false}
                         compact
                         entityType="project"

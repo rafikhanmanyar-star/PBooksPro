@@ -2,7 +2,24 @@ import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
-import { InstallmentPlanRepository } from '../repositories/InstallmentPlanRepository.js';
+import { InstallmentPlanRepository, type InstallmentPlanListFilters } from '../repositories/InstallmentPlanRepository.js';
+import {
+  assertUserIsMarketingPlanApprover,
+  canUserAccessInstallmentPlanRow,
+  filterInstallmentPlanRowsForUser,
+  isMarketingPlanApprovalDecisionStatus,
+  isPendingMarketingPlanStatus,
+  listMarketingPlanApprovers,
+  roleCanApproveMarketingPlans,
+  roleCanViewAllMarketingPlans,
+} from './marketingPlanAccess.js';
+
+export { listMarketingPlanApprovers } from './marketingPlanAccess.js';
+
+export type InstallmentPlanAccessContext = {
+  userId?: string | null;
+  role?: string | null;
+};
 
 export type InstallmentPlanRow = {
   id: string;
@@ -215,17 +232,28 @@ export function rowToInstallmentPlanApi(row: InstallmentPlanRow): Record<string,
 export async function listInstallmentPlans(
   client: pg.PoolClient,
   tenantId: string,
-  filters?: { projectId?: string }
+  filters?: { projectId?: string },
+  access?: InstallmentPlanAccessContext
 ): Promise<InstallmentPlanRow[]> {
-  return new InstallmentPlanRepository(tenantId).listActive(client, filters);
+  const listFilters: InstallmentPlanListFilters = { ...(filters ?? {}) };
+  if (access && !roleCanViewAllMarketingPlans(access.role ?? undefined) && access.userId) {
+    listFilters.createdByUserId = access.userId;
+  }
+  return new InstallmentPlanRepository(tenantId).listActive(client, listFilters);
 }
 
 export async function getInstallmentPlanById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  access?: InstallmentPlanAccessContext
 ): Promise<InstallmentPlanRow | null> {
-  return new InstallmentPlanRepository(tenantId).getById(client, id);
+  const row = await new InstallmentPlanRepository(tenantId).getById(client, id);
+  if (!row) return null;
+  if (access && !canUserAccessInstallmentPlanRow(row, access.userId, access.role ?? undefined)) {
+    return null;
+  }
+  return row;
 }
 
 async function getInstallmentPlanByIdIncludingDeleted(
@@ -236,11 +264,47 @@ async function getInstallmentPlanByIdIncludingDeleted(
   return new InstallmentPlanRepository(tenantId).getByIdIncludingDeleted(client, id);
 }
 
+async function assertMarketingPlanMutationAllowed(
+  client: pg.PoolClient,
+  tenantId: string,
+  existing: InstallmentPlanRow | null,
+  picked: ReturnType<typeof pickBody>,
+  authUserId?: string | null,
+  authRole?: string | null
+): Promise<void> {
+  if (existing && !canUserAccessInstallmentPlanRow(existing, authUserId, authRole ?? undefined)) {
+    throw new Error('You can only edit marketing plans that you created.');
+  }
+
+  if (isPendingMarketingPlanStatus(picked.status)) {
+    const approverId = picked.approval_requested_to;
+    if (!approverId) {
+      throw new Error('An approver is required when submitting for approval.');
+    }
+    await assertUserIsMarketingPlanApprover(client, tenantId, approverId);
+    if (
+      authUserId &&
+      !roleCanViewAllMarketingPlans(authRole ?? undefined) &&
+      picked.approval_requested_by &&
+      picked.approval_requested_by !== authUserId
+    ) {
+      throw new Error('You can only submit your own marketing plans for approval.');
+    }
+  }
+
+  if (isMarketingPlanApprovalDecisionStatus(picked.status)) {
+    if (!roleCanApproveMarketingPlans(authRole ?? undefined)) {
+      throw new Error('Only company admins and project managers can approve or reject marketing plans.');
+    }
+  }
+}
+
 export async function upsertInstallmentPlan(
   client: pg.PoolClient,
   tenantId: string,
   body: Record<string, unknown>,
-  authUserId?: string | null
+  authUserId?: string | null,
+  authRole?: string | null
 ): Promise<{ row: InstallmentPlanRow; conflict: boolean; wasInsert: boolean }> {
   const p = pickBody(body);
   if (!p.project_id) throw new Error('projectId is required.');
@@ -250,11 +314,23 @@ export async function upsertInstallmentPlan(
   const id =
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `plan_${randomUUID().replace(/-/g, '')}`;
 
-  const userId =
-    p.user_id ??
-    (authUserId != null && String(authUserId).trim() ? String(authUserId).trim() : null);
-
   const existing = await getInstallmentPlanByIdIncludingDeleted(client, tenantId, id);
+
+  await assertMarketingPlanMutationAllowed(client, tenantId, existing, p, authUserId, authRole);
+
+  const salesScoped = authUserId && !roleCanViewAllMarketingPlans(authRole ?? undefined);
+  const userId = salesScoped
+    ? String(authUserId)
+    : p.user_id ??
+      (authUserId != null && String(authUserId).trim() ? String(authUserId).trim() : null);
+
+  if (salesScoped && isPendingMarketingPlanStatus(p.status)) {
+    p.approval_requested_by = authUserId ?? p.approval_requested_by;
+  }
+
+  if (salesScoped && isMarketingPlanApprovalDecisionStatus(p.status)) {
+    p.approval_reviewed_by = authUserId ?? p.approval_reviewed_by;
+  }
 
   const insertValues = [
     id,
@@ -374,9 +450,13 @@ export async function softDeleteInstallmentPlan(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  expectedVersion?: number
+  expectedVersion?: number,
+  access?: InstallmentPlanAccessContext
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const ex = await getInstallmentPlanByIdIncludingDeleted(client, tenantId, id);
+  if (ex && access && !canUserAccessInstallmentPlanRow(ex, access.userId, access.role ?? undefined)) {
+    return { ok: false, conflict: false };
+  }
   const oldApi = ex ? rowToInstallmentPlanApi(ex) : undefined;
 
   if (expectedVersion !== undefined) {
@@ -425,7 +505,9 @@ export async function softDeleteInstallmentPlan(
 export async function listInstallmentPlansChangedSince(
   client: pg.PoolClient,
   tenantId: string,
-  since: Date
+  since: Date,
+  access?: InstallmentPlanAccessContext
 ): Promise<InstallmentPlanRow[]> {
-  return new InstallmentPlanRepository(tenantId).listChangedSince(client, since);
+  const rows = await new InstallmentPlanRepository(tenantId).listChangedSince(client, since);
+  return filterInstallmentPlanRowsForUser(rows, access?.userId, access?.role ?? undefined);
 }

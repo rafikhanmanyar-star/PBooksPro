@@ -13,6 +13,7 @@ const SELECT_IP = `SELECT id, tenant_id, project_id, lead_id, unit_id, net_value
 
 export type InstallmentPlanListFilters = {
   projectId?: string;
+  createdByUserId?: string;
 };
 
 export class InstallmentPlanRepository extends TenantRepository {
@@ -42,6 +43,10 @@ export class InstallmentPlanRepository extends TenantRepository {
     if (filters?.projectId) {
       params.push(filters.projectId);
       q += ` AND project_id = $${params.length}`;
+    }
+    if (filters?.createdByUserId) {
+      params.push(filters.createdByUserId);
+      q += ` AND user_id = $${params.length}`;
     }
     q += ` ORDER BY updated_at DESC`;
     const r = await client.query<InstallmentPlanRow>(q, params);

@@ -1,4 +1,4 @@
-﻿import { useDispatchOnly, useMarketingPageState, useWhatsAppMode } from '../../hooks/useSelectiveState';
+﻿import { useDispatchOnly, useMarketingPageState, usePrintSettings, useWhatsAppMode } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { 
@@ -271,9 +271,16 @@ const MarketingPage: React.FC = () => {
     const { contacts, categories, projects, units: appUnits, invoices, documents, projectAgreements, agreementSettings, projectAgreementSettings, projectInvoiceSettings, installmentPlans, planAmenities, currentUser, users, editingEntity } = state;
     const dispatch = useDispatchOnly();
     const { showToast, showAlert, showConfirm } = useNotification();
-    const { canWriteProjectSellingMarketingPlans, canWriteProjectSellingAgreements } = usePermissions();
+    const {
+        canWriteProjectSellingMarketingPlans,
+        canWriteProjectSellingAgreements,
+        canWriteProjectSellingCatalog,
+        canViewAllMarketingPlans,
+        canApproveMarketingPlans,
+    } = usePermissions();
     const entityFormModal = useEntityFormModal();
     const { print: triggerPrint } = usePrintContext();
+    const printSettings = usePrintSettings();
     const whatsAppMode = useWhatsAppMode();
     const { openChat } = useWhatsApp();
     
@@ -358,16 +365,17 @@ const MarketingPage: React.FC = () => {
     useEffect(() => {
         const loadOrgUsers = async () => {
             try {
-                devLogger.log('[ORG USERS] Loading organization users from API...');
-                const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
-                devLogger.log('[ORG USERS] Loaded users:', {
+                devLogger.log('[ORG USERS] Loading marketing plan approvers from API...');
+                const { InstallmentPlansApiRepository } = await import('../../services/api/repositories/installmentPlansApi');
+                const data = await new InstallmentPlansApiRepository().listApprovers();
+                devLogger.log('[ORG USERS] Loaded approvers:', {
                     count: data?.length || 0,
                     users: data?.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role }))
                 });
                 setOrgUsers(data || []);
             } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
-                devLogger.error('[ORG USERS] Failed to load organization users', msg);
+                devLogger.error('[ORG USERS] Failed to load marketing plan approvers', msg);
                 setOrgUsers([]);
             }
         };
@@ -376,40 +384,11 @@ const MarketingPage: React.FC = () => {
 
     const usersForApproval = orgUsers.length > 0 ? orgUsers : users;
     const approvers = useMemo(
-        () => {
-            devLogger.log('[APPROVERS] Building approvers list...', {
-                currentUserId: currentUser?.id,
-                currentUsername: currentUser?.username,
-                usersForApprovalCount: usersForApproval.length,
-                usingOrgUsers: orgUsers.length > 0
-            });
-            
-            const filtered = usersForApproval
-                .filter(user => {
-                    const hasRole = user.role && user.role.toLowerCase() === 'admin';
-                    const isNotCurrentUser = user.id !== currentUser?.id; // Don't include yourself
-                    devLogger.log('[APPROVERS] Checking user:', {
-                        id: user.id,
-                        username: user.username,
-                        name: user.name,
-                        role: user.role,
-                        hasAdminRole: hasRole,
-                        isNotCurrentUser,
-                        willInclude: hasRole && isNotCurrentUser
-                    });
-                    return hasRole && isNotCurrentUser;
-                })
-                .map(user => ({ id: user.id, name: user.name || user.username }));
-            
-            devLogger.log('[APPROVAL DEBUG] Final approvers list:', {
-                totalUsers: usersForApproval.length,
-                approversCount: filtered.length,
-                approvers: filtered,
-                allUsersWithRoles: usersForApproval.map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }))
-            });
-            return filtered;
-        },
-        [usersForApproval, currentUser]
+        () =>
+            usersForApproval
+                .filter(user => user.id !== currentUser?.id)
+                .map(user => ({ id: user.id, name: user.name || user.username })),
+        [usersForApproval, currentUser?.id]
     );
     
     // Units for selected project
@@ -432,27 +411,9 @@ const MarketingPage: React.FC = () => {
     const effectiveApprovalRequestedToId = activePlan?.approvalRequestedToId || approvalRequestedToId;
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
-    const isMatchingUser = useMemo(() => {
-        if (!currentUser) return () => false;
-        const candidates = [
-            currentUser.id,
-            currentUser.username,
-            currentUser.name
-        ].filter(Boolean).map(value => value.toString().toLowerCase());
-        return (value?: string) => {
-            if (!value) return false;
-            const normalizedValue = value.toString().toLowerCase();
-            const matches = candidates.includes(normalizedValue);
-            devLogger.log('[APPROVAL DEBUG] Matching check:', {
-                value,
-                normalizedValue,
-                candidates,
-                matches
-            });
-            return matches;
-        };
-    }, [currentUser]);
-    const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
+    const isApproverForSelectedPlan =
+        isPendingApproval &&
+        (canApproveMarketingPlans || effectiveApprovalRequestedToId === currentUser?.id);
 
     // Debug logging for approval workflow
     useEffect(() => {
@@ -1230,13 +1191,8 @@ const MarketingPage: React.FC = () => {
     // Filtered Plans with search - showing only latest version of each plan
     const filteredPlans = useMemo(() => {
         const currentUserId = currentUser?.id;
-        const allPlans = (installmentPlans || []).filter(plan => 
-            // 1. You created the plan (Draft, Rejected, etc.)
-            plan.userId === currentUserId || 
-            // 2. You submitted it for approval (it's your request)
-            plan.approvalRequestedById === currentUserId ||
-            // 3. You are the specific user assigned to approve it
-            plan.approvalRequestedToId === currentUserId
+        const allPlans = (installmentPlans || []).filter(plan =>
+            canViewAllMarketingPlans ? true : plan.userId === currentUserId
         );
         
         // Group plans by rootId and find the latest version for each
@@ -1265,26 +1221,19 @@ const MarketingPage: React.FC = () => {
                 unit?.name.toLowerCase().includes(q)
             );
         });
-    }, [installmentPlans, contacts, projects, appUnits, currentUser, searchQuery]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, searchQuery, canViewAllMarketingPlans]);
 
     const approvalTasks = useMemo(() => {
-        const currentUserId = currentUser?.id;
+        if (!canApproveMarketingPlans) return [];
         return (installmentPlans || [])
-            .filter(plan => 
-                plan.approvalRequestedToId === currentUserId && 
-                plan.status === 'Pending Approval'
-            )
+            .filter(plan => plan.status === 'Pending Approval')
             .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-    }, [installmentPlans, currentUser]);
+    }, [installmentPlans, canApproveMarketingPlans]);
 
     const activityFeed = useMemo(() => {
         const currentUserId = currentUser?.id;
         const feed = (installmentPlans || [])
-            .filter(plan => 
-                plan.userId === currentUserId || 
-                plan.approvalRequestedToId === currentUserId ||
-                plan.approvalRequestedById === currentUserId
-            )
+            .filter(plan => (canViewAllMarketingPlans ? true : plan.userId === currentUserId))
             .flatMap(plan => {
             const lead = contacts.find(l => l.id === plan.leadId);
             const project = projects.find(p => p.id === plan.projectId);
@@ -1344,7 +1293,7 @@ const MarketingPage: React.FC = () => {
         });
 
         return feed.sort((a, b) => b.time.localeCompare(a.time));
-    }, [installmentPlans, contacts, projects, appUnits, currentUser, usersForApproval]);
+    }, [installmentPlans, contacts, projects, appUnits, currentUser, usersForApproval, canViewAllMarketingPlans]);
 
     const planHistoryItems = useMemo(() => {
         if (!historyRootId) return [];
@@ -1579,6 +1528,14 @@ const MarketingPage: React.FC = () => {
                                         selectedId={projectId} 
                                         onSelect={item => { setProjectId(item?.id || ''); setUnitId(''); }} 
                                         placeholder="Select Project"
+                                        entityType="project"
+                                        allowAddNew={canWriteProjectSellingCatalog}
+                                        onAddNew={(entityType, name) => {
+                                            entityFormModal.openForm('project', name, undefined, undefined, (newId) => {
+                                                setProjectId(newId);
+                                                setUnitId('');
+                                            });
+                                        }}
                                         horizontal
                                         compact
                                     />
@@ -1589,6 +1546,13 @@ const MarketingPage: React.FC = () => {
                                         onSelect={item => setUnitId(item?.id || '')} 
                                         placeholder="Select Unit"
                                         disabled={!projectId}
+                                        entityType="unit"
+                                        allowAddNew={canWriteProjectSellingCatalog && !!projectId}
+                                        onAddNew={(entityType, name) => {
+                                            entityFormModal.openForm('unit', name, undefined, undefined, (newId) => {
+                                                setUnitId(newId);
+                                            });
+                                        }}
                                         horizontal
                                         compact
                                     />
@@ -1602,6 +1566,13 @@ const MarketingPage: React.FC = () => {
                                         selectedId={leadId} 
                                         onSelect={item => setLeadId(item?.id || '')} 
                                         placeholder="Select Lead"
+                                        entityType="contact"
+                                        allowAddNew={canWriteProjectSellingCatalog}
+                                        onAddNew={(entityType, name) => {
+                                            entityFormModal.openForm('contact', name, ContactType.LEAD, undefined, (newId) => {
+                                                setLeadId(newId);
+                                            });
+                                        }}
                                         horizontal
                                         compact
                                     />
@@ -1902,19 +1873,27 @@ const MarketingPage: React.FC = () => {
                         {/* Right Content - Installment Plan Preview */}
                         <div className="flex-1 overflow-y-auto p-8 bg-app-bg print:p-0 print:bg-white">
                             <div className="max-w-4xl mx-auto bg-app-card border border-app-border shadow-ds-card rounded-sm overflow-hidden min-h-full flex flex-col print:shadow-none print:p-0 print:bg-white print:border-0" id="printable-area">
-                                <ReportHeader />
+                                {selectedTemplate === 'modern' && <ReportHeader />}
                                 
                                 {selectedTemplate === 'formal' ? (
                                     <div className="flex flex-col p-10 print:p-0 flex-1">
                                         {/* Header */}
                                         <div className="flex flex-col items-center mb-6">
                                             <div className="flex items-center gap-3 mb-2">
-                                                <div className="w-12 h-12 relative flex items-center justify-center">
-                                                    <svg viewBox="0 0 100 100" className="w-full h-full text-app-text">
-                                                        <path d="M50 5 L95 25 L95 75 L50 95 L5 75 L5 25 Z" fill="none" stroke="currentColor" strokeWidth="4"/>
-                                                        <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" fill="currentColor"/>
-                                                        <path d="M35 45 L50 35 L65 45 L65 65 L50 75 L35 65 Z" fill="white"/>
-                                                    </svg>
+                                                <div className="w-12 h-12 relative flex items-center justify-center shrink-0">
+                                                    {printSettings?.showLogo !== false && printSettings?.logoUrl ? (
+                                                        <img
+                                                            src={printSettings.logoUrl}
+                                                            alt="Company logo"
+                                                            className="max-h-12 max-w-[3rem] w-auto h-auto object-contain"
+                                                        />
+                                                    ) : (
+                                                        <svg viewBox="0 0 100 100" className="w-full h-full text-app-text" aria-hidden>
+                                                            <path d="M50 5 L95 25 L95 75 L50 95 L5 75 L5 25 Z" fill="none" stroke="currentColor" strokeWidth="4"/>
+                                                            <path d="M50 20 L80 35 L80 65 L50 80 L20 65 L20 35 Z" fill="currentColor"/>
+                                                            <path d="M35 45 L50 35 L65 45 L65 65 L50 75 L35 65 Z" fill="white"/>
+                                                        </svg>
+                                                    )}
                                                 </div>
                                                 <div className="text-4xl font-black tracking-widest text-app-text uppercase">
                                                     {projects.find(p => p.id === projectId)?.name || 'EMPORIUM'}
@@ -2364,9 +2343,11 @@ const MarketingPage: React.FC = () => {
                                                                 {statusMeta.label} v{plan.version}
                                                             </span>
                                                         </div>
-                                                        {plan.status === 'Pending Approval' && plan.approvalRequestedToId === currentUser?.id && (
+                                                        {plan.status === 'Pending Approval' && canApproveMarketingPlans && (
                                                             <div className="mb-2 px-2 py-1 bg-[color:var(--badge-partial-bg)] border border-[color:var(--badge-partial-text)]/40 rounded text-[10px] text-[color:var(--badge-partial-text)] font-bold animate-pulse">
-                                                                ACTION REQUIRED: WAITING FOR YOUR APPROVAL
+                                                                {plan.approvalRequestedToId === currentUser?.id
+                                                                    ? 'ACTION REQUIRED: WAITING FOR YOUR APPROVAL'
+                                                                    : 'PENDING APPROVAL — REVIEW REQUIRED'}
                                                             </div>
                                                         )}
                                                         <p className="text-xs text-app-muted">{project?.name} - {unit?.name}</p>

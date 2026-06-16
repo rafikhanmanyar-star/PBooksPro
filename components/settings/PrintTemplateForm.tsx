@@ -1,22 +1,37 @@
 
-import { useDispatchOnly, useInvoices, usePrintSettings, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, usePrintSettings, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState, useRef, useEffect } from 'react';
 import { PrintSettings } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
 import Textarea from '../ui/Textarea';
-import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+
+const Section: React.FC<{ title: string; subtitle?: string; children: React.ReactNode }> = ({
+    title,
+    subtitle,
+    children,
+}) => (
+    <section className="rounded-ds-md border border-app-border bg-app-card/40 p-3 sm:p-4 space-y-2.5">
+        <div>
+            <h3 className="text-sm font-semibold text-app-text">{title}</h3>
+            {subtitle ? <p className="text-xs text-app-muted mt-0.5">{subtitle}</p> : null}
+        </div>
+        {children}
+    </section>
+);
 
 const PrintTemplateForm: React.FC = () => {
     const printSettings = usePrintSettings();
-    const transactions = useTransactions();
-    const invoices = useInvoices();
     const invoiceHtmlTemplate = useStateSelector((s) => s.invoiceHtmlTemplate);
     const dispatch = useDispatchOnly();
-    const { showToast, showConfirm } = useNotification();
+    const { isAuthenticated } = useAuth();
+    const { showToast, showConfirm, showAlert } = useNotification();
     const [settings, setSettings] = useState<PrintSettings>(printSettings);
     const [invoiceHtml, setInvoiceHtml] = useState(invoiceHtmlTemplate || '');
+    const [saving, setSaving] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -40,10 +55,27 @@ const PrintTemplateForm: React.FC = () => {
         }
     };
 
-    const handleSave = () => {
-        dispatch({ type: 'UPDATE_PRINT_SETTINGS', payload: settings });
-        dispatch({ type: 'UPDATE_INVOICE_TEMPLATE', payload: invoiceHtml });
-        showToast('Print template settings saved!', 'success');
+    const handleSave = async () => {
+        setSaving(true);
+        try {
+            dispatch({ type: 'UPDATE_PRINT_SETTINGS', payload: settings });
+            dispatch({ type: 'UPDATE_INVOICE_TEMPLATE', payload: invoiceHtml });
+
+            if (isAuthenticated && isAccountingBackedByRemoteApi()) {
+                const { AppSettingsApiRepository } = await import('../../services/api/repositories/appSettingsApi');
+                await new AppSettingsApiRepository().bulkUpsert({
+                    printSettings: settings,
+                    invoiceHtmlTemplate: invoiceHtml,
+                });
+            }
+
+            showToast('Print settings saved successfully.', 'success');
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to save print settings';
+            await showAlert(message);
+        } finally {
+            setSaving(false);
+        }
     };
 
     const handleResetInvoiceTemplate = async () => {
@@ -490,54 +522,68 @@ const PrintTemplateForm: React.FC = () => {
     }
 
     return (
-        <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-app-text">Company Details</h3>
-                    <Input
-                        label="Company Name"
-                        value={settings.companyName}
-                        onChange={e => handleChange('companyName', e.target.value)}
-                        placeholder="Your Business Name"
-                    />
-                    <Textarea
-                        label="Address"
-                        value={settings.companyAddress}
-                        onChange={e => handleChange('companyAddress', e.target.value)}
-                        placeholder="123 Business St, City, Country"
-                        rows={3}
-                    />
-                    <Input
-                        label="Contact Information"
-                        value={settings.companyContact}
-                        onChange={e => handleChange('companyContact', e.target.value)}
-                        placeholder="Phone, Email, Website"
-                    />
-                </div>
-
-                <div className="space-y-4">
-                    <h3 className="text-lg font-semibold text-app-text">Logo & Branding</h3>
-                    <div className="flex items-start gap-4">
-                        <div className="flex-grow">
-                            <label className="block text-sm font-medium text-app-muted mb-1">Company Logo</label>
-                            <div className="flex items-center gap-2">
-                                <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} size="sm">
-                                    Upload Logo
-                                </Button>
-                                {settings.logoUrl && (
-                                    <Button type="button" variant="ghost" className="text-danger" onClick={() => handleChange('logoUrl', '')} size="sm">
-                                        Remove
-                                    </Button>
-                                )}
-                            </div>
-                            <input
-                                type="file"
-                                ref={fileInputRef}
-                                onChange={handleFileChange}
-                                className="hidden"
-                                accept="image/*"
+        <div className="space-y-3 pb-2">
+            <Section title="Company & branding">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-3">
+                    <div className="lg:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div className="sm:col-span-2">
+                            <Input
+                                compact
+                                label="Company Name"
+                                value={settings.companyName}
+                                onChange={e => handleChange('companyName', e.target.value)}
+                                placeholder="Your Business Name"
                             />
-                            <div className="mt-2">
+                        </div>
+                        <div className="sm:col-span-2">
+                            <Textarea
+                                label="Address"
+                                value={settings.companyAddress}
+                                onChange={e => handleChange('companyAddress', e.target.value)}
+                                placeholder="123 Business St, City, Country"
+                                rows={2}
+                                className="!py-1.5 !px-2 !text-ds-small"
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <Input
+                                compact
+                                label="Contact"
+                                value={settings.companyContact}
+                                onChange={e => handleChange('companyContact', e.target.value)}
+                                placeholder="Phone, Email, Website"
+                            />
+                        </div>
+                        <Input
+                            compact
+                            label="Tax ID / Registration"
+                            value={settings.taxId ?? ''}
+                            onChange={e => handleChange('taxId', e.target.value)}
+                            placeholder="e.g. NTN 123456"
+                        />
+                    </div>
+
+                    <div className="lg:col-span-5 flex flex-col gap-2">
+                        <label className="block text-xs font-medium text-app-muted">Company Logo</label>
+                        <div className="flex items-start gap-3">
+                            <div className="flex flex-col gap-2 min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} size="sm">
+                                        Upload
+                                    </Button>
+                                    {settings.logoUrl ? (
+                                        <Button type="button" variant="ghost" className="text-danger" onClick={() => handleChange('logoUrl', '')} size="sm">
+                                            Remove
+                                        </Button>
+                                    ) : null}
+                                </div>
+                                <input
+                                    type="file"
+                                    ref={fileInputRef}
+                                    onChange={handleFileChange}
+                                    className="hidden"
+                                    accept="image/*"
+                                />
                                 <label className="flex items-center gap-2 cursor-pointer">
                                     <input
                                         type="checkbox"
@@ -545,110 +591,102 @@ const PrintTemplateForm: React.FC = () => {
                                         onChange={e => handleChange('showLogo', e.target.checked)}
                                         className="rounded text-accent focus:ring-accent"
                                     />
-                                    <span className="text-sm text-app-text">Show logo on reports</span>
+                                    <span className="text-xs text-app-text">Show logo on reports</span>
                                 </label>
                             </div>
+                            {settings.logoUrl ? (
+                                <div className="shrink-0 border border-app-border p-1 rounded-ds-md bg-app-card">
+                                    <img src={settings.logoUrl} alt="Logo preview" className="h-14 w-auto max-w-[120px] object-contain" />
+                                </div>
+                            ) : null}
                         </div>
-                        {settings.logoUrl && (
-                            <div className="border p-1 rounded bg-app-card shadow-ds-card">
-                                <img src={settings.logoUrl} alt="Logo Preview" className="h-20 w-auto object-contain" />
-                            </div>
-                        )}
                     </div>
                 </div>
-            </div>
+            </Section>
 
-            <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-app-text">Header & Footer</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Section title="Header & footer">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <Input
-                        label="Custom Header Text (Optional)"
-                        value={settings.headerText}
+                        compact
+                        label="Custom header (optional)"
+                        value={settings.headerText ?? ''}
                         onChange={e => handleChange('headerText', e.target.value)}
                         placeholder="e.g., Confidential"
                     />
                     <Input
-                        label="Custom Footer Text (Optional)"
-                        value={settings.footerText}
+                        compact
+                        label="Custom footer (optional)"
+                        value={settings.footerText ?? ''}
                         onChange={e => handleChange('footerText', e.target.value)}
                         placeholder="e.g., Thank you for your business!"
                     />
-                    <div className="md:col-span-2">
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <input
-                                type="checkbox"
-                                checked={settings.showDatePrinted}
-                                onChange={e => handleChange('showDatePrinted', e.target.checked)}
-                                className="rounded text-accent focus:ring-accent"
-                            />
-                            <span className="text-sm text-app-text">Show "Printed on [Date]" in footer</span>
-                        </label>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer pt-0.5">
+                    <input
+                        type="checkbox"
+                        checked={settings.showDatePrinted}
+                        onChange={e => handleChange('showDatePrinted', e.target.checked)}
+                        className="rounded text-accent focus:ring-accent"
+                    />
+                    <span className="text-xs text-app-text">Show &quot;Printed on [Date]&quot; in footer</span>
+                </label>
+            </Section>
+
+            <Section
+                title="Form print layout"
+                subtitle="Font, colors, and options for invoices, POs, and bills."
+            >
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+                    <Input compact label="Font family" value={settings.fontFamily ?? ''} onChange={e => handleChange('fontFamily', e.target.value)} placeholder="Georgia, Times New Roman" />
+                    <Input compact label="Header size (px)" type="number" value={settings.headerFontSize ?? ''} onChange={e => handleChange('headerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="22" min={10} max={36} />
+                    <Input compact label="Body size (px)" type="number" value={settings.bodyFontSize ?? ''} onChange={e => handleChange('bodyFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="13" min={10} max={24} />
+                    <Input compact label="Footer size (px)" type="number" value={settings.footerFontSize ?? ''} onChange={e => handleChange('footerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="11" min={9} max={18} />
+                    <Input compact label="Text color" value={settings.textColor ?? ''} onChange={e => handleChange('textColor', e.target.value)} placeholder="#1e293b" />
+                    <Input compact label="Border color" value={settings.tableBorderColor ?? ''} onChange={e => handleChange('tableBorderColor', e.target.value)} placeholder="#e2e8f0" />
+                    <Input compact label="Highlight color" value={settings.highlightColor ?? ''} onChange={e => handleChange('highlightColor', e.target.value)} placeholder="#f8fafc" />
+                    <div className="col-span-2 md:col-span-2">
+                        <Input compact label="Watermark" value={settings.watermark ?? ''} onChange={e => handleChange('watermark', e.target.value)} placeholder="DRAFT, COPY" />
                     </div>
                 </div>
-            </div>
+            </Section>
 
-            <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-app-text">Form print layout (Invoices, POs, Bills)</h3>
-                <p className="text-sm text-app-muted">Optional: font, colors, and page options for printed forms.</p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input label="Tax ID / Registration (Optional)" value={settings.taxId ?? ''} onChange={e => handleChange('taxId', e.target.value)} placeholder="e.g. NTN 123456" />
-                    <Input label="Font family (print-safe)" value={settings.fontFamily ?? ''} onChange={e => handleChange('fontFamily', e.target.value)} placeholder="e.g. Georgia, Times New Roman" />
-                    <Input label="Header font size (px)" type="number" value={settings.headerFontSize ?? ''} onChange={e => handleChange('headerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="22" min={10} max={36} />
-                    <Input label="Body font size (px)" type="number" value={settings.bodyFontSize ?? ''} onChange={e => handleChange('bodyFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="13" min={10} max={24} />
-                    <Input label="Footer font size (px)" type="number" value={settings.footerFontSize ?? ''} onChange={e => handleChange('footerFontSize', e.target.value === '' ? undefined : Number(e.target.value))} placeholder="11" min={9} max={18} />
-                    <Input label="Text color (hex)" value={settings.textColor ?? ''} onChange={e => handleChange('textColor', e.target.value)} placeholder="#1e293b" />
-                    <Input label="Table border color (hex)" value={settings.tableBorderColor ?? ''} onChange={e => handleChange('tableBorderColor', e.target.value)} placeholder="#e2e8f0" />
-                    <Input label="Highlight color (hex)" value={settings.highlightColor ?? ''} onChange={e => handleChange('highlightColor', e.target.value)} placeholder="#f8fafc" />
-                    <Input label="Watermark text (Optional)" value={settings.watermark ?? ''} onChange={e => handleChange('watermark', e.target.value)} placeholder="e.g. DRAFT, COPY" />
+            <details className="rounded-ds-md border border-app-border bg-app-card/40 p-3 sm:p-4 group">
+                <summary className="text-sm font-semibold text-app-text cursor-pointer list-none flex items-center justify-between gap-2">
+                    <span>Advanced: invoice HTML template</span>
+                    <span className="text-xs font-normal text-app-muted group-open:hidden">Expand to edit custom HTML</span>
+                </summary>
+                <div className="mt-3 space-y-2.5">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-app-muted">
+                            Placeholders:{' '}
+                            <code className="bg-app-surface-2 px-1 rounded text-[10px]">{`{companyName}`}</code>,{' '}
+                            <code className="bg-app-surface-2 px-1 rounded text-[10px]">{`{invoiceNumber}`}</code>,{' '}
+                            <code className="bg-app-surface-2 px-1 rounded text-[10px]">{`{amount}`}</code>,{' '}
+                            <code className="bg-app-surface-2 px-1 rounded text-[10px]">{`{logoImg}`}</code>
+                        </p>
+                        <Button type="button" variant="ghost" size="sm" onClick={handleResetInvoiceTemplate} className="text-ds-danger">
+                            Reset to default
+                        </Button>
+                    </div>
+                    <Textarea
+                        label=""
+                        value={invoiceHtml}
+                        onChange={(e) => setInvoiceHtml(e.target.value)}
+                        rows={8}
+                        className="font-mono text-xs !py-1.5 !px-2"
+                        placeholder="<html>...</html>"
+                    />
                 </div>
-            </div>
+            </details>
 
-            <div className="space-y-4 border-t pt-4">
-                <h3 className="text-lg font-semibold text-app-text">Print templates</h3>
-                <p className="text-sm text-app-muted">Data-driven templates used when you click Print on a form. Layout and branding come from the settings above.</p>
-                <ul className="space-y-2 text-sm text-app-text">
-                    <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-ds-primary">POPrintTemplate</span>
-                        <span>— Purchase orders (Buyer Dashboard: open a PO, then Print)</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-ds-primary">InvoicePrintTemplate</span>
-                        <span>— P2P invoices (used when printing from invoice views)</span>
-                    </li>
-                    <li className="flex items-center gap-2">
-                        <span className="font-mono font-semibold text-ds-primary">BillPrintTemplate</span>
-                        <span>— Bills (used when printing from bill views)</span>
-                    </li>
-                </ul>
-            </div>
-
-            <div className="space-y-4 border-t pt-4">
-                <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-semibold text-app-text">Invoice HTML Template</h3>
-                    <Button variant="ghost" size="sm" onClick={handleResetInvoiceTemplate} className="text-ds-danger hover:bg-rose-50">Reset to Default</Button>
-                </div>
-                <p className="text-sm text-app-muted">
-                    Customize the HTML structure used when printing invoices.
-                    Supported placeholders:
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{companyName}`}</code>,
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{companyAddress}`}</code>,
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{invoiceNumber}`}</code>,
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{contactName}`}</code>,
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{amount}`}</code>,
-                    <code className="bg-app-surface-2 px-1 rounded text-xs">{`{logoImg}`}</code>, etc.
-                </p>
-                <Textarea
-                    label=""
-                    value={invoiceHtml}
-                    onChange={(e) => setInvoiceHtml(e.target.value)}
-                    rows={15}
-                    className="font-mono text-xs"
-                    placeholder="<html>...</html>"
-                />
-            </div>
-
-            <div className="flex justify-end pt-4 border-t">
-                <Button onClick={handleSave}>Save Settings</Button>
+            <div
+                className="sticky bottom-0 z-10 -mx-3 sm:-mx-4 md:-mx-6 lg:-mx-8 px-3 sm:px-4 md:px-6 lg:px-8 flex flex-wrap items-center justify-end gap-2 border-t border-app-border bg-app-modal pt-3 pb-1"
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => e.stopPropagation()}
+            >
+                <Button type="button" onClick={() => void handleSave()} disabled={saving}>
+                    {saving ? 'Saving…' : 'Save Settings'}
+                </Button>
             </div>
         </div>
     );

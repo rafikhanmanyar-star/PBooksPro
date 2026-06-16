@@ -228,68 +228,83 @@ const SettingsPage: React.FC = () => {
     const showBillingPortal =
         perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers;
 
-    // Grouped Categories for Sidebar
-    const categoryGroups = [
-        {
-            title: 'General',
-            items: [
-                { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
-                ...(showBillingPortal
-                  ? [{ id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' }]
-                  : []),
-                ...(onboarding?.canManage
-                  ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
-                  : []),
-                ...(perms.enterpriseRole === 'super_admin'
-                  ? [
-                      { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
-                      { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
-                      { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
-                    ]
-                  : []),
-                ...(showUserManagement ? [
-                    { id: 'users', label: 'User Management', icon: ICONS.users },
-                ] : []),
-                ...(showPermissionManagement ? [
-                    { id: 'permissions', label: 'Permissions', icon: ICONS.lock },
-                ] : []),
-                ...(perms.canReadAuditLogs
-                  ? [{ id: 'audit-trail', label: 'Audit Trail', icon: ICONS.fileText }]
-                  : []),
-                { id: 'privacy', label: 'Privacy Center', icon: ICONS.shield || '🛡️' },
-                { id: 'mfa', label: 'Two-Factor Auth', icon: ICONS.lock || '🔐' },
-                { id: 'backup', label: 'Backup Center', icon: ICONS.download },
-                { id: 'data', label: 'Data Management', icon: ICONS.trash },
-                { id: 'about', label: 'About', icon: ICONS.info },
-                { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
-            ]
-        },
-        {
-            title: 'Financial',
-            items: [
-                { id: 'accounts', label: 'Chart of Accounts', icon: ICONS.wallet },
-                { id: 'accounting-periods', label: 'Accounting Periods', icon: ICONS.lock },
-            ]
-        },
-        {
-            title: 'Assets',
-            items: [
-                { id: 'assets', label: 'Assets', icon: ICONS.archive },
-            ]
-        },
-        {
-            title: 'Contacts',
-            items: [
-                { id: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
-            ]
-        }
-    ];
+    const isSalesUser = perms.enterpriseRole === 'sales_user';
 
-    const flatCategories = categoryGroups.flatMap(g => g.items);
+    // Grouped Categories for Sidebar
+    const categoryGroups = useMemo(() => {
+        const groups = [
+            {
+                title: 'General',
+                items: [
+                    { id: 'preferences', label: 'Preferences', icon: ICONS.settings },
+                    ...(showBillingPortal
+                      ? [{ id: 'license', label: 'License & Subscription', icon: ICONS.lock || '🔒' }]
+                      : []),
+                    ...(onboarding?.canManage
+                      ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
+                      : []),
+                    ...(perms.enterpriseRole === 'super_admin'
+                      ? [
+                          { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
+                          { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
+                          { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
+                        ]
+                      : []),
+                    ...(showUserManagement ? [
+                        { id: 'users', label: 'User Management', icon: ICONS.users },
+                    ] : []),
+                    ...(showPermissionManagement ? [
+                        { id: 'permissions', label: 'Permissions', icon: ICONS.lock },
+                    ] : []),
+                    ...(perms.canReadAuditLogs
+                      ? [{ id: 'audit-trail', label: 'Audit Trail', icon: ICONS.fileText }]
+                      : []),
+                    { id: 'privacy', label: 'Privacy Center', icon: ICONS.shield || '🛡️' },
+                    { id: 'mfa', label: 'Two-Factor Auth', icon: ICONS.lock || '🔐' },
+                    ...(!isSalesUser ? [{ id: 'backup', label: 'Backup Center', icon: ICONS.download }] : []),
+                    ...(!isSalesUser ? [{ id: 'data', label: 'Data Management', icon: ICONS.trash }] : []),
+                    { id: 'about', label: 'About', icon: ICONS.info },
+                    { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
+                ]
+            },
+            ...(!isSalesUser
+              ? [{
+                  title: 'Financial',
+                  items: [
+                      { id: 'accounts', label: 'Chart of Accounts', icon: ICONS.wallet },
+                      { id: 'accounting-periods', label: 'Accounting Periods', icon: ICONS.lock },
+                  ]
+              }]
+              : []),
+            {
+                title: 'Assets',
+                items: [
+                    { id: 'assets', label: 'Assets', icon: ICONS.archive },
+                ]
+            },
+            {
+                title: 'Contacts',
+                items: [
+                    { id: 'contacts', label: 'Contacts', icon: ICONS.addressBook },
+                ]
+            }
+        ];
+        return groups;
+    }, [
+        showBillingPortal,
+        onboarding?.canManage,
+        perms.enterpriseRole,
+        showUserManagement,
+        showPermissionManagement,
+        perms.canReadAuditLogs,
+        isSalesUser,
+    ]);
+
+    const flatCategories = useMemo(() => categoryGroups.flatMap(g => g.items), [categoryGroups]);
 
     const settingCategories = useMemo(() => {
         return flatCategories;
-    }, [showUserManagement, showPermissionManagement, showBillingPortal, perms.canReadAuditLogs, flatCategories]);
+    }, [flatCategories]);
 
     // --- Data Preparation Logic (Preserved) ---
     const columnConfig: Record<string, ColumnDef[]> = {
