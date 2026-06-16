@@ -142,9 +142,20 @@ export function usePermissions() {
 
       canReadProjectSelling: has('project_selling.read') || has('financial.write'),
 
-      canReadProjectSellingCatalog: roleCanReadProjectSellingCatalog(role),
+      canReadProjectSellingCatalog:
+        has('financial.write') ||
+        has('project_selling.read') ||
+        has('project_selling.catalog.write') ||
+        has('project_selling.marketing_plans.write') ||
+        has('project_selling.agreements.write') ||
+        roleCanReadProjectSellingCatalog(role),
 
-      canWriteProjectSellingCatalog: roleCanWriteProjectSellingCatalog(role),
+      canWriteProjectSellingCatalog:
+        has('financial.write') ||
+        has('project_selling.catalog.write') ||
+        has('project_selling.marketing_plans.write') ||
+        has('project_selling.agreements.write') ||
+        roleCanWriteProjectSellingCatalog(role),
 
       canWriteProjectSellingMarketingPlans:
 

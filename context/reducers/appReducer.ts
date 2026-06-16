@@ -586,7 +586,34 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         case 'UPDATE_BILL': {
             const updatedBill = action.payload as Bill;
             const originalBill = state.bills.find(b => b.id === updatedBill.id);
-            if (!originalBill) return state;
+            if (!originalBill) {
+                // POST /bills can return the canonical row id (bill_number upsert) while the creator
+                // still holds an optimistic row under a different client id — drop that phantom.
+                const num = updatedBill.billNumber?.trim().toLowerCase();
+                const droppedIds = new Set<string>();
+                let bills = state.bills;
+                if (num) {
+                    bills = bills.filter((b) => {
+                        const isOptimisticPhantom =
+                            b.billNumber?.trim().toLowerCase() === num &&
+                            !(typeof b.version === 'number' && b.version >= 1);
+                        if (isOptimisticPhantom && b.id) droppedIds.add(b.id);
+                        return !isOptimisticPhantom;
+                    });
+                }
+                if (!bills.some((b) => b.id === updatedBill.id)) {
+                    bills = [...bills, updatedBill];
+                } else {
+                    bills = bills.map((b) => (b.id === updatedBill.id ? updatedBill : b));
+                }
+                let pmCycleAllocations = state.pmCycleAllocations;
+                if (droppedIds.size > 0 && pmCycleAllocations?.length) {
+                    pmCycleAllocations = pmCycleAllocations.map((a) =>
+                        a.billId && droppedIds.has(a.billId) ? { ...a, billId: updatedBill.id } : a
+                    );
+                }
+                return { ...state, bills, pmCycleAllocations };
+            }
 
             let newState = { ...state, bills: state.bills.map(b => b.id === updatedBill.id ? updatedBill : b) };
 

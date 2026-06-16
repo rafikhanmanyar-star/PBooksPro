@@ -1563,7 +1563,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         showToast("Bill updated successfully");
       }
     } else {
-      const newData = { ...formData, id: newBillRowId(), paidAmount: 0, status: InvoiceStatus.UNPAID };
+      const newData = {
+        ...formData,
+        id: type === 'bill' ? billId : newBillRowId(),
+        paidAmount: 0,
+        status: InvoiceStatus.UNPAID,
+      };
       if (type === 'invoice') {
         // Update Settings Next Number if auto-generated
         let settingsToUpdate: typeof projectInvoiceSettings | null = null;

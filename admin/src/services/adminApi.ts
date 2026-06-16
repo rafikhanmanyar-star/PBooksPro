@@ -306,6 +306,37 @@ class AdminApi {
     return response.json();
   }
 
+  async promoteTenantUserToSuperAdmin(tenantId: string, userId: string) {
+    const response = await fetch(
+      `${ADMIN_API_URL}/tenants/${tenantId}/users/${userId}/promote-super-admin`,
+      {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+      }
+    );
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to promote user');
+    }
+    return response.json();
+  }
+
+  async createTenantSuperAdmin(
+    tenantId: string,
+    body: { name: string; email: string; password: string; username?: string }
+  ) {
+    const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/users/super-admin`, {
+      method: 'POST',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || error.message || 'Failed to create Super Admin');
+    }
+    return response.json();
+  }
+
   // Tenant Module Management
   async getTenantModules(tenantId: string) {
     const response = await fetch(`${ADMIN_API_URL}/tenants/${tenantId}/modules`, {

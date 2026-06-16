@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { adminApi } from '../../services/adminApi';
+import { useAdminAuth } from '../../context/AdminAuthContext';
 import { LICENSE_MODULES } from '../../../../shared/licenseModules';
-import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box } from 'lucide-react';
+import { Search, Eye, Ban, CheckCircle, Edit2, Save, X, Trash2, Users, Key, LogOut, UserX, RefreshCw, Box, Shield, UserPlus } from 'lucide-react';
 
 interface Tenant {
   id: string;
@@ -270,9 +271,12 @@ interface TenantUser {
   last_login?: string;
   created_at: string;
   is_tenant_admin: boolean;
+  is_tenant_super_admin?: boolean;
 }
 
 const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpdate?: () => void }> = ({ tenant, onClose, onUpdate }) => {
+  const { user: platformAdmin } = useAdminAuth();
+  const canManageTenantSuperAdmins = platformAdmin?.role === 'super_admin';
   const [stats, setStats] = useState<any>(null);
   const [tenantDetails, setTenantDetails] = useState<Tenant>(tenant);
   const [isEditing, setIsEditing] = useState(false);
@@ -284,6 +288,15 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [resettingPassword, setResettingPassword] = useState(false);
+  const [showCreateSuperAdmin, setShowCreateSuperAdmin] = useState(false);
+  const [creatingSuperAdmin, setCreatingSuperAdmin] = useState(false);
+  const [promotingUserId, setPromotingUserId] = useState<string | null>(null);
+  const [superAdminForm, setSuperAdminForm] = useState({
+    name: '',
+    email: '',
+    username: '',
+    password: '',
+  });
   const [tenantModules, setTenantModules] = useState<any[]>([]);
   const [loadingModules, setLoadingModules] = useState(false);
   const [updatingModule, setUpdatingModule] = useState<string | null>(null);
@@ -453,6 +466,55 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
       await loadUsers();
     } catch (error: any) {
       alert(error.message || 'Failed to force logout');
+    }
+  };
+
+  const handlePromoteSuperAdmin = async (user: TenantUser) => {
+    if (
+      !confirm(
+        `Promote "${user.name}" to tenant Super Admin?\n\nThey will receive all permissions in this organization, including Role Management.`
+      )
+    ) {
+      return;
+    }
+    setPromotingUserId(user.id);
+    try {
+      await adminApi.promoteTenantUserToSuperAdmin(tenant.id, user.id);
+      alert('User promoted to Super Admin. They must log out and back in.');
+      await loadUsers();
+    } catch (error: any) {
+      alert(error.message || 'Failed to promote user');
+    } finally {
+      setPromotingUserId(null);
+    }
+  };
+
+  const handleCreateSuperAdmin = async () => {
+    if (!superAdminForm.name.trim() || !superAdminForm.email.trim() || !superAdminForm.password) {
+      alert('Name, email, and password are required');
+      return;
+    }
+    if (superAdminForm.password.length < 8) {
+      alert('Password must be at least 8 characters with one letter and one number.');
+      return;
+    }
+    setCreatingSuperAdmin(true);
+    try {
+      await adminApi.createTenantSuperAdmin(tenant.id, {
+        name: superAdminForm.name.trim(),
+        email: superAdminForm.email.trim(),
+        password: superAdminForm.password,
+        username: superAdminForm.username.trim() || undefined,
+      });
+      alert('Super Admin user created successfully.');
+      setShowCreateSuperAdmin(false);
+      setSuperAdminForm({ name: '', email: '', username: '', password: '' });
+      await loadUsers();
+      await loadStats();
+    } catch (error: any) {
+      alert(error.message || 'Failed to create Super Admin');
+    } finally {
+      setCreatingSuperAdmin(false);
     }
   };
 
@@ -994,20 +1056,39 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                 <Users size={16} />
                 Users ({users.length})
               </h3>
-              <button
-                className="btn btn-secondary"
-                onClick={loadUsers}
-                disabled={loadingUsers}
-                style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
-                title="Refresh Users"
-              >
-                <RefreshCw size={14} style={{
-                  opacity: loadingUsers ? 0.6 : 1,
-                  cursor: loadingUsers ? 'not-allowed' : 'pointer'
-                }} />
-                {loadingUsers ? 'Loading...' : 'Refresh'}
-              </button>
+              <div style={{ display: 'flex', gap: '0.375rem', flexWrap: 'wrap' }}>
+                {canManageTenantSuperAdmins && (
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => setShowCreateSuperAdmin(true)}
+                    style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+                    title="Create tenant Super Admin"
+                  >
+                    <UserPlus size={14} />
+                    Create Super Admin
+                  </button>
+                )}
+                <button
+                  className="btn btn-secondary"
+                  onClick={loadUsers}
+                  disabled={loadingUsers}
+                  style={{ padding: '0.375rem 0.625rem', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.375rem' }}
+                  title="Refresh Users"
+                >
+                  <RefreshCw size={14} style={{
+                    opacity: loadingUsers ? 0.6 : 1,
+                    cursor: loadingUsers ? 'not-allowed' : 'pointer'
+                  }} />
+                  {loadingUsers ? 'Loading...' : 'Refresh'}
+                </button>
+              </div>
             </div>
+
+            {canManageTenantSuperAdmins && (
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                Platform Super Admins can create or promote tenant Super Admins (full permissions + Role Management).
+              </p>
+            )}
 
             {loadingUsers ? (
               <div style={{ padding: '1.5rem', textAlign: 'center', color: '#6b7280', fontSize: '0.8125rem' }}>Loading users...</div>
@@ -1038,7 +1119,18 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                         </td>
                         <td style={{ padding: '0.5rem', fontSize: '0.8125rem' }}>{user.username}</td>
                         <td style={{ padding: '0.5rem' }}>
-                          {user.is_tenant_admin ? (
+                          {user.is_tenant_super_admin ? (
+                            <span style={{
+                              padding: '0.1875rem 0.375rem',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.6875rem',
+                              fontWeight: 600,
+                              backgroundColor: '#ede9fe',
+                              color: '#5b21b6'
+                            }}>
+                              Super Admin
+                            </span>
+                          ) : user.is_tenant_admin ? (
                             <span style={{
                               padding: '0.1875rem 0.375rem',
                               borderRadius: '0.25rem',
@@ -1105,6 +1197,17 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                         </td>
                         <td style={{ padding: '0.5rem' }}>
                           <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                            {canManageTenantSuperAdmins && !user.is_tenant_super_admin && (
+                              <button
+                                className="btn btn-primary"
+                                onClick={() => handlePromoteSuperAdmin(user)}
+                                disabled={promotingUserId === user.id}
+                                style={{ padding: '0.25rem 0.375rem', fontSize: '0.6875rem' }}
+                                title="Promote to Super Admin"
+                              >
+                                <Shield size={12} />
+                              </button>
+                            )}
                             <button
                               className="btn btn-secondary"
                               onClick={() => {
@@ -1214,6 +1317,69 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                   style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
                 >
                   {resettingPassword ? 'Resetting...' : 'Reset'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {showCreateSuperAdmin && (
+          <div style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2000,
+            padding: '1rem'
+          }} onClick={() => {
+            if (!creatingSuperAdmin) {
+              setShowCreateSuperAdmin(false);
+              setSuperAdminForm({ name: '', email: '', username: '', password: '' });
+            }
+          }}>
+            <div className="card" style={{ maxWidth: '440px', width: '100%', padding: '1rem' }} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 600 }}>Create Tenant Super Admin</h3>
+                <button
+                  onClick={() => {
+                    setShowCreateSuperAdmin(false);
+                    setSuperAdminForm({ name: '', email: '', username: '', password: '' });
+                  }}
+                  style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}
+                >
+                  ×
+                </button>
+              </div>
+              <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.75rem' }}>
+                Creates a new user with full permissions in <strong>{tenantDetails.company_name || tenantDetails.name}</strong>.
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.625rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Full name *</label>
+                  <input className="input" value={superAdminForm.name} onChange={(e) => setSuperAdminForm({ ...superAdminForm, name: e.target.value })} style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Email *</label>
+                  <input type="email" className="input" value={superAdminForm.email} onChange={(e) => setSuperAdminForm({ ...superAdminForm, email: e.target.value })} style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Username (optional)</label>
+                  <input className="input" value={superAdminForm.username} onChange={(e) => setSuperAdminForm({ ...superAdminForm, username: e.target.value })} style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }} placeholder="Defaults from email" />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem' }}>Password *</label>
+                  <input type="password" className="input" value={superAdminForm.password} onChange={(e) => setSuperAdminForm({ ...superAdminForm, password: e.target.value })} style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }} autoComplete="new-password" />
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    At least 8 characters, with one letter and one number.
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', marginTop: '1rem', flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" onClick={() => setShowCreateSuperAdmin(false)} disabled={creatingSuperAdmin}>Cancel</button>
+                <button className="btn btn-primary" onClick={handleCreateSuperAdmin} disabled={creatingSuperAdmin}>
+                  {creatingSuperAdmin ? 'Creating...' : 'Create Super Admin'}
                 </button>
               </div>
             </div>

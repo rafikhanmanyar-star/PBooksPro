@@ -10,6 +10,7 @@ import Button from '../ui/Button';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
 import ComboBox from '../ui/ComboBox';
+import PurchaseOrderActivitySidebar from './PurchaseOrderActivitySidebar';
 import { CURRENCY, ICONS } from '../../constants';
 
 const STATUSES = ['', 'Draft', 'Submitted', 'Approved', 'Partially Billed', 'Fully Billed', 'Cancelled'];
@@ -88,7 +89,8 @@ function formatPoLineItemsForWhatsApp(
 
 const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCreateGrn }) => {
   const state = useFinancialReportAppState();
-  const { vendors, projects, categories, whatsAppTemplates, whatsAppMode } = state;
+  const { vendors, projects, categories, bills, transactions, whatsAppTemplates, whatsAppMode } =
+    state;
   const perms = usePermissions();
   const { openChat } = useWhatsApp();
   const { showConfirm, showAlert } = useNotification();
@@ -476,8 +478,8 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
 
       {viewing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card w-full max-w-4xl max-h-[90vh] overflow-y-auto p-6 space-y-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="bg-app-card rounded-xl border border-app-border shadow-ds-card w-full max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex flex-wrap items-start justify-between gap-3 p-6 pb-4 shrink-0 border-b border-app-border">
               <div>
                 <h3 className="text-lg font-bold text-app-text">Purchase Order {viewing.poNumber}</h3>
                 <span
@@ -515,50 +517,74 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Vendor</span>
-                <p className="font-medium">{vendors.find((v) => v.id === viewing.vendorId)?.name ?? '—'}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Project</span>
-                <p className="font-medium">{projects.find((p) => p.id === viewing.projectId)?.name ?? '—'}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Issue Date</span>
-                <p className="font-medium">{viewing.issueDate}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Required Date</span>
-                <p className="font-medium">{viewing.requiredDate ?? '—'}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Currency</span>
-                <p className="font-medium">{viewing.currency ?? CURRENCY}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Total</span>
-                <p className="font-medium">{formatMoney(viewing.totalAmount)}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Received</span>
-                <p className="font-medium">{formatMoney(viewing.receivedAmount ?? 0)}</p>
-              </div>
-              <div>
-                <span className="text-app-muted text-xs uppercase tracking-wide">Billed</span>
-                <p className="font-medium">{formatMoney(viewing.billedAmount ?? 0)}</p>
-              </div>
-              {viewing.description && (
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <span className="text-app-muted text-xs uppercase tracking-wide">Description</span>
-                  <p className="font-medium">{viewing.description}</p>
+            <div className="flex flex-1 min-h-0 overflow-hidden">
+              <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4 min-w-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Vendor</span>
+                    <p className="font-medium">
+                      {vendors.find((v) => v.id === viewing.vendorId)?.name ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Project</span>
+                    <p className="font-medium">
+                      {projects.find((p) => p.id === viewing.projectId)?.name ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Issue Date</span>
+                    <p className="font-medium">{viewing.issueDate}</p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Required Date</span>
+                    <p className="font-medium">{viewing.requiredDate ?? '—'}</p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Currency</span>
+                    <p className="font-medium">{viewing.currency ?? CURRENCY}</p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Total</span>
+                    <p className="font-medium">{formatMoney(viewing.totalAmount)}</p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Received</span>
+                    <p className="font-medium">{formatMoney(viewing.receivedAmount ?? 0)}</p>
+                  </div>
+                  <div>
+                    <span className="text-app-muted text-xs uppercase tracking-wide">Billed</span>
+                    <p className="font-medium">{formatMoney(viewing.billedAmount ?? 0)}</p>
+                  </div>
+                  {viewing.description && (
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <span className="text-app-muted text-xs uppercase tracking-wide">Description</span>
+                      <p className="font-medium">{viewing.description}</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
 
-            <div>
-              <h4 className="text-sm font-semibold text-app-text mb-2">Line Items</h4>
-              {renderLineItemsTable(viewing)}
+                <div>
+                  <h4 className="text-sm font-semibold text-app-text mb-2">Line Items</h4>
+                  {renderLineItemsTable(viewing)}
+                </div>
+
+                <div className="md:hidden pt-2 border-t border-app-border">
+                  <PurchaseOrderActivitySidebar
+                    purchaseOrder={viewing}
+                    bills={bills}
+                    transactions={transactions}
+                  />
+                </div>
+              </div>
+
+              <aside className="w-80 shrink-0 border-l border-app-border bg-app-toolbar/20 overflow-y-auto p-4 hidden md:block">
+                <PurchaseOrderActivitySidebar
+                  purchaseOrder={viewing}
+                  bills={bills}
+                  transactions={transactions}
+                />
+              </aside>
             </div>
           </div>
         </div>

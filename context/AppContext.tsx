@@ -31,6 +31,10 @@ import {
     invalidateQueriesForEntityEvent,
     invalidateQueriesForFinancialPosted,
 } from '../services/realtime/entityQueryInvalidation';
+import {
+    maybeMarkDashboardRefreshForEntity,
+    markDashboardRefreshForFinancialPosted,
+} from '../services/realtime/dashboardRefreshIndicator';
 import type { RealtimeEntityPayload } from '../services/realtime/realtimePayload';
 import {
   normalizeRemoteContactRow,
@@ -1138,9 +1142,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         .saveBill(bill)
                         .then((saved) => {
                             if (saved && typeof saved.version === 'number') {
+                                const merged = { ...bill, ...saved };
+                                if (bill.id && saved.id && bill.id !== saved.id) {
+                                    logger.logCategory(
+                                        'sync',
+                                        `↩️ Bill id reconciled for creator after save: ${bill.id} → ${saved.id} (${merged.billNumber})`
+                                    );
+                                }
                                 dispatch({
                                     type: 'UPDATE_BILL',
-                                    payload: { ...bill, ...saved },
+                                    payload: merged,
                                     _isRemote: true,
                                 } as AppAction);
                             }
@@ -1744,17 +1755,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 incremental: !!(lastSync && baselineHasCoreData),
             });
             try {
+                const { getQueryClient } = await import('../config/queryClient');
                 const now = Date.now();
                 if (now - getRentalRollupLastInvalidateAfterSyncAt() < RENTAL_ROLLUP_SYNC_INVALIDATE_MIN_MS) {
                     /* skip: rollup queries refetch is heavy for large tenants; tx saves still invalidate */
                 } else {
                     setRentalRollupLastInvalidateAfterSyncAt(now);
-                    const [{ getQueryClient }, { rentalRollupQueryKeys }] = await Promise.all([
-                        import('../config/queryClient'),
-                        import('../hooks/queries/useRentalRollupQueries'),
-                    ]);
+                    const { rentalRollupQueryKeys } = await import('../hooks/queries/useRentalRollupQueries');
                     getQueryClient().invalidateQueries({ queryKey: rentalRollupQueryKeys.root });
                 }
+                const { dashboardMetricsQueryKeys } = await import('../hooks/useDashboardMetrics');
+                void getQueryClient().invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root });
             } catch {
                 /* optional: query client not ready */
             }
@@ -1833,6 +1844,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 currentUserId: auth.user?.id,
                 currentTenantId: currentTenantId ?? undefined,
             });
+            maybeMarkDashboardRefreshForEntity(payload, { currentUserId: auth.user?.id });
 
             if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
                 return;
@@ -2092,6 +2104,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         const handleFinancialPosted = () => {
             void invalidateQueriesForFinancialPosted(getQueryClient());
+            markDashboardRefreshForFinancialPosted();
             scheduleRefresh();
         };
 

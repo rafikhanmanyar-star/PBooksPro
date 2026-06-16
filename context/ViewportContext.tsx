@@ -75,7 +75,7 @@ function applySidebarWidth(size: ViewportSize, mainNavCollapsed: boolean) {
   if (mainNavCollapsed) {
     root.style.setProperty('--sidebar-width', SIDEBAR_RAIL_WIDTH);
   } else {
-    root.style.setProperty('--sidebar-width', size.isCompactDesktop ? '14rem' : '16rem');
+    root.style.setProperty('--sidebar-width', size.isCompactDesktop ? '15rem' : '17.5rem');
   }
   root.dataset.mainNavCollapsed = mainNavCollapsed ? 'true' : 'false';
 }

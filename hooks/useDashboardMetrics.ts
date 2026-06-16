@@ -1,7 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { dashboardMetricsApi } from '../services/api/dashboardMetricsApi';
 import { dashboardSnapshotsApi } from '../services/api/dashboardSnapshotsApi';
 import { useDashboardFiltersStore } from '../stores/dashboardFiltersStore';
+import { clearDashboardRefreshPending } from '../stores/dashboardRefreshIndicatorStore';
 import type { DashboardFilters } from '../types/dashboardMetrics.types';
 
 export const dashboardMetricsQueryKeys = {
@@ -72,4 +74,79 @@ export function useDashboardActivity(limit = 5, enabled = true) {
     refetchInterval: REFETCH_MS,
     refetchIntervalInBackground: false,
   });
+}
+
+type DashboardQueryBundle = {
+  metrics?: UseQueryResult<unknown, Error>;
+  snapshots?: UseQueryResult<unknown, Error>;
+  charts?: UseQueryResult<unknown, Error>;
+  activity?: UseQueryResult<unknown, Error>;
+};
+
+/** Refetch executive dashboard queries (metrics, charts, activity, snapshots). */
+export async function refetchDashboardQueries(queries: DashboardQueryBundle): Promise<void> {
+  const tasks: Promise<unknown>[] = [];
+  if (queries.activity) tasks.push(queries.activity.refetch());
+  if (queries.metrics) tasks.push(queries.metrics.refetch());
+  if (queries.snapshots) tasks.push(queries.snapshots.refetch());
+  if (queries.charts) tasks.push(queries.charts.refetch());
+  await Promise.all(tasks);
+  clearDashboardRefreshPending();
+}
+
+/**
+ * Load dashboard data once per auth session when the dashboard page is active.
+ * Covers the post-login gap where queries were disabled before auth/user/filters were ready.
+ */
+export function useDashboardSessionLoad(options: {
+  isAuthenticated: boolean;
+  isDashboardActive: boolean;
+  isAdmin: boolean;
+  userId?: string;
+  queries: DashboardQueryBundle;
+}): void {
+  const { isAuthenticated, isDashboardActive, isAdmin, userId, queries } = options;
+  const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
+  const sessionLoadKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const onLogin = () => {
+      sessionLoadKeyRef.current = null;
+    };
+    window.addEventListener('auth:login-success', onLogin);
+    return () => window.removeEventListener('auth:login-success', onLogin);
+  }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      sessionLoadKeyRef.current = null;
+      return;
+    }
+    if (!isDashboardActive || !hasHydrated) return;
+
+    const sessionKey = `${userId ?? 'unknown'}:${isAdmin ? 'admin' : 'user'}`;
+    if (sessionLoadKeyRef.current === sessionKey) return;
+    sessionLoadKeyRef.current = sessionKey;
+
+    void refetchDashboardQueries({
+      activity: queries.activity,
+      ...(isAdmin
+        ? {
+            metrics: queries.metrics,
+            snapshots: queries.snapshots,
+            charts: queries.charts,
+          }
+        : {}),
+    });
+  }, [
+    isAuthenticated,
+    isDashboardActive,
+    isAdmin,
+    hasHydrated,
+    userId,
+    queries.activity,
+    queries.metrics,
+    queries.snapshots,
+    queries.charts,
+  ]);
 }
