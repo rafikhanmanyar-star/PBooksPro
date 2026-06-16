@@ -1,8 +1,11 @@
-import React, { useRef, useState } from 'react';
+import React from 'react';
 import type { MobileApprovalItem } from '../../../types/executiveMobile.types';
 import { CURRENCY, ICONS } from '../../../constants';
 import { formatDate } from '../../../utils/dateUtils';
-import { APPROVAL_TYPE_META } from '../constants/mobileCategories';
+import {
+  getApprovalTypeMeta,
+  isWorkflowApprovalItem,
+} from '../constants/mobileCategories';
 
 const SWIPE_THRESHOLD = 80;
 
@@ -14,12 +17,30 @@ type Props = {
   onViewPlan?: () => void;
 };
 
+function statusBadgeClass(status: string): string {
+  const s = status.toLowerCase();
+  if (s.includes('approved')) return 'bg-green-500/15 text-green-400';
+  if (s.includes('rejected')) return 'bg-ds-danger/15 text-ds-danger';
+  if (s.includes('pending')) return 'bg-amber-500/15 text-amber-400';
+  return 'bg-app-surface-2 text-app-muted';
+}
+
+function typeIcon(item: MobileApprovalItem): React.ReactNode {
+  if (item.type === 'installment_plan') return ICONS.fileText;
+  if (item.type === 'payment') return ICONS.wallet;
+  if (item.type === 'contract' || item.type === 'variation_order') return ICONS.checkCircle;
+  if (item.type === 'bill' || item.type === 'contractor_bill') return ICONS.fileText;
+  if (item.type === 'purchase_order') return ICONS.briefcase;
+  return ICONS.checkCircle;
+}
+
 export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onViewPlan }: Props) {
-  const [offsetX, setOffsetX] = useState(0);
-  const startX = useRef(0);
-  const dragging = useRef(false);
-  const meta = APPROVAL_TYPE_META[item.type];
+  const [offsetX, setOffsetX] = React.useState(0);
+  const startX = React.useRef(0);
+  const dragging = React.useRef(false);
+  const meta = getApprovalTypeMeta(item.type);
   const isMarketing = item.type === 'installment_plan';
+  const isWorkflow = isWorkflowApprovalItem(item);
 
   const onTouchStart = (e: React.TouchEvent) => {
     startX.current = e.touches[0].clientX;
@@ -58,19 +79,32 @@ export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onV
         onTouchEnd={onTouchEnd}
       >
         <div className="flex items-start gap-3">
-          <span
-            className={`w-10 h-10 rounded-xl shrink-0 inline-flex items-center justify-center ${
-              isMarketing ? 'executive-metric-icon--violet' : 'executive-metric-icon--teal'
-            }`}
-          >
-            <span className="w-5 h-5">{isMarketing ? ICONS.fileText : ICONS.checkCircle}</span>
+          <span className={`w-10 h-10 rounded-xl shrink-0 inline-flex items-center justify-center ${meta.iconWrap}`}>
+            <span className="w-5 h-5">{typeIcon(item)}</span>
           </span>
           <div className="flex-1 min-w-0">
-            <span className="text-[10px] font-semibold uppercase text-ds-primary">{meta.shortLabel}</span>
-            <p className="font-semibold text-app-text mt-1">{item.title}</p>
-            {item.subtitle && <p className="text-sm text-app-muted">{item.subtitle}</p>}
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-ds-primary">
+                {meta.shortLabel}
+              </span>
+              <span
+                className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusBadgeClass(item.status)}`}
+              >
+                {item.status}
+              </span>
+              {isWorkflow && item.currentLevel != null && item.maxLevel != null && (
+                <span className="text-[10px] font-medium text-app-muted">
+                  L{item.currentLevel}/{item.maxLevel}
+                </span>
+              )}
+            </div>
+            <p className="font-semibold text-app-text leading-snug">{item.title}</p>
+            {item.subtitle && <p className="text-sm text-app-muted mt-0.5">{item.subtitle}</p>}
+            {item.requestedByName && (
+              <p className="text-xs text-app-muted mt-1">From {item.requestedByName}</p>
+            )}
             {item.amount != null && (
-              <p className="text-base font-bold mt-2 tabular-nums">
+              <p className="text-base font-bold mt-2 tabular-nums text-app-text">
                 {item.currency ?? CURRENCY} {item.amount.toLocaleString()}
               </p>
             )}
@@ -79,7 +113,11 @@ export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onV
             )}
           </div>
         </div>
-        <p className="text-[10px] text-app-muted mt-3 text-center">Swipe right to approve · left to reject</p>
+        {item.canApprove && !item.requiresFullErp && (
+          <p className="text-[10px] text-app-muted mt-3 text-center">
+            Swipe right to approve · left to reject
+          </p>
+        )}
         <div className="flex flex-wrap gap-2 mt-3">
           {isMarketing && onViewPlan && (
             <button

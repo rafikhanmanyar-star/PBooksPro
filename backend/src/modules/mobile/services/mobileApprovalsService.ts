@@ -16,13 +16,16 @@ import {
   normalizeMarketingPlanStatus,
   roleCanApproveMarketingPlans,
 } from '../../project-selling/services/marketingPlanAccess.js';
+import { listApprovalQueue, performApprovalAction } from '../../workflow/services/workflowEngineService.js';
+import { isApprovalWorkflowEnabled } from '../../workflow/services/workflowSettingsService.js';
+import { WORKFLOW_ENTITY_LABELS, type WorkflowEntityType } from '../../../workflow/workflowTypes.js';
 import {
   type MobileApprovalItem,
   isPendingInstallmentPlan,
+  isWorkflowEntityType,
   marketingPlanVisibleToMobileUser,
   sortApprovalsByDate,
 } from '../mobileApprovalsHelpers.js';
-
 async function userNameMap(
   client: pg.PoolClient,
   tenantId: string,
@@ -145,6 +148,52 @@ export async function listMobileApprovals(
     });
   }
 
+  const canViewWorkflow = roleHasPermission(role, 'workflow.view');
+  const canApproveWorkflow = roleHasPermission(role, 'workflow.approve');
+  if (canViewWorkflow && (await isApprovalWorkflowEnabled(client, tenantId))) {
+    const workflowRows = await listApprovalQueue(client, tenantId, {
+      status: 'pending',
+      ...(canApproveWorkflow ? {} : { assignedToMe: userId }),
+    });
+
+    const visibleWorkflowRows = canApproveWorkflow
+      ? workflowRows
+      : workflowRows.filter((row) => row.assignedApproverId === userId);
+
+    const requesterIds = visibleWorkflowRows
+      .map((row) => row.requesterId)
+      .filter(Boolean) as string[];
+    const workflowRequesterNames = await userNameMap(client, tenantId, requesterIds);
+
+    for (const row of visibleWorkflowRows) {
+      const entityType = row.entityType as WorkflowEntityType;
+      const label = WORKFLOW_ENTITY_LABELS[entityType] ?? entityType;
+      const ref = row.entityRef ?? row.entityId;
+      const assignedToUser = !row.assignedApproverId || row.assignedApproverId === userId;
+
+      items.push({
+        id: row.id,
+        type: entityType,
+        title: `${label} · ${ref}`,
+        subtitle: row.comments?.trim() || undefined,
+        amount: row.amount,
+        currency: 'PKR',
+        status: row.status,
+        requestedAt: row.createdAt,
+        requestedById: row.requesterId,
+        requestedByName: row.requesterId
+          ? workflowRequesterNames.get(row.requesterId)
+          : undefined,
+        canApprove: canApproveWorkflow && assignedToUser && row.status === 'pending',
+        workflowRequestId: row.id,
+        entityId: row.entityId,
+        entityRef: row.entityRef,
+        currentLevel: row.currentLevel,
+        maxLevel: row.maxLevel,
+      });
+    }
+  }
+
   return sortApprovalsByDate(items);
 }
 
@@ -156,6 +205,17 @@ export async function approveMobileApproval(
   type: string,
   id: string
 ): Promise<Record<string, unknown>> {
+  if (isWorkflowEntityType(type)) {
+    if (!roleHasPermission(role, 'workflow.approve')) {
+      throw new Error('Missing permission: workflow.approve');
+    }
+    const result = await performApprovalAction(client, tenantId, {
+      requestId: id,
+      action: 'approve',
+      actorId: userId,
+    });
+    return result as unknown as Record<string, unknown>;
+  }
   if (type === 'pev') {
     if (!roleHasPermission(role, 'pev.approve')) {
       throw new Error('Missing permission: pev.approve');
@@ -198,6 +258,18 @@ export async function rejectMobileApproval(
   id: string,
   reason?: string
 ): Promise<Record<string, unknown>> {
+  if (isWorkflowEntityType(type)) {
+    if (!roleHasPermission(role, 'workflow.approve')) {
+      throw new Error('Missing permission: workflow.approve');
+    }
+    const result = await performApprovalAction(client, tenantId, {
+      requestId: id,
+      action: 'reject',
+      actorId: userId,
+      comments: reason,
+    });
+    return result as unknown as Record<string, unknown>;
+  }
   if (type === 'pev') {
     if (!roleHasPermission(role, 'pev.approve')) {
       throw new Error('Missing permission: pev.approve');

@@ -2,7 +2,11 @@
  * Balance sheet engine smoke tests (tsx / node).
  */
 import assert from 'node:assert';
-import { computeBalanceSheetReport, computeComparativeBalanceSheetReport } from '../components/reports/balanceSheetEngine';
+import {
+  computeBalanceSheetReport,
+  computeComparativeBalanceSheetReport,
+  selectBalanceSheetView,
+} from '../components/reports/balanceSheetEngine';
 import { balanceSheetToExportRows } from '../components/reports/exportBalanceSheet';
 import type { AppState } from '../types';
 import { AccountType, TransactionType } from '../types';
@@ -360,6 +364,31 @@ function minimalState(overrides: Partial<AppState> = {}): AppState {
   const totalAssetsRow = rows.find((row) => row.Account === 'Total Assets');
   assert.ok(totalAssetsRow && Math.abs(Number(totalAssetsRow.Amount) - r.totals.assets) < 0.01);
   assert.ok(r.isBalanced, 'equation should balance');
+}
+
+/** View selector returns report for non-comparative mode (no undefined .assets). */
+{
+  const state = minimalState();
+  const single = computeBalanceSheetReport(state, { asOfDate: '2024-12-31', selectedProjectId: 'all' });
+  const selected = selectBalanceSheetView(single);
+  assert.ok(selected.report.assets != null, 'single-mode report should expose assets');
+  assert.equal(selected.previousReport, null, 'single-mode previous report should be null');
+  assert.equal(selected.previousAsOfDate, null, 'single-mode previous date should be null');
+}
+
+/** View selector returns current/previous values for comparative mode. */
+{
+  const state = minimalState();
+  const cmp = computeComparativeBalanceSheetReport(state, {
+    asOfDate: '2024-12-31',
+    selectedProjectId: 'all',
+    compareMode: 'prior_year',
+    fiscalStartMonth: 1,
+  });
+  const selected = selectBalanceSheetView(cmp);
+  assert.ok(selected.report.assets != null, 'comparative current report should expose assets');
+  assert.ok(selected.previousReport != null, 'comparative previous report should be present');
+  assert.equal(selected.previousAsOfDate, '2023-12-31');
 }
 
 console.log('balanceSheetEngine.test.ts: OK');

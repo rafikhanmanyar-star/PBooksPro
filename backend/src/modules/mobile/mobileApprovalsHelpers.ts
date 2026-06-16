@@ -1,4 +1,12 @@
-export type MobileApprovalType = 'pev' | 'installment_plan' | 'contractor_bill';
+import {
+  isWorkflowEntityType,
+  WORKFLOW_ENTITY_TYPES,
+  type WorkflowEntityType,
+} from '../../workflow/workflowTypes.js';
+
+export type MobileLegacyApprovalType = 'pev' | 'installment_plan' | 'contractor_bill';
+
+export type MobileApprovalType = WorkflowEntityType | MobileLegacyApprovalType;
 
 export type MobileApprovalItem = {
   id: string;
@@ -15,7 +23,14 @@ export type MobileApprovalItem = {
   requiresFullErp?: boolean;
   reviewedAt?: string;
   reviewedByName?: string;
+  workflowRequestId?: string;
+  entityId?: string;
+  currentLevel?: number;
+  maxLevel?: number;
+  entityRef?: string;
 };
+
+export { isWorkflowEntityType, WORKFLOW_ENTITY_TYPES };
 
 export function normalizeStatus(s: string): string {
   return s.trim().toLowerCase().replace(/\s+/g, ' ');

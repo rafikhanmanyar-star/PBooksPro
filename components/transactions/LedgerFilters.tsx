@@ -1,4 +1,4 @@
-import { useAccounts, useCategories } from '../../hooks/useSelectiveState';
+import { useAccounts, useCategories, useContacts, useProjects, useBuildings } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import { TransactionType, SortDirection, LedgerSortKey as SortKey, FilterCriteria } from '../../types';
 import Input from '../ui/Input';
@@ -25,6 +25,9 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
 }) => {
     const accounts = useAccounts();
     const categories = useCategories();
+    const contacts = useContacts();
+    const projects = useProjects();
+    const buildings = useBuildings();
     const [tempFilters, setTempFilters] = useState<FilterCriteria>(filters);
 
     // Filter out Internal Clearing account from combo box - with defensive check
@@ -174,7 +177,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Contact</label>
                         <ComboBox
-                            items={state?.contacts || []}
+                            items={contacts || []}
                             selectedId={tempFilters.contactId}
                             onSelect={(item) => setTempFilters(prev => ({ ...prev, contactId: item?.id || '' }))}
                             placeholder="Select Contact"
@@ -185,7 +188,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest ml-1">Project Scope</label>
                         <ComboBox
-                            items={state?.projects || []}
+                            items={projects || []}
                             selectedId={tempFilters.projectId}
                             onSelect={(item) => setTempFilters(prev => ({ ...prev, projectId: item?.id || '' }))}
                             placeholder="Select Project"
@@ -196,7 +199,7 @@ const LedgerFilters: React.FC<LedgerFiltersProps> = ({
                     <div className="space-y-1.5">
                         <label className="text-[10px] font-bold text-app-muted uppercase tracking-widest ml-1">Building/Unit</label>
                         <ComboBox
-                            items={state?.buildings || []}
+                            items={buildings || []}
                             selectedId={tempFilters.buildingId}
                             onSelect={(item) => setTempFilters(prev => ({ ...prev, buildingId: item?.id || '' }))}
                             placeholder="Select Building"

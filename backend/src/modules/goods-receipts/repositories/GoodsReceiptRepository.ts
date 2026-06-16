@@ -234,7 +234,7 @@ export class GoodsReceiptRepository extends TenantRepository {
   async markDeleted(client: pg.PoolClient, id: string): Promise<boolean> {
     const r = await client.query(
       `UPDATE goods_receipts SET deleted_at = NOW(), version = version + 1, updated_at = NOW()
-       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL AND status = 'Draft'`,
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
     return (r.rowCount ?? 0) > 0;

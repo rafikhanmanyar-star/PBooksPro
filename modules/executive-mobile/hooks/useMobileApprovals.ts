@@ -33,6 +33,7 @@ export function useApproveMobileItem() {
       void qc.invalidateQueries({ queryKey: ['mobile-installment-plan-detail'] });
       void qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
       void qc.invalidateQueries({ queryKey: ['mobile-command-center'] });
+      void qc.invalidateQueries({ queryKey: ['workflow'] });
     },
   });
 }
@@ -47,6 +48,7 @@ export function useRejectMobileItem() {
       void qc.invalidateQueries({ queryKey: ['mobile-installment-plan-detail'] });
       void qc.invalidateQueries({ queryKey: ['mobile-notifications'] });
       void qc.invalidateQueries({ queryKey: ['mobile-command-center'] });
+      void qc.invalidateQueries({ queryKey: ['workflow'] });
     },
   });
 }

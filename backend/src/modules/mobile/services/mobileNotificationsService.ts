@@ -1,19 +1,63 @@
 import type pg from 'pg';
 import { listUserNotifications } from '../../notifications/services/userNotificationService.js';
 import { listMobileApprovals } from './mobileApprovalsService.js';
+import {
+  WORKFLOW_ENTITY_LABELS,
+  isWorkflowEntityType,
+  type WorkflowEntityType,
+} from '../../../workflow/workflowTypes.js';
 
 export type MobileNotificationSeverity = 'info' | 'warning' | 'urgent';
 
+export type MobileNotificationCategory =
+  | 'approval'
+  | 'collections'
+  | 'rental'
+  | 'finance'
+  | 'project';
+
 export type MobileNotificationItem = {
   id: string;
-  category: 'approval' | 'collections' | 'rental' | 'finance' | 'project';
+  category: MobileNotificationCategory;
   title: string;
   body: string;
   severity: MobileNotificationSeverity;
   createdAt: string;
-  actionType?: 'approval' | 'pev' | 'installment_plan' | 'unposted';
+  actionType?:
+    | 'approval'
+    | 'approval_request'
+    | 'pev'
+    | 'installment_plan'
+    | 'unposted'
+    | 'contract';
   actionId?: string;
+  entityType?: string;
+  entityId?: string;
+  workflowEntityType?: string;
 };
+
+const KNOWN_CATEGORIES = new Set<MobileNotificationCategory>([
+  'approval',
+  'collections',
+  'rental',
+  'finance',
+  'project',
+]);
+
+export function normalizeNotificationCategory(category: string): MobileNotificationCategory {
+  if (KNOWN_CATEGORIES.has(category as MobileNotificationCategory)) {
+    return category as MobileNotificationCategory;
+  }
+  if (category === 'workflow' || category === 'contract_retention') {
+    return 'approval';
+  }
+  return 'finance';
+}
+
+function workflowEntityLabel(entityType?: string | null): string | undefined {
+  if (!entityType || !isWorkflowEntityType(entityType)) return undefined;
+  return WORKFLOW_ENTITY_LABELS[entityType as WorkflowEntityType];
+}
 
 export async function listMobileNotifications(
   client: pg.PoolClient,
@@ -25,31 +69,57 @@ export async function listMobileNotifications(
   const now = new Date().toISOString();
 
   const persisted = await listUserNotifications(client, tenantId, userId, 50);
+  const persistedWorkflowRequestIds = new Set<string>();
+
   for (const n of persisted) {
+    const category = normalizeNotificationCategory(n.category);
+    const workflowEntityType =
+      n.entityType && isWorkflowEntityType(n.entityType) ? n.entityType : undefined;
+    const entityLabel = workflowEntityLabel(n.entityType);
+
+    if (n.actionType === 'approval_request' && n.actionId) {
+      persistedWorkflowRequestIds.add(n.actionId);
+    }
+
     items.push({
       id: n.id,
-      category: (n.category as MobileNotificationItem['category']) || 'finance',
+      category,
       title: n.title,
-      body: n.body,
+      body: entityLabel ? `${entityLabel} · ${n.body}` : n.body,
       severity: n.severity,
       createdAt: n.createdAt,
       ...(n.actionType
         ? { actionType: n.actionType as MobileNotificationItem['actionType'], actionId: n.actionId }
         : {}),
+      ...(n.entityType ? { entityType: n.entityType } : {}),
+      ...(n.entityId ? { entityId: n.entityId } : {}),
+      ...(workflowEntityType ? { workflowEntityType } : {}),
     });
   }
 
   const approvals = await listMobileApprovals(client, tenantId, userId, role);
   for (const a of approvals.filter((x) => x.canApprove)) {
+    if (a.workflowRequestId && persistedWorkflowRequestIds.has(a.workflowRequestId)) {
+      continue;
+    }
+
+    const entityLabel = isWorkflowEntityType(a.type)
+      ? WORKFLOW_ENTITY_LABELS[a.type]
+      : undefined;
+
     items.push({
       id: `approval:${a.type}:${a.id}`,
       category: 'approval',
       title: a.title,
-      body: a.subtitle ?? `Awaiting your approval`,
+      body: a.subtitle ?? (entityLabel ? `${entityLabel} awaiting your approval` : 'Awaiting your approval'),
       severity: 'warning',
       createdAt: a.requestedAt ?? now,
-      actionType: 'approval',
-      actionId: `${a.type}:${a.id}`,
+      actionType: a.workflowRequestId ? 'approval_request' : 'approval',
+      actionId: a.workflowRequestId ?? `${a.type}:${a.id}`,
+      ...(a.entityId ? { entityId: a.entityId } : {}),
+      ...(isWorkflowEntityType(a.type)
+        ? { workflowEntityType: a.type, entityType: a.type }
+        : {}),
     });
   }
 

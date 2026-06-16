@@ -9,6 +9,15 @@ import {
   type MobileApprovalItem,
 } from './mobileApprovalsHelpers.js';
 import { parseCreateUnpostedTransaction, canReviewUnpostedTransactions, parseUnpostedListFilters } from './services/unpostedTransactionService.js';
+import { normalizeNotificationCategory } from './services/mobileNotificationsService.js';
+
+describe('mobileNotificationsService', () => {
+  it('normalizeNotificationCategory maps workflow alerts to approval', () => {
+    assert.equal(normalizeNotificationCategory('workflow'), 'approval');
+    assert.equal(normalizeNotificationCategory('contract_retention'), 'approval');
+    assert.equal(normalizeNotificationCategory('finance'), 'finance');
+  });
+});
 
 describe('mobileApprovalsHelpers', () => {
   it('normalizeStatus lowercases and collapses spaces', () => {
