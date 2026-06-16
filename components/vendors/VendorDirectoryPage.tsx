@@ -184,6 +184,7 @@ const VendorDirectoryPage: React.FC = () => {
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
     const [isQuotationFormModalOpen, setIsQuotationFormModalOpen] = useState(false);
     const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
+    const [quotationFormVendorId, setQuotationFormVendorId] = useState<string | null>(null);
     const [editingItem, setEditingItem] = useState<{ id: string; type: 'bill' | 'transaction' } | null>(null);
     const [warningModalState, setWarningModalState] = useState<{
         isOpen: boolean;
@@ -213,6 +214,18 @@ const VendorDirectoryPage: React.FC = () => {
         setGrnPrefillPoId(purchaseOrderId);
         setProcurementView('GoodsReceipts');
     };
+
+    const openQuotationForm = useCallback((opts?: { vendorId?: string; quotation?: Quotation | null }) => {
+        setEditingQuotation(opts?.quotation ?? null);
+        setQuotationFormVendorId(opts?.vendorId ?? opts?.quotation?.vendorId ?? null);
+        setIsQuotationFormModalOpen(true);
+    }, []);
+
+    const closeQuotationForm = useCallback(() => {
+        setIsQuotationFormModalOpen(false);
+        setEditingQuotation(null);
+        setQuotationFormVendorId(null);
+    }, []);
 
     const {
         effectiveCollapsed: subNavCollapsed,
@@ -255,6 +268,11 @@ const VendorDirectoryPage: React.FC = () => {
         const list = [...(appVendors || [])];
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [appVendors]);
+
+    const quotationFormVendor = useMemo(() => {
+        const id = quotationFormVendorId ?? editingQuotation?.vendorId ?? selectedVendorId;
+        return id ? vendors.find((v) => v.id === id) : undefined;
+    }, [quotationFormVendorId, editingQuotation?.vendorId, selectedVendorId, vendors]);
 
     const filteredVendors = useMemo(() => {
         if (!vendorSearch) return vendors;
@@ -514,16 +532,8 @@ const VendorDirectoryPage: React.FC = () => {
             case 'Quotation':
                 return (
                     <AllQuotationsTable
-                        onEditQuotation={(quotation) => {
-                            const vendor = (vendors || []).find(v => v.id === quotation.vendorId);
-                            if (vendor) {
-                                setSelectedVendorId(vendor.id);
-                                setProcurementView('Directory');
-                                setActiveTab('Quotations');
-                                setEditingQuotation(quotation);
-                                setIsQuotationFormModalOpen(true);
-                            }
-                        }}
+                        onNewQuotation={() => openQuotationForm()}
+                        onEditQuotation={(quotation) => openQuotationForm({ quotation })}
                     />
                 );
             case 'Comparison':
@@ -857,10 +867,7 @@ const VendorDirectoryPage: React.FC = () => {
                                         <div className="flex items-center gap-2">
                                             <Button
                                                 variant="secondary"
-                                                onClick={() => {
-                                                    setEditingQuotation(null);
-                                                    setIsQuotationFormModalOpen(true);
-                                                }}
+                                                onClick={() => openQuotationForm({ vendorId: selectedVendor.id })}
                                                 className="!py-1.5 !px-3 !text-xs"
                                             >
                                                 <span className="w-3.5 h-3.5 mr-1.5 opacity-70">{ICONS.fileText}</span>
@@ -908,10 +915,9 @@ const VendorDirectoryPage: React.FC = () => {
                                     ) : (
                                         <VendorQuotationsTable
                                             vendorId={selectedVendor.id}
-                                            onEditQuotation={(quotation) => {
-                                                setEditingQuotation(quotation);
-                                                setIsQuotationFormModalOpen(true);
-                                            }}
+                                            onEditQuotation={(quotation) =>
+                                                openQuotationForm({ vendorId: selectedVendor.id, quotation })
+                                            }
                                         />
                                     )}
                                 </div>
@@ -949,30 +955,6 @@ const VendorDirectoryPage: React.FC = () => {
                                 onClose={() => setIsAdvanceModalOpen(false)}
                                 vendor={selectedVendor}
                             />
-
-                            {/* Quotation Form Modal */}
-                            {selectedVendor && (
-                                <Modal
-                                    isOpen={isQuotationFormModalOpen}
-                                    onClose={() => {
-                                        setIsQuotationFormModalOpen(false);
-                                        setEditingQuotation(null);
-                                    }}
-                                    title={editingQuotation ? 'Edit Quotation' : 'Add New Quotation'}
-                                    size="xl"
-                                >
-                                    <QuotationForm
-                                        quotationToEdit={editingQuotation || undefined}
-                                        vendorId={selectedVendor.id}
-                                        vendorName={selectedVendor.name}
-                                        procurementSettings={state.procurementSettings}
-                                        onClose={() => {
-                                            setIsQuotationFormModalOpen(false);
-                                            setEditingQuotation(null);
-                                        }}
-                                    />
-                                </Modal>
-                            )}
                         </>
                     ) : (
                         <div className="flex-grow flex flex-col bg-app-card rounded-2xl shadow-ds-card border border-app-border min-h-0 overflow-hidden m-0">
@@ -993,6 +975,21 @@ const VendorDirectoryPage: React.FC = () => {
                 </div>
             )}
             </div>
+
+            <Modal
+                isOpen={isQuotationFormModalOpen}
+                onClose={closeQuotationForm}
+                title={editingQuotation ? 'Edit Quotation' : 'Add New Quotation'}
+                size="xl"
+            >
+                <QuotationForm
+                    quotationToEdit={editingQuotation || undefined}
+                    vendorId={quotationFormVendor?.id}
+                    vendorName={quotationFormVendor?.name}
+                    procurementSettings={state.procurementSettings}
+                    onClose={closeQuotationForm}
+                />
+            </Modal>
 
             {billToEdit && (
                 <Modal

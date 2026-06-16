@@ -70,6 +70,11 @@ import BillProcurementLinksSection from '../bills/BillProcurementLinksSection';
 import SubmitForApprovalButton from '../workflow/SubmitForApprovalButton';
 import type { PoBillingContext } from '../../services/purchaseOrdersApi';
 import { validateBillAgainstPurchaseOrderWithReceipt } from '../../shared/procurement/purchaseOrderBillingCore';
+import {
+  buildDefaultPoBillLinesFromContext,
+  buildExpenseCategoryItemsFromPo,
+  sumExpenseCategoryNet,
+} from '../../utils/poBillExpenseSync';
 import { isPureSecurityDepositInvoice } from '../../utils/rentalInvoiceClassification';
 import { formatDate } from '../../utils/dateUtils';
 import { formatCurrency } from '../../utils/numberFormatting';
@@ -537,6 +542,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   }, [type, defaults]);
 
   const [expenseCategoryItems, setExpenseCategoryItems] = useState<ContractExpenseCategoryItem[]>(initialExpenseCategoryItems);
+  const poAutoFilledRef = useRef<string | null>(null);
+  const poLinkedExpenseCategories = type === 'bill' && !!purchaseOrderId;
   const { validate: validateQuotationRate } = useQuotationRateValidator(
     quotations ?? [],
     procurementSettings,
@@ -870,7 +877,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const applyContractExpenseCategoriesToBill = (contract: Contract) => {
     // Project construction bills: contract may still be linked for budget tracking, but line items are entered manually.
     if (projectContext) return;
-    if (type !== 'bill' || itemToEdit || !contract.expenseCategoryItems || contract.expenseCategoryItems.length === 0) return;
+    if (type !== 'bill' || itemToEdit || purchaseOrderId || !contract.expenseCategoryItems || contract.expenseCategoryItems.length === 0) return;
     const cloned = contract.expenseCategoryItems.map((item, i) => ({
       ...item,
       id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`,
@@ -882,14 +889,41 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   // Auto-link contract when exactly one active contract matches vendor + project
   useEffect(() => {
-    if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit) return;
+    if (type !== 'bill' || contractId || !vendorId || !projectId || itemToEdit || purchaseOrderId) return;
     if (availableContracts.length === 1) {
       const contractIdToSet = availableContracts[0].id;
       setContractId(contractIdToSet);
       const contract = state.contracts.find(c => c.id === contractIdToSet);
       if (contract) applyContractExpenseCategoriesToBill(contract);
     }
-  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit, state.contracts]);
+  }, [availableContracts, type, contractId, vendorId, projectId, itemToEdit, state.contracts, purchaseOrderId]);
+
+  // PO linked: pre-fill project, billable PO line qty, and expense categories from PO lines.
+  useEffect(() => {
+    if (type !== 'bill' || !purchaseOrderId || !poBillingContext) return;
+
+    if (poBillingContext.projectId && !projectId && !itemToEdit) {
+      setProjectId(poBillingContext.projectId);
+    }
+
+    if (!itemToEdit && poAutoFilledRef.current !== purchaseOrderId && poBillLines.length === 0) {
+      const filled = buildDefaultPoBillLinesFromContext(poBillingContext);
+      if (filled.length > 0) {
+        poAutoFilledRef.current = purchaseOrderId;
+        setPoBillLines(filled);
+        return;
+      }
+      poAutoFilledRef.current = purchaseOrderId;
+    }
+  }, [type, purchaseOrderId, poBillingContext, projectId, itemToEdit, poBillLines.length]);
+
+  useEffect(() => {
+    if (type !== 'bill' || !purchaseOrderId || !poBillingContext) return;
+    const items = buildExpenseCategoryItemsFromPo(poBillingContext, poBillLines);
+    setExpenseCategoryItems(items);
+    const total = sumExpenseCategoryNet(items);
+    setAmount(total > 0 ? total.toFixed(2) : '0');
+  }, [type, purchaseOrderId, poBillingContext, poBillLines]);
 
   // Add new expense category item
   const handleAddExpenseCategory = (category: { id: string; name: string } | null) => {
@@ -1283,7 +1317,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
     // Check if expense category items are required for Bills
     if (type === 'bill' && expenseCategoryItems.length === 0) {
-      await showAlert('Please add at least one expense category item.');
+      if (purchaseOrderId) {
+        await showAlert(
+          'The linked purchase order has no expense categories on its line items. Add categories on the PO, then try again.',
+          { title: 'PO categories required' }
+        );
+      } else {
+        await showAlert('Please add at least one expense category item.');
+      }
       return;
     }
 
@@ -2465,10 +2506,18 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             goodsReceiptId={goodsReceiptId}
             excludeBillId={itemToEdit?.id}
             poBillLines={poBillLines}
+            getCategoryName={(id) => expenseCategories.find((c) => c.id === id)?.name}
             onPurchaseOrderChange={(poId) => {
-              if (poId !== purchaseOrderId) setPoBillLines([]);
+              if (poId !== purchaseOrderId) {
+                setPoBillLines([]);
+                poAutoFilledRef.current = null;
+              }
               setPurchaseOrderId(poId);
-              if (!poId) setPoBillLines([]);
+              if (!poId) {
+                setPoBillLines([]);
+                setExpenseCategoryItems([]);
+                poAutoFilledRef.current = null;
+              }
             }}
             onGoodsReceiptChange={setGoodsReceiptId}
             onContextChange={setPoBillingContext}
@@ -2774,23 +2823,32 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
         {type === 'bill' ? (
           <div className={`${billFormSection} p-2 flex flex-col min-h-0`} style={{ maxHeight: 'calc(100vh - 500px)', minHeight: '200px' }}>
             <div className="flex items-center justify-between mb-2 flex-shrink-0">
-              <label className="block text-sm font-medium text-app-text">Expense Categories</label>
-              <div className="w-40">
-                <ComboBox
-                  items={availableCategories}
-                  selectedId=""
-                  onSelect={handleAddExpenseCategory}
-                  placeholder="Add category..."
-                  disabled={isAgreementCancelled}
-                  entityType="category"
-                  onAddNew={(entityType, name) => {
-                    entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
-                      handleAddExpenseCategory({ id: newId, name });
-                    });
-                  }}
-                />
-              </div>
+              <label className="block text-sm font-medium text-app-text">
+                {poLinkedExpenseCategories ? 'Expense Categories (from PO)' : 'Expense Categories'}
+              </label>
+              {!poLinkedExpenseCategories && (
+                <div className="w-40">
+                  <ComboBox
+                    items={availableCategories}
+                    selectedId=""
+                    onSelect={handleAddExpenseCategory}
+                    placeholder="Add category..."
+                    disabled={isAgreementCancelled}
+                    entityType="category"
+                    onAddNew={(entityType, name) => {
+                      entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, (newId) => {
+                        handleAddExpenseCategory({ id: newId, name });
+                      });
+                    }}
+                  />
+                </div>
+              )}
             </div>
+            {poLinkedExpenseCategories && poBillingContext && poBillingContext.lines.some((l) => !l.categoryId) && (
+              <p className="text-xs text-ds-warning mb-2">
+                Some PO lines are missing an expense category. Assign categories on the purchase order to bill those lines.
+              </p>
+            )}
 
             {expenseCategoryItems.length > 0 ? (
               <>
@@ -2805,7 +2863,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                           <th className="px-2 py-1.5 text-left font-semibold text-app-text w-20">Qty</th>
                           <th className="px-2 py-1.5 text-left font-semibold text-app-text w-24">Price</th>
                           <th className="px-2 py-1.5 text-right font-semibold text-app-text w-28">Net</th>
-                          <th className="px-1 py-1.5 text-center font-semibold text-app-text w-8">X</th>
+                          {!poLinkedExpenseCategories && (
+                            <th className="px-1 py-1.5 text-center font-semibold text-app-text w-8">X</th>
+                          )}
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-app-border">
@@ -2817,95 +2877,119 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                                 <span className="font-medium text-app-text truncate block max-w-[120px]">{category?.name || 'Unknown'}</span>
                               </td>
                               <td className="px-2 py-1.5">
-                                <Select
-                                  value={item.unit}
-                                  onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
-                                  className="text-xs border-app-border h-8 w-full"
-                                  disabled={isAgreementCancelled}
-                                  hideIcon={false}
-                                >
-                                  <option value="Cubic Feet">Cubic Feet</option>
-                                  <option value="Square feet">Square feet</option>
-                                  <option value="feet">feet</option>
-                                  <option value="quantity">quantity</option>
-                                </Select>
+                                {poLinkedExpenseCategories ? (
+                                  <span className="text-app-text">{item.unit}</span>
+                                ) : (
+                                  <Select
+                                    value={item.unit}
+                                    onChange={(e) => updateExpenseCategoryItem(item.id, { unit: e.target.value as ContractExpenseCategoryItem['unit'] })}
+                                    className="text-xs border-app-border h-8 w-full"
+                                    disabled={isAgreementCancelled}
+                                    hideIcon={false}
+                                  >
+                                    <option value="Cubic Feet">Cubic Feet</option>
+                                    <option value="Square feet">Square feet</option>
+                                    <option value="feet">feet</option>
+                                    <option value="quantity">quantity</option>
+                                  </Select>
+                                )}
                               </td>
                               <td className="px-2 py-1.5 relative">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={item.quantity?.toString() || ''}
-                                  onChange={(e) => {
-                                    const quantity = parseFloat(e.target.value) || 0;
-                                    updateExpenseCategoryItem(item.id, { quantity });
-                                  }}
-                                  className="w-full pr-6 text-xs h-8"
-                                  disabled={isAgreementCancelled}
-                                />
-                                <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-app-muted pointer-events-none text-xs">▼</span>
-                              </td>
-                              <td className="px-2 py-1.5">
-                                <div className="space-y-1">
-                                  <AmountInput
-                                    value={item.pricePerUnit.toString() || ''}
-                                    onChange={(e) => {
-                                      const pricePerUnit = parseFloat(e.target.value) || 0;
-                                      updateExpenseCategoryItem(item.id, { pricePerUnit });
-                                    }}
-                                    className="w-full text-xs h-8"
-                                    disabled={isAgreementCancelled}
-                                    aria-label="Price per unit"
-                                  />
-                                  {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
-                                    <QuotationPriceIndicator
-                                      compact
-                                      result={validateQuotationRate({
-                                        vendorId: billVendorId,
-                                        categoryId: item.categoryId,
-                                        transactionRate: item.pricePerUnit,
-                                        unit: item.unit,
-                                      })}
+                                {poLinkedExpenseCategories ? (
+                                  <span className="text-app-text tabular-nums">{item.quantity ?? 0}</span>
+                                ) : (
+                                  <>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={item.quantity?.toString() || ''}
+                                      onChange={(e) => {
+                                        const quantity = parseFloat(e.target.value) || 0;
+                                        updateExpenseCategoryItem(item.id, { quantity });
+                                      }}
+                                      className="w-full pr-6 text-xs h-8"
+                                      disabled={isAgreementCancelled}
                                     />
-                                  )}
-                                </div>
+                                    <span className="absolute right-2 top-1/2 transform -translate-y-1/2 text-app-muted pointer-events-none text-xs">▼</span>
+                                  </>
+                                )}
                               </td>
                               <td className="px-2 py-1.5">
-                                <AmountInput
-                                  value={item.netValue?.toString() || '0'}
-                                  onChange={(e) => {
-                                    const netValue = parseFloat(e.target.value) || 0;
-                                    updateExpenseCategoryItem(item.id, { netValue }, true);
-                                  }}
-                                  className="w-full text-right font-semibold text-xs h-8"
-                                  disabled={isAgreementCancelled}
-                                  aria-label="Net value"
-                                />
+                                {poLinkedExpenseCategories ? (
+                                  <span className="text-app-text tabular-nums">
+                                    {CURRENCY} {(item.pricePerUnit || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                ) : (
+                                  <div className="space-y-1">
+                                    <AmountInput
+                                      value={item.pricePerUnit.toString() || ''}
+                                      onChange={(e) => {
+                                        const pricePerUnit = parseFloat(e.target.value) || 0;
+                                        updateExpenseCategoryItem(item.id, { pricePerUnit });
+                                      }}
+                                      className="w-full text-xs h-8"
+                                      disabled={isAgreementCancelled}
+                                      aria-label="Price per unit"
+                                    />
+                                    {type === 'bill' && billVendorId && item.categoryId && item.pricePerUnit > 0 && (
+                                      <QuotationPriceIndicator
+                                        compact
+                                        result={validateQuotationRate({
+                                          vendorId: billVendorId,
+                                          categoryId: item.categoryId,
+                                          transactionRate: item.pricePerUnit,
+                                          unit: item.unit,
+                                        })}
+                                      />
+                                    )}
+                                  </div>
+                                )}
                               </td>
-                              <td className="px-1 py-1.5 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleRemoveExpenseCategoryItem(item.id)}
-                                  className="text-app-muted hover:text-rose-500 transition-colors"
-                                  title="Remove"
-                                  disabled={isAgreementCancelled}
-                                >
-                                  <div className="w-3.5 h-3.5">{ICONS.x}</div>
-                                </button>
+                              <td className="px-2 py-1.5">
+                                {poLinkedExpenseCategories ? (
+                                  <span className="text-right block font-semibold text-app-text tabular-nums">
+                                    {CURRENCY} {(item.netValue || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                ) : (
+                                  <AmountInput
+                                    value={item.netValue?.toString() || '0'}
+                                    onChange={(e) => {
+                                      const netValue = parseFloat(e.target.value) || 0;
+                                      updateExpenseCategoryItem(item.id, { netValue }, true);
+                                    }}
+                                    className="w-full text-right font-semibold text-xs h-8"
+                                    disabled={isAgreementCancelled}
+                                    aria-label="Net value"
+                                  />
+                                )}
                               </td>
+                              {!poLinkedExpenseCategories && (
+                                <td className="px-1 py-1.5 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveExpenseCategoryItem(item.id)}
+                                    className="text-app-muted hover:text-rose-500 transition-colors"
+                                    title="Remove"
+                                    disabled={isAgreementCancelled}
+                                  >
+                                    <div className="w-3.5 h-3.5">{ICONS.x}</div>
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
                       </tbody>
                       <tfoot className="bg-app-table-header border-t-2 border-app-border sticky bottom-0">
                         <tr>
-                          <td colSpan={4} className="px-2 py-1.5 text-right font-bold text-app-text text-xs">
+                          <td colSpan={poLinkedExpenseCategories ? 4 : 4} className="px-2 py-1.5 text-right font-bold text-app-text text-xs">
                             Total:
                           </td>
                           <td className="px-2 py-1.5 text-right font-bold text-app-text text-xs">
                             {CURRENCY} {totalAmountFromItems.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
-                          <td></td>
+                          {!poLinkedExpenseCategories && <td></td>}
                         </tr>
                       </tfoot>
                     </table>
@@ -2914,7 +2998,9 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
               </>
             ) : (
               <p className="text-xs text-app-muted italic py-2 text-center bg-app-card border border-app-border rounded-lg">
-                No expense categories added. Use the dropdown above to add categories.
+                {poLinkedExpenseCategories
+                  ? 'No categorized PO line items. Add expense categories on the purchase order.'
+                  : 'No expense categories added. Use the dropdown above to add categories.'}
               </p>
             )}
           </div>

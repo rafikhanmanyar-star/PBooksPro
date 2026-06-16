@@ -244,12 +244,11 @@ export class PurchaseOrderRepository extends TenantRepository {
     billedAmount: number,
     status: string
   ): Promise<PurchaseOrderRow | null> {
-    const closedAt = status === 'Fully Billed' ? 'NOW()' : 'NULL';
     const r = await client.query<PurchaseOrderRow>(
       `UPDATE purchase_orders SET
          billed_amount = $3,
-         status = $4,
-         closed_at = CASE WHEN $4 = 'Fully Billed' THEN NOW() ELSE closed_at END,
+         status = $4::text,
+         closed_at = CASE WHEN $4::text = 'Fully Billed' THEN NOW() ELSE closed_at END,
          version = version + 1,
          updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
@@ -350,6 +349,7 @@ export class PurchaseOrderLineRepository extends TenantRepository {
       item_id: string | null;
       item_name: string | null;
       description: string | null;
+      category_id: string | null;
       quantity: string;
       received_qty: string;
       billed_qty: string;
@@ -357,7 +357,7 @@ export class PurchaseOrderLineRepository extends TenantRepository {
       line_total: string;
       sort_order: number;
     }>(
-      `SELECT id, purchase_order_id, item_id, item_name, description,
+      `SELECT id, purchase_order_id, item_id, item_name, description, category_id,
               quantity::text, received_qty::text, billed_qty::text,
               unit_rate::text, line_total::text, sort_order
        FROM purchase_order_lines

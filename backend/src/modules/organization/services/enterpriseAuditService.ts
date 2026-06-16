@@ -33,7 +33,8 @@ export type AuditModule =
   | 'system'
   | 'backups'
   | 'billing'
-  | 'privacy';
+  | 'privacy'
+  | 'rbac';
 
 export type LoginEventStatus = 'success' | 'failed' | 'logout';
 

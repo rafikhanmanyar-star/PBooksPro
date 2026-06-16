@@ -2,7 +2,9 @@ import type { Request, Response, NextFunction, RequestHandler } from 'express';
 import { verifyAccessToken } from '../auth/jwt.js';
 import { getPool } from '../db/pool.js';
 import { sendFailure } from '../utils/apiResponse.js';
-import { requirePermission } from './rbacMiddleware.js';
+import { requirePermission as requirePermissionGuard } from './rbacMiddleware.js';
+import type { Permission } from '../auth/permissions.js';
+import { resolveUserPermissions } from '../modules/rbac/services/rbacPermissionResolver.js';
 import {
   isDemoEnvironmentEnabled,
   isDemoMasterTenant,
@@ -19,6 +21,8 @@ export type AuthedRequest = Request & {
   role?: string;
   username?: string;
   name?: string;
+  /** Resolved from tenant RBAC tables with legacy matrix fallback. */
+  resolvedPermissions?: Permission[];
 };
 
 function normalizeRole(role: string | undefined): string {
@@ -46,6 +50,7 @@ type AuthCacheEntry = {
   name: string;
   organizationStatus: string;
   rejectionReason: string | null;
+  resolvedPermissions: Permission[];
   expiresAt: number;
 };
 
@@ -130,6 +135,7 @@ export async function authMiddleware(
         organization_status: cached.organizationStatus,
         rejection_reason: cached.rejectionReason,
       };
+      req.resolvedPermissions = cached.resolvedPermissions;
     } else {
       const pool = getPool();
       const r = await pool.query<{
@@ -167,6 +173,8 @@ export async function authMiddleware(
         return;
       }
       user = r.rows[0];
+      const resolvedPermissions = await resolveUserPermissions(user.tenant_id, user.id, user.role);
+      req.resolvedPermissions = resolvedPermissions;
       setCachedAuthUser({
         userId: user.id,
         tenantId: user.tenant_id,
@@ -175,6 +183,7 @@ export async function authMiddleware(
         name: user.name,
         organizationStatus: user.organization_status,
         rejectionReason: user.rejection_reason,
+        resolvedPermissions,
       });
     }
 
@@ -281,10 +290,10 @@ export async function optionalAuthMiddleware(
 }
 
 /** Require financial.write (journal posting, period close, etc.). */
-export const requireLedgerRole: RequestHandler = requirePermission('financial.write');
+export const requireLedgerRole: RequestHandler = requirePermissionGuard('financial.write');
 
 /** Create/update/delete organization users (Settings → Users) */
-export const requireOrgUserAdmin: RequestHandler = requirePermission('users.manage');
+export const requireOrgUserAdmin: RequestHandler = requirePermissionGuard('users.manage');
 
 /** Personal transactions module — Admin / Super Admin only. */
 export const requireAdminRole: RequestHandler = (req: AuthedRequest, res, next) => {

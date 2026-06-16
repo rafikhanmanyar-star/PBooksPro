@@ -25,7 +25,11 @@ export type Permission =
   | 'audit_logs.read'
   | 'financial.write'
   | 'permissions.read'
+  | 'permissions.view'
   | 'permissions.manage'
+  | 'roles.view'
+  | 'roles.manage'
+  | 'users.role.assign'
   | 'backups.read'
   | 'backups.manage'
   | 'pev.read'
@@ -78,7 +82,11 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'audit_logs.read',
   'financial.write',
   'permissions.read',
+  'permissions.view',
   'permissions.manage',
+  'roles.view',
+  'roles.manage',
+  'users.role.assign',
   'backups.read',
   'backups.manage',
   'pev.read',
@@ -160,7 +168,11 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'audit_logs.read': 'Audit logs (read)',
   'financial.write': 'Financial data (write)',
   'permissions.read': 'Permission matrix (read)',
+  'permissions.view': 'Permission catalog (view)',
   'permissions.manage': 'Permissions (manage)',
+  'roles.view': 'Roles (view)',
+  'roles.manage': 'Roles (manage)',
+  'users.role.assign': 'Assign roles to users',
   'backups.read': 'Backups (read history)',
   'backups.manage': 'Backups (run & retry)',
   'pev.read': 'Project expense vouchers (read)',
@@ -288,6 +300,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
   project_manager: new Set([
     'reports.profit_loss.read',
     'reports.cash_flow.read',
+    'project_selling.read',
     'financial.write',
     ...PEV_PM,
     ...RETENTION_VIEW,
@@ -329,6 +342,16 @@ export function resolveEnterpriseRole(role: string | undefined | null): Enterpri
   return 'read_only';
 }
 
+/** Map enterprise slug → value stored in users.role / user_tenants.role. */
+export function storedRoleLabelForEnterpriseSlug(slug: string): string {
+  if (slug === 'super_admin') return 'SUPER_ADMIN';
+  const fromAssignable = ASSIGNABLE_ROLES.find((r) => r.enterpriseRole === slug);
+  if (fromAssignable) return fromAssignable.value;
+  const key = slug as EnterpriseRole;
+  if (key in ENTERPRISE_ROLE_LABELS) return ENTERPRISE_ROLE_LABELS[key];
+  return slug;
+}
+
 function normalizeRoleKey(role: string): string {
   return role.trim().toLowerCase().replace(/\s+/g, '_').replace(/-/g, '_');
 }
@@ -350,9 +373,58 @@ const LEGACY_ROLE_TO_ENTERPRISE: Record<string, EnterpriseRole> = {
   viewer: 'read_only',
 };
 
+/** Protected bootstrap role — all permissions; hidden from standard role management. */
+export const SYSTEM_OWNER_SLUG = 'SYSTEM_OWNER';
+
+/** Seeded RBAC administration role (tenant-scoped). */
+export const SECURITY_ADMINISTRATOR_SLUG = 'security_administrator';
+
+/** Permissions granted to the Security Administrator seeded role. */
+export const SECURITY_ADMINISTRATOR_PERMISSIONS: readonly Permission[] = [
+  'roles.view',
+  'roles.manage',
+  'permissions.view',
+  'permissions.manage',
+  'users.role.assign',
+] as const;
+
+/** Permissions that gate RBAC administration UI and APIs. */
+export const RBAC_ADMIN_PERMISSIONS: readonly Permission[] = [
+  ...SECURITY_ADMINISTRATOR_PERMISSIONS,
+] as const;
+
+/** Equivalent permission keys (either grants the other for authorization checks). */
+export const PERMISSION_EQUIVALENTS: Partial<Record<Permission, readonly Permission[]>> = {
+  'permissions.read': ['permissions.view'],
+  'permissions.view': ['permissions.read'],
+};
+
+export function isKnownPermission(key: string): key is Permission {
+  return (ALL_PERMISSIONS as readonly string[]).includes(key);
+}
+
+export function isSystemOwnerSlug(slug: string | undefined | null): boolean {
+  return normalizeRoleKey(slug ?? '') === normalizeRoleKey(SYSTEM_OWNER_SLUG);
+}
+
+export function permissionSetHas(
+  granted: ReadonlySet<Permission> | readonly Permission[],
+  permission: Permission
+): boolean {
+  const set = granted instanceof Set ? granted : new Set(granted);
+  if (set.has(permission)) return true;
+  for (const alt of PERMISSION_EQUIVALENTS[permission] ?? []) {
+    if (set.has(alt)) return true;
+  }
+  return false;
+}
+
 export function roleHasPermission(role: string | undefined | null, permission: Permission): boolean {
+  if (isSystemOwnerSlug(role)) return true;
   const enterprise = resolveEnterpriseRole(role);
-  return ROLE_PERMISSIONS[enterprise]?.has(permission) ?? false;
+  const perms = ROLE_PERMISSIONS[enterprise];
+  if (!perms) return false;
+  return permissionSetHas(perms, permission);
 }
 
 export function permissionsForRole(role: string | undefined | null): Permission[] {
@@ -368,11 +440,37 @@ export function roleHasAllPermissions(role: string | undefined | null, permissio
   return permissions.every((p) => roleHasPermission(role, p));
 }
 
+/** Permissions that grant read access to projects, units, and sales contacts (catalog). */
+export const PROJECT_SELLING_CATALOG_ACCESS_PERMISSIONS: readonly Permission[] = [
+  'project_selling.read',
+  'project_selling.catalog.write',
+  'project_selling.marketing_plans.write',
+  'project_selling.agreements.write',
+] as const;
+
 /** Full financial.write or any project-selling write permission. */
 export function roleCanWriteProjectSelling(role: string | undefined | null): boolean {
   return (
     roleHasPermission(role, 'financial.write') ||
     roleHasAnyPermission(role, [...PROJECT_SELLING_WRITE_PERMISSIONS])
+  );
+}
+
+/** Read projects, units, and CRM contacts used in marketing / project selling workflows. */
+export function roleCanReadProjectSellingCatalog(role: string | undefined | null): boolean {
+  return (
+    roleHasPermission(role, 'financial.write') ||
+    roleHasAnyPermission(role, [...PROJECT_SELLING_CATALOG_ACCESS_PERMISSIONS])
+  );
+}
+
+/** Create or update projects, units, and sales contacts (leads/owners/clients). */
+export function roleCanWriteProjectSellingCatalog(role: string | undefined | null): boolean {
+  return (
+    roleHasPermission(role, 'financial.write') ||
+    roleHasPermission(role, 'project_selling.catalog.write') ||
+    roleHasPermission(role, 'project_selling.marketing_plans.write') ||
+    roleHasPermission(role, 'project_selling.agreements.write')
   );
 }
 

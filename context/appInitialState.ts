@@ -171,6 +171,10 @@ export const initialState: AppState = {
         billToOwner: 'Dear {contactName}, Maintenance bill #{billNumber} for your property. Amount: {amount}.',
         billToTenant: 'Dear {contactName}, Maintenance bill #{billNumber}. Amount: {amount}. {note}',
         vendorGreeting: 'Hello {contactName},',
+        purchaseOrder:
+            'Dear {contactName},\n\nPlease find our Purchase Order #{poNumber} dated {issueDate}.\n\nProject: {projectName}\nTotal: {totalAmount}\n\n{lineItems}\n\nThank you.',
+        goodsReceiptConfirmation:
+            'Dear {contactName},\n\nWe confirm receipt of goods under GRN #{grnNumber} for PO #{poNumber} on {receivedDate}.\n\nProject: {projectName}\nTotal received: {totalAmount}\n\n{lineItems}\n\nThank you.',
         ownerPayoutLedger: 'Dear {contactName},\n\nHere is your {payoutType} statement:\n\nCollected: {collected}\nExpenses: {expenses}\nPaid to you: {paid}\n─────────────\nBalance Due: {balance}\n\nFor any queries, please contact us.',
         brokerPayoutLedger: 'Dear {contactName},\n\nHere is your commission statement:\n\nTotal Earned: {earned}\nTotal Paid: {paid}\n─────────────\nBalance Due: {balance}\n\nFor any queries, please contact us.',
         payoutConfirmation: 'Dear {contactName},\n\nA {payoutType} payment of {amount} has been made to you.\nReference: {reference}\n\nThank you.',

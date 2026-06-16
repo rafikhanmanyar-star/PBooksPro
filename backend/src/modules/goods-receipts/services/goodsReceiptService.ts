@@ -313,7 +313,14 @@ export async function postGoodsReceipt(
     sort_order: idx,
   }));
 
-  await validateGrnAgainstPo(client, tenantId, row.purchase_order_id, row.vendor_id, lineWrites);
+  await validateGrnAgainstPo(
+    client,
+    tenantId,
+    row.purchase_order_id,
+    row.vendor_id,
+    lineWrites,
+    id
+  );
 
   const poLineRepo = new PurchaseOrderLineRepository(tenantId);
   for (const line of lineWrites) {

@@ -1,5 +1,6 @@
 
 import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelectiveState';
+import { useProjectSellingCatalogBootstrap } from '../../hooks/useProjectSellingCatalogBootstrap';
 import React, { useState, useMemo } from 'react';
 import { Contact, ContactType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
@@ -33,6 +34,7 @@ interface ContactTypeOption {
 
 const ContactsManagement: React.FC = () => {
         const appState = useEntityCatalogState();
+    useProjectSellingCatalogBootstrap();
     const appDispatch = useDispatchOnly();
     const { showConfirm, showToast } = useNotification();
 

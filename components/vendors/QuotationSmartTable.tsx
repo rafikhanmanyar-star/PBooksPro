@@ -11,12 +11,15 @@ import {
     useVendors,
 } from '../../hooks/useSelectiveState';
 import { SmartTable, type SmartColumnDef } from '../erp/SmartTable';
+import Button from '../ui/Button';
+import SettingsTableActions from '../settings/SettingsTableActions';
 
 export interface QuotationSmartTableProps {
     vendorId?: string;
     showVendorColumn?: boolean;
     tableHeight?: number;
     onEditQuotation?: (quotation: Quotation) => void;
+    onNewQuotation?: () => void;
 }
 
 type QuotationRow = Quotation & {
@@ -33,6 +36,7 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
     showVendorColumn = true,
     tableHeight = 520,
     onEditQuotation,
+    onNewQuotation,
 }) => {
     const quotations = useQuotations();
     const vendors = useVendors();
@@ -208,33 +212,21 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
             {
                 id: 'actions',
                 header: 'Actions',
-                width: 96,
+                width: 112,
                 align: 'center',
                 accessor: () => '',
                 render: (r) => (
-                    <div className="flex items-center justify-center gap-2 px-1">
-                        <button
-                            type="button"
-                            onClick={(e) => {
+                    <div className="flex items-center justify-center px-1">
+                        <SettingsTableActions
+                            onEdit={(e) => {
                                 e.stopPropagation();
                                 onEditQuotation?.(r);
                             }}
-                            className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full hover:bg-indigo-50 transition-colors"
-                            title="Edit Quotation"
-                        >
-                            <div className="w-4 h-4">{ICONS.edit}</div>
-                        </button>
-                        <button
-                            type="button"
-                            onClick={(e) => {
+                            onDelete={(e) => {
                                 e.stopPropagation();
                                 void handleDelete(r);
                             }}
-                            className="text-rose-600 hover:text-rose-800 p-1 rounded-full hover:bg-rose-50 transition-colors"
-                            title="Delete Quotation"
-                        >
-                            <div className="w-4 h-4">{ICONS.trash}</div>
-                        </button>
+                        />
                     </div>
                 ),
             }
@@ -250,9 +242,19 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
     return (
         <div className="h-full flex flex-col min-h-0">
             {rows.length === 0 ? (
-                <p className="text-center text-slate-500 py-12">
-                    No quotations found. Create your first quotation to get started.
-                </p>
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <div className="w-16 h-16 rounded-full bg-app-toolbar flex items-center justify-center mb-4">
+                        <div className="w-8 h-8 text-app-muted">{ICONS.fileText}</div>
+                    </div>
+                    <p className="text-sm font-medium text-app-text mb-1">No quotations found</p>
+                    <p className="text-xs text-app-muted mb-4">Create your first quotation to get started.</p>
+                    {onNewQuotation && (
+                        <Button onClick={onNewQuotation} className="!bg-primary hover:!bg-primary/90 shadow-ds-card">
+                            <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
+                            <span>New Quotation</span>
+                        </Button>
+                    )}
+                </div>
             ) : (
                 <SmartTable
                     className="flex-1 min-h-0"

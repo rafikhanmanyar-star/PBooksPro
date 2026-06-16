@@ -4,6 +4,8 @@ import { useCompanyOptional } from '../../context/CompanyContext';
 import { apiClient } from '../../services/api/client';
 import { UserRole } from '../../types';
 import { ASSIGNABLE_ROLES, ENTERPRISE_ROLE_LABELS, resolveEnterpriseRole } from '../../shared/rbac/permissions';
+import { rbacApi, type RbacRoleSummary } from '../../services/api/rbacApi';
+import { usePermissions } from '../../hooks/usePermissions';
 import Button from '../ui/Button';
 import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
@@ -38,7 +40,9 @@ const UserManagement: React.FC = () => {
     const { user: currentUser, isAuthenticated } = useAuth();
     const companyCtx = useCompanyOptional();
     const { showConfirm, showToast, showAlert } = useNotification();
+    const { canManageUsers, canAssignUserRoles } = usePermissions();
     const [users, setUsers] = useState<User[]>([]);
+    const [rbacRoles, setRbacRoles] = useState<RbacRoleSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [userToEdit, setUserToEdit] = useState<User | null>(null);
@@ -50,6 +54,16 @@ const UserManagement: React.FC = () => {
     const [password, setPassword] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [role, setRole] = useState<UserRole>('Accounts');
+
+    const loadRbacRoles = useCallback(async () => {
+        if (!canAssignUserRoles && !canManageUsers) return;
+        try {
+            const roles = await rbacApi.listRoles();
+            setRbacRoles(roles.filter((r) => r.slug !== 'SYSTEM_OWNER'));
+        } catch {
+            /* RBAC tables may not be migrated yet */
+        }
+    }, [canAssignUserRoles, canManageUsers]);
 
     const loadUsers = useCallback(async () => {
         try {
@@ -67,6 +81,10 @@ const UserManagement: React.FC = () => {
             setLoading(false);
         }
     }, [isAuthenticated, showAlert]);
+
+    useEffect(() => {
+        void loadRbacRoles();
+    }, [loadRbacRoles]);
 
     useEffect(() => {
         void loadUsers();
@@ -171,7 +189,15 @@ const UserManagement: React.FC = () => {
             await loadUsers();
         } catch (error: any) {
             console.error('Error saving user:', error);
-            await showAlert(error.message || error.error || 'Failed to save user');
+            const msg =
+                typeof error?.message === 'string' && error.message.trim()
+                    ? error.message
+                    : typeof error?.error === 'string' && error.error.trim()
+                      ? error.error
+                      : error?.status === 409
+                        ? 'This email address is already in use.'
+                        : 'Failed to save user';
+            await showAlert(msg);
         } finally {
             setIsSubmitting(false);
         }
@@ -324,6 +350,13 @@ const UserManagement: React.FC = () => {
                                 {r.label}
                             </option>
                         ))}
+                        {rbacRoles
+                          .filter((r) => !ASSIGNABLE_ROLES.some((a) => a.enterpriseRole === r.slug))
+                          .map((r) => (
+                            <option key={r.id} value={r.slug}>
+                              {r.name}
+                            </option>
+                          ))}
                         <optgroup label="Legacy roles">
                             <option value="Team Lead">Team Lead</option>
                             <option value="Task Contributor">Task Contributor</option>

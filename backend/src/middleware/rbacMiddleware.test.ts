@@ -9,6 +9,8 @@ import {
   requirePayrollAccessForPayrollPaths,
   requirePermission,
   requirePermissionWhenPathStartsWith,
+  requireProjectSellingCatalogAccess,
+  requireFinancialWriteOrProjectSellingCatalogOnMutations,
   requireRole,
   requireRoleWhenPathStartsWith,
   requireWriteOnMutations,
@@ -78,6 +80,41 @@ describe('rbacMiddleware', () => {
       'project_selling.marketing_plans.write',
       'project_selling.agreements.write'
     )(req, res, () => {
+      called = true;
+    });
+    assert.equal(called, true);
+  });
+
+  it('requireProjectSellingCatalogAccess allows Sales User GET and POST', () => {
+    for (const method of ['GET', 'POST'] as const) {
+      const req = mockReq(method, 'Sales User');
+      const res = mockRes();
+      let called = false;
+      requireProjectSellingCatalogAccess(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, true, method);
+    }
+  });
+
+  it('requireProjectSellingCatalogAccess blocks Read Only User GET and POST', () => {
+    for (const method of ['GET', 'POST'] as const) {
+      const req = mockReq(method, 'Read Only User');
+      const res = mockRes();
+      let called = false;
+      requireProjectSellingCatalogAccess(req, res, () => {
+        called = true;
+      });
+      assert.equal(called, false, method);
+      assert.equal(res.statusCode, 403, method);
+    }
+  });
+
+  it('requireFinancialWriteOrProjectSellingCatalogOnMutations allows Sales User category POST', () => {
+    const req = mockReq('POST', 'Sales User');
+    const res = mockRes();
+    let called = false;
+    requireFinancialWriteOrProjectSellingCatalogOnMutations(req, res, () => {
       called = true;
     });
     assert.equal(called, true);
