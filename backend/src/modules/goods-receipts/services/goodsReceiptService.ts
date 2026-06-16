@@ -66,6 +66,10 @@ function newGrnId(): string {
   return `grn_${randomUUID().replace(/-/g, '')}`;
 }
 
+function newGrnLineId(): string {
+  return `grn_line_${randomUUID().replace(/-/g, '')}`;
+}
+
 function resolveGrnId(body: Record<string, unknown>): string {
   const raw = body.id ?? body.goods_receipt_id;
   if (typeof raw === 'string' && raw.trim()) return raw.trim();
@@ -82,12 +86,9 @@ function parseLines(body: Record<string, unknown>): GoodsReceiptLineWrite[] {
       const receivedQty = Number(o.receivedQty ?? o.received_qty ?? 0);
       const unitRate = Number(o.unitRate ?? o.unit_rate ?? 0);
       const orderedQty = Number(o.orderedQty ?? o.ordered_qty ?? 0);
-      const lineId = o.id ?? o.goods_receipt_line_id;
       return {
-        id:
-          typeof lineId === 'string' && String(lineId).trim()
-            ? String(lineId).trim()
-            : `grn_line_${idx}_${randomUUID().slice(0, 8)}`,
+        // Always assign server-side IDs — client placeholders like grn_line_0 collide globally.
+        id: newGrnLineId(),
         purchase_order_line_id: (o.purchaseOrderLineId ?? o.purchase_order_line_id) as string | null,
         item_id: (o.itemId ?? o.item_id) as string | null,
         item_name: (o.itemName ?? o.item_name) as string | null,
