@@ -132,8 +132,8 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
       const ctx = await fetchPoReceiptContext(poId);
       const lines: GoodsReceiptLine[] = ctx.lines
         .filter((l) => l.remainingQty > 0)
-        .map((l, idx) => ({
-          id: `grn_line_${idx}`,
+        .map((l) => ({
+          id: crypto.randomUUID(),
           purchaseOrderLineId: l.id,
           itemName: l.itemName,
           description: l.description,
