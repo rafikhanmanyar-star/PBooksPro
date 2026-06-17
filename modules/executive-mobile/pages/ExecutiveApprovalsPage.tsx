@@ -217,6 +217,7 @@ export default function ExecutiveApprovalsPage() {
     data: planDetail,
     isLoading: planLoading,
     isError: planError,
+    error: planErrorDetail,
   } = useMobileInstallmentPlanDetail(selectedPlanId);
 
   const allItems = useMemo(() => (data ?? []).filter(isVisibleInQueue), [data]);
@@ -568,6 +569,7 @@ export default function ExecutiveApprovalsPage() {
         open={Boolean(selectedPlanId)}
         loading={planLoading}
         error={planError}
+        errorMessage={planError ? formatApiErrorMessage(planErrorDetail) : undefined}
         plan={planDetail}
         busy={busy}
         onClose={() => setSelectedPlanId(null)}
