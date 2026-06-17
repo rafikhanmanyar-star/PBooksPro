@@ -42,7 +42,11 @@ export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onV
   const isMarketing = item.type === 'installment_plan';
   const isWorkflow = isWorkflowApprovalItem(item);
 
+  const isInteractiveTarget = (target: EventTarget | null) =>
+    target instanceof Element && Boolean(target.closest('button, a, input, textarea, select'));
+
   const onTouchStart = (e: React.TouchEvent) => {
+    if (isInteractiveTarget(e.target)) return;
     startX.current = e.touches[0].clientX;
     dragging.current = true;
   };
@@ -54,6 +58,7 @@ export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onV
   };
 
   const onTouchEnd = () => {
+    if (!dragging.current) return;
     dragging.current = false;
     if (offsetX > SWIPE_THRESHOLD && item.canApprove && !item.requiresFullErp) {
       onApprove();
@@ -122,8 +127,11 @@ export default function ApprovalSwipeCard({ item, busy, onApprove, onReject, onV
           {isMarketing && onViewPlan && (
             <button
               type="button"
-              className="flex-1 py-2 rounded-xl border border-app-border text-sm font-semibold touch-manipulation"
-              onClick={onViewPlan}
+              className="flex-1 py-2.5 rounded-xl border border-app-border text-sm font-semibold touch-manipulation min-h-[44px]"
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewPlan();
+              }}
             >
               View plan
             </button>

@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.418",
+  "version": "1.2.419",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -62,6 +62,10 @@
     "migrate-pbookspro-to-rkbuilders": "node scripts/migrate-pbookspro-to-rkbuilders.cjs",
     "copy-tenant-from-production": "npm run legacy:copy-tenant-from-production",
     "copy-tenant:postgres": "node scripts/copy-tenant-postgres-to-postgres.cjs",
+    "copy-tenant:repair-gl": "node scripts/copy-tenant-postgres-to-postgres.cjs --repair-gl",
+    "tenant-import": "node tools/tenant-import/main.cjs",
+    "tenant-import:repair-gl": "node tools/tenant-import/main.cjs --repair-gl",
+    "build:tenant-import-exe": "npx pkg tools/tenant-import/main.cjs --targets node18-win-x64 --output release-tenant-import/PBooksPro-TenantImport.exe --compress GZip",
     "export-tenant-to-excel": "node scripts/export-tenant-to-excel.cjs",
     "delete-rkbuilders-rental-data": "node scripts/delete-rkbuilders-rental-agreements-and-invoices.cjs",
     "delete-installment-invoices-missing-unit": "node tools/legacy/delete-sqlite-installment-invoices-missing-unit.cjs",
@@ -165,6 +169,7 @@
     "html2canvas": "^1.4.1",
     "lucide-react": "^0.555.0",
     "pg": "^8.19.0",
+    "pkg": "^5.8.1",
     "png-to-ico": "^3.0.1",
     "png2icons": "^2.0.1",
     "postcss": "^8.5.6",

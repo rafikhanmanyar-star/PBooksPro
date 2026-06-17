@@ -133,6 +133,25 @@ export default defineConfig({
       },
     },
     {
+      name: 'pwa-service-worker',
+      transformIndexHtml(html, ctx) {
+        const enableSw = !ctx.server && !isElectronBuild;
+        return html.replaceAll('%PBOOKS_ENABLE_SW%', enableSw ? 'true' : 'false');
+      },
+      configureServer() {
+        if (isElectronBuild) return;
+        const swSource = join(process.cwd(), 'sw.js');
+        const swPublic = join(process.cwd(), 'public', 'sw.js');
+        if (existsSync(swSource)) {
+          const body = readFileSync(swSource, 'utf-8').replaceAll(
+            '%%PBOOKS_CACHE_NAME%%',
+            `pbookspro-dev-${buildVersionMeta.version}`
+          );
+          writeFileSync(swPublic, body);
+        }
+      },
+    },
+    {
       name: 'write-deployment-artifacts',
       closeBundle() {
         const distDir = join(process.cwd(), 'dist');
@@ -173,6 +192,7 @@ export default defineConfig({
             `pbookspro-${meta.version}`
           );
           writeFileSync(swDest, swBody);
+          writeFileSync(join(publicDir, 'sw.js'), swBody);
           console.log('✅ Wrote sw.js with deployment cache key');
         }
 

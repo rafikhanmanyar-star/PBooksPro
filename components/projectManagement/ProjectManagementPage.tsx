@@ -76,6 +76,7 @@ const SELLING_OTHER_REPORTS: ProjectView[] = [
     'Project Summary',
     'Marketing Activity',
     'Revenue Analysis',
+    'Owner Ledger',
     'Broker Report',
     'Income by Category',
     'Expense by Category',
@@ -94,7 +95,6 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Material Report',
     'Vendor Ledger',
     'Custom Reports',
-    'Owner Ledger',
     'Income by Category',
     'Expense by Category',
     'Petty cash report',
@@ -129,7 +129,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
     const allowedSellingViews = [
         'Selling Analytics', 'Marketing', 'Agreements', 'Invoices', 'Collections Analytics', 'Assets', 'Sales Returns', 'Broker Payouts',
         'Visual Layout', 'Tabular View',
-        'Project Summary', 'Marketing Activity', 'Revenue Analysis',
+        'Project Summary', 'Marketing Activity', 'Revenue Analysis', 'Owner Ledger',
         'Broker Report', 'Income by Category', 'Expense by Category',
         'Custom Reports',
         ...PROJECT_FINANCIAL_VIEWS,
@@ -139,7 +139,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         'Contracts', 'Bills', 'Expense Analytics', 'Expense Vouchers', 'PM Payouts',
         'Project Summary', 'Budget vs Actual', 'Contract Report', 'Retention Register',
         'PM Cost Report', 'Material Report', 'Vendor Ledger', 'Custom Reports',
-        'Owner Ledger', 'Income by Category', 'Expense by Category', 'Petty cash report',
+        'Income by Category', 'Expense by Category', 'Petty cash report',
         ...PROJECT_FINANCIAL_VIEWS,
     ];
 

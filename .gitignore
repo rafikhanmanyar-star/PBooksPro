@@ -22,6 +22,7 @@ release-api-client
 release-api-server
 release-api-client-staging
 release-api-server-staging
+release-tenant-import
 build/electron-api-server
 win-unpacked
 mac-unpacked
