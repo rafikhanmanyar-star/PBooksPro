@@ -139,18 +139,25 @@
         regs.forEach(function(r) { r.unregister(); });
       });
     }
-    // Only register service worker for web/PWA, not for Electron desktop
+    // PWA service worker: production web builds only (%PBOOKS_ENABLE_SW% replaced at build time).
+    // Dev server unregisters stale workers so Vite HMR is not intercepted.
     if ('serviceWorker' in navigator && !window.electronAPI?.isElectron) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
-          .then((registration) => {
-            console.log('ServiceWorker registration successful');
-            registration.update().catch(() => {});
-          })
-          .catch(err => {
-            console.log('ServiceWorker registration failed: ', err);
-          });
-      });
+      if ('%PBOOKS_ENABLE_SW%' === 'true') {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
+            .then((registration) => {
+              console.log('ServiceWorker registration successful');
+              registration.update().catch(() => {});
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      } else {
+        navigator.serviceWorker.getRegistrations().then(function(regs) {
+          regs.forEach(function(r) { r.unregister(); });
+        });
+      }
     }
   </script>
   <script type="module" src="./index.tsx"></script>

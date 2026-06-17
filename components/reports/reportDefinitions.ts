@@ -38,7 +38,7 @@ export const reportDefinitions: ReportDefinition[] = [
     { id: 'project-pev-register', title: 'Project Expense Register', group: 'Project', path: 'projectManagement', subPath: 'Reports:Petty cash report' },
     { id: 'project-pev-by-category', title: 'Project Expenses by Category', group: 'Project', path: 'projectManagement', subPath: 'Reports:Petty cash report' },
     { id: 'project-units', title: 'Project Units Report', group: 'Project', path: 'projectManagement', subPath: 'Reports:Project Units' },
-    { id: 'project-client-ledger', title: 'Owner Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Owner Ledger' },
+    { id: 'project-client-ledger', title: 'Owner Ledger (Project)', group: 'Project', path: 'projectSelling', subPath: 'Reports:Owner Ledger' },
     { id: 'project-custom-reports', title: 'Custom Reports (Project Selling)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Custom Reports' },
     { id: 'project-broker-report', title: 'Broker Report (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Broker Report' },
     { id: 'project-vendor-ledger', title: 'Vendor Ledger (Project)', group: 'Project', path: 'projectManagement', subPath: 'Reports:Vendor Ledger' },

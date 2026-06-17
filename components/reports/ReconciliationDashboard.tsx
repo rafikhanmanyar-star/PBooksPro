@@ -64,7 +64,7 @@ const ReconciliationDashboard: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
+    <div className="flex flex-col h-full min-h-0 overflow-y-auto p-4 sm:p-6 space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold text-app-text">Financial Reconciliation Certification</h2>

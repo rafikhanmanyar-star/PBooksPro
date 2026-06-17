@@ -75,8 +75,27 @@ function ApprovalCard({
   const isMarketing = item.type === 'installment_plan';
   const isWorkflow = isWorkflowApprovalItem(item);
 
+  const openPlan = () => onViewPlan?.();
+
   return (
-    <div className="executive-summary-card rounded-2xl border border-app-border/60 bg-app-card p-4 space-y-3">
+    <div
+      className={`executive-summary-card rounded-2xl border border-app-border/60 bg-app-card p-4 space-y-3 ${
+        isMarketing && onViewPlan ? 'cursor-pointer active:bg-app-surface-2/40' : ''
+      }`}
+      role={isMarketing && onViewPlan ? 'button' : undefined}
+      tabIndex={isMarketing && onViewPlan ? 0 : undefined}
+      onClick={isMarketing && onViewPlan ? openPlan : undefined}
+      onKeyDown={
+        isMarketing && onViewPlan
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openPlan();
+              }
+            }
+          : undefined
+      }
+    >
       <div className="flex items-start gap-3">
         <span className={`w-10 h-10 rounded-xl shrink-0 inline-flex items-center justify-center ${meta.iconWrap}`}>
           <span className="w-5 h-5">{typeIcon(item)}</span>
@@ -124,12 +143,12 @@ function ApprovalCard({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 pt-1">
+      <div className="flex flex-wrap gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
         {isMarketing && onViewPlan && (
           <button
             type="button"
-            className="flex-1 min-w-[8rem] py-2.5 rounded-xl border border-app-border text-app-text font-semibold text-sm touch-manipulation"
-            onClick={onViewPlan}
+            className="flex-1 min-w-[8rem] py-2.5 rounded-xl border border-app-border text-app-text font-semibold text-sm touch-manipulation min-h-[44px]"
+            onClick={openPlan}
           >
             View plan
           </button>
@@ -139,7 +158,7 @@ function ApprovalCard({
             <button
               type="button"
               disabled={busy}
-              className="flex-1 min-w-[8rem] py-2.5 rounded-xl bg-green-600 text-white font-semibold text-sm touch-manipulation disabled:opacity-50"
+              className="flex-1 min-w-[8rem] py-2.5 rounded-xl bg-green-600 text-white font-semibold text-sm touch-manipulation disabled:opacity-50 min-h-[44px]"
               onClick={onApprove}
             >
               Approve
@@ -147,7 +166,7 @@ function ApprovalCard({
             <button
               type="button"
               disabled={busy}
-              className="flex-1 min-w-[8rem] py-2.5 rounded-xl border border-ds-danger text-ds-danger font-semibold text-sm touch-manipulation disabled:opacity-50"
+              className="flex-1 min-w-[8rem] py-2.5 rounded-xl border border-ds-danger text-ds-danger font-semibold text-sm touch-manipulation disabled:opacity-50 min-h-[44px]"
               onClick={onReject}
             >
               Reject
@@ -194,7 +213,11 @@ export default function ExecutiveApprovalsPage() {
   const [swipeMode, setSwipeMode] = useState(true);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
-  const { data: planDetail, isLoading: planLoading } = useMobileInstallmentPlanDetail(selectedPlanId);
+  const {
+    data: planDetail,
+    isLoading: planLoading,
+    isError: planError,
+  } = useMobileInstallmentPlanDetail(selectedPlanId);
 
   const allItems = useMemo(() => (data ?? []).filter(isVisibleInQueue), [data]);
   const pendingActionCount = useMemo(
@@ -303,17 +326,20 @@ export default function ExecutiveApprovalsPage() {
 
   const renderList = (items: MobileApprovalItem[]) => (
     <ul className="space-y-3">
-      {items.map((item) =>
-        swipeMode && item.canApprove && !item.requiresFullErp ? (
+      {items.map((item) => {
+        const useSwipeCard =
+          swipeMode &&
+          item.canApprove &&
+          !item.requiresFullErp &&
+          item.type !== 'installment_plan';
+
+        return useSwipeCard ? (
           <li key={`${item.type}:${item.id}`}>
             <ApprovalSwipeCard
               item={item}
               busy={busy}
               onApprove={() => void handleApprove(item.type, item.id)}
               onReject={() => void handleReject(item.type, item.id)}
-              onViewPlan={
-                item.type === 'installment_plan' ? () => setSelectedPlanId(item.id) : undefined
-              }
             />
           </li>
         ) : (
@@ -328,8 +354,8 @@ export default function ExecutiveApprovalsPage() {
               }
             />
           </li>
-        )
-      )}
+        );
+      })}
     </ul>
   );
 
@@ -541,6 +567,7 @@ export default function ExecutiveApprovalsPage() {
       <MarketingPlanDetailSheet
         open={Boolean(selectedPlanId)}
         loading={planLoading}
+        error={planError}
         plan={planDetail}
         busy={busy}
         onClose={() => setSelectedPlanId(null)}

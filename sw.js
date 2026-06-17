@@ -12,6 +12,12 @@ const NEVER_CACHE_PATHS = new Set([
   '/env-config.json',
 ]);
 
+/** Offline / error fallback URLs — relative to SW scope. */
+const SHELL_URLS = ['./index.html', './manifest.json'];
+
+/** Vite dev / preview — never intercept (breaks HMR and module loading). */
+const DEV_PORTS = new Set(['5173', '5174', '4173']);
+
 function normalizePath(pathname) {
   if (pathname === '/' || pathname === '') return '/index.html';
   return pathname.endsWith('/') ? `${pathname}index.html` : pathname;
@@ -31,10 +37,74 @@ function isImmutableHashedAsset(url) {
   return IMMUTABLE_ASSET_PATTERN.test(url.pathname);
 }
 
+function isDevBypass(url) {
+  if (DEV_PORTS.has(url.port)) return true;
+  if (url.hostname.includes('admin')) return true;
+  if (url.pathname.includes('/@vite')) return true;
+  if (url.pathname.includes('/@react-refresh')) return true;
+  if (url.pathname.includes('/src/')) return true;
+  if (url.search.includes('t=')) return true;
+  return false;
+}
+
+/** event.respondWith() must always settle to a Response. */
+function respond(event, promise) {
+  event.respondWith(
+    Promise.resolve(promise).then(
+      (value) => (value instanceof Response ? value : Response.error()),
+      () => Response.error()
+    )
+  );
+}
+
+async function cacheMatchVariants(request) {
+  const url = new URL(request.url);
+  const keys = [request, request.url, url.pathname];
+  if (url.pathname.startsWith('/')) {
+    keys.push('.' + url.pathname);
+  }
+  for (const key of keys) {
+    const hit = await caches.match(key);
+    if (hit) return hit;
+  }
+  return undefined;
+}
+
+async function fallbackResponse(request) {
+  const cached = await cacheMatchVariants(request);
+  if (cached) return cached;
+
+  const path = normalizePath(new URL(request.url).pathname);
+  const wantsShell =
+    request.mode === 'navigate' ||
+    request.destination === 'document' ||
+    path.endsWith('/index.html');
+
+  if (wantsShell) {
+    for (const shellUrl of SHELL_URLS) {
+      const shell = await caches.match(shellUrl);
+      if (shell) return shell;
+    }
+  }
+
+  return Response.error();
+}
+
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then(() => undefined)
+    (async () => {
+      const cache = await caches.open(CACHE_NAME);
+      await Promise.allSettled(
+        SHELL_URLS.map(async (url) => {
+          try {
+            await cache.add(url);
+          } catch {
+            /* offline install — activate without shell */
+          }
+        })
+      );
+      await self.skipWaiting();
+    })()
   );
 });
 
@@ -66,20 +136,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (
-    url.port === '5174' ||
-    url.hostname.includes('admin') ||
-    url.pathname.includes('/@vite') ||
-    url.pathname.includes('/@react-refresh') ||
-    url.pathname.includes('/src/') ||
-    url.search.includes('t=')
-  ) {
+  if (isDevBypass(url)) {
     return;
   }
 
   if (shouldNeverCache(url)) {
-    event.respondWith(
-      fetch(event.request, { cache: 'no-store' }).catch(() => caches.match('./index.html'))
+    respond(
+      event,
+      fetch(event.request, { cache: 'no-store' }).catch(() => fallbackResponse(event.request))
     );
     return;
   }
@@ -87,8 +151,8 @@ self.addEventListener('fetch', (event) => {
   if (isImmutableHashedAsset(url)) {
     const isScriptOrStyle = /\.(js|css)(?:\?|$)/i.test(url.pathname);
     if (isScriptOrStyle) {
-      // Network-first for JS/CSS so refresh picks up new deployments immediately.
-      event.respondWith(
+      respond(
+        event,
         fetch(event.request, { cache: 'no-store' })
           .then((response) => {
             if (response && response.status === 200) {
@@ -97,12 +161,13 @@ self.addEventListener('fetch', (event) => {
             }
             return response;
           })
-          .catch(() => caches.match(event.request))
+          .catch(() => fallbackResponse(event.request))
       );
       return;
     }
 
-    event.respondWith(
+    respond(
+      event,
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
         return fetch(event.request).then((response) => {
@@ -111,15 +176,14 @@ self.addEventListener('fetch', (event) => {
           caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
           return response;
         });
-      })
+      }).catch(() => fallbackResponse(event.request))
     );
     return;
   }
 
-  // Default: network-first for everything else (icons, unhashed public files).
-  event.respondWith(
+  respond(
+    event,
     fetch(event.request)
-      .then((response) => response)
-      .catch(() => caches.match(event.request))
+      .catch(() => fallbackResponse(event.request))
   );
 });

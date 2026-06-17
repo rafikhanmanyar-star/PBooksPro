@@ -20,6 +20,8 @@ import {
   getPersonalExpenseCategories } from './personalCategoriesService';
 import AddPersonalTransactionModal from './AddPersonalTransactionModal';
 import ImportPersonalTransactionsPasteModal from './ImportPersonalTransactionsPasteModal';
+import { exportJsonToExcel } from '../../services/exportService';
+import { toLocalDateString } from '../../utils/dateUtils';
 
 const PAGE_SIZES = [10, 25, 50, 100];
 
@@ -165,7 +167,7 @@ function compareTxTableRows(a: TxTableRow, b: TxTableRow, col: SortableCol, dir:
 }
 
 const PersonalTransactionsTab: React.FC = () => {
-  const { categories, transactions, personalCategories, personalTransactions } = usePersonalFinanceState();
+  const { accounts, personalCategories, personalTransactions } = usePersonalFinanceState();
   const [search, setSearch] = useState('');
   const [periodFilter, setPeriodFilter] = useState<PersonalTxPeriodFilter>('thisMonth');
   const [categoryFilterId, setCategoryFilterId] = useState('');
@@ -330,9 +332,29 @@ const PersonalTransactionsTab: React.FC = () => {
     return [...inc, ...exp];
   }, [refreshKey, personalCategories]);
 
-  const handleExportReport = () => {
-    // TODO: wire to CSV/export
-  };
+  const accountIdToName = useMemo(() => {
+    const map = new Map<string, string>();
+    accounts.forEach((a) => map.set(a.id, a.name));
+    return map;
+  }, [accounts]);
+
+  const handleExportReport = useCallback(() => {
+    if (sortedRows.length === 0) {
+      alert('No transactions to export. Adjust filters or add transactions first.');
+      return;
+    }
+    const rows = sortedRows.map((r) => ({
+      Date: r.raw.transactionDate || '',
+      Account: accountIdToName.get(r.raw.accountId) || '',
+      Category: r.category === '—' ? '' : r.category,
+      Notes: r.notes === '—' ? '' : r.notes,
+      Income: r.income || '',
+      Expense: r.expense || '',
+      Balance: r.runningBalance,
+    }));
+    const filename = `personal-transactions-${toLocalDateString(new Date())}.xlsx`;
+    exportJsonToExcel(rows, filename, 'Transactions');
+  }, [sortedRows, accountIdToName]);
 
   const toggleSort = (col: SortableCol) => {
     setSort((prev) => {

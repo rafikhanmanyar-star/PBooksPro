@@ -43,7 +43,7 @@ export const PWAProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     // Only use service worker if not in Electron (service workers don't work with file:// protocol)
     const isElectron = typeof window !== 'undefined' && (window as any).electronAPI !== undefined;
     
-    if ('serviceWorker' in navigator && !isElectron) {
+    if ('serviceWorker' in navigator && !isElectron && import.meta.env.PROD) {
       // Add timeout to prevent hanging if service worker registration was removed
       const readyPromise = navigator.serviceWorker.ready;
       const timeoutPromise = new Promise<ServiceWorkerRegistration>((_, reject) => {
