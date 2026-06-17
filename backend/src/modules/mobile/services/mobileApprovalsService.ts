@@ -12,6 +12,7 @@ import {
   rowToInstallmentPlanApi,
   upsertInstallmentPlan,
 } from '../../project-selling/services/installmentPlansService.js';
+import { InstallmentPlanRepository } from '../../project-selling/repositories/InstallmentPlanRepository.js';
 import {
   normalizeMarketingPlanStatus,
   roleCanApproveMarketingPlans,
@@ -353,7 +354,7 @@ export async function getMobileInstallmentPlanDetail(
   planId: string
 ): Promise<MobileInstallmentPlanDetail | null> {
   const canReviewPlans = roleCanApproveMarketingPlans(role);
-  const row = await getInstallmentPlanById(client, tenantId, planId, { userId, role });
+  const row = await new InstallmentPlanRepository(tenantId).getById(client, planId);
   if (!row) return null;
   if (!marketingPlanVisibleToMobileUser(row, userId, canReviewPlans)) return null;
 
@@ -362,8 +363,8 @@ export async function getMobileInstallmentPlanDetail(
       `SELECT name FROM projects WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
       [tenantId, row.project_id]
     ),
-    client.query<{ unit_number: string | null; name: string | null }>(
-      `SELECT unit_number, name FROM units WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
+    client.query<{ unit_number: string | null; description: string | null }>(
+      `SELECT unit_number, description FROM units WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL`,
       [tenantId, row.unit_id]
     ),
     row.lead_id
@@ -380,9 +381,9 @@ export async function getMobileInstallmentPlanDetail(
   const names = await userNameMap(client, tenantId, userIds);
 
   const unit = unitR.rows[0];
-  const unitLabel = unit?.name?.trim() || unit?.unit_number?.trim() || row.unit_id;
+  const unitLabel =
+    unit?.unit_number?.trim() || unit?.description?.trim() || row.unit_id;
 
-  const pending = normalizeMarketingPlanStatus(row.status) === 'pending approval';
   const api = rowToInstallmentPlanApi(row);
 
   return {
@@ -396,6 +397,6 @@ export async function getMobileInstallmentPlanDetail(
     reviewedByName: row.approval_reviewed_by
       ? names.get(row.approval_reviewed_by)
       : undefined,
-    canApprove: pending && canReviewPlans,
+    canApprove: isPendingInstallmentPlan(row.status, row.approval_requested_to, userId) && canReviewPlans,
   };
 }

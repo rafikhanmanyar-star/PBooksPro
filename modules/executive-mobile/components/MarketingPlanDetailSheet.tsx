@@ -9,6 +9,7 @@ type Props = {
   open: boolean;
   loading: boolean;
   error?: boolean;
+  errorMessage?: string;
   plan: MobileInstallmentPlanDetail | null | undefined;
   busy: boolean;
   onClose: () => void;
@@ -43,6 +44,7 @@ export default function MarketingPlanDetailSheet({
   open,
   loading,
   error,
+  errorMessage,
   plan,
   busy,
   onClose,
@@ -133,7 +135,7 @@ export default function MarketingPlanDetailSheet({
             <div className="rounded-xl border border-ds-danger/30 bg-ds-danger/10 p-4 text-center">
               <p className="font-semibold text-app-text">Could not load plan</p>
               <p className="text-sm text-app-muted mt-1">
-                Check your connection and try again.
+                {errorMessage?.trim() || 'Check your connection and try again.'}
               </p>
             </div>
           )}
