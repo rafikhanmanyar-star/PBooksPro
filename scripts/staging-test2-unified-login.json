@@ -1,0 +1,33 @@
+﻿{
+    "success":  true,
+    "data":  {
+                 "requiresCompanySelection":  false,
+                 "token":  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzE5OWY0Nzc0MTcxOTQ3OWY5NzNmNWE0YzA5MDBmOGFiIiwidGVuYW50SWQiOiJ0ZXN0MiIsInJvbGUiOiJBZG1pbiIsImlhdCI6MTc4MTc5MDgyMCwiZXhwIjoxNzgyMzk1NjIwfQ.oKt6yt3t1-08F_H8R0fD1_7-un_C-PpuPY49Wd8zFPw",
+                 "loginEventId":  "79d26959-72f1-4e3a-9e46-f3311d029408",
+                 "user":  {
+                              "id":  "user_199f47741719479f973f5a4c0900f8ab",
+                              "email":  "test2@pbookspro.com",
+                              "username":  "Rafi",
+                              "name":  "Rafi",
+                              "fullName":  "Rafi",
+                              "role":  "Admin",
+                              "tenantId":  "test2",
+                              "organizationId":  "test2",
+                              "displayTimezone":  null,
+                              "interfaceMode":  "auto"
+                          },
+                 "tenant":  {
+                                "id":  "test2",
+                                "name":  "Test2",
+                                "companyName":  "Test2",
+                                "email":  "test2@pbookspro.com"
+                            },
+                 "company":  {
+                                 "id":  "test2",
+                                 "name":  "Test2",
+                                 "companyName":  "Test2",
+                                 "email":  "test2@pbookspro.com"
+                             }
+             },
+    "error":  null
+}

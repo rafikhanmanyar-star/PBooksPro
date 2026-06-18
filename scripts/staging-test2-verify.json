@@ -1,0 +1,20 @@
+{
+  "tenant": [
+    {
+      "id": "test2",
+      "name": "Test2",
+      "company_name": "Test2",
+      "email": "test2@pbookspro.com",
+      "status": "ACTIVE"
+    }
+  ],
+  "user": [
+    {
+      "id": "user_199f47741719479f973f5a4c0900f8ab",
+      "username": "Rafi",
+      "email": "test2@pbookspro.com",
+      "tenant_id": "test2",
+      "is_active": true
+    }
+  ]
+}

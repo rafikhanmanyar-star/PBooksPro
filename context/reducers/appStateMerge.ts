@@ -1,4 +1,5 @@
 import type { AppState, AppAction, Invoice, Bill, ProjectReceivedAsset, SalesReturn, Transaction } from '../../types';
+import { logPaymentTrace, logPaymentTraceTransition } from '../../services/debug/paymentDisappearanceTrace';
 
 export function mergeTenantSettingsFromAction(prev: AppState, action: AppAction): AppState | null {
     switch (action.type) {
@@ -117,7 +118,11 @@ export function mergePartialStateIntoBaseline(
     partial: Partial<AppState>,
     tenantSettings: Partial<AppState> = {}
 ): AppState {
-    return {
+    logPaymentTrace('mergePartialStateIntoBaseline', 'enter', base.transactions, {
+        partialTransactionCount: partial.transactions?.length ?? 0,
+        partialTransactions: (partial.transactions ?? []).map((t) => ({ id: t.id, version: t.version })),
+    });
+    const merged = {
         ...base,
         ...partial,
         transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
@@ -134,4 +139,14 @@ export function mergePartialStateIntoBaseline(
         contracts: partial.contracts ?? base.contracts,
         ...tenantSettings,
     } as AppState;
+    logPaymentTraceTransition(
+        'mergePartialStateIntoBaseline',
+        'exit',
+        base.transactions,
+        merged.transactions,
+        {
+            partialTransactionCount: partial.transactions?.length ?? 0,
+        }
+    );
+    return merged;
 }

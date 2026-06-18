@@ -33,6 +33,7 @@ import {
   syncPairedExpenseToRentFromSecurityIncome,
   syncRentFromSecurityIncomeToPairedExpense,
 } from '../../utils/rentalSecurityDepositSettlement';
+import { logPaymentTrace, logPaymentTraceTransition } from '../../services/debug/paymentDisappearanceTrace';
 
 export function appReducer(state: AppState, action: AppAction): AppState {
     // Real-time sync is now handled via Socket.IO in the backend with tenant isolation
@@ -64,6 +65,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                     return patched;
                 });
                 if (anyStamped) next.transactions = stamped;
+            }
+            if (payload.transactions) {
+                logPaymentTraceTransition('SET_STATE', 'reducer applied', state.transactions, next.transactions, {
+                    isRemote: !!(action as { _isRemote?: boolean })._isRemote,
+                });
             }
             return next;
         }
@@ -215,6 +221,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
         // --- TRANSACTION HANDLERS ---
         case 'ADD_TRANSACTION': {
             const tx = enrichExpenseBillPaymentCategory(stampTransactionOwnerId(action.payload as Transaction, state), state);
+            logPaymentTrace('ADD_TRANSACTION', 'reducer enter', state.transactions, {
+                payloadTransactionId: tx.id,
+                payloadTransactionVersion: tx.version,
+                isRemote: !!(action as { _isRemote?: boolean })._isRemote,
+            });
 
             // Deduplicate: check if transaction with same ID exists
             const existingTxIndex = state.transactions.findIndex(t => t.id === tx.id);
@@ -225,6 +236,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 updatedTransactions[existingTxIndex] = { ...updatedTransactions[existingTxIndex], ...tx };
 
                 let newStateWithTx = { ...state, transactions: updatedTransactions };
+                logPaymentTraceTransition('ADD_TRANSACTION', 'reducer dedupe-update', state.transactions, newStateWithTx.transactions, {
+                    payloadTransactionId: tx.id,
+                    payloadTransactionVersion: tx.version,
+                });
                 // Re-apply effects (careful: this might duplicate effects if not idempotent)
                 // However, applyTransactionEffect is usually additive/subtractive based on amounts
                 // For deduplication, we should only apply if it was NOT already there, 
@@ -240,11 +255,20 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             if (tx.contractId) newStateWithTx = updateContractStatus(newStateWithTx, tx.contractId);
             const logEntry = createLogEntry('CREATE', 'Transaction', tx.id, `Created ${tx.type}: ${tx.description} (${tx.amount})`, state.currentUser, tx);
             newStateWithTx.transactionLog = [logEntry, ...(state.transactionLog || [])];
+            logPaymentTraceTransition('ADD_TRANSACTION', 'reducer append', state.transactions, newStateWithTx.transactions, {
+                payloadTransactionId: tx.id,
+                payloadTransactionVersion: tx.version,
+            });
             return newStateWithTx;
         }
 
         case 'UPDATE_TRANSACTION': {
             const updatedTx = enrichExpenseBillPaymentCategory(stampTransactionOwnerId(action.payload as Transaction, state), state);
+            logPaymentTrace('UPDATE_TRANSACTION', 'reducer enter', state.transactions, {
+                payloadTransactionId: updatedTx.id,
+                payloadTransactionVersion: updatedTx.version,
+                isRemote: !!(action as { _isRemote?: boolean })._isRemote,
+            });
             const originalTx = state.transactions.find(t => t.id === updatedTx.id);
             if (!originalTx) return state;
             let tempState = applyTransactionEffect(state, originalTx, false);
@@ -263,6 +287,10 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
             const logEntry = createLogEntry('UPDATE', 'Transaction', updatedTx.id, `Updated ${updatedTx.type}: ${updatedTx.description}`, state.currentUser, { original: originalTx, new: updatedTx });
             synced.transactionLog = [logEntry, ...(state.transactionLog || [])];
+            logPaymentTraceTransition('UPDATE_TRANSACTION', 'reducer applied', state.transactions, synced.transactions, {
+                payloadTransactionId: updatedTx.id,
+                payloadTransactionVersion: updatedTx.version,
+            });
             return synced;
         }
 
