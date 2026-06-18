@@ -1699,13 +1699,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (lastSync && cursorMatchesTenant && baselineHasCoreData) {
                 try {
-                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(lastSync, base);
-                    merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
+                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(
+                        lastSync,
+                        stateRef.current
+                    );
+                    const mergeBaseline = stateRef.current;
+                    merged = mergePartialStateIntoBaseline(
+                        mergeBaseline,
+                        inc,
+                        pickTenantSettingsPartial(inc)
+                    );
                     nextSyncCursor = serverCursor;
                 } catch {
                     const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                    const mergeBaseline = stateRef.current;
                     merged = mergePartialStateIntoBaseline(
-                        base,
+                        mergeBaseline,
                         partial,
                         pickTenantSettingsPartial(partial)
                     );
@@ -1713,9 +1722,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             } else {
                 const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                const mergeBaseline = stateRef.current;
                 // When the sync cursor doesn't match the current tenant (or is missing),
                 // use initialState as the baseline to avoid mixing old tenant data.
-                const safeBase = cursorMatchesTenant ? base : initialState;
+                const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
                 merged = mergePartialStateIntoBaseline(
                     safeBase,
                     partial,
