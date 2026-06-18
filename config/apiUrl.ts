@@ -163,10 +163,17 @@ export function getApiBaseUrl(): string {
 
 /**
  * Returns the WebSocket server URL (same host as API, no /api path).
+ *
+ * VITE_WS_URL is only honoured when it's a non-localhost value (e.g. a cloud
+ * WebSocket endpoint). For localhost / 127.0.0.1 values we derive the URL
+ * dynamically from getApiBaseUrl() so that LAN users connecting from another
+ * machine get the correct server hostname instead of 127.0.0.1.
  */
 export function getWsServerUrl(): string {
-  const env = import.meta.env.VITE_WS_URL as string | undefined;
-  if (env) return env.replace(/\/?$/, '');
+  const env = (import.meta.env.VITE_WS_URL as string | undefined)?.trim();
+  if (env && !/127\.0\.0\.1|localhost/i.test(env)) {
+    return env.replace(/\/?$/, '');
+  }
   const api = getApiBaseUrl();
   return api.replace(/\/api(\/v1)?\/?$/, '');
 }
