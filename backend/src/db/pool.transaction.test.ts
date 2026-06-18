@@ -32,6 +32,35 @@ function createMockClient(): pg.PoolClient {
 }
 
 describe('transaction queue integration', () => {
+  it('double-nested savepoint rollback: outer and inner phantom events discarded', async () => {
+    const entityQueue: Parameters<typeof runWithEntityEventQueue>[0] = [];
+    const mockClient = createMockClient();
+
+    await runWithEntityEventQueue(entityQueue, async () => {
+      queueEntityEvent('tenant-1', 'created', 'invoice', { id: 'event_a' });
+
+      await withSavepoint(mockClient, 'outer', async () => {
+        queueEntityEvent('tenant-1', 'created', 'invoice', { id: 'event_b' });
+
+        await withSavepoint(mockClient, 'inner', async () => {
+          queueEntityEvent('tenant-1', 'created', 'invoice', { id: 'event_c' });
+          throw new Error('inner failure');
+        }).catch(() => {});
+
+        queueEntityEvent('tenant-1', 'created', 'invoice', { id: 'event_d' });
+        throw new Error('outer failure');
+      }).catch(() => {});
+
+      queueEntityEvent('tenant-1', 'updated', 'invoice', { id: 'event_e' });
+
+      assert.equal(entityQueue.length, 2);
+      assert.deepEqual(
+        entityQueue.map((e) => e.opts.id),
+        ['event_a', 'event_e']
+      );
+    });
+  });
+
   it('nested savepoint rollback: event A survives, event B discarded', async () => {
     const entityQueue: Parameters<typeof runWithEntityEventQueue>[0] = [];
     const mockClient = createMockClient();
