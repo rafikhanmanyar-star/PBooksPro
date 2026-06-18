@@ -32,6 +32,17 @@ import {
     invalidateQueriesForFinancialPosted,
 } from '../services/realtime/entityQueryInvalidation';
 import {
+    API_REFRESH_COOLDOWN_MS,
+    API_REFRESH_DEBOUNCE_MS,
+    RECONNECT_DEBOUNCE_MS,
+    TAB_VISIBILITY_COOLDOWN_MS,
+    isWithinRefreshCooldown,
+    shouldSkipInitialSocketConnect,
+    shouldSkipRemoteReducerPatch,
+} from '../services/realtime/entityEventRefreshPolicy';
+import { rtTrace } from '../services/realtime/realtimeTrace';
+import { USER_NOTIFICATIONS_QUERY_KEY } from '../hooks/useUserNotifications';
+import {
     maybeMarkDashboardRefreshForEntity,
     markDashboardRefreshForFinancialPosted,
 } from '../services/realtime/dashboardRefreshIndicator';
@@ -243,6 +254,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dispatchRef = useRef<React.Dispatch<AppAction> | null>(null);
     /** Set after refreshFromApi is defined; used from dispatch for post-conflict merge (declared early for closure). */
     const refreshFromApiRef = useRef<(() => Promise<void>) | null>(null);
+    /** Shared across socket debounce, reconnect, and tab-visibility refresh (Phase 1). */
+    const lastApiRefreshAtRef = useRef(0);
     useEffect(() => {
         if (storedState) {
             storedStateRef.current = storedState;
@@ -1817,29 +1830,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-        let lastRefreshAt = 0;
-        const DEBOUNCE_MS = 2000;
-        const COOLDOWN_MS = 3000;
+        let reconnectDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+        let isFirstConnect = true;
+        const DEBOUNCE_MS = API_REFRESH_DEBOUNCE_MS;
+        const COOLDOWN_MS = API_REFRESH_COOLDOWN_MS;
+
+        const runRefreshFromApi = () => {
+            lastApiRefreshAtRef.current = Date.now();
+            void refreshFromApiRef.current?.();
+        };
 
         const scheduleRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            const sinceLastRefresh = Date.now() - lastRefreshAt;
+            const sinceLastRefresh = Date.now() - lastApiRefreshAtRef.current;
             if (sinceLastRefresh < COOLDOWN_MS) {
                 debounceTimer = setTimeout(() => {
                     debounceTimer = null;
-                    lastRefreshAt = Date.now();
-                    void refreshFromApiRef.current?.();
+                    runRefreshFromApi();
                 }, COOLDOWN_MS - sinceLastRefresh);
                 return;
             }
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
-                lastRefreshAt = Date.now();
-                void refreshFromApiRef.current?.();
+                runRefreshFromApi();
             }, DEBOUNCE_MS);
         };
 
         const handleEntity = (payload: RealtimeEntityPayload) => {
+            rtTrace('socket.received', {
+                entityType: payload.type,
+                entityId: payload.id,
+                action: payload.action,
+                ts: payload.ts,
+            });
             void invalidateQueriesForEntityEvent(getQueryClient(), payload, {
                 currentUserId: auth.user?.id,
                 currentTenantId: currentTenantId ?? undefined,
@@ -1862,13 +1885,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ? (d as { bulkRefresh: string }).bulkRefresh
                     : undefined;
             if (bulkRefresh) {
-                void refreshFromApiRef.current?.();
+                runRefreshFromApi();
                 return;
             }
 
-            const isOwnMutation =
-                !!(payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id);
+            const isOwnMutation = shouldSkipRemoteReducerPatch(payload?.sourceUserId, auth.user?.id);
             if (isOwnMutation) {
+                scheduleRefresh();
                 return;
             }
             /* Apply entity patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
@@ -2108,18 +2131,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             scheduleRefresh();
         };
 
+        const handleNotificationCreated = (payload: { userId?: string; tenantId?: string }) => {
+            if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) return;
+            if (payload?.userId && auth.user?.id && payload.userId !== auth.user.id) return;
+            void getQueryClient().invalidateQueries({ queryKey: USER_NOTIFICATIONS_QUERY_KEY });
+            void getQueryClient().invalidateQueries({ queryKey: ['mobile-notifications'] });
+        };
+
+        const handleReconnect = () => {
+            if (shouldSkipInitialSocketConnect(isFirstConnect)) {
+                isFirstConnect = false;
+                return;
+            }
+            if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
+            reconnectDebounceTimer = setTimeout(() => {
+                reconnectDebounceTimer = null;
+                if (isWithinRefreshCooldown(Date.now(), lastApiRefreshAtRef.current, COOLDOWN_MS)) {
+                    return;
+                }
+                scheduleRefresh();
+            }, RECONNECT_DEBOUNCE_MS);
+        };
+
         const s = connectRealtimeSocket(token);
+        if (s.connected) {
+            isFirstConnect = false;
+        }
         s.on('entity_created', handleEntity);
         s.on('entity_updated', handleEntity);
         s.on('entity_deleted', handleEntity);
         s.on('financial.posted', handleFinancialPosted);
+        s.on('notification_created', handleNotificationCreated);
+        s.on('connect', handleReconnect);
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
+            if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
             s.off('entity_created', handleEntity);
             s.off('entity_updated', handleEntity);
             s.off('entity_deleted', handleEntity);
             s.off('financial.posted', handleFinancialPosted);
+            s.off('notification_created', handleNotificationCreated);
+            s.off('connect', handleReconnect);
         };
     }, [isAuthenticated, auth.user?.id, currentTenantId, apiStateLoadFailed]);
 
@@ -2129,9 +2182,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         let debounce: ReturnType<typeof setTimeout> | null = null;
         const onVisibility = () => {
             if (document.visibilityState !== 'visible') return;
+            if (isWithinRefreshCooldown(Date.now(), lastApiRefreshAtRef.current, TAB_VISIBILITY_COOLDOWN_MS)) {
+                return;
+            }
             if (debounce) clearTimeout(debounce);
             debounce = setTimeout(() => {
                 debounce = null;
+                lastApiRefreshAtRef.current = Date.now();
                 void refreshFromApiRef.current?.();
             }, 1200);
         };

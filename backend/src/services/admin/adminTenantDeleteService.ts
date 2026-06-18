@@ -1,9 +1,10 @@
 /**
  * Permanently remove a tenant and all related data from PostgreSQL.
- * Uses session_replication_role = replica to bypass immutable audit/journal triggers.
+ * Tries session_replication_role = replica first; on managed Postgres (Render, etc.)
+ * falls back to temporarily disabling immutable audit/journal triggers.
  */
 import type pg from 'pg';
-import { withTransaction } from '../../db/pool.js';
+import { withSavepoint, withTransaction } from '../../db/pool.js';
 import { wipeTenantBusinessData } from '../tenantDataManagementService.js';
 import {
   DEMO_INTERNAL_TENANT_IDS,
@@ -32,12 +33,14 @@ async function deleteWithReplicaRole(
   client: pg.PoolClient,
   fn: () => Promise<void>
 ): Promise<void> {
-  await client.query('SET session_replication_role = replica');
-  try {
-    await fn();
-  } finally {
-    await client.query('SET session_replication_role = DEFAULT');
-  }
+  await withSavepoint(client, 'tenant_delete_replica_role', async (c) => {
+    await c.query('SET session_replication_role = replica');
+    try {
+      await fn();
+    } finally {
+      await c.query('SET session_replication_role = DEFAULT');
+    }
+  });
 }
 
 async function deleteWithTriggersDisabled(

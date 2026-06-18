@@ -20,6 +20,9 @@ import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoic
 import { getContractById, rowToContractApi } from '../../vendors/services/contractsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { memoryCacheDeletePrefix } from '../../../utils/memoryCache.js';
+import type { RequestWithId } from '../../../middleware/requestLogging.js';
+
+const DEBUG_REALTIME = process.env.DEBUG_REALTIME === 'true';
 
 export const transactionsRouter = Router();
 
@@ -163,6 +166,14 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
     memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
     memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
     const action = result.wasInsert ? 'created' : 'updated';
+    if (DEBUG_REALTIME) {
+      console.log('[realtime] transaction.persisted', {
+        tenantId,
+        transactionId: apiRow.id,
+        action,
+        requestId: (req as RequestWithId).requestId,
+      });
+    }
     emitEntityEvent(tenantId, action, 'transaction', { data: apiRow, sourceUserId: req.userId });
     await emitRecalculatedInvoiceBillEvents(
       tenantId,

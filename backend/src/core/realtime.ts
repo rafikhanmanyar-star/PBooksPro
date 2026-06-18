@@ -2,7 +2,10 @@ import type { Server as HttpServer } from 'node:http';
 import { Server } from 'socket.io';
 import type { Socket } from 'socket.io';
 import { verifyAccessToken } from '../auth/jwt.js';
+import { resolveSocketIoCorsOrigin } from '../config/corsOrigins.js';
 import { getPool } from '../db/pool.js';
+
+const DEBUG_REALTIME = process.env.DEBUG_REALTIME === 'true';
 
 /** Domain types broadcast to clients (extend as API grows). */
 export type RealtimeEntityType =
@@ -86,7 +89,7 @@ function tenantRoom(tenantId: string): string {
  */
 export function initRealtime(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
-    cors: { origin: '*' },
+    cors: { origin: resolveSocketIoCorsOrigin() },
     transports: ['websocket', 'polling'],
   });
 
@@ -210,6 +213,16 @@ export function emitEvent(
     tenantId,
     ts: payload.ts ?? new Date().toISOString(),
   };
+  if (DEBUG_REALTIME) {
+    console.log('[realtime] socket.emitted', {
+      eventName,
+      tenantId,
+      type: body.type,
+      action: body.action,
+      id: body.id,
+      sourceUserId: body.sourceUserId,
+    });
+  }
   io.to(tenantRoom(tenantId)).emit(eventName, body);
 }
 

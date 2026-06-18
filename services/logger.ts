@@ -33,7 +33,8 @@ class Logger {
     'token',
     'session',
     'login',
-    'logout'
+    'logout',
+    'realtime'
   ]);
 
   /**

@@ -21,7 +21,7 @@ export function useMobileNotifications() {
     const socket = getRealtimeSocket();
     if (!socket) return;
 
-    const onNotification = (payload: { userId?: string; tenantId?: string }) => {
+    const onApprovalEvent = (payload: { userId?: string; tenantId?: string }) => {
       if (payload?.userId && payload.userId !== user.id) return;
       void queryClient.invalidateQueries({ queryKey: ['mobile-notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['workflow'] });
@@ -38,11 +38,9 @@ export function useMobileNotifications() {
       'approval_delegated',
     ] as const;
 
-    socket.on('notification_created', onNotification);
-    for (const ev of approvalEvents) socket.on(ev, onNotification);
+    for (const ev of approvalEvents) socket.on(ev, onApprovalEvent);
     return () => {
-      socket.off('notification_created', onNotification);
-      for (const ev of approvalEvents) socket.off(ev, onNotification);
+      for (const ev of approvalEvents) socket.off(ev, onApprovalEvent);
     };
   }, [isAuthenticated, user?.id, queryClient]);
 

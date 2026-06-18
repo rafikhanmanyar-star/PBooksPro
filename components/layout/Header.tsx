@@ -11,7 +11,7 @@ import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
 import { apiClient } from '../../services/api/client';
 import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {}, connect: () => {}, disconnect: () => {} });
+import { getRealtimeSocket } from '../../core/socket';
 import { isStagingEnvironment } from '../../config/apiUrl';
 import { useExecutiveModeOptional } from '../../context/ExecutiveModeContext';
 import { useViewport } from '../../context/ViewportContext';
@@ -570,8 +570,20 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     // Fallback poll: WebSocket handles real-time updates, this is just a safety net
     const interval = setInterval(loadWhatsAppUnreadData, 60000);
 
+    const handleMessagesRead = () => {
+      loadWhatsAppUnreadData();
+    };
+
     // Listen for real-time WhatsApp message events to update unread count immediately
-    const wsClient = getWebSocketClient();
+    const socket = getRealtimeSocket();
+    if (!socket) {
+      window.addEventListener('whatsapp:messages:read', handleMessagesRead);
+      return () => {
+        clearInterval(interval);
+        window.removeEventListener('whatsapp:messages:read', handleMessagesRead);
+      };
+    }
+
     const handleWhatsAppMessageReceived = (data?: WhatsAppMessage & { autoReplied?: boolean }) => {
       // If message was handled by auto-reply, skip notification and unread refresh
       if (data?.autoReplied) return;
@@ -580,17 +592,12 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       addWhatsAppNotification(data);
     };
 
-    // Listen for messages being read (e.g. when chat panel opens) to refresh badge
-    const handleMessagesRead = () => {
-      loadWhatsAppUnreadData();
-    };
-
-    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+    socket.on('whatsapp:message:received', handleWhatsAppMessageReceived);
     window.addEventListener('whatsapp:messages:read', handleMessagesRead);
 
     return () => {
       clearInterval(interval);
-      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+      socket.off('whatsapp:message:received', handleWhatsAppMessageReceived);
       window.removeEventListener('whatsapp:messages:read', handleMessagesRead);
     };
   }, [isAuthenticated, addWhatsAppNotification, loadWhatsAppUnreadData]);
