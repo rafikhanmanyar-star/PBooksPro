@@ -15,6 +15,12 @@ describe('corsOrigins', () => {
     assert.ok(!isOriginAllowed('https://evil.example', origins));
   });
 
+  it('allows Electron desktop origins (null and file://)', () => {
+    const origins = parseCorsOriginsFromEnv();
+    assert.ok(isOriginAllowed('null', origins));
+    assert.ok(isOriginAllowed('file://', origins));
+  });
+
   it('merges FRONTEND_URL and CORS_ORIGINS', () => {
     const prevFrontend = process.env.FRONTEND_URL;
     const prevOrigins = process.env.CORS_ORIGINS;

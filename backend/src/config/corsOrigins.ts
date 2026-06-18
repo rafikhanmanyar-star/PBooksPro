@@ -6,7 +6,10 @@ const DEFAULT_LOCAL_ORIGINS = [
   'http://127.0.0.1:5173',
   'http://127.0.0.1:4173',
   'http://127.0.0.1:3000',
+  /** Chromium serializes opaque origins as the string "null" (Electron file:// loads). */
   'null',
+  /** Some Electron builds send Origin: file:// for packaged desktop clients. */
+  'file://',
 ];
 
 export function isCorsAllowAll(): boolean {
@@ -27,7 +30,10 @@ export function parseCorsOriginsFromEnv(): string[] {
 
 export function isOriginAllowed(origin: string | undefined, allowed: string[]): boolean {
   if (!origin) return true;
-  return allowed.includes(origin);
+  if (allowed.includes(origin)) return true;
+  // Packaged Electron desktop clients (file:// bundle).
+  if (origin === 'file://' || origin.startsWith('file://')) return true;
+  return false;
 }
 
 export type SocketIoCorsCallback = (
@@ -40,6 +46,13 @@ export function resolveSocketIoCorsOrigin(): true | SocketIoCorsCallback {
   if (isCorsAllowAll()) return true;
   const allowed = parseCorsOriginsFromEnv();
   return (origin, callback) => {
+    if (!origin || origin === 'null' || origin.startsWith('file://')) {
+      // Opaque / file:// origins: reflect as wildcard — browsers reject
+      // `Access-Control-Allow-Origin: null` for WebSocket upgrades.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      callback(null, '*' as any);
+      return;
+    }
     if (isOriginAllowed(origin, allowed)) {
       callback(null, true);
       return;
