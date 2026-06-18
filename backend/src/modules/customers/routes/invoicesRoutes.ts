@@ -11,7 +11,7 @@ import {
   upsertInvoice,
 } from '../services/invoicesService.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
 
 export const invoicesRouter = Router();
@@ -83,17 +83,22 @@ invoicesRouter.post('/invoices', requireResourceQuota('invoices'), async (req: A
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      upsertInvoice(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await upsertInvoice(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null);
+      if (!r.conflict) {
+        const action = r.wasInsert ? 'created' : 'updated';
+        queueEntityEvent(tenantId, action, 'invoice', {
+          data: rowToInvoiceApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
       return;
     }
-    const apiRow = rowToInvoiceApi(result.row);
-    const action = result.wasInsert ? 'created' : 'updated';
-    emitEntityEvent(tenantId, action, 'invoice', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
+    sendSuccess(res, rowToInvoiceApi(result.row), result.wasInsert ? 201 : 200);
   } catch (e) {
     if (e instanceof LockGuardError) {
       sendFailure(res, 409, String(e.code ?? 'CONFLICT'), e.message);
@@ -117,9 +122,16 @@ invoicesRouter.put('/invoices/:id', async (req: AuthedRequest, res) => {
   const { id } = req.params;
   try {
     const body = { ...(req.body as Record<string, unknown>), id };
-    const result = await withTransaction((client) =>
-      updateInvoice(client, tenantId, id, body, req.userId)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await updateInvoice(client, tenantId, id, body, req.userId);
+      if (!r.conflict && r.row) {
+        queueEntityEvent(tenantId, 'updated', 'invoice', {
+          data: rowToInvoiceApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
@@ -128,9 +140,7 @@ invoicesRouter.put('/invoices/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Invoice not found');
       return;
     }
-    const apiRow = rowToInvoiceApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'invoice', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToInvoiceApi(result.row));
   } catch (e) {
     if (e instanceof LockGuardError) {
       sendFailure(res, 409, String(e.code ?? 'CONFLICT'), e.message);
@@ -153,9 +163,19 @@ invoicesRouter.delete('/invoices/:id', async (req: AuthedRequest, res) => {
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
 
   try {
-    const result = await withTransaction((client) =>
-      softDeleteInvoice(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined, req.userId)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await softDeleteInvoice(
+        client,
+        tenantId,
+        id,
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined,
+        req.userId
+      );
+      if (!r.conflict && r.ok) {
+        queueEntityEvent(tenantId, 'deleted', 'invoice', { id, sourceUserId: req.userId });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
@@ -164,7 +184,6 @@ invoicesRouter.delete('/invoices/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Invoice not found');
       return;
     }
-    emitEntityEvent(tenantId, 'deleted', 'invoice', { id, sourceUserId: req.userId });
     sendSuccess(res, { id });
   } catch (e) {
     if (e instanceof LockGuardError) {

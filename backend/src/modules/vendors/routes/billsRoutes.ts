@@ -22,7 +22,8 @@ import { reverseVendorBillAdvanceSettlement } from '../services/vendorBillAdvanc
 import { replaceVendorBillAdvanceSettlement } from '../services/vendorBillAdvanceReplaceService.js';
 import { listVendorBillSettlementsForBills } from '../services/vendorBillSettlementReadService.js';
 import { rowToTransactionApi } from '../../accounting/services/transactionsService.js';
-import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
+import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
+import { emitFinancialPosted } from '../../../core/realtime.js';
 import { respondVersionConflict } from '../../../utils/versionConflict.js';
 
 const VENDOR_SETTLEMENT_SOURCE_MODULE = 'vendor_bill_advance_clearing';
@@ -141,6 +142,8 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
       );
       if (upserted.conflict || !upserted.row) return upserted;
       const apiRow = await enrichBillApiFromRow(client, tenantId, upserted.row);
+      const action = upserted.wasInsert ? 'created' : 'updated';
+      queueEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
       return { ...upserted, apiRow };
     });
     if (result.conflict) {
@@ -148,8 +151,6 @@ billsRouter.post('/bills', async (req: AuthedRequest, res) => {
       return;
     }
     const apiRow = 'apiRow' in result && result.apiRow ? result.apiRow : rowToBillApi(result.row!);
-    const action = result.wasInsert ? 'created' : 'updated';
-    emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
     sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
   } catch (e) {
     if (e instanceof LockGuardError) {
@@ -248,7 +249,7 @@ billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) 
         const br = await getBillById(c, tenantId, row.billId);
         if (br) {
           apiBills.push(rowToBillApi(br));
-          emitEntityEvent(tenantId, 'updated', 'bill', {
+          queueEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(br),
             sourceUserId: req.userId,
           });
@@ -260,14 +261,14 @@ billsRouter.post('/bills/settle-with-advances', async (req: AuthedRequest, res) 
         emittedAdv.add(aid);
         const advRow = await getContractorAdvanceById(c, tenantId, aid);
         if (advRow) {
-          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+          queueEntityEvent(tenantId, 'updated', 'contractor_advance', {
             data: rowAdvanceToApi(advRow),
             sourceUserId: req.userId,
           });
         }
       }
       for (const tx of out.cashExpenseTransactions) {
-        emitEntityEvent(tenantId, 'created', 'transaction', {
+        queueEntityEvent(tenantId, 'created', 'transaction', {
           data: rowToTransactionApi(tx),
           sourceUserId: req.userId,
         });
@@ -306,12 +307,12 @@ billsRouter.post('/bills/vendor-settlement/reverse', async (req: AuthedRequest, 
     try {
       const emittedAdv = new Set<string>();
       for (const tid of result.deletedTransactionIds) {
-        emitEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
+        queueEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
       }
       for (const bid of result.billIds) {
         const br = await getBillById(c, tenantId, bid);
         if (br) {
-          emitEntityEvent(tenantId, 'updated', 'bill', {
+          queueEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(br),
             sourceUserId: req.userId,
           });
@@ -322,7 +323,7 @@ billsRouter.post('/bills/vendor-settlement/reverse', async (req: AuthedRequest, 
         emittedAdv.add(aid);
         const advRow = await getContractorAdvanceById(c, tenantId, aid);
         if (advRow) {
-          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+          queueEntityEvent(tenantId, 'updated', 'contractor_advance', {
             data: rowAdvanceToApi(advRow),
             sourceUserId: req.userId,
           });
@@ -418,7 +419,7 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
     const c = await pool.connect();
     try {
       for (const tid of result.reverse.deletedTransactionIds) {
-        emitEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
+        queueEntityEvent(tenantId, 'deleted', 'transaction', { id: tid, sourceUserId: req.userId });
       }
 
       const emittedAdv = new Set<string>();
@@ -427,7 +428,7 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
         emittedAdv.add(aid);
         const advRow = await getContractorAdvanceById(c, tenantId, aid);
         if (advRow) {
-          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+          queueEntityEvent(tenantId, 'updated', 'contractor_advance', {
             data: rowAdvanceToApi(advRow),
             sourceUserId: req.userId,
           });
@@ -435,7 +436,7 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
       }
 
       for (const br of result.bills) {
-        emitEntityEvent(tenantId, 'updated', 'bill', {
+        queueEntityEvent(tenantId, 'updated', 'bill', {
           data: rowToBillApi(br),
           sourceUserId: req.userId,
         });
@@ -446,7 +447,7 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
         emittedAdv.add(aid);
         const advRow = await getContractorAdvanceById(c, tenantId, aid);
         if (advRow) {
-          emitEntityEvent(tenantId, 'updated', 'contractor_advance', {
+          queueEntityEvent(tenantId, 'updated', 'contractor_advance', {
             data: rowAdvanceToApi(advRow),
             sourceUserId: req.userId,
           });
@@ -454,7 +455,7 @@ billsRouter.post('/bills/vendor-settlement/replace', async (req: AuthedRequest, 
       }
 
       for (const tx of result.settle.cashExpenseTransactions) {
-        emitEntityEvent(tenantId, 'created', 'transaction', {
+        queueEntityEvent(tenantId, 'created', 'transaction', {
           data: rowToTransactionApi(tx),
           sourceUserId: req.userId,
         });
@@ -489,17 +490,21 @@ billsRouter.put('/bills/:id', async (req: AuthedRequest, res) => {
   const { id } = req.params;
   try {
     const body = { ...(req.body as Record<string, unknown>), id };
-    const result = await withTransaction((client) =>
-      upsertBill(client, tenantId, body, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await upsertBill(client, tenantId, body, req.userId ?? null);
+      if (!r.conflict && r.row) {
+        queueEntityEvent(tenantId, r.wasInsert ? 'created' : 'updated', 'bill', {
+          data: rowToBillApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.row.version);
       return;
     }
-    const apiRow = rowToBillApi(result.row);
-    const action = result.wasInsert ? 'created' : 'updated';
-    emitEntityEvent(tenantId, action, 'bill', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToBillApi(result.row));
   } catch (e) {
     if (e instanceof LockGuardError) {
       sendFailure(res, 409, 'LOCK_HELD', e.message);
@@ -523,16 +528,28 @@ billsRouter.post('/bills/:id/submit', async (req: AuthedRequest, res) => {
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      submitBillForApproval(client, tenantId, req.params.id, expectedVersion, req.userId ?? null, req.role ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await submitBillForApproval(
+        client,
+        tenantId,
+        req.params.id,
+        expectedVersion,
+        req.userId ?? null,
+        req.role ?? null
+      );
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'bill', {
+          data: rowToBillApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    const apiRow = rowToBillApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'bill', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToBillApi(result.row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -548,16 +565,21 @@ billsRouter.post('/bills/:id/approve', async (req: AuthedRequest, res) => {
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      approveBill(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await approveBill(client, tenantId, req.params.id, expectedVersion, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'bill', {
+          data: rowToBillApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    const apiRow = rowToBillApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'bill', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToBillApi(result.row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -576,15 +598,19 @@ billsRouter.delete('/bills/:id', async (req: AuthedRequest, res) => {
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
 
   try {
-    const result = await withTransaction((client) =>
-      softDeleteBill(
+    const result = await withTransaction(async (client) => {
+      const r = await softDeleteBill(
         client,
         tenantId,
         id,
         Number.isFinite(expectedVersion) ? expectedVersion : undefined,
         req.userId ?? null
-      )
-    );
+      );
+      if (!r.conflict && r.ok) {
+        queueEntityEvent(tenantId, 'deleted', 'bill', { id, sourceUserId: req.userId });
+      }
+      return r;
+    });
     if (result.conflict) {
       await respondVersionConflict(res, async () => {
         const pool = getPool();
@@ -601,7 +627,6 @@ billsRouter.delete('/bills/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Bill not found');
       return;
     }
-    emitEntityEvent(tenantId, 'deleted', 'bill', { id, sourceUserId: req.userId });
     sendSuccess(res, { id });
   } catch (e) {
     if (e instanceof LockGuardError) {

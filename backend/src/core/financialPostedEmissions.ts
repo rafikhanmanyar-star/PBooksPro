@@ -39,3 +39,18 @@ export function clearFinancialPostedQueue(): void {
 export function runWithFinancialPostedQueue<T>(queue: QueuedFinancialPosted[], fn: () => Promise<T>): Promise<T> {
   return financialPostedQueueStorage.run(queue, fn);
 }
+
+/** Returns current queue length, or null if no queue is active. Used by withSavepoint. */
+export function snapshotFinancialPostedQueue(): number | null {
+  const queue = financialPostedQueueStorage.getStore();
+  return queue !== undefined ? queue.length : null;
+}
+
+/** Truncates queue to the snapshot length. Used by withSavepoint on rollback. */
+export function restoreFinancialPostedQueue(snapshot: number | null): void {
+  if (snapshot === null) return;
+  const queue = financialPostedQueueStorage.getStore();
+  if (queue !== undefined && queue.length > snapshot) {
+    queue.length = snapshot;
+  }
+}
