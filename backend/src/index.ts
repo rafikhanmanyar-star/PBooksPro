@@ -41,6 +41,7 @@ import { startDashboardSnapshotScheduler } from './modules/dashboard/services/da
 import { startReportScheduleScheduler } from './modules/reporting/services/reportScheduleScheduler.js';
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
 import { sendLivenessResponse } from './routes/healthLiveness.js';
+import { registerGracefulShutdown } from './gracefulShutdown.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -200,6 +201,7 @@ async function start() {
   await seedDemoIfEnabled();
   const httpServer = createServer(app);
   initRealtime(httpServer);
+  registerGracefulShutdown(httpServer);
   httpServer.listen(PORT, '0.0.0.0', () => {
     console.log(
       `PBooks API listening on http://0.0.0.0:${PORT}/api/v1 (WebSocket: same port)`

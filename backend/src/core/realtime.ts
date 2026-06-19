@@ -124,6 +124,16 @@ export function initRealtime(httpServer: HttpServer): Server {
   return io;
 }
 
+/** Close Socket.IO and release the HTTP upgrade handler before httpServer.close(). */
+export async function shutdownRealtime(): Promise<void> {
+  if (!io) return;
+  const server = io;
+  io = null;
+  await new Promise<void>((resolve, reject) => {
+    server.close((err) => (err ? reject(err) : resolve()));
+  });
+}
+
 export type ConnectedClientRow = {
   socketId: string;
   userId: string;

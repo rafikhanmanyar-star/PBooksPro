@@ -7,7 +7,7 @@ const { app, BrowserWindow, ipcMain, shell, Tray, Menu, dialog, nativeImage } = 
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 const { formatUpdaterError, createUpdaterLogger } = require('./updaterErrorUtils.cjs');
 
 let mainWindow = null;
@@ -15,6 +15,7 @@ let tray = null;
 let apiChild = null;
 let migrationChild = null;
 let allowQuit = false;
+let isQuitting = false;
 let autoUpdater = null;
 const logLines = [];
 const MAX_LOG = 500;
@@ -498,14 +499,78 @@ function startApiServer() {
   return { ok: true };
 }
 
-function stopApiServer() {
-  if (!apiChild || apiChild.killed) return { ok: true };
-  try {
-    apiChild.kill();
-  } catch (e) {
-    pushLog('[stop] ' + (e && e.message ? e.message : String(e)));
+function killProcessTree(pid) {
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    try {
+      execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore', windowsHide: true });
+    } catch (_) {
+      /* already exited */
+    }
+    return;
   }
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch (_) {
+    /* already exited */
+  }
+}
+
+function stopBackendChild(child, { logPrefix, forceAfterMs } = {}) {
+  const prefix = logPrefix || '[stop]';
+  const timeoutMs = forceAfterMs ?? 5000;
+  return new Promise((resolve) => {
+    if (!child || child.killed) {
+      resolve();
+      return;
+    }
+
+    const pid = child.pid;
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(forceTimer);
+      resolve();
+    };
+
+    child.once('exit', finish);
+
+    try {
+      child.kill('SIGTERM');
+    } catch (e) {
+      pushLog(prefix + ' SIGTERM failed: ' + (e && e.message ? e.message : String(e)));
+      killProcessTree(pid);
+      finish();
+      return;
+    }
+
+    const forceTimer = setTimeout(() => {
+      pushLog(prefix + ' forcing process tree shutdown');
+      killProcessTree(pid);
+      finish();
+    }, timeoutMs);
+  });
+}
+
+function stopMigrationChild() {
+  if (!migrationChild || migrationChild.killed) return Promise.resolve();
+  const child = migrationChild;
+  migrationChild = null;
+  return stopBackendChild(child, { logPrefix: '[db-stop]', forceAfterMs: 3000 });
+}
+
+async function stopApiServer() {
+  if (!apiChild || apiChild.killed) {
+    broadcast({ type: 'state' });
+    return { ok: true };
+  }
+
+  const child = apiChild;
   apiChild = null;
+  pushLog('[api] stopping…');
+  await stopBackendChild(child, { logPrefix: '[api-stop]' });
+  pushLog('[api] stopped — port released');
   broadcast({ type: 'state' });
   return { ok: true };
 }
@@ -572,7 +637,6 @@ function createTray() {
       label: 'Quit',
       click: () => {
         allowQuit = true;
-        stopApiServer();
         app.quit();
       },
     },
@@ -626,7 +690,7 @@ ipcMain.handle('server:get-state', () => {
 
 ipcMain.handle('server:start', () => startApiServer());
 
-ipcMain.handle('server:stop', () => stopApiServer());
+ipcMain.handle('server:stop', async () => stopApiServer());
 
 ipcMain.handle('server:run-migrations', () => runDatabaseMigrations());
 
@@ -800,7 +864,6 @@ ipcMain.handle('server:download-and-install', async () => {
   });
   if (response !== 0) return { ok: false, message: 'Cancelled' };
   allowQuit = true;
-  stopApiServer();
   autoUpdater.quitAndInstall(false, true);
   return { ok: true };
 });
@@ -845,10 +908,27 @@ if (!gotLock) {
 
   app.on('window-all-closed', () => {});
 
-  app.on('before-quit', () => {
-    if (!allowQuit) {
-      /* tray quit sets allowQuit */
+  app.on('before-quit', (e) => {
+    if (!allowQuit || isQuitting) return;
+    if (!isRunning() && !isMigrating()) return;
+
+    e.preventDefault();
+    isQuitting = true;
+    void (async () => {
+      await stopApiServer();
+      await stopMigrationChild();
+      app.quit();
+    })();
+  });
+
+  app.on('will-quit', () => {
+    if (apiChild && !apiChild.killed) {
+      killProcessTree(apiChild.pid);
+      apiChild = null;
     }
-    stopApiServer();
+    if (migrationChild && !migrationChild.killed) {
+      killProcessTree(migrationChild.pid);
+      migrationChild = null;
+    }
   });
 }

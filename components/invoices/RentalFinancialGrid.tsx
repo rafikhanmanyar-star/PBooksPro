@@ -6,7 +6,8 @@ import { formatDate, parseStoredDateToYyyyMmDdInput, parseYyyyMmDdToLocalDate } 
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { usePairColumnResize } from '../../hooks/usePairColumnResize';
-import { useContacts, useProperties, useBuildings, useProjects, useUnits, useRentalAgreements, useStateSelector } from '../../hooks/useSelectiveState';
+import { useContacts, useProperties, useBuildings, useProjects, useUnits, useRentalAgreements, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
+import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -97,6 +98,7 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
     );
     const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
     const whatsAppMode = useStateSelector(s => s.whatsAppMode);
+    const transactions = useTransactions();
     const { showToast, showAlert } = useNotification();
 
     const contactsById = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
@@ -374,6 +376,20 @@ const RentalFinancialGrid: React.FC<RentalFinancialGridProps> = ({
         });
         return sorted;
     }, [filteredRecords, sortConfig, getInvoiceContextNames]);
+
+    useEffect(() => {
+        logPaymentListUiTrace({
+            component: 'RentalFinancialGrid',
+            sourceTransactionCount: transactions.length,
+            recordsPropCount: records.length,
+            filteredRecordCount: filteredRecords.length,
+            displayedRecordCount: sortedRecords.length,
+            transactions,
+            displayedRecords: sortedRecords,
+            typeFilter,
+            dateFilter,
+        });
+    }, [transactions, records, filteredRecords, sortedRecords, typeFilter, dateFilter]);
 
     const bulkExpandableRecordIds = useMemo(
         () =>

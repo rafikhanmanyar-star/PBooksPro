@@ -70,6 +70,7 @@ import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/d
 import { isAdminRole } from './hooks/useRecordLock';
 import { resolveEnterpriseRole } from './shared/rbac/permissions';
 import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
+import PaymentDisappearTracePanel from './components/debug/PaymentDisappearTracePanel';
 
 
 // Lazy Load Components
@@ -897,6 +898,7 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      <PaymentDisappearTracePanel />
     </OfflineProvider>
   );
 };

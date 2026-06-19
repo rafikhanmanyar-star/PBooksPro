@@ -1,5 +1,13 @@
 # Payment Disappearing — Trace v2
 
+> **RESOLVED (v3):** `handleBidirDownstreamComplete` was updated to use `stateRef.current` (the
+> Fix-1 pattern), but `stateRef` is itself updated inside a passive `useEffect` and can be one
+> render stale when an async refresh continuation runs. All merge baselines in `refreshFromApi`
+> and `handleBidirDownstreamComplete` now read **`latestStateRef.current`** (updated synchronously
+> in the render body, `AppContext.tsx:506`), guaranteeing the just-created payment is present in
+> the preservation baseline even when the server snapshot misses it (cursor gap / replication lag).
+> The sections below are retained as the historical root-cause analysis.
+
 **Status**: Root cause confirmed (v2 — post-remediation)  
 **Symptom**: Payment disappears ~1–3 seconds after creation from both screens. Reappears after logout/login.  
 **Context**: Fix 1 (stateRef.current at merge time) and Fix 2 (mergeTransactionsWithServerBaseline) were applied to `refreshFromApi`. Bug still reproduces.  
