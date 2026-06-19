@@ -142,10 +142,20 @@ export function computePlProcessedBills(
     state: AppState,
     selectedProjectId: string,
     startDate: string,
-    endDate: string
+    endDate: string,
+    selectedBuildingId: string = 'all'
 ): Set<string> {
     const categoryAmounts: Record<string, number> = {};
-    return runPlBillAccrual(state, selectedProjectId, 'all', startDate, endDate, categoryAmounts, { value: 0 }, { value: 0 });
+    return runPlBillAccrual(
+        state,
+        selectedProjectId,
+        selectedBuildingId,
+        startDate,
+        endDate,
+        categoryAmounts,
+        { value: 0 },
+        { value: 0 }
+    );
 }
 
 /** Lines from vendor bills accrued into P&L (payment txs are suppressed for processed bills — modal needs these). */
@@ -449,10 +459,23 @@ export function transactionIsPlUncategorized(
     selectedProjectId: string,
     startDate: string,
     endDate: string,
-    type: TransactionType.INCOME | TransactionType.EXPENSE
+    type: TransactionType.INCOME | TransactionType.EXPENSE,
+    selectedBuildingId: string = 'all'
 ): boolean {
     if (tx.type !== type) return false;
-    if (!transactionIncludedInPlLoop(tx, state, processedBills, selectedProjectId, startDate, endDate)) return false;
+    if (
+        !transactionIncludedInPlLoop(
+            tx,
+            state,
+            processedBills,
+            selectedProjectId,
+            startDate,
+            endDate,
+            selectedBuildingId
+        )
+    ) {
+        return false;
+    }
 
     const salesOfFixedAssetCatId = findProjectAssetCategory(state.categories, 'SALES_OF_FIXED_ASSET')?.id;
     const costOfAssetSoldCatId = findProjectAssetCategory(state.categories, 'COST_OF_ASSET_SOLD')?.id;

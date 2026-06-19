@@ -27,6 +27,7 @@ interface ProjectTransactionModalProps {
   listMode?: ProjectTransactionModalListMode;
   data: {
     projectId: string;
+    buildingId?: string;
     projectName: string;
     categoryId?: string;
     categoryName?: string;
@@ -71,10 +72,12 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
 }) => {
   const state = useFinancialReportAppState();
 
+  const selectedBuildingId = data?.buildingId ?? 'all';
+
   const processedBillsForPl = useMemo(() => {
     if (!data || listMode === 'categoryReport') return new Set<string>();
-    return computePlProcessedBills(state, data.projectId, data.startDate, data.endDate);
-  }, [data, listMode, state.bills, state.categories, state.projects]);
+    return computePlProcessedBills(state, data.projectId, data.startDate, data.endDate, selectedBuildingId);
+  }, [data, listMode, selectedBuildingId, state.bills, state.categories, state.projects]);
 
   const filteredTransactions = useMemo(() => {
     if (!data) return [];
@@ -112,7 +115,15 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
         if (tx.type !== plType) return false;
 
         if (
-          !transactionIncludedInPlLoop(tx, state, processedBillsForPl, data.projectId, data.startDate, data.endDate)
+          !transactionIncludedInPlLoop(
+            tx,
+            state,
+            processedBillsForPl,
+            data.projectId,
+            data.startDate,
+            data.endDate,
+            selectedBuildingId
+          )
         ) {
           return false;
         }
@@ -137,7 +148,8 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
               data.projectId,
               data.startDate,
               data.endDate,
-              plType
+              plType,
+              selectedBuildingId
             );
           }
           const resolved = resolvePlCategoryIdForTransaction(tx, state, processedBillsForPl);
@@ -158,9 +170,10 @@ const ProjectTransactionModal: React.FC<ProjectTransactionModalProps> = ({
       data.startDate,
       data.endDate,
       processedBillsForPl,
-      { drillCategoryId: data.categoryId, drillType: plType }
+      { drillCategoryId: data.categoryId, drillType: plType },
+      selectedBuildingId
     );
-  }, [data, listMode, state.bills, state.categories, processedBillsForPl, state.contacts, state.vendors]);
+  }, [data, listMode, selectedBuildingId, state.bills, state.categories, processedBillsForPl, state.contacts, state.vendors]);
 
   const combinedRows = useMemo((): PlTransactionDrillRow[] => {
     const out: PlTransactionDrillRow[] = [

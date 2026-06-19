@@ -342,6 +342,54 @@ function assertClose(a: number, b: number, label: string) {
   assertClose(all.totalExpense, 700, 'consolidated expense');
 }
 
+// 6) Partial journal mirror: P&L must include all operational income (matches drill-down), not only mirrored txs
+{
+  const catId = 'cat-inc';
+  const s = baseState({
+    transactions: [
+      tx({
+        id: 'mirrored',
+        amount: 3_000_000,
+        date: '2025-06-01',
+        type: TransactionType.INCOME,
+        accountId: 'acc-bank',
+        categoryId: catId,
+        projectId: 'proj-1',
+      }),
+      tx({
+        id: 'unmirrored',
+        amount: 338_811_756,
+        date: '2025-06-02',
+        type: TransactionType.INCOME,
+        accountId: 'acc-bank',
+        categoryId: catId,
+        projectId: 'proj-1',
+      }),
+    ],
+    journalLedger: {
+      journalLines: [],
+      journalEntries: [
+        {
+          id: 'je1',
+          entryDate: '2025-06-01',
+          sourceModule: 'transaction',
+          sourceId: 'mirrored',
+          status: 'posted',
+        },
+      ],
+      accounts: [],
+      transactions: [],
+    },
+  });
+  const r = computeProfitLossReport(s, {
+    startDate: '2025-01-01',
+    endDate: '2025-12-31',
+    selectedProjectId: 'proj-1',
+  });
+  assertClose(r.totalRevenue, 341_811_756, 'P&L includes unmirrored income');
+  assertClose(r.net_profit, 341_811_756, 'net includes unmirrored income');
+}
+
 {
   const s = baseState({
     transactions: [

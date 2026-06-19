@@ -3,15 +3,15 @@
  * Classification comes from Category.plSubType (pl_category_mapping) — no hardcoded category names.
  * Amounts and inclusion rules match computeProjectProfitLossTotals (projectProfitLossComputation).
  *
- * Double-entry: when `journalLedger` is present on state, P&L uses only transactions
- * with an active journal mirror (journal_lines as source of truth).
+ * P&L line totals use operational transactions (same as drill-down). When `journalLedger` is
+ * present, equity reconciliation compares net profit to the GL — it does not exclude
+ * unmirrored transactions from revenue/expense buckets (bill accruals are never mirror-filtered).
  */
 
 import type { AppState, Category, ProfitLossSubType } from '../../types';
 import { TransactionType } from '../../types';
 import { computeProjectProfitLossTotals } from './projectProfitLossComputation';
 import {
-  mirroredTransactionIds,
   computeAccountBalancesFromJournal,
   sumBalanceSheetSectionsForJournalCertification,
   type JournalLedgerInput,
@@ -215,13 +215,7 @@ export function computeProfitLossReport(
 ): ProfitLossReportResult {
   const { startDate, endDate, selectedProjectId } = opts;
   const selectedBuildingId = opts.selectedBuildingId ?? 'all';
-  const journalOpts = state.journalLedger
-    ? {
-        requireJournalMirror: true,
-        mirroredTransactionIds: mirroredTransactionIds(state.journalLedger),
-      }
-    : undefined;
-  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate, journalOpts, selectedBuildingId);
+  const pl = computeProjectProfitLossTotals(state, selectedProjectId, startDate, endDate, undefined, selectedBuildingId);
   const { categoryAmounts, assetSaleRevenue, assetSaleCost, netProfit: legacyNet } = pl;
 
   const issues: ProfitLossValidationIssue[] = [];
