@@ -1,12 +1,21 @@
 # Payment Disappearing — Trace v2
 
-> **RESOLVED (v3):** `handleBidirDownstreamComplete` was updated to use `stateRef.current` (the
-> Fix-1 pattern), but `stateRef` is itself updated inside a passive `useEffect` and can be one
-> render stale when an async refresh continuation runs. All merge baselines in `refreshFromApi`
-> and `handleBidirDownstreamComplete` now read **`latestStateRef.current`** (updated synchronously
-> in the render body, `AppContext.tsx:506`), guaranteeing the just-created payment is present in
-> the preservation baseline even when the server snapshot misses it (cursor gap / replication lag).
-> The sections below are retained as the historical root-cause analysis.
+> **RESOLVED (v4 — actual root cause):** The disappearance was an **incremental-sync change_log
+> clobber**, not (only) a merge-baseline timing race. `recordDomainMutation` stores a *partial*
+> summary as the transaction's `change_log` payload (`{ id, type, amount, date, accountId,
+> approvalStatus }` — **no `invoiceId` / `billId`**, see
+> `backend/src/modules/accounting/services/transactionsService.ts`). In
+> `loadStateViaIncrementalSync`, the `entities` feed first inserts the full transaction row (with
+> `invoiceId`/`billId`), then `applyChangeLogToMergedState` **overwrote** that row with the partial
+> payload (`map.set(payloadId, payload)`), dropping `invoiceId`/`billId`. The invoice/bill grids
+> filter on `tx.invoiceId` / `tx.billId`, so the payment vanished until a full (normalized) reload
+> via logout/login. **Fix:** `services/api/changeLogMerge.ts` now shallow-merges the partial payload
+> onto the existing full row instead of replacing it (regression tests in
+> `tests/changeLogMerge.test.ts`).
+>
+> The earlier v3 change (using `latestStateRef.current` as the merge baseline in `refreshFromApi`
+> / `handleBidirDownstreamComplete`) was also kept as a robustness improvement. The sections below
+> are retained as the historical root-cause analysis.
 
 **Status**: Root cause confirmed (v2 — post-remediation)  
 **Symptom**: Payment disappears ~1–3 seconds after creation from both screens. Reappears after logout/login.  
