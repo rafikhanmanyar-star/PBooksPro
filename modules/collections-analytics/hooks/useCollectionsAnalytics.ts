@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { collectionsAnalyticsApi } from '../../../services/api/collectionsAnalyticsApi';
 import { useCollectionsAnalyticsFiltersStore } from '../store/collectionsAnalyticsFiltersStore';
+import { usePageQueryEnabled } from '../../../hooks/usePageQueryEnabled';
 
 const STALE_MS = 60_000;
 
@@ -12,13 +13,15 @@ export const collectionsAnalyticsQueryKeys = {
 
 export function useCollectionsAnalytics(enabled = true) {
   const filters = useCollectionsAnalyticsFiltersStore((s) => s.filters);
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled;
 
   return useQuery({
     queryKey: collectionsAnalyticsQueryKeys.data(filters),
     queryFn: () => collectionsAnalyticsApi.getAnalytics(filters),
-    enabled,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: 120_000,
+    refetchInterval: queryEnabled ? 120_000 : false,
     refetchIntervalInBackground: false,
   });
 }

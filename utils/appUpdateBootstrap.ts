@@ -7,11 +7,11 @@ const RELOAD_GUARD_KEY = 'pbooks_version_reload_guard';
 
 export async function ensureLatestAppBundle(): Promise<void> {
   if (typeof window === 'undefined') return;
-  if (window.electronAPI?.isElectron) return;
-  if (!('serviceWorker' in navigator)) return;
 
   const embedded = document.querySelector('meta[name="app-build-version"]')?.getAttribute('content');
   if (!embedded || embedded === 'dev') return;
+
+  const isElectron = Boolean(window.electronAPI?.isElectron);
 
   try {
     const response = await fetch(`./version.json?t=${Date.now()}`, {
@@ -29,8 +29,10 @@ export async function ensureLatestAppBundle(): Promise<void> {
 
     sessionStorage.setItem(RELOAD_GUARD_KEY, serverVersion);
 
-    const registrations = await navigator.serviceWorker.getRegistrations();
-    await Promise.all(registrations.map((registration) => registration.unregister()));
+    if (!isElectron && 'serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
 
     if ('caches' in window) {
       const keys = await caches.keys();

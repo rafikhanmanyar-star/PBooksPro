@@ -176,192 +176,180 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
         triggerPrint('REPORT', { elementId: 'transaction-detail-printable-area' });
     };
 
-    const accountIcon = (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
-        </svg>
-    );
+    const amountPrefix =
+        transaction.type === TransactionType.EXPENSE ? '-' :
+        transaction.type === TransactionType.INCOME ? '+' : '';
+
+    const detailFields: { section: string; label: string; value: string; mono?: boolean }[] = [
+        { section: 'Transaction', label: 'Date', value: formatDate(transaction.date) },
+        { section: 'Transaction', label: 'Description', value: transaction.description || '-' },
+        { section: 'Transaction', label: 'Reference', value: transaction.reference || '-' },
+        ...(transaction.userId ? [{ section: 'Transaction', label: 'Recorded By', value: getUserName(transaction.userId) }] : []),
+        ...(transaction.type === TransactionType.TRANSFER
+            ? [
+                { section: 'Account', label: 'From Account', value: getAccountName(transaction.fromAccountId) },
+                { section: 'Account', label: 'To Account', value: getAccountName(transaction.toAccountId) },
+              ]
+            : [{ section: 'Account', label: 'Account', value: getAccountName(transaction.accountId) }]),
+        { section: 'Account', label: 'Category', value: getCategoryName(context.categoryId) },
+        { section: 'Parties', label: 'Contact', value: getContactName(context.contactId) },
+        { section: 'Parties', label: 'Vendor', value: getVendorName(context.vendorId) },
+        { section: 'Parties', label: 'Owner', value: getContactName(context.ownerId) },
+        { section: 'Location', label: 'Project', value: getProjectName(context.projectId) },
+        { section: 'Location', label: 'Building', value: getBuildingName(context.buildingId) },
+        { section: 'Location', label: 'Property', value: getPropertyName(context.propertyId) },
+        { section: 'Location', label: 'Unit', value: getUnitName(context.unitId) },
+        { section: 'Linked', label: 'Invoice', value: getInvoiceLabel(transaction.invoiceId) },
+        { section: 'Linked', label: 'Bill', value: getBillLabel(transaction.billId) },
+        { section: 'Linked', label: 'Contract', value: getContractLabel(context.contractId) },
+        { section: 'Linked', label: 'Agreement', value: getAgreementLabel(transaction.agreementId) },
+        { section: 'Linked', label: 'Payslip', value: transaction.payslipId || '-', mono: !!transaction.payslipId },
+        { section: 'Linked', label: 'Batch', value: transaction.batchId || '-', mono: !!transaction.batchId },
+        { section: 'ID', label: 'Transaction ID', value: transaction.id, mono: true },
+    ];
 
     return (
         <>
-            <div
-                className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-                onClick={onClose}
-            />
-
-            <div
-                className={`fixed right-0 top-0 h-full w-full sm:w-[600px] lg:w-[700px] bg-app-card shadow-2xl z-50 transform transition-transform duration-300 ease-out ${isOpen ? 'translate-x-0' : 'translate-x-full'} flex flex-col border-l border-app-border`}
-            >
-                <div className={`flex-shrink-0 ${config.bgColor} ${config.borderColor} border-b px-6 py-4`}>
-                    <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                            <div className="flex items-center gap-3 mb-1">
-                                <span className={`text-3xl ${config.color}`}>{config.icon}</span>
-                                <div>
-                                    <h2 className="text-xl font-bold text-app-text">Transaction Details</h2>
-                                    <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                                        <p className={`text-sm font-semibold ${config.color}`}>{transaction.type}</p>
-                                        {transaction.subtype && (
-                                            <span className="text-xs font-medium text-app-muted bg-app-toolbar px-2 py-0.5 rounded-full border border-app-border">
-                                                {transaction.subtype}
-                                            </span>
-                                        )}
-                                        {transaction.isSystem && (
-                                            <span className="text-xs font-medium text-app-muted bg-app-toolbar px-2 py-0.5 rounded-full border border-app-border">
-                                                System
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
+            <div className="w-[440px] lg:w-[500px] flex-shrink-0 h-full min-h-0 bg-app-card border-l border-app-border flex flex-col overflow-hidden animate-fade-in shadow-ds-card">
+                {/* Compact header: type + amount in one row */}
+                <div className={`flex-shrink-0 ${config.bgColor} ${config.borderColor} border-b px-3 py-2`}>
+                    <div className="flex items-center gap-2 min-w-0">
+                        <span className={`text-xl leading-none ${config.color}`}>{config.icon}</span>
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                                <h2 className="text-sm font-bold text-app-text">Transaction Details</h2>
+                                <span className={`text-[10px] font-bold uppercase ${config.color}`}>{transaction.type}</span>
+                                {transaction.subtype && (
+                                    <span className="text-[9px] font-medium text-app-muted bg-app-toolbar px-1.5 py-0.5 rounded border border-app-border">
+                                        {transaction.subtype}
+                                    </span>
+                                )}
+                                {transaction.isSystem && (
+                                    <span className="text-[9px] font-medium text-app-muted bg-app-toolbar px-1.5 py-0.5 rounded border border-app-border">
+                                        System
+                                    </span>
+                                )}
                             </div>
+                            <p className={`text-lg font-bold font-mono tabular-nums leading-tight ${config.color}`}>
+                                {amountPrefix}{CURRENCY} {transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
                         </div>
                         <button
                             onClick={onClose}
-                            className="p-2 text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-lg transition-all"
+                            className="p-1.5 text-app-muted hover:text-app-text hover:bg-app-toolbar rounded-lg transition-all shrink-0"
                             title="Close"
                         >
-                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         </button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-6 py-6 printable-area" id="transaction-detail-printable-area">
-                    <ReportHeader />
-
-                    <div className={`${config.bgColor} ${config.borderColor} border-2 rounded-xl p-6 mb-6 shadow-ds-card`}>
-                        <div className="text-center">
-                            <p className="text-sm text-app-muted mb-1">Amount</p>
-                            <p className={`text-4xl font-bold font-mono ${config.color} tracking-tight`}>
-                                {transaction.type === TransactionType.EXPENSE && '-'}
-                                {transaction.type === TransactionType.INCOME && '+'}
-                                {CURRENCY} {transaction.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                        </div>
+                <div
+                    className={`flex-1 min-h-0 px-3 py-2 printable-area ${hasChildren ? 'overflow-y-auto custom-scrollbar' : 'overflow-hidden'}`}
+                    id="transaction-detail-printable-area"
+                >
+                    <div className="hidden print:block">
+                        <ReportHeader />
                     </div>
 
-                    <DetailSection title="Transaction">
-                        <DetailRow
-                            label="Date"
-                            value={formatDate(transaction.date)}
-                            icon={<CalendarIcon />}
-                        />
-                        <DetailRow
-                            label="Description"
-                            value={transaction.description || '-'}
-                            icon={<DocumentIcon />}
-                        />
-                        <DetailRow
-                            label="Reference"
-                            value={transaction.reference || '-'}
-                            icon={<HashIcon />}
-                        />
-                        {transaction.userId && (
-                            <DetailRow
-                                label="Recorded By"
-                                value={getUserName(transaction.userId)}
-                                icon={<UserIcon />}
-                            />
-                        )}
-                    </DetailSection>
+                    <div className="grid grid-cols-2 gap-2">
+                        {([
+                            ['Transaction', 'Account'],
+                            ['Parties', 'Location'],
+                        ] as const).map(([left, right]) => (
+                            <React.Fragment key={`${left}-${right}`}>
+                                {([left, right] as const).map(section => {
+                                    const fields = detailFields.filter(f => f.section === section);
+                                    if (fields.length === 0) return null;
+                                    return (
+                                        <DetailSection key={section} title={section}>
+                                            <div className="grid grid-cols-1 gap-y-1.5">
+                                                {fields.map(field => (
+                                                    <CompactField
+                                                        key={`${section}-${field.label}`}
+                                                        label={field.label}
+                                                        value={field.value}
+                                                        mono={field.mono}
+                                                    />
+                                                ))}
+                                            </div>
+                                        </DetailSection>
+                                    );
+                                })}
+                            </React.Fragment>
+                        ))}
 
-                    <DetailSection title="Account & Category">
-                        {transaction.type === TransactionType.TRANSFER ? (
-                            <>
-                                <DetailRow label="From Account" value={getAccountName(transaction.fromAccountId)} icon={accountIcon} />
-                                <DetailRow label="To Account" value={getAccountName(transaction.toAccountId)} icon={accountIcon} />
-                            </>
-                        ) : (
-                            <DetailRow label="Account" value={getAccountName(transaction.accountId)} icon={accountIcon} />
-                        )}
-                        <DetailRow
-                            label="Category"
-                            value={getCategoryName(context.categoryId)}
-                            icon={<TagIcon />}
-                        />
-                    </DetailSection>
+                        {(() => {
+                            const fields = detailFields.filter(f => f.section === 'Linked');
+                            if (fields.length === 0) return null;
+                            return (
+                                <div className="col-span-2">
+                                    <DetailSection title="Linked">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
+                                            {fields.map(field => (
+                                                <CompactField
+                                                    key={`Linked-${field.label}`}
+                                                    label={field.label}
+                                                    value={field.value}
+                                                    mono={field.mono}
+                                                />
+                                            ))}
+                                        </div>
+                                    </DetailSection>
+                                </div>
+                            );
+                        })()}
 
-                    <DetailSection title="Parties & Location">
-                        <DetailRow label="Contact" value={getContactName(context.contactId)} icon={<UserIcon />} />
-                        <DetailRow label="Vendor" value={getVendorName(context.vendorId)} icon={<VendorIcon />} />
-                        <DetailRow label="Owner" value={getContactName(context.ownerId)} icon={<UserIcon />} />
-                        <DetailRow label="Project" value={getProjectName(context.projectId)} icon={<BuildingIcon />} />
-                        <DetailRow label="Building" value={getBuildingName(context.buildingId)} icon={<BuildingIcon />} />
-                        <DetailRow label="Property" value={getPropertyName(context.propertyId)} icon={<HomeIcon />} />
-                        <DetailRow label="Unit" value={getUnitName(context.unitId)} icon={<UnitIcon />} />
-                    </DetailSection>
-
-                    <DetailSection title="Linked Records">
-                        <DetailRow label="Invoice" value={getInvoiceLabel(transaction.invoiceId)} icon={<LinkIcon />} />
-                        <DetailRow label="Bill" value={getBillLabel(transaction.billId)} icon={<LinkIcon />} />
-                        <DetailRow label="Contract" value={getContractLabel(context.contractId)} icon={<LinkIcon />} />
-                        <DetailRow label="Agreement" value={getAgreementLabel(transaction.agreementId)} icon={<LinkIcon />} />
-                        <DetailRow
-                            label="Payslip"
-                            value={transaction.payslipId || '-'}
-                            icon={<DocumentIcon />}
-                            mono={!!transaction.payslipId}
-                        />
-                        <DetailRow
-                            label="Batch"
-                            value={transaction.batchId || '-'}
-                            icon={<HashIcon />}
-                            mono={!!transaction.batchId}
-                        />
-                    </DetailSection>
-
-                    <DetailSection title="Identification">
-                        <DetailRow
-                            label="Transaction ID"
-                            value={transaction.id}
-                            icon={<CodeIcon />}
-                            mono
-                        />
-                    </DetailSection>
+                        {(() => {
+                            const fields = detailFields.filter(f => f.section === 'ID');
+                            if (fields.length === 0) return null;
+                            return (
+                                <div className="col-span-2">
+                                    <DetailSection title="Identification">
+                                        {fields.map(field => (
+                                            <CompactField
+                                                key={`ID-${field.label}`}
+                                                label={field.label}
+                                                value={field.value}
+                                                mono={field.mono}
+                                            />
+                                        ))}
+                                    </DetailSection>
+                                </div>
+                            );
+                        })()}
+                    </div>
 
                     {hasChildren && (
-                        <div className="mt-6 border-t border-app-border pt-6">
-                            <h3 className="text-sm font-semibold text-app-muted uppercase tracking-wider mb-4">
+                        <div className="mt-2 border-t border-app-border pt-2">
+                            <h3 className="text-[9px] font-semibold text-app-muted uppercase tracking-wider mb-1.5">
                                 Bundle Items ({transaction.children?.length})
                             </h3>
-                            <div className="space-y-2">
+                            <div className="grid grid-cols-2 gap-1.5">
                                 {transaction.children?.map((child) => {
                                     const childCtx = resolveTransactionContext(child, lookups);
+                                    const meta = [
+                                        childCtx.contactId && getContactName(childCtx.contactId),
+                                        childCtx.projectId && getProjectName(childCtx.projectId),
+                                        child.categoryId && getCategoryName(child.categoryId),
+                                    ].filter(Boolean).join(' · ');
                                     return (
                                         <div
                                             key={child.id}
-                                            className="bg-app-toolbar rounded-lg p-3 border border-app-border hover:bg-app-table-hover transition-colors"
+                                            className="col-span-2 bg-app-toolbar rounded-md px-2 py-1.5 border border-app-border"
                                         >
-                                            <div className="flex justify-between items-start gap-3">
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-sm font-medium text-app-text">{child.description || '—'}</p>
-                                                    <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-app-muted">
-                                                        {childCtx.contactId && (
-                                                            <span>Contact: {getContactName(childCtx.contactId)}</span>
-                                                        )}
-                                                        {childCtx.vendorId && (
-                                                            <span>Vendor: {getVendorName(childCtx.vendorId)}</span>
-                                                        )}
-                                                        {childCtx.projectId && (
-                                                            <span>Project: {getProjectName(childCtx.projectId)}</span>
-                                                        )}
-                                                        {childCtx.buildingId && (
-                                                            <span>Building: {getBuildingName(childCtx.buildingId)}</span>
-                                                        )}
-                                                        {childCtx.unitId && (
-                                                            <span>Unit: {getUnitName(childCtx.unitId)}</span>
-                                                        )}
-                                                        {child.categoryId && (
-                                                            <span>{getCategoryName(child.categoryId)}</span>
-                                                        )}
-                                                    </div>
+                                            <div className="flex justify-between items-start gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="text-xs font-medium text-app-text truncate" title={child.description}>{child.description || '—'}</p>
+                                                    {meta && <p className="text-[10px] text-app-muted truncate">{meta}</p>}
                                                 </div>
                                                 <div className="text-right shrink-0">
-                                                    <p className="text-sm font-bold font-mono text-app-text">
+                                                    <p className="text-xs font-bold font-mono tabular-nums text-app-text">
                                                         {CURRENCY} {child.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                                                     </p>
-                                                    <p className="text-xs text-app-muted">{formatDate(child.date)}</p>
+                                                    <p className="text-[10px] text-app-muted">{formatDate(child.date)}</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -371,18 +359,20 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
                         </div>
                     )}
 
-                    <ReportFooter />
+                    <div className="hidden print:block">
+                        <ReportFooter />
+                    </div>
                 </div>
 
-                <div className="flex-shrink-0 border-t border-app-border bg-app-surface-2 px-6 py-4">
-                    <div className="flex items-center gap-3">
+                <div className="flex-shrink-0 border-t border-app-border bg-app-surface-2 px-3 py-2">
+                    <div className="flex items-center gap-1.5">
                         <Button
                             variant="primary"
                             size="sm"
                             onClick={handleEdit}
-                            className="flex-1 min-w-0 bg-green-600 hover:bg-green-700"
+                            className="flex-1 min-w-0 !py-1.5 !text-xs bg-green-600 hover:bg-green-700"
                         >
-                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                             </svg>
                             Edit
@@ -391,26 +381,24 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
                             variant="secondary"
                             size="sm"
                             onPrint={handlePrint}
-                            className="flex-1 min-w-0"
+                            className="flex-1 min-w-0 !py-1.5 !text-xs"
                         />
                         <Button
                             variant="secondary"
                             size="sm"
                             onClick={onClose}
-                            className="flex-1 min-w-0"
+                            className="flex-1 min-w-0 !py-1.5 !text-xs"
                         >
-                            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
                             Close
                         </Button>
                         <Button
                             variant="ghost"
                             size="sm"
                             onClick={handleDelete}
-                            className="flex-1 min-w-0 text-ds-danger hover:bg-[color:var(--badge-unpaid-bg)] hover:text-ds-danger"
+                            className="shrink-0 !py-1.5 !px-2 text-ds-danger hover:bg-[color:var(--badge-unpaid-bg)] hover:text-ds-danger"
+                            title="Delete"
                         >
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                             </svg>
                         </Button>
@@ -450,97 +438,28 @@ const TransactionDetailDrawer: React.FC<TransactionDetailDrawerProps> = ({
 };
 
 const DetailSection: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-    <div className="mb-6">
-        <h3 className="text-xs font-semibold text-app-muted uppercase tracking-wider mb-2 px-1">{title}</h3>
-        <div className="rounded-xl border border-app-border bg-app-toolbar/30 overflow-hidden divide-y divide-app-border">
+    <div>
+        <h3 className="text-[9px] font-semibold text-app-muted uppercase tracking-wider mb-1 px-0.5">{title}</h3>
+        <div className="rounded-lg border border-app-border bg-app-toolbar/30 p-2">
             {children}
         </div>
     </div>
 );
 
-const DetailRow: React.FC<{
+const CompactField: React.FC<{
     label: string;
     value: string;
-    icon: React.ReactNode;
     mono?: boolean;
-}> = ({ label, value, icon, mono = false }) => (
-    <div className="flex items-start gap-4 px-4 py-3">
-        <div className="flex-shrink-0 w-9 h-9 bg-app-toolbar rounded-lg flex items-center justify-center text-app-muted">
-            {icon}
-        </div>
-        <div className="flex-1 min-w-0">
-            <p className="text-[10px] text-app-muted uppercase tracking-wide font-semibold mb-0.5">{label}</p>
-            <p className={`text-sm text-app-text ${mono ? 'font-mono text-xs break-all' : 'font-medium'} break-words`}>
-                {value}
-            </p>
-        </div>
+}> = ({ label, value, mono = false }) => (
+    <div className="min-w-0">
+        <p className="text-[9px] text-app-muted uppercase tracking-wide font-semibold leading-none mb-0.5">{label}</p>
+        <p
+            className={`text-xs text-app-text leading-snug ${mono ? 'font-mono text-[10px] break-all' : 'font-medium truncate'}`}
+            title={value}
+        >
+            {value}
+        </p>
     </div>
-);
-
-const CalendarIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-    </svg>
-);
-
-const DocumentIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-    </svg>
-);
-
-const HashIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
-    </svg>
-);
-
-const UserIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-    </svg>
-);
-
-const VendorIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-    </svg>
-);
-
-const BuildingIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-    </svg>
-);
-
-const HomeIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-    </svg>
-);
-
-const UnitIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z" />
-    </svg>
-);
-
-const TagIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-    </svg>
-);
-
-const LinkIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-    </svg>
-);
-
-const CodeIcon = () => (
-    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" />
-    </svg>
 );
 
 export default React.memo(TransactionDetailDrawer);

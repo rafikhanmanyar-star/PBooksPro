@@ -187,7 +187,7 @@ export async function invalidateQueriesForEntityEvent(
   }
 
   if (entityType === 'contact') {
-    await invalidateAndTrace(queryClient, [['contacts'], queryKeys.reports.orgUsers()], 'contact');
+    await invalidateAndTrace(queryClient, [['contacts'], queryKeys.orgUsers()], 'contact');
   }
 
   if (entityType === 'vendor' || entityType === 'quotation') {
@@ -239,7 +239,7 @@ export async function invalidateQueriesForEntityEvent(
   }
 
   if (entityType === 'user') {
-    await invalidateAndTrace(queryClient, [queryKeys.reports.orgUsers()], 'user');
+    await invalidateAndTrace(queryClient, [queryKeys.orgUsers()], 'user');
   }
 
   if (PAYROLL_ENTITY_TYPES.has(entityType)) {

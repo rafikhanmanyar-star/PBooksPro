@@ -30,6 +30,7 @@ import {
   ChevronRight,
   Trash2 } from 'lucide-react';
 import EmployeeList from './EmployeeList';
+import VirtualizedPayrollEmployeeLedgerTable from './VirtualizedPayrollEmployeeLedgerTable';
 import EmployeeProfile from './EmployeeProfile';
 import EmployeeForm from './EmployeeForm';
 import PayrollReport from './PayrollReport';
@@ -1511,75 +1512,19 @@ const PayrollHub: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="flex-1 min-h-0 overflow-auto p-3 sm:p-4">
+                <div
+                  className={`flex-1 min-h-0 p-3 sm:p-4 ${
+                    selectedCycleEmployeeId && tableRecordFilter === 'ledger'
+                      ? 'flex flex-col overflow-hidden'
+                      : 'overflow-auto'
+                  }`}
+                >
                   {selectedCycleEmployeeId && tableRecordFilter === 'ledger' ? (
-                  <table className="w-full text-left text-sm min-w-[800px]">
-                    <thead>
-                      <tr className="border-b border-app-border text-app-muted font-semibold">
-                        <th className="py-3 pr-4 whitespace-nowrap">Date</th>
-                        <th className="py-3 pr-4">Type</th>
-                        <th className="py-3 pr-4 font-mono text-xs">Reference</th>
-                        <th className="py-3 pr-4">Description</th>
-                        <th className="py-3 pr-4 text-right tabular-nums">Debit</th>
-                        <th className="py-3 pr-4 text-right tabular-nums">Credit</th>
-                        <th className="py-3 pr-4 text-right tabular-nums">Balance</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {employeeLedgerLoading && employeeLedgerFinalRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
-                            <span className="inline-flex items-center justify-center gap-2">
-                              <Loader2 size={18} className="animate-spin" /> Loading…
-                            </span>
-                          </td>
-                        </tr>
-                      ) : employeeLedgerSortedRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={7} className="py-12 text-center text-app-muted text-sm">
-                            No ledger rows for the selected period and filters.
-                          </td>
-                        </tr>
-                      ) : (
-                        employeeLedgerSortedRows.map((row, idx) => (
-                          <tr
-                            key={row.id}
-                            className={`border-b border-app-border hover:bg-app-toolbar/30 ${idx % 2 ? 'bg-app-toolbar/15' : ''}`}
-                          >
-                            <td className="py-3 pr-4 whitespace-nowrap text-app-muted">{formatTableDate(row.transaction_date)}</td>
-                            <td className="py-3 pr-4">
-                              <span
-                                className={`inline-flex px-2 py-0.5 rounded text-xs font-semibold ${
-                                  row.transaction_type === 'PAYSLIP'
-                                    ? 'bg-app-toolbar text-app-text'
-                                    : row.balance_after < -0.01
-                                      ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
-                                      : 'bg-ds-success/15 text-ds-success'
-                                }`}
-                              >
-                                {ledgerTableRowKindLabel(row)}
-                              </span>
-                            </td>
-                            <td className="py-3 pr-4 font-mono text-[11px] text-app-muted break-all max-w-[10rem]" title={row.reference_id}>
-                              {row.reference_id || '—'}
-                            </td>
-                            <td className="py-3 pr-4 text-app-text max-w-[240px]" title={row.description}>
-                              {row.description || '—'}
-                            </td>
-                            <td className="py-3 pr-4 text-right tabular-nums text-app-text">
-                              {row.debit > 0 ? row.debit.toLocaleString() : '—'}
-                            </td>
-                            <td className="py-3 pr-4 text-right tabular-nums text-app-text">
-                              {row.credit > 0 ? row.credit.toLocaleString() : '—'}
-                            </td>
-                            <td className={`py-3 pr-4 text-right tabular-nums ${ledgerBalanceClass(row.balance_after)}`}>
-                              {row.balance_after.toLocaleString()}
-                            </td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
+                    <VirtualizedPayrollEmployeeLedgerTable
+                      rows={employeeLedgerSortedRows}
+                      loading={employeeLedgerLoading}
+                      emptyMessage="No ledger rows for the selected period and filters."
+                    />
                   ) : (
                   <table className="w-full text-left text-sm min-w-[720px]">
                     {tableRecordFilter === 'payments' && (

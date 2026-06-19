@@ -1,28 +1,27 @@
-import React, { useState, memo, useEffect, useCallback, useMemo, useRef, useTransition } from 'react';
-import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
+import React, { useState, memo, useEffect, useCallback, useMemo, useTransition } from 'react';
+import {
+  useCurrentUser,
+  useDispatchOnly,
+  useStateSelector,
+  selectCurrentPage,
+  selectInitialTabs,
+} from '../../hooks/useSelectiveState';
 import { useAuth } from '../../context/AuthContext';
 import GlobalSearchBar from './GlobalSearchBar';
 import HelpModal from './HelpModal';
-import { WhatsAppChatService, WhatsAppMessage, UnreadConversation, normalizePhoneForMatch } from '../../services/whatsappChatService';
-import { useWhatsApp } from '../../context/WhatsAppContext';
-import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import ConnectionStatusIndicator from '../ui/ConnectionStatusIndicator';
 import SyncStatusIndicator from '../ui/SyncStatusIndicator';
 import SyncProgressBar from '../ui/SyncProgressBar';
-import { apiClient } from '../../services/api/client';
-import { fetchUpcomingTasks } from '../../components/personalTransactions/personalTasksService';
-import { getRealtimeSocket } from '../../core/socket';
 import { isStagingEnvironment } from '../../config/apiUrl';
 import { useExecutiveModeOptional } from '../../context/ExecutiveModeContext';
 import { useViewport } from '../../context/ViewportContext';
 import { useTheme } from '../../context/ThemeContext';
-import { usePermissions } from '../../hooks/usePermissions';
-import { isAdminRole } from '../../hooks/useRecordLock';
-import { scheduleIdleWork, cancelScheduledIdle } from '../../utils/interactionScheduling';
 import { BookOpen } from 'lucide-react';
 import { getModuleHelp } from '../../shared/moduleHelp/moduleHelpContent';
 import { resolveModuleHelpContext } from '../../shared/moduleHelp/resolveModuleHelpContext';
-import { useDismissUserNotification, useUserNotifications } from '../../hooks/useUserNotifications';
+import HeaderNotificationsBell from './header/HeaderNotificationsBell';
+import HeaderWhatsAppBadge from './header/HeaderWhatsAppBadge';
+
 interface HeaderProps {
   title: string;
   isNavigating?: boolean;
@@ -32,16 +31,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
   const { theme, toggleTheme } = useTheme();
   const dispatch = useDispatchOnly();
   const [, startNavTransition] = useTransition();
-  const currentUser = useStateSelector(s => s.currentUser);
-  const contacts = useStateSelector(s => s.contacts);
-  const users = useStateSelector(s => s.users);
-  const installmentPlans = useStateSelector(s => s.installmentPlans);
-  const projects = useStateSelector(s => s.projects);
-  const units = useStateSelector(s => s.units);
-  const whatsAppMode = useStateSelector(s => s.whatsAppMode);
-  const currentPage = useStateSelector(s => s.currentPage);
-  const initialTabs = useStateSelector(s => s.initialTabs);
-  const { isAuthenticated, user, tenant, startCompanySwitch } = useAuth();
+  const currentUser = useCurrentUser();
+  const currentPage = useStateSelector(selectCurrentPage);
+  const initialTabs = useStateSelector(selectInitialTabs);
+  const { isAuthenticated, tenant, startCompanySwitch } = useAuth();
   const { isMobileViewport } = useViewport();
   const executiveMode = useExecutiveModeOptional();
   const showExecutiveViewLink =
@@ -49,638 +42,10 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
     isMobileViewport &&
     executiveMode?.isCloudEligible &&
     !executiveMode.isExecutiveMobileActive;
-  const { canReadUsers } = usePermissions();
-  const isPersonalFinanceAdmin = isAdminRole(user?.role || currentUser?.role);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // For mobile menu logic if needed
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
   const [helpContextKey, setHelpContextKey] = useState('general');
-  const [whatsappUnreadCount, setWhatsappUnreadCount] = useState(0);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
-  const [orgUsers, setOrgUsers] = useState<{ id: string; name: string; username: string; role: string }[]>([]);
-  const [dismissedNotifications, setDismissedNotifications] = useState<Set<string>>(new Set());
-  const [whatsappNotifications, setWhatsappNotifications] = useState<{
-    id: string;
-    messageId?: string;
-    phoneNumber: string;
-    contactId?: string;
-    contactName?: string;
-    messageText: string;
-    timestamp: string;
-  }[]>([]);
-  const { openChat } = useWhatsApp();
-  const [isWhatsappDropdownOpen, setIsWhatsappDropdownOpen] = useState(false);
-  const [unreadConversations, setUnreadConversations] = useState<UnreadConversation[]>([]);
-  const [taskBellRows, setTaskBellRows] = useState<
-    { id: string; title: string; targetDate: string; status: string; updatedAt?: string; createdAt?: string }[]
-  >([]);
-  const notificationsRef = useRef<HTMLDivElement>(null);
-  const whatsappDropdownRef = useRef<HTMLDivElement>(null);
-  const usersForNotifications = orgUsers.length > 0 ? orgUsers : users;
-
-  type NotificationBadgeTone = 'blue' | 'green' | 'red' | 'orange' | 'slate';
-
-  type NotificationItem = {
-    id: string;
-    title: string;
-    message: string;
-    time: string;
-    badge: {
-      label: string;
-      tone: NotificationBadgeTone;
-    };
-    action:
-    | { type: 'installment_plan'; planId: string }
-    | { type: 'whatsapp'; phoneNumber: string; contactId?: string; contactName?: string }
-    | { type: 'personal_task'; taskId: string }
-    | { type: 'unposted'; transactionId?: string };
-  };
-
-  const { data: apiNotifications = [] } = useUserNotifications(isAuthenticated);
-  const dismissApiNotification = useDismissUserNotification();
-
-  // Load dismissed notifications from localStorage on mount
-  useEffect(() => {
-    if (!currentUser) return;
-
-    try {
-      const storageKey = `dismissed_notifications_${currentUser.id}`;
-      const stored = localStorage.getItem(storageKey);
-      if (stored) {
-        const dismissed = JSON.parse(stored) as string[];
-        setDismissedNotifications(new Set(dismissed));
-        console.log('[NOTIFICATIONS] Loaded dismissed notifications:', dismissed.length);
-      }
-    } catch (error) {
-      console.error('[NOTIFICATIONS] Failed to load dismissed notifications:', error);
-    }
-  }, [currentUser]);
-
-  const dismissNotification = useCallback((notificationId: string) => {
-    if (!currentUser) {
-      console.warn('[NOTIFICATIONS] Cannot dismiss notification: no current user');
-      return;
-    }
-
-    console.log('[NOTIFICATIONS] Dismissing notification:', notificationId);
-
-    if (notificationId.startsWith('whatsapp:')) {
-      setWhatsappNotifications(prev => prev.filter(item => item.id !== notificationId));
-    }
-
-    if (notificationId.startsWith('notif_')) {
-      void dismissApiNotification(notificationId);
-      return;
-    }
-
-    setDismissedNotifications(prev => {
-      // Check if already dismissed
-      if (prev.has(notificationId)) {
-        console.log('[NOTIFICATIONS] Notification already dismissed:', notificationId);
-        return prev;
-      }
-
-      const updated = new Set(prev);
-      updated.add(notificationId);
-
-      // Save to localStorage immediately to persist dismissal
-      try {
-        const storageKey = `dismissed_notifications_${currentUser.id}`;
-        const dismissedArray = Array.from(updated);
-        localStorage.setItem(storageKey, JSON.stringify(dismissedArray));
-        console.log('[NOTIFICATIONS] Saved dismissed notification to localStorage:', notificationId, 'Total dismissed:', dismissedArray.length);
-      } catch (error) {
-        console.error('[NOTIFICATIONS] Failed to save dismissed notifications:', error);
-      }
-
-      return updated;
-    });
-  }, [currentUser, dismissApiNotification]);
-
-  const resolveWhatsAppTimestamp = useCallback((value?: string | Date) => {
-    if (!value) return new Date().toISOString();
-    if (value instanceof Date) return value.toISOString();
-    if (typeof value === 'number') {
-      const ms = value < 100000000000 ? value * 1000 : value;
-      return new Date(ms).toISOString();
-    }
-    if (typeof value === 'string') {
-      const trimmed = value.trim();
-      const numeric = Number(trimmed);
-      if (!Number.isNaN(numeric)) {
-        const ms = trimmed.length <= 10 ? numeric * 1000 : numeric;
-        return new Date(ms).toISOString();
-      }
-      const parsed = new Date(trimmed);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toISOString();
-      }
-    }
-    return new Date().toISOString();
-  }, []);
-
-  const findContactByPhone = useCallback((phoneNumber: string) => {
-    if (!phoneNumber) return undefined;
-    const normalized = normalizePhoneForMatch(phoneNumber);
-    const digitsOnly = phoneNumber.replace(/\D/g, '');
-    const lastTen = digitsOnly.length >= 10 ? digitsOnly.slice(-10) : '';
-    if (!normalized && !lastTen) return undefined;
-    return contacts.find(contact => {
-      const contactNumber = contact.contactNo || '';
-      if (!contactNumber) return false;
-      const contactNormalized = normalizePhoneForMatch(contactNumber);
-      if (normalized && contactNormalized && normalized === contactNormalized) return true;
-      const contactDigits = contactNumber.replace(/\D/g, '');
-      if (lastTen && contactDigits.length >= 10) {
-        return contactDigits.slice(-10) === lastTen;
-      }
-      return false;
-    });
-  }, [contacts]);
-
-  const formatNotificationTime = useCallback((value: string) => {
-    if (!value) return '';
-    const parsed = new Date(value);
-    if (Number.isNaN(parsed.getTime())) return '';
-    const now = new Date();
-    const isToday = parsed.toDateString() === now.toDateString();
-    if (isToday) {
-      return parsed.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-    }
-    return parsed.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  }, []);
-
-  const addWhatsAppNotification = useCallback((message?: WhatsAppMessage) => {
-    if (!message || message.direction !== 'incoming') return;
-
-    const messageKey = message.messageId || message.wamId || message.id || `${message.phoneNumber}-${message.timestamp}`;
-    const notificationId = `whatsapp:${messageKey}`;
-    if (dismissedNotifications.has(notificationId)) return;
-
-    const contactFromId = message.contactId ? contacts.find(contact => contact.id === message.contactId) : undefined;
-    const contactFromPhone = contactFromId || findContactByPhone(message.phoneNumber);
-    const resolvedContactId = contactFromId?.id || contactFromPhone?.id || message.contactId;
-    const resolvedContactName = contactFromId?.name || contactFromPhone?.name;
-    const messageText = message.messageText?.trim()
-      || (message.mediaType ? `Media message (${message.mediaType})` : 'New message');
-
-    setWhatsappNotifications(prev => {
-      if (prev.some(item => item.id === notificationId)) {
-        return prev;
-      }
-      const nextItem = {
-        id: notificationId,
-        messageId: message.messageId || message.wamId || message.id,
-        phoneNumber: message.phoneNumber,
-        contactId: resolvedContactId,
-        contactName: resolvedContactName,
-        messageText,
-        timestamp: resolveWhatsAppTimestamp(message.timestamp),
-      };
-      return [nextItem, ...prev].slice(0, 50);
-    });
-  }, [dismissedNotifications, findContactByPhone, resolveWhatsAppTimestamp, contacts]);
-
-  const notifications = useMemo(() => {
-    if (!currentUser) return [];
-    const currentUserId = currentUser.id;
-
-    const planLabel = (planId: string) => {
-      const plan = installmentPlans.find(p => p.id === planId);
-      if (!plan) return 'Installment plan';
-      const lead = contacts.find(l => l.id === plan.leadId);
-      const project = projects.find(p => p.id === plan.projectId);
-      const unit = units.find(u => u.id === plan.unitId);
-      return `${lead?.name || 'Lead'} • ${project?.name || 'Project'} • ${unit?.name || 'Unit'}`;
-    };
-
-    const userName = (userId?: string) => {
-      if (!userId) return undefined;
-      const user = usersForNotifications.find(u => u.id === userId);
-      return user?.name || user?.username;
-    };
-
-    const isMatchingCurrentUser = (value?: string) => {
-      if (!value || !currentUser) return false;
-      const candidates = [
-        currentUser.id,
-        currentUser.username,
-        currentUser.name
-      ].filter(Boolean).map(item => item.toString().toLowerCase());
-      const normalizedValue = value.toString().toLowerCase();
-      const matches = candidates.includes(normalizedValue);
-      return matches;
-    };
-
-    const todayLocal = (() => {
-      const d = new Date();
-      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-    })();
-
-    const taskItems: NotificationItem[] = taskBellRows.map((task) => {
-      const td = task.targetDate.slice(0, 10);
-      let badgeLabel = 'Upcoming';
-      let tone: NotificationBadgeTone = 'orange';
-      if (td < todayLocal) {
-        badgeLabel = 'Overdue';
-        tone = 'red';
-      } else if (td === todayLocal) {
-        badgeLabel = 'Due today';
-        tone = 'orange';
-      } else {
-        badgeLabel = `Due ${td}`;
-        tone = 'blue';
-      }
-      return {
-        id: `task:${task.id}`,
-        title: 'Task deadline',
-        message: task.title,
-        time: task.updatedAt || task.createdAt || new Date().toISOString(),
-        badge: { label: badgeLabel, tone },
-        action: { type: 'personal_task' as const, taskId: task.id },
-      };
-    });
-
-    const planItems: NotificationItem[] = (installmentPlans || []).flatMap(plan => {
-      const time = plan.updatedAt || plan.createdAt || '';
-      const normalizedStatus = (plan.status || '').toString().toLowerCase().replace(/\s+/g, ' ').trim();
-      const isPendingApproval = normalizedStatus === 'pending approval';
-      const isApprovedStatus = normalizedStatus === 'approved';
-      const isRejectedStatus = normalizedStatus === 'rejected';
-      const base = {
-        time
-      };
-
-      const results: NotificationItem[] = [];
-
-      const getStatusTone = (status: string): NotificationBadgeTone => {
-        if (status === 'Pending Approval') return 'blue';
-        if (status === 'Approved') return 'green';
-        if (status === 'Rejected') return 'red';
-        return 'slate';
-      };
-
-      // 1. You are the approver and someone requested your approval
-      const isApprover = isPendingApproval && (plan.approvalRequestedToId === currentUserId || isMatchingCurrentUser(plan.approvalRequestedToId));
-      if (isApprover) {
-        const requester = userName(plan.approvalRequestedById || plan.userId);
-        results.push({
-          ...base,
-          id: `approval:${plan.id}`,
-          title: 'Plan approval requested',
-          message: requester ? `${planLabel(plan.id)} • Requested by ${requester}` : planLabel(plan.id),
-          badge: {
-            label: 'Pending Approval',
-            tone: getStatusTone('Pending Approval')
-          },
-          action: { type: 'installment_plan', planId: plan.id }
-        });
-      }
-
-      // 2. You are the creator/requester and someone approved/rejected your plan
-      if ((isApprovedStatus || isRejectedStatus) && (
-        plan.approvalRequestedById === currentUserId ||
-        plan.userId === currentUserId ||
-        isMatchingCurrentUser(plan.approvalRequestedById) ||
-        isMatchingCurrentUser(plan.userId)
-      )) {
-        const reviewer = userName(plan.approvalReviewedById);
-        results.push({
-          ...base,
-          id: `decision:${plan.id}:${plan.status}`,
-          title: `Plan ${plan.status.toLowerCase()}`,
-          message: reviewer ? `${planLabel(plan.id)} • Reviewed by ${reviewer}` : planLabel(plan.id),
-          badge: {
-            label: plan.status,
-            tone: getStatusTone(plan.status)
-          },
-          action: { type: 'installment_plan', planId: plan.id }
-        });
-      }
-
-      return results;
-    });
-
-    const apiItems: NotificationItem[] = apiNotifications.map((n) => ({
-      id: n.id,
-      title: n.title,
-      message: n.body,
-      time: n.createdAt,
-      badge: {
-        label: n.actionType === 'unposted' ? 'Quick Txn' : n.category,
-        tone:
-          n.severity === 'urgent'
-            ? 'red'
-            : n.severity === 'warning'
-              ? 'orange'
-              : 'blue',
-      },
-      action:
-        n.actionType === 'unposted'
-          ? { type: 'unposted' as const, transactionId: n.actionId }
-          : { type: 'unposted' as const },
-    }));
-
-    const items: NotificationItem[] = [...apiItems, ...taskItems, ...planItems];
-
-    // Filter out dismissed notifications - ensure they never reappear
-    // Note: WhatsApp notifications are excluded from bell icon - they use the dedicated WhatsApp icon
-    const activeNotifications = items.filter(item => !dismissedNotifications.has(item.id));
-
-    return activeNotifications.sort((a, b) => b.time.localeCompare(a.time));
-  }, [currentUser, apiNotifications, installmentPlans, contacts, projects, units, usersForNotifications, dismissedNotifications, taskBellRows]);
-
-  const handleNotificationClick = useCallback((notification: NotificationItem) => {
-    scheduleIdleWork(() => {
-      if (import.meta.env.DEV) {
-        console.log('[NOTIFICATION CLICK] Opening notification:', notification.id);
-      }
-    });
-
-    // Dismiss the notification immediately - this will remove it from the bell icon
-    dismissNotification(notification.id);
-
-    // Close notification dropdown
-    setIsNotificationsOpen(false);
-
-    if (notification.action.type === 'personal_task') {
-      window.dispatchEvent(new CustomEvent('pb:set-personal-tab', { detail: { tab: 'My Tasks' } }));
-      window.dispatchEvent(
-        new CustomEvent('pb:open-personal-task', { detail: { taskId: notification.action.taskId } })
-      );
-      startNavTransition(() => {
-        dispatch({ type: 'SET_PAGE', payload: 'personalTransactions' });
-      });
-      return;
-    }
-
-    if (notification.action.type === 'unposted') {
-      startNavTransition(() => {
-        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Unposted Transactions'] });
-        dispatch({ type: 'SET_PAGE', payload: 'accounting' });
-      });
-      return;
-    }
-
-    if (notification.action.type === 'installment_plan') {
-      const planId = notification.action.planId;
-      startNavTransition(() => {
-        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Marketing'] });
-        dispatch({ type: 'SET_PAGE', payload: 'projectManagement' });
-      });
-
-      // Set editing entity after a small delay to ensure page is loaded
-      window.setTimeout(() => {
-        startNavTransition(() => {
-          dispatch({ type: 'SET_EDITING_ENTITY', payload: { type: 'INSTALLMENT_PLAN', id: planId } });
-        });
-        if (import.meta.env.DEV) {
-          console.log('[NOTIFICATION CLICK] Setting editing entity for plan:', planId);
-        }
-      }, 100);
-      return;
-    }
-
-    if (notification.action.type === 'whatsapp') {
-      const waAction = notification.action;
-      const contact =
-        contacts.find(item => item.id === waAction.contactId)
-        || findContactByPhone(waAction.phoneNumber)
-        || null;
-      const phone = waAction.phoneNumber || contact?.contactNo;
-      const contactLike = contact || (phone ? { id: '', name: phone, contactNo: phone } : null);
-      if (contactLike && phone) {
-        setTimeout(() => {
-          sendOrOpenWhatsApp(
-            { contact: contactLike, message: '', phoneNumber: phone },
-            () => whatsAppMode,
-            openChat
-          );
-        }, 0);
-      } else {
-        setTimeout(() => openChat(contact, waAction.phoneNumber), 0);
-      }
-      return;
-    }
-  }, [dispatch, dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone, startNavTransition]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (isNotificationsOpen && notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
-        setIsNotificationsOpen(false);
-      }
-      if (isWhatsappDropdownOpen && whatsappDropdownRef.current && !whatsappDropdownRef.current.contains(event.target as Node)) {
-        setIsWhatsappDropdownOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isNotificationsOpen, isWhatsappDropdownOpen]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !currentUser?.id || !isPersonalFinanceAdmin) {
-      setTaskBellRows([]);
-      return;
-    }
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const rows = await fetchUpcomingTasks(currentUser!.id, 7);
-        if (cancelled) return;
-        setTaskBellRows(
-          rows.map((r) => ({
-            id: r.id,
-            title: r.title,
-            targetDate: r.targetDate,
-            status: r.status,
-            updatedAt: r.updatedAt,
-            createdAt: r.createdAt,
-          }))
-        );
-      } catch {
-        if (!cancelled) setTaskBellRows([]);
-      }
-    };
-    void load();
-    const interval = window.setInterval(load, 5 * 60_000);
-    const onTasksChanged = () => {
-      void load();
-    };
-    window.addEventListener('pb:tasks-changed', onTasksChanged);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      window.removeEventListener('pb:tasks-changed', onTasksChanged);
-    };
-  }, [isAuthenticated, currentUser?.id, isPersonalFinanceAdmin]);
-
-  useEffect(() => {
-    if (!isAuthenticated || !canReadUsers) {
-      setOrgUsers([]);
-      return;
-    }
-    const loadOrgUsers = async () => {
-      try {
-        const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
-        setOrgUsers(data || []);
-      } catch (error: unknown) {
-        const msg =
-          error instanceof Error
-            ? error.message
-            : error && typeof error === 'object' && 'message' in error
-              ? String((error as { message?: unknown }).message)
-              : JSON.stringify(error);
-        console.error('Failed to load organization users', msg);
-        setOrgUsers([]);
-      }
-    };
-    const idleId = scheduleIdleWork(() => {
-      void loadOrgUsers();
-    }, { timeout: 4000 });
-    return () => cancelScheduledIdle(idleId);
-  }, [isAuthenticated, canReadUsers]);
-
-  // Load WhatsApp unread count - only when authenticated
-  // Load WhatsApp unread data (count + conversations)
-  const loadWhatsAppUnreadData = useCallback(async () => {
-    try {
-      const [count, conversations] = await Promise.all([
-        WhatsAppChatService.getUnreadCount(),
-        WhatsAppChatService.getUnreadConversations(),
-      ]);
-      setWhatsappUnreadCount(count);
-      setUnreadConversations(conversations);
-    } catch (error) {
-      // Silently fail if WhatsApp is not configured
-      setWhatsappUnreadCount(0);
-      setUnreadConversations([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      setWhatsappUnreadCount(0);
-      setUnreadConversations([]);
-      return;
-    }
-
-    loadWhatsAppUnreadData();
-    // Fallback poll: WebSocket handles real-time updates, this is just a safety net
-    const interval = setInterval(loadWhatsAppUnreadData, 60000);
-
-    const handleMessagesRead = () => {
-      loadWhatsAppUnreadData();
-    };
-
-    // Listen for real-time WhatsApp message events to update unread count immediately
-    const socket = getRealtimeSocket();
-    if (!socket) {
-      window.addEventListener('whatsapp:messages:read', handleMessagesRead);
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener('whatsapp:messages:read', handleMessagesRead);
-      };
-    }
-
-    const handleWhatsAppMessageReceived = (data?: WhatsAppMessage & { autoReplied?: boolean }) => {
-      // If message was handled by auto-reply, skip notification and unread refresh
-      if (data?.autoReplied) return;
-      // Refresh unread data when a new message is received
-      loadWhatsAppUnreadData();
-      addWhatsAppNotification(data);
-    };
-
-    socket.on('whatsapp:message:received', handleWhatsAppMessageReceived);
-    window.addEventListener('whatsapp:messages:read', handleMessagesRead);
-
-    return () => {
-      clearInterval(interval);
-      socket.off('whatsapp:message:received', handleWhatsAppMessageReceived);
-      window.removeEventListener('whatsapp:messages:read', handleMessagesRead);
-    };
-  }, [isAuthenticated, addWhatsAppNotification, loadWhatsAppUnreadData]);
-
-  // Merge real-time whatsapp notifications with pre-existing unread conversations
-  // Real-time notifications take priority (they have the freshest data)
-  const mergedWhatsappItems = useMemo(() => {
-    // Start with real-time notifications
-    const items: {
-      id: string;
-      phoneNumber: string;
-      contactId?: string;
-      contactName?: string;
-      messageText: string;
-      timestamp: string;
-      unreadCount?: number;
-      source: 'realtime' | 'db';
-    }[] = whatsappNotifications.map(n => ({
-      ...n,
-      source: 'realtime' as const,
-    }));
-
-    // Add unread conversations from DB that don't overlap with real-time notifications
-    const realtimePhones = new Set(
-      whatsappNotifications.map(n => normalizePhoneForMatch(n.phoneNumber)).filter(Boolean)
-    );
-
-    for (const conv of unreadConversations) {
-      const normPhone = normalizePhoneForMatch(conv.phoneNumber);
-      if (normPhone && !realtimePhones.has(normPhone)) {
-        items.push({
-          id: `unread-conv:${conv.phoneNumber}`,
-          phoneNumber: conv.phoneNumber,
-          contactId: conv.contactId || undefined,
-          contactName: conv.contactName || undefined,
-          messageText: conv.lastMessage,
-          timestamp: conv.lastTimestamp,
-          unreadCount: conv.unreadCount,
-          source: 'db',
-        });
-      }
-    }
-
-    // Sort by timestamp descending (newest first)
-    return items.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  }, [whatsappNotifications, unreadConversations]);
-
-  const handleWhatsAppNotificationClick = useCallback(() => {
-    if (mergedWhatsappItems.length > 0) {
-      // Toggle dropdown to show WhatsApp message notifications
-      setIsWhatsappDropdownOpen(prev => !prev);
-    } else {
-      // No unread messages - open chat directly
-      openChat();
-    }
-  }, [openChat, mergedWhatsappItems.length]);
-
-  const handleWhatsAppNotificationItemClick = useCallback((item: typeof mergedWhatsappItems[0]) => {
-    // Dismiss real-time notification if applicable
-    if (item.source === 'realtime') {
-      dismissNotification(item.id);
-    }
-    // Close dropdown
-    setIsWhatsappDropdownOpen(false);
-    // Open chat with the contact or phone number
-    const contact =
-      (item.contactId ? contacts.find(c => c.id === item.contactId) : null)
-      || findContactByPhone(item.phoneNumber)
-      || null;
-    const phone = item.phoneNumber || contact?.contactNo;
-    const contactLike = contact || (phone ? { id: '', name: phone, contactNo: phone } : null);
-    if (contactLike && phone) {
-      setTimeout(() => {
-        sendOrOpenWhatsApp(
-          { contact: contactLike, message: '', phoneNumber: phone },
-          () => whatsAppMode,
-          openChat
-        );
-      }, 0);
-    } else {
-      setTimeout(() => openChat(contact, item.phoneNumber), 0);
-    }
-  }, [dismissNotification, openChat, contacts, whatsAppMode, findContactByPhone]);
 
   const resolvedHelpEntry = useMemo(
     () => getModuleHelp(resolveModuleHelpContext(currentPage, initialTabs)),
@@ -702,12 +67,6 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
       dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
     });
   }, [dispatch, startNavTransition]);
-
-  const handleClearAllNotifications = useCallback(() => {
-    startNavTransition(() => {
-      notifications.forEach((item) => dismissNotification(item.id));
-    });
-  }, [notifications, dismissNotification, startNavTransition]);
 
   useEffect(() => {
     const handleGlobalSearchShortcut = (event: KeyboardEvent) => {
@@ -739,20 +98,34 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
         )}
 
         <div className="w-full px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-
-          {/* Left: Mobile Toggle & Breadcrumbs */}
           <div className="flex items-center gap-4 flex-1">
             <button
               onClick={() => document.dispatchEvent(new CustomEvent('toggle-sidebar'))}
               className="md:hidden p-2 -ml-2 rounded-lg text-app-muted hover:bg-black/5 dark:hover:bg-white/10 min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
               aria-label="Toggle sidebar"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="24"
+                height="24"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="3" y1="12" x2="21" y2="12" />
+                <line x1="3" y1="6" x2="21" y2="6" />
+                <line x1="3" y1="18" x2="21" y2="18" />
+              </svg>
             </button>
 
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2 min-w-0">
-                <h1 className="text-lg font-bold text-app-text leading-tight md:hidden truncate">{title}</h1>
+                <h1 className="text-lg font-bold text-app-text leading-tight md:hidden truncate">
+                  {title}
+                </h1>
                 {showExecutiveViewLink && (
                   <button
                     type="button"
@@ -777,14 +150,11 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
             </div>
           </div>
 
-          {/* Center: Global search */}
           <div className="hidden md:flex flex-1 max-w-xl justify-center">
             <GlobalSearchBar className="max-w-md" />
           </div>
 
-          {/* Right: Actions */}
           <div className="flex items-center gap-2 sm:gap-4 justify-end flex-1">
-
             {isAuthenticated && tenant && (
               <button
                 type="button"
@@ -793,16 +163,19 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
                 title="Switch organization"
               >
                 <span className="truncate">{tenant.companyName || tenant.name}</span>
-                <span className="text-app-muted" aria-hidden>▼</span>
+                <span className="text-app-muted" aria-hidden>
+                  ▼
+                </span>
               </button>
             )}
 
-            {/* Connection Status & Sync Status */}
             <div className="flex items-center gap-3 px-3 py-1.5 rounded-xl bg-app-card border border-app-border">
               <ConnectionStatusIndicator showLabel={true} />
-              <div className="h-4 w-px bg-app-border mx-1"></div>
+              <div className="h-4 w-px bg-app-border mx-1" />
               <SyncStatusIndicator showDetails={false} />
-              <SyncProgressBar className={`ml-2 ${(typeof window !== 'undefined' && (window as any).electronAPI?.isElectron) ? 'flex' : 'hidden lg:flex'}`} />
+              <SyncProgressBar
+                className={`ml-2 ${typeof window !== 'undefined' && (window as Window & { electronAPI?: { isElectron?: boolean } }).electronAPI?.isElectron ? 'flex' : 'hidden lg:flex'}`}
+              />
             </div>
 
             <button
@@ -817,169 +190,8 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               </span>
             </button>
 
-            <div className="relative" ref={notificationsRef}>
-              <button
-                onClick={() => setIsNotificationsOpen(prev => !prev)}
-                className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-indigo-600 transition-colors relative flex min-w-[44px] min-h-[44px] touch-manipulation items-center justify-center"
-                title={notifications.length > 0 ? `${notifications.length} notifications` : 'Notifications'}
-                aria-label="Notifications"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
-                {notifications.length > 0 && (
-                  <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-indigo-600 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                    {notifications.length > 99 ? '99+' : notifications.length}
-                  </span>
-                )}
-              </button>
-              {isNotificationsOpen && (
-                <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-app-modal border border-app-border rounded-xl shadow-xl overflow-hidden z-40">
-                  <div className="flex items-center justify-between px-4 py-3 border-b border-app-border">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-sm font-bold text-app-text">Notifications</h3>
-                      <span className="text-xs text-slate-500">({notifications.length})</span>
-                    </div>
-                    {notifications.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleClearAllNotifications}
-                        className="text-xs text-indigo-600 hover:text-indigo-700 font-medium hover:underline"
-                      >
-                        Clear All
-                      </button>
-                    )}
-                  </div>
-                  <div className="max-h-80 overflow-y-auto">
-                    {notifications.length === 0 ? (
-                      <div className="px-4 py-6 text-sm text-app-muted text-center">No new notifications</div>
-                    ) : (
-                      notifications.map(item => (
-                        <div
-                          key={item.id}
-                          className="group relative hover:bg-app-table-hover border-b border-app-border last:border-b-0"
-                        >
-                          <button
-                            onClick={() => handleNotificationClick(item)}
-                            className="w-full text-left px-4 py-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1">
-                                <p className="text-sm font-semibold text-app-text">{item.title}</p>
-                                <p className="text-xs text-app-muted mt-0.5">{item.message}</p>
-                                {formatNotificationTime(item.time) && (
-                                  <p className="text-[11px] text-app-muted mt-1">{formatNotificationTime(item.time)}</p>
-                                )}
-                              </div>
-                              <span className={`flex-shrink-0 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${item.badge.tone === 'blue'
-                                ? 'bg-blue-100 text-blue-700'
-                                : item.badge.tone === 'green'
-                                  ? 'bg-green-100 text-green-700'
-                                  : item.badge.tone === 'orange'
-                                    ? 'bg-orange-100 text-orange-700'
-                                    : item.badge.tone === 'red'
-                                      ? 'bg-rose-100 text-rose-700'
-                                      : 'bg-slate-100 text-slate-700'
-                                }`}>
-                                {item.badge.label}
-                              </span>
-                            </div>
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              dismissNotification(item.id);
-                            }}
-                            className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-full hover:bg-app-table-hover text-app-muted hover:text-app-text"
-                            title="Dismiss notification"
-                            aria-label="Dismiss notification"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
-                          </button>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {whatsAppMode === 'api' && (
-              <div className="relative" ref={whatsappDropdownRef}>
-                <button
-                  onClick={handleWhatsAppNotificationClick}
-                  className="p-2 rounded-full text-app-muted hover:bg-black/5 dark:hover:bg-white/10 hover:text-green-600 transition-colors relative group min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
-                  title={whatsappUnreadCount > 0 ? `${whatsappUnreadCount} unread WhatsApp messages` : 'WhatsApp Messages'}
-                  aria-label="WhatsApp Messages"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
-                  {whatsappUnreadCount > 0 && (
-                    <span className="absolute top-1 right-1 min-w-[18px] h-[18px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full border-2 border-white flex items-center justify-center">
-                      {whatsappUnreadCount > 99 ? '99+' : whatsappUnreadCount}
-                    </span>
-                  )}
-                </button>
-                {isWhatsappDropdownOpen && mergedWhatsappItems.length > 0 && (
-                  <div className="absolute right-0 mt-2 w-96 max-w-[90vw] bg-app-modal border border-app-border rounded-xl shadow-xl overflow-hidden z-40">
-                    <div className="flex items-center justify-between px-4 py-3 border-b border-app-border bg-emerald-950/30 dark:bg-emerald-950/40">
-                      <div className="flex items-center gap-2">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-green-600"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8z"></path></svg>
-                        <h3 className="text-sm font-bold text-green-800">WhatsApp Messages</h3>
-                        <span className="text-xs text-green-600">({whatsappUnreadCount})</span>
-                      </div>
-                    </div>
-                    <div className="max-h-80 overflow-y-auto">
-                      {mergedWhatsappItems.map(item => (
-                        <div
-                          key={item.id}
-                          className="group relative hover:bg-emerald-950/20 border-b border-app-border last:border-b-0"
-                        >
-                          <button
-                            onClick={() => handleWhatsAppNotificationItemClick(item)}
-                            className="w-full text-left px-4 py-3"
-                          >
-                            <div className="flex items-start gap-3">
-                              <div className="w-9 h-9 bg-green-500 rounded-full flex items-center justify-center text-white flex-shrink-0 mt-0.5">
-                                <span className="text-sm font-bold">
-                                  {(item.contactName || item.phoneNumber).charAt(0).toUpperCase()}
-                                </span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center justify-between gap-2">
-                                  <p className="text-sm font-semibold text-app-text truncate">
-                                    {item.contactName || item.phoneNumber}
-                                  </p>
-                                  <div className="flex items-center gap-2 flex-shrink-0">
-                                    {formatNotificationTime(item.timestamp) && (
-                                      <span className="text-[11px] text-app-muted">{formatNotificationTime(item.timestamp)}</span>
-                                    )}
-                                    {item.unreadCount && item.unreadCount > 1 && (
-                                      <span className="min-w-[20px] h-[20px] px-1.5 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
-                                        {item.unreadCount}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                                <p className="text-xs text-app-muted mt-0.5 truncate">{item.messageText}</p>
-                              </div>
-                            </div>
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="border-t border-app-border px-4 py-2 bg-app-card">
-                      <button
-                        onClick={() => {
-                          setIsWhatsappDropdownOpen(false);
-                          openChat();
-                        }}
-                        className="w-full text-center text-xs text-green-700 hover:text-green-800 font-medium hover:underline py-1"
-                      >
-                        Open WhatsApp Chat
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+            <HeaderNotificationsBell currentUser={currentUser} />
+            <HeaderWhatsAppBadge />
 
             <button
               onClick={openHelpModal}
@@ -995,21 +207,32 @@ const Header: React.FC<HeaderProps> = ({ title, isNavigating = false }) => {
               <BookOpen className="w-5 h-5" strokeWidth={2} aria-hidden />
             </button>
 
-            <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block"></div>
+            <div className="h-6 w-px bg-slate-200 mx-1 hidden md:block" />
 
             <div className="flex items-center gap-2">
-              {/* Mobile Search Trigger */}
               <button
                 onClick={() => setIsMobileSearchOpen((prev) => !prev)}
                 className="p-2 md:hidden text-app-muted min-w-[44px] min-h-[44px] touch-manipulation flex items-center justify-center"
                 aria-label="Search"
                 aria-expanded={isMobileSearchOpen}
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
               </button>
             </div>
           </div>
-
         </div>
 
         {isMobileSearchOpen && (

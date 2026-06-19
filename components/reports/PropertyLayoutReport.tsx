@@ -39,6 +39,7 @@ import {
 import { getEffectiveCommissionBrokerContactId } from '../../utils/brokerCommissionAttribution';
 import { useAuth } from '../../context/AuthContext';
 import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
+import { usePageQueryEnabled } from '../../hooks/usePageQueryEnabled';
 
 /** Keep Electron watchdog alive during long synchronous layout passes. */
 function pulseStabilityHeartbeat(): void {
@@ -190,11 +191,12 @@ const PropertyLayoutReport: React.FC = () => {
     const queryClient = useQueryClient();
     const { isAuthenticated } = useAuth();
     const useApiRollup = isAuthenticated;
+    const pageQueryEnabled = usePageQueryEnabled();
     const {
         data: apiOwnerBalanceRows,
         isSuccess: apiRollupSuccess,
         isPending: apiRollupPending,
-    } = useAllOwnerBalancesRollupQuery(useApiRollup);
+    } = useAllOwnerBalancesRollupQuery(useApiRollup && pageQueryEnabled);
     const { print: triggerPrint } = usePrintContext();
     const [selectedBuildingId, setSelectedBuildingId] = useState<string>('all');
     const [invoicePick, setInvoicePick] = useState<{

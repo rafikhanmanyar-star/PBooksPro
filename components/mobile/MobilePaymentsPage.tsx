@@ -2,8 +2,8 @@
 import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo } from 'react';
 import Tabs from '../ui/Tabs';
-import { Invoice, Bill, Transaction, TransactionType, InvoiceStatus } from '../../types';
-import InvoiceBillItem from '../invoices/InvoiceBillItem';
+import { Invoice, Bill, Transaction, TransactionType } from '../../types';
+import InvoiceBillList from '../invoices/InvoiceBillList';
 import TransactionForm from '../transactions/TransactionForm';
 import Modal from '../ui/Modal';
 import Input from '../ui/Input';
@@ -167,17 +167,12 @@ const MobilePaymentsPage: React.FC = () => {
             {/* List Content */}
             <div className="flex-grow overflow-y-auto p-3">
                 {filteredData.length > 0 ? (
-                    <div className="space-y-3">
-                        {filteredData.map(item => (
-                            <InvoiceBillItem 
-                                key={item.id}
-                                item={item}
-                                type={isReceiving ? 'invoice' : 'bill'}
-                                onRecordPayment={handleRecordPayment}
-                                onItemClick={handleItemClick}
-                            />
-                        ))}
-                    </div>
+                    <InvoiceBillList
+                        items={filteredData}
+                        type={isReceiving ? 'invoice' : 'bill'}
+                        onRecordPayment={handleRecordPayment}
+                        onItemClick={handleItemClick}
+                    />
                 ) : (
                     <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                         <div className="w-12 h-12 mb-2 opacity-30">{ICONS.fileText}</div>

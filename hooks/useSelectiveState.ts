@@ -19,22 +19,25 @@ import {
     _subscribeAppState,
 } from '../context/appStateStore';
 import { AppState, AppAction } from '../types';
+import { useGatedStateSelector } from './useGatedSubscription';
 
 /**
  * Subscribe to a specific slice of AppState.
  * Only triggers a re-render when the selected value changes (by reference).
- * 
+ *
+ * PERF-A2.3: Inside an inactive `PageActiveScope`, suspends the subscription and
+ * returns the last snapshot (no rerenders). Header/Sidebar are outside scope — always live.
+ *
  * IMPORTANT: The selector should return a value with a stable reference when
  * the underlying data hasn't changed. Selecting a single array (e.g. s => s.bills)
  * works perfectly. Avoid creating new objects/arrays in the selector.
- * 
+ *
  * Usage:
  *   const transactions = useStateSelector(s => s.transactions);
  *   const bills = useStateSelector(s => s.bills);
  */
 export function useStateSelector<T>(selector: (state: AppState) => T): T {
-    const getSnapshot = useCallback(() => selector(_getAppState()), [selector]);
-    return useSyncExternalStore(_subscribeAppState, getSnapshot);
+    return useGatedStateSelector(selector);
 }
 
 /**
@@ -683,3 +686,30 @@ export function useRentalReportAppState(): AppState {
         ]
     );
 }
+
+export {
+    selectAccounts,
+    selectBills,
+    selectBuildings,
+    selectCategories,
+    selectContacts,
+    selectContracts,
+    selectCurrentPage,
+    selectCurrentUser,
+    selectDefaultProjectId,
+    selectEnableColorCoding,
+    selectInitialTabs,
+    selectInstallmentPlans,
+    selectInvoices,
+    selectProjectAgreements,
+    selectProjects,
+    selectProperties,
+    selectRentalAgreements,
+    selectShowSystemTransactions,
+    selectTransactions,
+    selectUnits,
+    selectUsers,
+    selectVendors,
+    selectWhatsAppMode,
+    selectWhatsAppTemplates,
+} from './appStateSelectors';

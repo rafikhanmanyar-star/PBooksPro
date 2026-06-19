@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { vendorAnalyticsApi } from '../../../services/api/vendorAnalyticsApi';
 import { useVendorAnalyticsFiltersStore } from '../store/vendorAnalyticsFiltersStore';
+import { usePageQueryEnabled } from '../../../hooks/usePageQueryEnabled';
 
 const STALE_MS = 60_000;
 
@@ -12,13 +13,15 @@ export const vendorAnalyticsQueryKeys = {
 
 export function useVendorAnalytics(enabled = true) {
   const filters = useVendorAnalyticsFiltersStore((s) => s.filters);
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled;
 
   return useQuery({
     queryKey: vendorAnalyticsQueryKeys.data(filters),
     queryFn: () => vendorAnalyticsApi.getAnalytics(filters),
-    enabled,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: 120_000,
+    refetchInterval: queryEnabled ? 120_000 : false,
     refetchIntervalInBackground: false,
   });
 }

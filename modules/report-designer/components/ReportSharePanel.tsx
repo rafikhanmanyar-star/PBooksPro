@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { apiClient } from '../../../services/api/client';
 import {
   createReportShare,
   deleteReportShare,
   fetchReportShares,
   type ReportShare,
 } from '../../../services/api/reportDesignerApi';
+import { useOrgUsersQuery } from '../../../hooks/queries/useOrgUsersQuery';
 
 type Props = {
   definitionId: string | null;
@@ -30,10 +30,7 @@ const ReportSharePanel: React.FC<Props> = ({ definitionId, canManage }) => {
     enabled: Boolean(definitionId) && canManage,
   });
 
-  const usersQuery = useQuery({
-    queryKey: ['orgUsersForShare'],
-    queryFn: () =>
-      apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users'),
+  const usersQuery = useOrgUsersQuery({
     enabled: Boolean(definitionId) && canManage && shareMode === 'user',
   });
 

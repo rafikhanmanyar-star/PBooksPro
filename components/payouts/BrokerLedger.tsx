@@ -1,5 +1,5 @@
-
-import React, { useMemo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
+import { List, type RowComponentProps } from 'react-window';
 import { TransactionType } from '../../types';
 import {
     useTransactions,
@@ -9,7 +9,7 @@ import {
     useProjects,
     useStateSelector,
 } from '../../hooks/useSelectiveState';
-import { CURRENCY, ICONS } from '../../constants';
+import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -23,6 +23,63 @@ interface BrokerLedgerProps {
 }
 
 type SortKey = 'date' | 'particulars' | 'credit' | 'debit' | 'balance';
+
+type BrokerLedgerLine = {
+    id: string;
+    date: string;
+    particulars: string;
+    debit: number;
+    credit: number;
+    type: string;
+    balance: number;
+};
+
+const LEDGER_ROW_HEIGHT = 52;
+const LEDGER_LIST_MAX_H = 520;
+const OVERSCAN_COUNT = 6;
+const MIN_TABLE_WIDTH = 640;
+
+type BrokerLedgerRowExtra = {
+    rows: BrokerLedgerLine[];
+};
+
+const BrokerLedgerRow = memo(function BrokerLedgerRow(props: RowComponentProps<BrokerLedgerRowExtra>) {
+    const { index, style, ariaAttributes, rows } = props;
+    const item = rows[index];
+    if (!item) {
+        return <div style={style} aria-hidden />;
+    }
+
+    return (
+        <div
+            {...ariaAttributes}
+            style={{ ...style, minWidth: MIN_TABLE_WIDTH }}
+            className="flex items-stretch border-b border-app-border hover:bg-app-table-hover transition-colors duration-ds text-sm"
+        >
+            <div className="w-[108px] shrink-0 py-4 pl-4 pr-3 text-app-muted whitespace-nowrap sm:pl-0">
+                {formatDate(item.date)}
+            </div>
+            <div className="min-w-0 flex-1 px-3 py-4 text-app-text truncate" title={item.particulars}>
+                {item.particulars}
+            </div>
+            <div className="w-[100px] shrink-0 px-3 py-4 text-right text-ds-success tabular-nums whitespace-nowrap">
+                {item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}
+            </div>
+            <div className="w-[100px] shrink-0 px-3 py-4 text-right text-ds-danger tabular-nums whitespace-nowrap">
+                {item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}
+            </div>
+            <div
+                className={`w-[112px] shrink-0 py-4 pl-3 pr-4 text-right font-medium tabular-nums whitespace-nowrap sm:pr-0 ${
+                    item.balance > 0 ? 'text-ds-danger' : 'text-app-text'
+                }`}
+            >
+                {(item.balance || 0).toLocaleString()}
+            </div>
+        </div>
+    );
+});
+
+BrokerLedgerRow.displayName = 'BrokerLedgerRow';
 
 const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, buildingId, propertyId }) => {
     const transactions = useTransactions();
@@ -55,7 +112,7 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
         );
     }, [context, buildingId, propertyId, properties]);
 
-    const ledgerItems = useMemo(() => {
+    const ledgerItems = useMemo((): BrokerLedgerLine[] => {
         if (!brokerId) return [];
         
         const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
@@ -68,7 +125,7 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
             rentalAgreements,
         };
 
-        const items: any[] = [];
+        const items: Omit<BrokerLedgerLine, 'balance'>[] = [];
 
         // 1. Broker Fees from Rental Agreements (Credit). Exclude renewed agreements so broker is not charged again on renewal.
         // When filter is applied, only include agreements for in-scope properties.
@@ -149,15 +206,15 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
 
         // Sort
         items.sort((a, b) => {
-            let valA: any = a[sortConfig.key];
-            let valB: any = b[sortConfig.key];
+            let valA: string | number = a[sortConfig.key];
+            let valB: string | number = b[sortConfig.key];
             
             if (sortConfig.key === 'date') {
                 valA = new Date(valA).getTime();
                 valB = new Date(valB).getTime();
             } else if (typeof valA === 'string') {
                 valA = valA.toLowerCase();
-                valB = valB.toLowerCase();
+                valB = String(valB).toLowerCase();
             }
 
             if (valA < valB) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -173,6 +230,11 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
 
     }, [brokerId, context, rentalPropertyIdsInScope, transactions, rentalAgreements, projectAgreements, properties, projects, categories, sortConfig]);
 
+    const rowProps = useMemo(
+        () => ({ rows: ledgerItems }) satisfies BrokerLedgerRowExtra,
+        [ledgerItems]
+    );
+
     const SortIcon = ({ column }: { column: SortKey }) => (
         <span className={`ml-1 text-[10px] ${sortConfig.key === column ? 'text-primary' : 'text-app-muted'}`}>
             {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
@@ -182,8 +244,10 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
     if (!brokerId) return null;
 
     if (ledgerItems.length === 0) {
-        return <p className="text-slate-500 text-center py-8">No commissions or payments recorded for this broker in this section.</p>
+        return <p className="text-slate-500 text-center py-8">No commissions or payments recorded for this broker in this section.</p>;
     }
+
+    const listHeight = Math.min(LEDGER_LIST_MAX_H, Math.max(ledgerItems.length * LEDGER_ROW_HEIGHT, LEDGER_ROW_HEIGHT));
 
     const handleSendWhatsApp = () => {
         if (!brokerId) return;
@@ -208,31 +272,54 @@ const BrokerLedger: React.FC<BrokerLedgerProps> = ({ brokerId, context, building
     return (
         <div className="flow-root">
             <div className="-mx-4 -my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
-                <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8">
-                    <table className="min-w-full divide-y divide-app-border">
-                        <thead className="bg-app-table-header">
-                            <tr>
-                                <th onClick={() => handleSort('date')} scope="col" className="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-app-muted sm:pl-0 cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Date <SortIcon column="date"/></th>
-                                <th onClick={() => handleSort('particulars')} scope="col" className="px-3 py-3.5 text-left text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Particulars <SortIcon column="particulars"/></th>
-                                <th onClick={() => handleSort('credit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Fee Earned (+) <SortIcon column="credit"/></th>
-                                <th onClick={() => handleSort('debit')} scope="col" className="px-3 py-3.5 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Paid (-) <SortIcon column="debit"/></th>
-                                <th onClick={() => handleSort('balance')} scope="col" className="relative py-3.5 pl-3 pr-4 sm:pr-0 text-right text-sm font-semibold text-app-muted cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none">Balance <SortIcon column="balance"/></th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-app-border">
-                            {ledgerItems.map((item) => (
-                                <tr key={item.id} className="hover:bg-app-table-hover transition-colors duration-ds">
-                                    <td className="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-app-muted sm:pl-0">{formatDate(item.date)}</td>
-                                    <td className="px-3 py-4 text-sm text-app-text max-w-md min-w-[10rem] whitespace-normal break-words" title={item.particulars}>
-                                        {item.particulars}
-                                    </td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-ds-success tabular-nums">{item.credit > 0 ? (item.credit || 0).toLocaleString() : '-'}</td>
-                                    <td className="whitespace-nowrap px-3 py-4 text-sm text-right text-ds-danger tabular-nums">{item.debit > 0 ? (item.debit || 0).toLocaleString() : '-'}</td>
-                                    <td className={`relative whitespace-nowrap py-4 pl-3 pr-4 text-right text-sm font-medium sm:pr-0 tabular-nums ${item.balance > 0 ? 'text-ds-danger' : 'text-app-text'}`}>{(item.balance || 0).toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="inline-block min-w-full py-2 align-middle sm:px-6 lg:px-8" style={{ minWidth: MIN_TABLE_WIDTH }}>
+                    <div className="border-b border-app-border bg-app-table-header">
+                        <div className="flex text-sm font-semibold text-app-muted" style={{ minWidth: MIN_TABLE_WIDTH }}>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('date')}
+                                className="w-[108px] shrink-0 py-3.5 pl-4 pr-3 text-left sm:pl-0 cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none"
+                            >
+                                Date <SortIcon column="date" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('particulars')}
+                                className="min-w-0 flex-1 px-3 py-3.5 text-left cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none"
+                            >
+                                Particulars <SortIcon column="particulars" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('credit')}
+                                className="w-[100px] shrink-0 px-3 py-3.5 text-right cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none"
+                            >
+                                Fee Earned (+) <SortIcon column="credit" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('debit')}
+                                className="w-[100px] shrink-0 px-3 py-3.5 text-right cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none"
+                            >
+                                Paid (-) <SortIcon column="debit" />
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => handleSort('balance')}
+                                className="w-[112px] shrink-0 py-3.5 pl-3 pr-4 text-right sm:pr-0 cursor-pointer hover:bg-app-toolbar transition-colors duration-ds select-none"
+                            >
+                                Balance <SortIcon column="balance" />
+                            </button>
+                        </div>
+                    </div>
+                    <List<BrokerLedgerRowExtra>
+                        rowHeight={LEDGER_ROW_HEIGHT}
+                        rowCount={ledgerItems.length}
+                        overscanCount={OVERSCAN_COUNT}
+                        rowComponent={BrokerLedgerRow}
+                        rowProps={rowProps}
+                        style={{ height: listHeight, width: '100%', minWidth: MIN_TABLE_WIDTH }}
+                    />
                 </div>
             </div>
             {/* WhatsApp Send Ledger Button */}

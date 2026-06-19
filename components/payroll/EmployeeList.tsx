@@ -10,6 +10,7 @@ import { PayrollEmployee, EmployeeListProps } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
+import VirtualizedEmployeeTable from './VirtualizedEmployeeTable';
 
 const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const { tenant } = useAuth();
@@ -201,76 +202,15 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
 
       {/* Employee Table (Desktop) */}
       <div className="hidden md:block bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-app-toolbar/40 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
-                <th className="px-6 lg:px-8 py-5">Employee Info</th>
-                <th className="px-6 lg:px-8 py-5">Contact Details</th>
-                <th className="px-6 lg:px-8 py-5">Role & Dept</th>
-                <th className="px-6 lg:px-8 py-5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-app-border">
-              {filteredEmployees.length > 0 ? (
-                filteredEmployees.map((emp) => (
-                  <tr 
-                    key={emp.id} 
-                    className="group hover:bg-app-toolbar/30 cursor-pointer transition-colors" 
-                    onClick={() => onSelect(emp)}
-                  >
-                    <td className="px-6 lg:px-8 py-5">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 rounded-xl bg-app-toolbar flex items-center justify-center font-bold text-app-muted group-hover:bg-primary/15 group-hover:text-primary transition-colors uppercase shrink-0">
-                          {emp.name.split(' ').map(n => n[0]).join('')}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="font-bold text-app-text group-hover:text-primary transition-colors truncate">{emp.name}</div>
-                          <div className="text-xs text-app-muted font-medium truncate">
-                            {emp.employee_code || `ID: ${emp.id}`}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 lg:px-8 py-5">
-                      {emp.email || emp.phone ? (
-                        <div className="space-y-1">
-                          {emp.email && (
-                            <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium truncate max-w-[180px]">
-                              <Mail size={10} className="shrink-0" /> <span className="truncate">{emp.email}</span>
-                            </div>
-                          )}
-                          {emp.phone && (
-                            <div className="flex items-center gap-1.5 text-xs text-app-muted font-medium truncate max-w-[150px]">
-                              <Phone size={10} className="shrink-0" /> {emp.phone}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-[10px] text-app-muted/60 uppercase font-black tracking-widest">Not Provided</span>
-                      )}
-                    </td>
-                    <td className="px-6 lg:px-8 py-5">
-                      <div className="text-sm font-bold text-app-text">{emp.designation}</div>
-                      <div className="text-xs text-app-muted font-medium">{emp.department}</div>
-                    </td>
-                    <td className="px-6 lg:px-8 py-5 text-right">
-                      <button className="text-primary font-bold text-xs uppercase tracking-wider hover:bg-primary hover:text-ds-on-primary px-3 py-1.5 rounded-lg border border-primary/20 transition-all">
-                        View Profile
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-8 py-20 text-center text-app-muted font-medium">
-                    {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet. Click "Add Employee" to get started.'}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <VirtualizedEmployeeTable
+          employees={filteredEmployees}
+          onSelect={onSelect}
+          emptyMessage={
+            workforceSearchTerm
+              ? 'No employees found matching your search.'
+              : 'No employees added yet. Click "Add Employee" to get started.'
+          }
+        />
       </div>
     </div>
   );

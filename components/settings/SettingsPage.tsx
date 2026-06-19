@@ -1,6 +1,6 @@
 
 import { useDispatchOnly, useSettingsPageState } from '../../hooks/useSelectiveState';
-import React, { useState, useMemo, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useOffline } from '../../context/OfflineContext';
 import Button from '../ui/Button';
@@ -52,13 +52,13 @@ import { useTheme } from '../../context/ThemeContext';
 import { useViewport } from '../../context/ViewportContext';
 import { getDisplayTimeZone, setDisplayTimeZone } from '../../utils/dateUtils';
 import { persistUserDisplayTimezone } from '../../services/userDisplayTimezonePersist';
-
-const UserManagement = lazy(() => import('./UserManagement'));
-const BackupRestorePage = lazy(() => import('./BackupRestorePage'));
-const PrivacyCenter = lazy(() => import('./PrivacyCenter'));
-const MfaSettingsSection = lazy(() => import('./MfaSettingsSection'));
-const ContactsManagement = lazy(() => import('./ContactsManagement'));
-const AssetsManagement = lazy(() => import('./AssetsManagement'));
+/** Static imports: nested React.lazy + file:// in Electron causes "Failed to fetch dynamically imported module". */
+import UserManagement from './UserManagement';
+import BackupRestorePage from './BackupRestorePage';
+import PrivacyCenter from './PrivacyCenter';
+import MfaSettingsSection from './MfaSettingsSection';
+import ContactsManagement from './ContactsManagement';
+import AssetsManagement from './AssetsManagement';
 
 const PL_CLASSIFICATION_LABELS: Record<ProfitLossSubType, string> = {
     revenue: 'Revenue',
@@ -1300,11 +1300,7 @@ const SettingsPage: React.FC = () => {
                             </div>
                         )}
                         {isTableViewCategory ? renderTable() : null}
-                        {activeCategory === 'users' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                <UserManagement />
-                            </Suspense>
-                        )}
+                        {activeCategory === 'users' && <UserManagement />}
                         {activeCategory === 'preferences' && renderPreferences()}
                         {activeCategory === 'license' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
@@ -1359,23 +1355,15 @@ const SettingsPage: React.FC = () => {
                                 <AdminReferralDashboard />
                             </div>
                         )}
-                        {activeCategory === 'backup' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                <BackupRestorePage />
-                            </Suspense>
-                        )}
+                        {activeCategory === 'backup' && <BackupRestorePage />}
                         {activeCategory === 'privacy' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                    <PrivacyCenter />
-                                </Suspense>
+                                <PrivacyCenter />
                             </div>
                         )}
                         {activeCategory === 'mfa' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                    <MfaSettingsSection />
-                                </Suspense>
+                                <MfaSettingsSection />
                             </div>
                         )}
                         {activeCategory === 'data' && renderDataManagement()}
@@ -1394,16 +1382,8 @@ const SettingsPage: React.FC = () => {
                                 />
                             </div>
                         )}
-                        {activeCategory === 'contacts' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                <ContactsManagement />
-                            </Suspense>
-                        )}
-                        {activeCategory === 'assets' && (
-                            <Suspense fallback={<div className="flex items-center justify-center py-12 text-app-muted">Loading...</div>}>
-                                <AssetsManagement />
-                            </Suspense>
-                        )}
+                        {activeCategory === 'contacts' && <ContactsManagement />}
+                        {activeCategory === 'assets' && <AssetsManagement />}
                         {activeCategory === 'permissions' && showPermissionManagement && (
                             <PermissionManagementSection />
                         )}

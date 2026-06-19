@@ -1,12 +1,27 @@
 /**
  * Lookup Maps Hook
- * 
+ *
  * Creates fast lookup maps for entities to avoid repeated .find() calls.
  * This significantly improves performance when filtering/searching large datasets.
  */
 
 import { useMemo } from 'react';
-import { useStateSelector } from './useSelectiveState';
+import {
+  useAccounts,
+  useBills,
+  useBuildings,
+  useCategories,
+  useContacts,
+  useContracts,
+  useInvoices,
+  useProjectAgreements,
+  useProjects,
+  useProperties,
+  useRentalAgreements,
+  useUnits,
+  useUsers,
+  useVendors,
+} from './useSelectiveState';
 
 export interface InvoiceLookup {
   invoiceNumber?: string;
@@ -56,20 +71,20 @@ export interface LookupMaps {
  * Use these maps instead of state.accounts.find() for better performance
  */
 export function useLookupMaps(): LookupMaps {
-  const accounts = useStateSelector(s => s.accounts);
-  const categories = useStateSelector(s => s.categories);
-  const contacts = useStateSelector(s => s.contacts);
-  const vendors = useStateSelector(s => s.vendors);
-  const projects = useStateSelector(s => s.projects);
-  const buildings = useStateSelector(s => s.buildings);
-  const properties = useStateSelector(s => s.properties);
-  const invoices = useStateSelector(s => s.invoices);
-  const bills = useStateSelector(s => s.bills);
-  const units = useStateSelector(s => s.units);
-  const contracts = useStateSelector(s => s.contracts);
-  const rentalAgreements = useStateSelector(s => s.rentalAgreements);
-  const projectAgreements = useStateSelector(s => s.projectAgreements);
-  const users = useStateSelector(s => s.users);
+  const accounts = useAccounts();
+  const categories = useCategories();
+  const contacts = useContacts();
+  const vendors = useVendors();
+  const projects = useProjects();
+  const buildings = useBuildings();
+  const properties = useProperties();
+  const invoices = useInvoices();
+  const bills = useBills();
+  const units = useUnits();
+  const contracts = useContracts();
+  const rentalAgreements = useRentalAgreements();
+  const projectAgreements = useProjectAgreements();
+  const users = useUsers();
 
   return useMemo(() => {
     const accountsMap = new Map<string, { name: string; type: string }>();
@@ -195,5 +210,4 @@ export function useLookupMaps(): LookupMaps {
     };
   }, [accounts, categories, contacts, vendors, projects, buildings, properties, units, invoices, bills, contracts, rentalAgreements, projectAgreements, users]);
 }
-
 

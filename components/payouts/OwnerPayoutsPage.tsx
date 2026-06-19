@@ -42,6 +42,7 @@ import {
 } from './ownerPayoutBreakdown';
 import { useAuth } from '../../context/AuthContext';
 import { useAllOwnerBalancesRollupQuery } from '../../hooks/queries/useRentalRollupQueries';
+import { usePageQueryEnabled } from '../../hooks/usePageQueryEnabled';
 
 // --- Types ---
 
@@ -74,13 +75,14 @@ const OwnerPayoutsPage: React.FC = () => {
     const { showToast } = useNotification();
     const { isAuthenticated } = useAuth();
     const useApiRollup = isAuthenticated;
+    const pageQueryEnabled = usePageQueryEnabled();
     const {
         data: apiOwnerBalanceRows,
         isFetching: apiRollupFetching,
         isSuccess: apiRollupSuccess,
         isPending: apiRollupPending,
         isError: apiRollupError,
-    } = useAllOwnerBalancesRollupQuery(useApiRollup);
+    } = useAllOwnerBalancesRollupQuery(useApiRollup && pageQueryEnabled);
 
     /** Yields to the browser between expensive recomputes (local / full breakdown). */
     const payoutComputeState = useDeferredValue(state);

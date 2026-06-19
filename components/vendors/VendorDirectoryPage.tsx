@@ -32,7 +32,7 @@ import GoodsReceiptsPage from '../procurement/GoodsReceiptsPage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
-const VendorAnalyticsPage = React.lazy(() => import('../../modules/vendor-analytics/VendorAnalyticsPage'));
+import VendorAnalyticsPage from '../../modules/vendor-analytics/VendorAnalyticsPage';
 
 type ProcurementView =
     | 'Analytics'
@@ -571,9 +571,7 @@ const VendorDirectoryPage: React.FC = () => {
                 );
             case 'Analytics':
                 return (
-                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading analytics…</div>}>
-                        <VendorAnalyticsPage />
-                    </React.Suspense>
+                    <VendorAnalyticsPage />
                 );
             default:
                 return null;

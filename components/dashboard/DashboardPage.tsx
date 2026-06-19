@@ -1,4 +1,4 @@
-import React, { lazy, memo, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { Download, LayoutGrid, Printer, RefreshCw } from 'lucide-react';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import ReportHeader from '../reports/ReportHeader';
@@ -39,7 +39,7 @@ import {
   useDashboardPreferencesStore,
 } from '../../stores/dashboardPreferencesStore';
 
-const DashboardChartsSection = lazy(() => import('./DashboardChartsSection'));
+import DashboardChartsSection from './DashboardChartsSection';
 
 const KPI_GROUP_LABELS: Record<DashboardKpiGroupId, string> = {
   financial: 'Financial KPIs',
@@ -278,13 +278,7 @@ const DashboardPage: React.FC = () => {
             </div>
           )}
 
-          <Suspense
-            fallback={
-              <div className="h-64 rounded-2xl bg-app-toolbar/40 animate-pulse border border-app-border" />
-            }
-          >
-            <DashboardChartsSection enabled={isAdmin && isAuthenticated} customizeMode={customizeMode} />
-          </Suspense>
+          <DashboardChartsSection enabled={isAdmin && isAuthenticated} customizeMode={customizeMode} />
           <p className="report-print-only text-center text-[10px] text-slate-500 -mt-2">
             Charts omitted from print — KPI cards above reflect the same snapshot.
           </p>

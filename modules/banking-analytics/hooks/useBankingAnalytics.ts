@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { bankingAnalyticsApi } from '../../../services/api/bankingAnalyticsApi';
 import { useBankingAnalyticsFiltersStore } from '../store/bankingAnalyticsFiltersStore';
+import { usePageQueryEnabled } from '../../../hooks/usePageQueryEnabled';
 
 const STALE_MS = 60_000;
 
@@ -12,13 +13,15 @@ export const bankingAnalyticsQueryKeys = {
 
 export function useBankingAnalytics(enabled = true) {
   const filters = useBankingAnalyticsFiltersStore((s) => s.filters);
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled;
 
   return useQuery({
     queryKey: bankingAnalyticsQueryKeys.data(filters),
     queryFn: () => bankingAnalyticsApi.getAnalytics(filters),
-    enabled,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: 120_000,
+    refetchInterval: queryEnabled ? 120_000 : false,
     refetchIntervalInBackground: false,
   });
 }

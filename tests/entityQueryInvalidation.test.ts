@@ -107,4 +107,28 @@ describe('entityQueryInvalidation', () => {
       logger.warnCategory = originalWarn;
     }
   });
+
+  it('contact invalidates contacts and canonical orgUsers key', async () => {
+    const tracker = createTrackingQueryClient();
+    await invalidateQueriesForEntityEvent(tracker.client, {
+      type: 'contact',
+      action: 'updated',
+      tenantId: 'tenant-1',
+    });
+    assert.ok(tracker.keys.some((k) => k[0] === 'contacts'));
+    assert.ok(tracker.keys.some((k) => k[0] === 'orgUsers'));
+    assert.ok(!tracker.keys.some((k) => k[0] === 'reports' && k[1] === 'orgUsers'));
+    assert.ok(!tracker.keys.some((k) => k[0] === 'orgUsersForShare'));
+  });
+
+  it('user invalidates canonical orgUsers key', async () => {
+    const tracker = createTrackingQueryClient();
+    await invalidateQueriesForEntityEvent(tracker.client, {
+      type: 'user',
+      action: 'updated',
+      tenantId: 'tenant-1',
+    });
+    assert.ok(tracker.keys.some((k) => k[0] === 'orgUsers'));
+    assert.equal(tracker.keys.length, 1);
+  });
 });
