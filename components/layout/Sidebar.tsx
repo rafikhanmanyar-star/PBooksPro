@@ -10,7 +10,7 @@ import { apiClient } from '../../services/api/client';
 import { useUpdate } from '../../context/UpdateContext';
 import packageJson from '../../package.json';
 import ChatModal from '../chat/ChatModal';
-import { connectRealtimeSocket } from '../../core/socket';
+import { getRealtimeSocket } from '../../core/socket';
 import { getInMemoryUnreadCount, subscribeInMemoryChat } from '../../services/chat/inMemoryChatStore';
 import Modal from '../ui/Modal';
 import useLocalStorage from '../../hooks/useLocalStorage';
@@ -24,17 +24,58 @@ interface SidebarProps {
     setCurrentPage: (page: Page) => void;
 }
 
-/** Sidebar entries that get a persistent accent so frequent modules stand out */
-const PRIMARY_SIDEBAR_MODULE_PAGES: ReadonlySet<Page> = new Set([
-    'projectSelling',
-    'projectManagement',
-    'rentalManagement',
-    'accounting',
-]);
+/** Reference layout: nav sections grouped into rounded cards */
+const SIDEBAR_NAV_CARD_BUCKETS: readonly string[][] = [
+    ['Overview'],
+    ['Financials'],
+    ['Selling', 'Construction'],
+    ['Rental'],
+    ['People'],
+    ['System'],
+];
 
-function isPrimarySidebarModule(page: Page): boolean {
-    return PRIMARY_SIDEBAR_MODULE_PAGES.has(page);
+function bucketSidebarNavGroups<T extends { title: string }>(groups: T[]): T[][] {
+    const byTitle = new Map(groups.map((g) => [g.title, g]));
+    const used = new Set<string>();
+    const buckets: T[][] = [];
+
+    for (const bucket of SIDEBAR_NAV_CARD_BUCKETS) {
+        const matched = bucket
+            .map((title) => byTitle.get(title))
+            .filter((g): g is T => g != null);
+        if (matched.length > 0) {
+            buckets.push(matched);
+            matched.forEach((g) => used.add(g.title));
+        }
+    }
+
+    for (const group of groups) {
+        if (!used.has(group.title)) {
+            buckets.push([group]);
+        }
+    }
+
+    return buckets;
 }
+
+const SIDEBAR_NAV_CARD_CLASS = 'rounded-xl bg-[#1F2937] p-2 space-y-1';
+const SIDEBAR_NAV_ITEM_BASE =
+    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 group touch-manipulation';
+
+function sidebarNavItemClass(active: boolean): string {
+    return `${SIDEBAR_NAV_ITEM_BASE} ${
+        active
+            ? 'bg-indigo-500 text-white shadow-sm'
+            : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+    }`;
+}
+
+function sidebarNavIconClass(active: boolean): string {
+    return `shrink-0 transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`;
+}
+
+const SIDEBAR_CHAT_BTN_CLASS =
+    'w-full px-3 py-2.5 rounded-xl border border-emerald-500/35 bg-transparent hover:bg-white/[0.04] text-sm font-medium text-white flex items-center justify-center gap-2 relative touch-manipulation transition-colors';
 
 const TOUR_DATA_ATTR: Partial<Record<string, string>> = {
     dashboard: 'nav-dashboard',
@@ -168,7 +209,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
         checkUnreadMessages();
 
-        const socket = connectRealtimeSocket(token);
+        const socket = getRealtimeSocket();
+        if (!socket) return;
+
         const handleChatMessage = (data: { recipientId?: string }) => {
             if (data.recipientId === currentUserId) {
                 checkUnreadMessages();
@@ -389,10 +432,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     />
 
                     {/* Mobile drawer */}
-                    <aside className="fixed left-0 top-0 h-full w-64 bg-app-sidebar border-r border-app-sidebar-border z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
+                    <aside className="fixed left-0 top-0 h-full w-64 bg-[#111827] border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
 
                         {/* Brand Header */}
-                        <div className="h-14 flex items-center justify-between px-5 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
+                        <div className="h-14 flex items-center justify-between px-4 border-b border-slate-800/80">
                             <div className="flex items-center gap-3">
                                 <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm">
                                     P
@@ -422,105 +465,100 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                         </div>
 
                         {/* Navigation Menu */}
-                        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                            {navGroups.map((group, idx) => {
-                                const isCollapsed = collapsedGroups[group.title] || false;
-                                return (
-                                    <div key={idx} className="space-y-1">
-                                        <NavGroupHeader
-                                            title={group.title}
-                                            expanded={!isCollapsed}
-                                            onToggle={() => handleToggleGroup(group.title)}
-                                        />
+                        <nav className="flex-1 px-3 py-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {bucketSidebarNavGroups(navGroups).map((cardGroups, cardIdx) => (
+                                <div key={cardIdx} className={SIDEBAR_NAV_CARD_CLASS}>
+                                    {cardGroups.map((group, groupIdx) => {
+                                        const isCollapsed = collapsedGroups[group.title] || false;
+                                        return (
+                                            <div
+                                                key={group.title}
+                                                className={groupIdx > 0 ? 'pt-2 mt-2 border-t border-slate-700/50' : ''}
+                                            >
+                                                <NavGroupHeader
+                                                    title={group.title}
+                                                    expanded={!isCollapsed}
+                                                    onToggle={() => handleToggleGroup(group.title)}
+                                                />
 
-                                        <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                                            {group.items.map((item) => {
-                                                const active = isCurrent(item.page as Page);
-                                                const primary = isPrimarySidebarModule(item.page as Page);
-                                                return (
-                                                    <button
-                                                        key={item.page}
-                                                        onClick={() => {
-                                                            setCurrentPage(item.page as Page);
-                                                            setIsMobileMenuOpen(false); // Close menu after navigation
-                                                        }}
-                                                        data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                        className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-2.5 rounded-md text-sm font-medium transition-all duration-ds group touch-manipulation border-l-[3px] ${active
-                                                                ? 'border-primary bg-nav-active text-white'
-                                                                : primary
-                                                                    ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white active:bg-emerald-500/22'
-                                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5 active:bg-white/10'
-                                                            }`}
-                                                    >
-                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : primary ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-app-muted group-hover:text-app-text'}`}>
-                                                            {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
-                                                        </div>
-                                                        <span className="truncate">{item.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                                    {group.items.map((item) => {
+                                                        const active = isCurrent(item.page as Page);
+                                                        return (
+                                                            <button
+                                                                key={item.page}
+                                                                onClick={() => {
+                                                                    setCurrentPage(item.page as Page);
+                                                                    setIsMobileMenuOpen(false);
+                                                                }}
+                                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
+                                                                className={sidebarNavItemClass(active)}
+                                                            >
+                                                                <div className={sidebarNavIconClass(active)}>
+                                                                    {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
+                                                                </div>
+                                                                <span className="truncate">{item.label}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
                         </nav>
 
                         {/* Mobile Footer - Simplified */}
-                        <div className="p-3 border-t border-app-sidebar-border bg-app-sidebar/50">
-                            {/* License Status Button */}
+                        <div className="p-3 border-t border-slate-800/80 shrink-0">
                             {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
                                     onClick={() => {
                                         setIsLicenseModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
-                                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                                        : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                                        }`}
+                                    className={`w-full mb-3 text-white p-3 rounded-xl relative overflow-hidden group ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'}`}
                                 >
-                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                                    <div className="relative flex items-center justify-between">
+                                    <div className="flex items-center justify-between">
                                         <div className="text-left">
-                                            <div className="text-[10px] font-bold opacity-90">
+                                            <div className="text-[10px] font-bold uppercase tracking-wide opacity-90">
                                                 {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
                                             </div>
-                                            <div className="text-sm font-bold leading-tight">
+                                            <div className="text-lg font-bold leading-tight">
                                                 {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
                                             </div>
                                         </div>
-                                        <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                                        <div className="bg-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
                                             Renew
                                         </div>
                                     </div>
                                 </button>
                             )}
 
-                            {/* User Info with logout */}
-                            <div className="relative p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
+                            <div className="relative py-2 min-w-0">
                                 <button
                                     onClick={handleLogout}
-                                    className="absolute top-2 right-2 flex items-center justify-center p-1.5 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors touch-manipulation"
+                                    className="absolute top-2 right-0 flex items-center justify-center p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors touch-manipulation"
                                     title="Logout"
                                     aria-label="Logout"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
                                 </button>
-                                <div className="flex items-start gap-3 pr-9 min-w-0">
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                <div className="flex items-center gap-3 pr-8 min-w-0">
+                                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                                         {userName.charAt(0).toUpperCase()}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-semibold text-white leading-tight mb-0.5 break-words" title={userName}>
+                                        <div className="text-sm font-semibold text-white leading-tight truncate" title={userName}>
                                             {userName}
                                         </div>
                                         {organizationName && (
-                                            <div className="text-xs font-medium text-indigo-300 leading-snug mb-0.5 line-clamp-2 break-words" title={organizationName}>
+                                            <div className="text-xs text-slate-400 leading-snug truncate" title={organizationName}>
                                                 {organizationName}
                                             </div>
                                         )}
                                         {effectiveRole && (
-                                            <div className="text-[10px] text-slate-400 capitalize">
+                                            <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">
                                                 {effectiveRole}
                                             </div>
                                         )}
@@ -528,15 +566,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </div>
                             </div>
 
-                            {/* Users logged in (below login area) */}
                             {showLoggedInUsersRow && (
-                                <div
-                                    className="mt-2 px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
-                                    title="Users currently signed in"
-                                >
+                                <div className="mt-1 px-1 py-2" title="Users currently signed in">
                                     <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
-                                        <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
+                                        <span className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
+                                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                                            Users logged in
+                                        </span>
+                                        <span className="text-sm font-semibold text-slate-300 tabular-nums">{loggedInUsersCount}</span>
                                     </div>
                                 </div>
                             )}
@@ -548,13 +585,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         setIsChatModalOpen(true);
                                         setIsMobileMenuOpen(false);
                                     }}
-                                    className={`w-full mt-2 px-3 py-2.5 rounded-lg bg-primary hover:bg-ds-primary-hover active:bg-ds-primary-active text-ds-on-primary text-sm font-medium transition-colors duration-ds flex items-center justify-center gap-2 relative touch-manipulation ${unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                        }`}
+                                    className={`mt-2 ${SIDEBAR_CHAT_BTN_CLASS} ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
                                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                                     </svg>
-                                    Chat ({onlineUsers} online)
+                                    Chat
                                     {unreadMessageCount > 0 && (
                                         <>
                                             <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping"></span>
@@ -570,12 +606,12 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
 
             {/* Premium Dark Sidebar — desktop: full width or icon rail (mainNavCollapsed) */}
             <aside
-                className="hidden md:flex flex-col sidebar-desktop-width bg-app-sidebar border-r border-app-sidebar-border fixed left-0 top-0 h-full z-40 text-slate-300 overflow-x-hidden min-w-0"
+                className="hidden md:flex flex-col sidebar-desktop-width bg-[#111827] border-r border-slate-800 fixed left-0 top-0 h-full z-40 text-slate-300 overflow-x-hidden min-w-0"
                 aria-label={mainNavCollapsed ? 'Main navigation (icons)' : 'Main navigation'}
             >
                 {mainNavCollapsed ? (
                     <>
-                        <div className="shrink-0 flex flex-col items-center gap-2 py-3 px-2 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
+                        <div className="shrink-0 flex flex-col items-center gap-2 py-3 px-2 border-b border-slate-800/80">
                             <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm" title="PBooks Pro">
                                 P
                             </div>
@@ -597,7 +633,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                     {gIdx > 0 && <div className="border-t border-slate-700/60 my-2 mx-0.5" aria-hidden />}
                                     {group.items.map((item) => {
                                         const active = isCurrent(item.page as Page);
-                                        const primary = isPrimarySidebarModule(item.page as Page);
                                         return (
                                             <button
                                                 key={item.page}
@@ -607,14 +642,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                                 aria-label={item.label}
                                                 aria-current={active ? 'page' : undefined}
                                                 data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                className={`w-full flex items-center justify-center p-2.5 rounded-md transition-all duration-ds border-l-[3px] ${active
-                                                    ? 'border-primary bg-nav-active text-primary shadow-none ring-0'
-                                                    : primary
-                                                        ? 'border-emerald-400/70 bg-emerald-500/12 text-emerald-200 hover:bg-emerald-500/18 ring-1 ring-inset ring-emerald-400/25'
-                                                        : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
-                                                    }`}
+                                                className={`w-full flex items-center justify-center p-2.5 rounded-lg transition-colors duration-200 ${
+                                                    active
+                                                        ? 'bg-indigo-500 text-white'
+                                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+                                                }`}
                                             >
-                                                <span className={active ? 'text-primary' : primary ? 'text-emerald-300' : 'text-app-muted'}>
+                                                <span className={active ? 'text-white' : 'text-slate-400'}>
                                                     {React.cloneElement(item.icon as any, { width: 20, height: 20 })}
                                                 </span>
                                             </button>
@@ -623,26 +657,26 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </div>
                             ))}
                         </nav>
-                        <div className="shrink-0 p-2 border-t border-slate-800 bg-slate-900/50 space-y-2">
+                        <div className="shrink-0 p-2 border-t border-slate-800/80 space-y-2">
                             {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
                                     type="button"
                                     onClick={() => setIsLicenseModalOpen(true)}
                                     title={licenseInfo.isExpired ? 'License expired — open' : `Renewal in ${licenseInfo.daysRemaining} days`}
                                     aria-label="License and subscription"
-                                    className={`w-full flex items-center justify-center p-2 rounded-lg ${licenseInfo.isExpired ? 'bg-rose-600' : 'bg-amber-600'} text-white`}
+                                    className={`w-full flex items-center justify-center p-2 rounded-xl ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'} text-white`}
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
                                 </button>
                             )}
-                            <div className="flex flex-col items-center gap-2 p-2 rounded-lg bg-slate-800/50 border border-slate-700/50">
-                                <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold" title={userName}>
+                            <div className="flex flex-col items-center gap-2 py-2">
+                                <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold" title={userName}>
                                     {userName.charAt(0).toUpperCase()}
                                 </div>
                                 <button
                                     type="button"
                                     onClick={handleLogout}
-                                    className="p-2 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800"
+                                    className="p-2 rounded-md text-slate-500 hover:text-white hover:bg-slate-800"
                                     title="Logout"
                                     aria-label="Logout"
                                 >
@@ -650,7 +684,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </button>
                             </div>
                             {showLoggedInUsersRow && (
-                                <div className="flex justify-center text-xs font-semibold text-emerald-400 tabular-nums" title="Users logged in">
+                                <div className="flex justify-center items-center gap-1.5 text-xs font-semibold text-slate-300 tabular-nums" title="Users logged in">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden />
                                     {loggedInUsersCount}
                                 </div>
                             )}
@@ -661,13 +696,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         void fetchOnlineUsersList();
                                         setIsChatModalOpen(true);
                                     }}
-                                    className={`w-full flex items-center justify-center p-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary relative transition-colors duration-ds ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
+                                    className={`w-full flex items-center justify-center p-2 rounded-xl border border-emerald-500/35 bg-transparent hover:bg-white/[0.04] text-emerald-400 relative transition-colors ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
                                     title={`Chat (${onlineUsers} online)`}
                                     aria-label="Open chat"
                                 >
                                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
                                     {unreadMessageCount > 0 && (
-                                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 bg-red-500 rounded text-[9px] font-bold leading-none flex items-center justify-center">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
+                                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 bg-red-500 rounded text-[9px] font-bold leading-none flex items-center justify-center text-white">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
                                     )}
                                 </button>
                             )}
@@ -675,7 +710,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     </>
                 ) : (
                     <>
-                        <div className="h-14 shrink-0 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-app-sidebar-border/50 bg-app-sidebar/50 backdrop-blur-sm">
+                        <div className="h-14 shrink-0 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-slate-800/80">
                             <div className="flex items-center gap-3 min-w-0">
                                 <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm shrink-0">
                                     P
@@ -702,69 +737,66 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             </button>
                         </div>
 
-                        <nav className="flex-1 px-3 py-4 space-y-2 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
-                            {navGroups.map((group, idx) => {
-                                const isCollapsed = collapsedGroups[group.title] || false;
+                        <nav className="flex-1 px-3 py-4 space-y-3 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
+                            {bucketSidebarNavGroups(navGroups).map((cardGroups, cardIdx) => (
+                                <div key={cardIdx} className={SIDEBAR_NAV_CARD_CLASS}>
+                                    {cardGroups.map((group, groupIdx) => {
+                                        const isCollapsed = collapsedGroups[group.title] || false;
 
-                                return (
-                                    <div key={idx} className="space-y-1">
-                                        <NavGroupHeader
-                                            title={group.title}
-                                            expanded={!isCollapsed}
-                                            onToggle={() => handleToggleGroup(group.title)}
-                                        />
+                                        return (
+                                            <div
+                                                key={group.title}
+                                                className={groupIdx > 0 ? 'pt-2 mt-2 border-t border-slate-700/50' : ''}
+                                            >
+                                                <NavGroupHeader
+                                                    title={group.title}
+                                                    expanded={!isCollapsed}
+                                                    onToggle={() => handleToggleGroup(group.title)}
+                                                />
 
-                                        <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                                            {group.items.map((item) => {
-                                                const active = isCurrent(item.page as Page);
-                                                const primary = isPrimarySidebarModule(item.page as Page);
-                                                return (
-                                                    <button
-                                                        key={item.page}
-                                                        type="button"
-                                                        onClick={() => setCurrentPage(item.page as Page)}
-                                                        data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                        className={`w-full flex items-center gap-3 pl-2.5 pr-3 py-1.5 rounded-md text-xs font-medium transition-all duration-ds group border-l-[3px] ${active
-                                                                ? 'border-primary bg-nav-active text-white'
-                                                                : primary
-                                                                    ? 'border-emerald-400/70 bg-emerald-500/12 text-slate-100 font-semibold shadow-[inset_0_0_0_1px_rgba(52,211,153,0.18)] hover:bg-emerald-500/18 hover:text-white'
-                                                                    : 'border-transparent text-app-muted hover:text-app-text hover:bg-white/5'
-                                                            }`}
-                                                    >
-                                                        <div className={`transition-colors duration-ds shrink-0 ${active ? 'text-primary' : primary ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-app-muted group-hover:text-app-text'}`}>
-                                                            {React.cloneElement(item.icon as any, { width: 16, height: 16 })}
-                                                        </div>
-                                                        <span className="truncate">{item.label}</span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
+                                                    {group.items.map((item) => {
+                                                        const active = isCurrent(item.page as Page);
+                                                        return (
+                                                            <button
+                                                                key={item.page}
+                                                                type="button"
+                                                                onClick={() => setCurrentPage(item.page as Page)}
+                                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
+                                                                className={sidebarNavItemClass(active)}
+                                                            >
+                                                                <div className={sidebarNavIconClass(active)}>
+                                                                    {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
+                                                                </div>
+                                                                <span className="truncate">{item.label}</span>
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ))}
                         </nav>
 
-                        <div className="p-3 border-t border-slate-800 bg-slate-900/50 shrink-0 overflow-x-hidden">
+                        <div className="p-3 border-t border-slate-800/80 shrink-0 overflow-x-hidden">
                             {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
                                     type="button"
                                     onClick={() => setIsLicenseModalOpen(true)}
-                                    className={`w-full mb-3 text-white p-2.5 rounded-lg shadow-lg relative overflow-hidden group ${licenseInfo.isExpired
-                                        ? 'bg-gradient-to-r from-rose-500 to-red-600'
-                                        : 'bg-gradient-to-r from-amber-500 to-orange-600'
-                                        }`}
+                                    className={`w-full mb-3 text-white p-3 rounded-xl relative overflow-hidden group ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'}`}
                                 >
-                                    <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                                    <div className="relative flex items-center justify-between">
+                                    <div className="flex items-center justify-between">
                                         <div className="text-left">
-                                            <div className="text-[10px] font-bold opacity-90">
+                                            <div className="text-[10px] font-bold uppercase tracking-wide opacity-90">
                                                 {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
                                             </div>
-                                            <div className="text-sm font-bold leading-tight">
+                                            <div className="text-lg font-bold leading-tight">
                                                 {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
                                             </div>
                                         </div>
-                                        <div className="bg-white/20 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wide">
+                                        <div className="bg-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
                                             Renew
                                         </div>
                                     </div>
@@ -772,31 +804,31 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                             )}
 
                             <div className="space-y-2">
-                                <div className="relative p-3 rounded-lg bg-slate-800/50 border border-slate-700/50 min-w-0">
+                                <div className="relative py-2 min-w-0">
                                     <button
                                         type="button"
                                         onClick={handleLogout}
-                                        className="absolute top-2 right-2 flex items-center justify-center p-1.5 rounded-md border border-slate-700 text-slate-300 hover:text-white hover:border-slate-500 hover:bg-slate-800 transition-colors"
+                                        className="absolute top-2 right-0 flex items-center justify-center p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
                                         title="Logout"
                                         aria-label="Logout"
                                     >
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
                                     </button>
-                                    <div className="flex items-start gap-3 pr-9 min-w-0">
-                                        <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shadow-inner flex-shrink-0">
+                                    <div className="flex items-center gap-3 pr-8 min-w-0">
+                                        <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
                                             {userName.charAt(0).toUpperCase()}
                                         </div>
                                         <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-semibold text-white leading-tight mb-0.5 break-words" title={userName}>
+                                            <div className="text-sm font-semibold text-white leading-tight truncate" title={userName}>
                                                 {userName}
                                             </div>
                                             {organizationName && (
-                                                <div className="text-xs font-medium text-indigo-300 leading-snug mb-0.5 line-clamp-2 break-words" title={organizationName}>
+                                                <div className="text-xs text-slate-400 leading-snug truncate" title={organizationName}>
                                                     {organizationName}
                                                 </div>
                                             )}
                                             {effectiveRole && (
-                                                <div className="text-[10px] text-slate-400 capitalize">
+                                                <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">
                                                     {effectiveRole}
                                                 </div>
                                             )}
@@ -805,13 +837,13 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                 </div>
 
                                 {showLoggedInUsersRow && (
-                                    <div
-                                        className="px-3 py-2 rounded-lg bg-slate-800/30 border border-slate-700/40"
-                                        title="Users currently signed in"
-                                    >
+                                    <div className="px-1 py-2" title="Users currently signed in">
                                         <div className="flex items-center justify-between gap-2">
-                                            <span className="text-[11px] text-slate-400 font-medium">Users logged in</span>
-                                            <span className="text-sm font-semibold text-emerald-400 tabular-nums">{loggedInUsersCount}</span>
+                                            <span className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
+                                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                                                Users logged in
+                                            </span>
+                                            <span className="text-sm font-semibold text-slate-300 tabular-nums">{loggedInUsersCount}</span>
                                         </div>
                                     </div>
                                 )}
@@ -823,10 +855,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                                         void fetchOnlineUsersList();
                                         setIsChatModalOpen(true);
                                     }}
-                                        className={`w-full px-3 py-2 rounded-lg bg-primary hover:bg-ds-primary-hover text-ds-on-primary text-xs font-medium transition-colors duration-ds flex items-center justify-center gap-2 relative ${unreadMessageCount > 0 ? 'animate-pulse' : ''
-                                            }`}
+                                        className={`${SIDEBAR_CHAT_BTN_CLASS} ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
                                     >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
                                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                                         </svg>
                                         Chat

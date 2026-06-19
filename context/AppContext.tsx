@@ -25,21 +25,16 @@ import {
     syncPairedExpenseToRentFromSecurityIncome,
     syncRentFromSecurityIncomeToPairedExpense,
 } from '../utils/rentalSecurityDepositSettlement';
-import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
+import { disconnectRealtimeSocket } from '../core/socket';
 import { getQueryClient } from '../config/queryClient';
-import {
-    invalidateQueriesForEntityEvent,
-    invalidateQueriesForFinancialPosted,
-} from '../services/realtime/entityQueryInvalidation';
 import {
     API_REFRESH_COOLDOWN_MS,
     API_REFRESH_DEBOUNCE_MS,
-    RECONNECT_DEBOUNCE_MS,
     TAB_VISIBILITY_COOLDOWN_MS,
     isWithinRefreshCooldown,
-    shouldSkipInitialSocketConnect,
-    shouldSkipRemoteReducerPatch,
 } from '../services/realtime/entityEventRefreshPolicy';
+import { applyEntityReducerPatch } from '../services/realtime/entityReducerPatch';
+import { initRealtimeDispatchHub } from '../services/realtime/RealtimeDispatchHub';
 import {
     logPaymentTrace,
     logPaymentTraceTransition,
@@ -51,21 +46,6 @@ import {
     installPaymentDebugDevGlobals,
     syncDevAppStateExposure,
 } from '../services/debug/paymentDisappearanceTrace';
-import { rtTrace } from '../services/realtime/realtimeTrace';
-import { USER_NOTIFICATIONS_QUERY_KEY } from '../hooks/useUserNotifications';
-import {
-    maybeMarkDashboardRefreshForEntity,
-    markDashboardRefreshForFinancialPosted,
-} from '../services/realtime/dashboardRefreshIndicator';
-import type { RealtimeEntityPayload } from '../services/realtime/realtimePayload';
-import {
-  normalizeRemoteContactRow,
-  normalizeRemoteContractRow,
-  normalizeRemoteProjectRow,
-  normalizeRemoteVendorRow,
-  resolveDeletedEntityId,
-  shouldApplyRemoteEntityPatch,
-} from '../services/realtime/normalizeRemoteEntity';
 import { toLocalDateString } from '../utils/dateUtils';
 import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
@@ -105,86 +85,6 @@ import {
 } from './reducers/appStateMerge';
 import { useAuth } from './AuthContext';
 import { useCompanyOptional } from './CompanyContext';
-
-/** Normalize API / WebSocket transaction payloads (camelCase or snake_case) for reducer merge. */
-function normalizeRemoteTransactionRow(raw: Record<string, unknown>): Transaction {
-    const t = raw as Record<string, unknown>;
-    return {
-        id: String(t.id),
-        type: t.type as TransactionType,
-        subtype: (t.subtype as string | undefined) || undefined,
-        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
-        date: String(t.date),
-        description: (t.description as string | undefined) || undefined,
-        accountId: String(t.accountId ?? t.account_id ?? ''),
-        fromAccountId: (t.fromAccountId ?? t.from_account_id ?? undefined) as string | undefined,
-        toAccountId: (t.toAccountId ?? t.to_account_id ?? undefined) as string | undefined,
-        categoryId: (t.categoryId ?? t.category_id ?? undefined) as string | undefined,
-        contactId: (t.contactId ?? t.contact_id ?? undefined) as string | undefined,
-        vendorId: (t.vendorId ?? t.vendor_id ?? undefined) as string | undefined,
-        projectId: (t.projectId ?? t.project_id ?? undefined) as string | undefined,
-        buildingId: (t.buildingId ?? t.building_id ?? undefined) as string | undefined,
-        propertyId: (t.propertyId ?? t.property_id ?? undefined) as string | undefined,
-        unitId: (t.unitId ?? t.unit_id ?? undefined) as string | undefined,
-        invoiceId: (t.invoiceId ?? t.invoice_id ?? undefined) as string | undefined,
-        billId: (t.billId ?? t.bill_id ?? undefined) as string | undefined,
-        contractId: (t.contractId ?? t.contract_id ?? undefined) as string | undefined,
-        agreementId: (t.agreementId ?? t.agreement_id ?? undefined) as string | undefined,
-        batchId: (t.batchId ?? t.batch_id ?? undefined) as string | undefined,
-        projectAssetId: (t.projectAssetId ?? t.project_asset_id ?? undefined) as string | undefined,
-        ownerId: (t.ownerId ?? t.owner_id ?? undefined) as string | undefined,
-        isSystem:
-            t.isSystem === true ||
-            t.is_system === true ||
-            t.is_system === 1,
-        userId: (t.userId ?? t.user_id ?? undefined) as string | undefined,
-        payslipId: (t.payslipId ?? t.payslip_id ?? undefined) as string | undefined,
-        reference: (t.reference as string | undefined) || undefined,
-        version:
-            typeof t.version === 'number'
-                ? t.version
-                : t.version != null
-                  ? parseInt(String(t.version), 10)
-                  : undefined,
-    };
-}
-
-/** Normalize API / WebSocket unit payloads (camelCase or snake_case) for reducer merge. */
-function normalizeRemoteUnitRow(raw: Record<string, unknown>): Unit {
-    const u = raw;
-    const label = String(u.unitNumber ?? u.unit_number ?? u.name ?? '').trim() || String(u.id);
-    return {
-        id: String(u.id),
-        name: label,
-        unitNumber: String(u.unitNumber ?? u.unit_number ?? label),
-        projectId: String(u.projectId ?? u.project_id ?? ''),
-        contactId: (u.contactId ?? u.contact_id ?? u.ownerContactId ?? u.owner_contact_id ?? undefined) as
-            | string
-            | undefined,
-        ownerContactId: (u.ownerContactId ?? u.owner_contact_id ?? undefined) as string | undefined,
-        salePrice: (() => {
-            const price = u.salePrice ?? u.sale_price;
-            if (price == null) return undefined;
-            return typeof price === 'number' ? price : parseFloat(String(price));
-        })(),
-        description: (u.description as string | undefined) || undefined,
-        type: (u.unitType ?? u.unit_type ?? u.type ?? undefined) as string | undefined,
-        size: u.size != null && u.size !== '' ? String(u.size) : undefined,
-        area: (() => {
-            const areaValue = u.area;
-            if (areaValue == null) return undefined;
-            return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
-        })(),
-        floor: (u.floor as string | undefined) || undefined,
-        status: (u.status as Unit['status']) || 'available',
-        version:
-            typeof u.version === 'number'
-                ? u.version
-                : u.version != null
-                  ? parseInt(String(u.version), 10)
-                  : undefined,
-    };
-}
 
 // Re-export store accessors for backward compatibility (useSelectiveState, personalFinanceSync, etc.)
 export {
@@ -1939,7 +1839,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         void refreshFromApi();
     }, [isAuthenticated, isInitializing, apiStateLoadFailed, refreshFromApi]);
 
-    /** Socket.IO: merge server state when another user mutates data (tenant-scoped rooms on API). */
+    /** Socket.IO: RealtimeDispatchHub owns connect + entity/financial/notification/reconnect listeners. */
     useEffect(() => {
         if (!isAuthenticated || apiStateLoadFailed) {
             disconnectRealtimeSocket();
@@ -1952,8 +1852,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-        let reconnectDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-        let isFirstConnect = true;
         const DEBOUNCE_MS = API_REFRESH_DEBOUNCE_MS;
         const COOLDOWN_MS = API_REFRESH_COOLDOWN_MS;
 
@@ -1978,323 +1876,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }, DEBOUNCE_MS);
         };
 
-        const handleEntity = (payload: RealtimeEntityPayload) => {
-            rtTrace('socket.received', {
-                entityType: payload.type,
-                entityId: payload.id,
-                action: payload.action,
-                ts: payload.ts,
-            });
-            void invalidateQueriesForEntityEvent(getQueryClient(), payload, {
-                currentUserId: auth.user?.id,
-                currentTenantId: currentTenantId ?? undefined,
-            });
-            maybeMarkDashboardRefreshForEntity(payload, { currentUserId: auth.user?.id });
-
-            if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
-                return;
-            }
-
-            const d = payload?.data;
-            const bulkRefresh =
-                payload.type === 'settings' &&
-                payload.action === 'updated' &&
-                d &&
-                typeof d === 'object' &&
-                d !== null &&
-                'bulkRefresh' in d &&
-                typeof (d as { bulkRefresh: unknown }).bulkRefresh === 'string'
-                    ? (d as { bulkRefresh: string }).bulkRefresh
-                    : undefined;
-            if (bulkRefresh) {
-                runRefreshFromApi();
-                return;
-            }
-
-            const isOwnMutation = shouldSkipRemoteReducerPatch(payload?.sourceUserId, auth.user?.id);
-            if (isOwnMutation) {
-                scheduleRefresh();
-                return;
-            }
-            /* Apply entity patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
-            if (payload.type === 'unit' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_UNIT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'contract' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_CONTRACT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'vendor' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_VENDOR',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'contact' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_CONTACT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'project' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_PROJECT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'bill' && payload.action === 'deleted' && typeof payload.id === 'string') {
-                baseDispatch({
-                    type: 'DELETE_BILL',
-                    payload: payload.id,
-                    _isRemote: true,
-                } as AppAction);
-            } else if (payload.type === 'transaction' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_TRANSACTION',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'invoice' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_INVOICE',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'installment_plan' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_INSTALLMENT_PLAN',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'plan_amenity' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_PLAN_AMENITY',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (
-                payload.action !== 'deleted' &&
-                d &&
-                typeof d === 'object' &&
-                d !== null &&
-                'id' in d &&
-                typeof (d as { id: unknown }).id === 'string'
-            ) {
-                if (payload.type === 'bill') {
-                    baseDispatch({
-                        type: 'UPDATE_BILL',
-                        payload: d as Bill,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'invoice') {
-                    const inv = d as Invoice;
-                    const exists = latestStateRef.current.invoices.some((i) => i.id === inv.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_INVOICE' : 'ADD_INVOICE',
-                        payload: inv,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'transaction') {
-                    const tx = normalizeRemoteTransactionRow(d as Record<string, unknown>);
-                    const exists = latestStateRef.current.transactions.some((t) => t.id === tx.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_TRANSACTION' : 'ADD_TRANSACTION',
-                        payload: tx,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'unit') {
-                    const unit = normalizeRemoteUnitRow(d as Record<string, unknown>);
-                    const exists = latestStateRef.current.units.some((u) => u.id === unit.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_UNIT' : 'ADD_UNIT',
-                        payload: unit,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'installment_plan') {
-                    const plan = d as InstallmentPlan;
-                    const exists = latestStateRef.current.installmentPlans.some((p) => p.id === plan.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_INSTALLMENT_PLAN' : 'ADD_INSTALLMENT_PLAN',
-                        payload: plan,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'plan_amenity') {
-                    const amenity = d as PlanAmenity;
-                    const exists = latestStateRef.current.planAmenities.some((a) => a.id === amenity.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_PLAN_AMENITY' : 'ADD_PLAN_AMENITY',
-                        payload: amenity,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'contract') {
-                    const contract = normalizeRemoteContractRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.contracts?.find((c) => c.id === contract.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, contract.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_CONTRACT' : 'ADD_CONTRACT',
-                        payload: contract,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'vendor') {
-                    const vendor = normalizeRemoteVendorRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.vendors?.find((v) => v.id === vendor.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, vendor.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_VENDOR' : 'ADD_VENDOR',
-                        payload: vendor,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'contact') {
-                    const contact = normalizeRemoteContactRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.contacts?.find((c) => c.id === contact.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, contact.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
-                        payload: contact,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'project') {
-                    const project = normalizeRemoteProjectRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.projects?.find((p) => p.id === project.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, project.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_PROJECT' : 'ADD_PROJECT',
-                        payload: project,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            }
-            scheduleRefresh();
-        };
-
-        const handleFinancialPosted = () => {
-            void invalidateQueriesForFinancialPosted(getQueryClient());
-            markDashboardRefreshForFinancialPosted();
-            scheduleRefresh();
-        };
-
-        const handleNotificationCreated = (payload: { userId?: string; tenantId?: string }) => {
-            if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) return;
-            if (payload?.userId && auth.user?.id && payload.userId !== auth.user.id) return;
-            void getQueryClient().invalidateQueries({ queryKey: USER_NOTIFICATIONS_QUERY_KEY });
-            void getQueryClient().invalidateQueries({ queryKey: ['mobile-notifications'] });
-        };
-
-        const handleReconnect = () => {
-            if (shouldSkipInitialSocketConnect(isFirstConnect)) {
-                isFirstConnect = false;
-                return;
-            }
-            if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
-            reconnectDebounceTimer = setTimeout(() => {
-                reconnectDebounceTimer = null;
-                if (isWithinRefreshCooldown(Date.now(), lastApiRefreshAtRef.current, COOLDOWN_MS)) {
-                    return;
-                }
-                scheduleRefresh();
-            }, RECONNECT_DEBOUNCE_MS);
-        };
-
-        const s = connectRealtimeSocket(token);
-        if (s.connected) {
-            isFirstConnect = false;
-        }
-        s.on('entity_created', handleEntity);
-        s.on('entity_updated', handleEntity);
-        s.on('entity_deleted', handleEntity);
-        s.on('financial.posted', handleFinancialPosted);
-        s.on('notification_created', handleNotificationCreated);
-        s.on('connect', handleReconnect);
+        const cleanupHub = initRealtimeDispatchHub({
+            authToken: token,
+            queryClient: getQueryClient(),
+            currentUserId: auth.user?.id,
+            currentTenantId: currentTenantId ?? undefined,
+            getLastRefreshAt: () => lastApiRefreshAtRef.current,
+            scheduleRefresh,
+            runRefreshFromApi,
+            onEntityReducerPatch: (payload) => {
+                applyEntityReducerPatch(payload, {
+                    latestState: latestStateRef.current,
+                    dispatch: baseDispatch,
+                });
+            },
+        });
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            if (reconnectDebounceTimer) clearTimeout(reconnectDebounceTimer);
-            s.off('entity_created', handleEntity);
-            s.off('entity_updated', handleEntity);
-            s.off('entity_deleted', handleEntity);
-            s.off('financial.posted', handleFinancialPosted);
-            s.off('notification_created', handleNotificationCreated);
-            s.off('connect', handleReconnect);
+            cleanupHub();
         };
     }, [isAuthenticated, auth.user?.id, currentTenantId, apiStateLoadFailed]);
 

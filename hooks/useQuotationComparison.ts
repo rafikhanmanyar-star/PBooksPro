@@ -1,7 +1,4 @@
-import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getRealtimeSocket } from '../core/socket';
-import { useAuth } from '../context/AuthContext';
 import {
   approveVendorQuotation,
   convertQuotationToPurchaseOrder,
@@ -20,33 +17,6 @@ export type QuotationComparisonFilters = {
 };
 
 export function useQuotationComparison(filters: QuotationComparisonFilters) {
-  const queryClient = useQueryClient();
-  const { tenantId } = useAuth();
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-    if (!socket || !tenantId) return;
-    const onEntity = (payload: { tenantId?: string; type?: string }) => {
-      if (payload.tenantId && payload.tenantId !== tenantId) return;
-      if (
-        payload.type === 'quotation' ||
-        payload.type === 'vendor' ||
-        payload.type === 'purchase_order'
-      ) {
-        void queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
-        void queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
-      }
-    };
-    socket.on('entity_updated', onEntity);
-    socket.on('entity_created', onEntity);
-    socket.on('entity_deleted', onEntity);
-    return () => {
-      socket.off('entity_updated', onEntity);
-      socket.off('entity_created', onEntity);
-      socket.off('entity_deleted', onEntity);
-    };
-  }, [tenantId, queryClient]);
-
   return useQuery({
     queryKey: ['quotation-comparison', filters],
     queryFn: () => fetchProcurementQuotationComparison(filters),

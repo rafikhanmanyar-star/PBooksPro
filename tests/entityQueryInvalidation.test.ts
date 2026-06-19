@@ -56,6 +56,30 @@ describe('entityQueryInvalidation', () => {
     assert.equal(tracker.keys.length, 0);
   });
 
+  it('purchase_order invalidates purchase-order-report and GRN keys', async () => {
+    const tracker = createTrackingQueryClient();
+    await invalidateQueriesForEntityEvent(tracker.client, {
+      type: 'purchase_order',
+      action: 'updated',
+      tenantId: 'tenant-1',
+    });
+    assert.ok(tracker.keys.some((k) => k[0] === 'purchase-order-report'));
+    assert.ok(tracker.keys.some((k) => k[0] === 'goods-receipts'));
+    assert.ok(tracker.keys.some((k) => k[0] === 'goods-receipt-report'));
+    assert.ok(tracker.keys.some((k) => k[0] === 'purchase-orders'));
+  });
+
+  it('bill invalidates purchase-order-report and purchase-orders', async () => {
+    const tracker = createTrackingQueryClient();
+    await invalidateQueriesForEntityEvent(tracker.client, {
+      type: 'bill',
+      action: 'updated',
+      tenantId: 'tenant-1',
+    });
+    assert.ok(tracker.keys.some((k) => k[0] === 'purchase-order-report'));
+    assert.ok(tracker.keys.some((k) => k[0] === 'purchase-orders'));
+  });
+
   it('warns when selling analytics invalidation fails', async () => {
     const warnings: string[] = [];
     const originalWarn = logger.warnCategory.bind(logger);

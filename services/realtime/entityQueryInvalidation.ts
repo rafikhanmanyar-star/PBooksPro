@@ -1,6 +1,6 @@
 /**
  * Real-Time First — maps backend entity events to React Query cache invalidation.
- * Extend this map when adding new modules; AppContext calls this on every entity_* socket event.
+ * Extend this map when adding new modules; RealtimeDispatchHub calls this on every entity_* socket event.
  */
 
 import type { QueryClient } from '@tanstack/react-query';
@@ -133,7 +133,7 @@ async function invalidateSellingAnalytics(queryClient: QueryClient): Promise<voi
 
 /**
  * Invalidate React Query caches affected by a tenant entity event.
- * Called from AppContext socket handlers (Real-Time First architecture).
+ * Called from RealtimeDispatchHub entity router (socket path).
  */
 export async function invalidateQueriesForEntityEvent(
   queryClient: QueryClient,
@@ -170,6 +170,14 @@ export async function invalidateQueriesForEntityEvent(
     );
   }
 
+  if (entityType === 'bill') {
+    await invalidateAndTrace(
+      queryClient,
+      [['purchase-order-report'], ['purchase-orders']],
+      'bill-procurement'
+    );
+  }
+
   if (RENTAL_ENTITY_TYPES.has(entityType)) {
     await invalidateAndTrace(
       queryClient,
@@ -193,7 +201,14 @@ export async function invalidateQueriesForEntityEvent(
   if (entityType === 'purchase_order') {
     await invalidateAndTrace(
       queryClient,
-      [['purchase-orders'], ['procurement-dashboard'], ['quotation-comparison']],
+      [
+        ['purchase-orders'],
+        ['procurement-dashboard'],
+        ['quotation-comparison'],
+        ['purchase-order-report'],
+        ['goods-receipts'],
+        ['goods-receipt-report'],
+      ],
       'purchase-order'
     );
   }
