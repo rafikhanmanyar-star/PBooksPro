@@ -3,6 +3,7 @@ import { List, type RowComponentProps } from 'react-window';
 import { Contact } from '../../types';
 import { CURRENCY, ICONS } from '../../constants';
 import { WhatsAppService } from '../../services/whatsappService';
+import InfiniteVirtualizedTable from '../common/InfiniteVirtualizedTable';
 
 export type ContactsSortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
 
@@ -18,6 +19,13 @@ export interface VirtualizedContactsTableProps {
   onOpenLedger: (contact: Contact) => void;
   onEdit: (contact: Contact, e: React.MouseEvent) => void;
   onWhatsApp: (contact: Contact, e: React.MouseEvent) => void;
+  /** PERF-A3.2 — server-backed infinite scroll */
+  loading?: boolean;
+  loadingMore?: boolean;
+  error?: string | null;
+  hasNextPage?: boolean;
+  onFetchNextPage?: () => void;
+  totalCount?: number;
 }
 
 type ContactsRowExtra = {
@@ -130,6 +138,12 @@ const VirtualizedContactsTable: React.FC<VirtualizedContactsTableProps> = ({
   onOpenLedger,
   onEdit,
   onWhatsApp,
+  loading = false,
+  loadingMore = false,
+  error = null,
+  hasNextPage = false,
+  onFetchNextPage,
+  totalCount,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(400);
@@ -162,53 +176,86 @@ const VirtualizedContactsTable: React.FC<VirtualizedContactsTableProps> = ({
   const headerButtonClass =
     'text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation px-2 md:px-4 py-2 md:py-3';
 
+  const tableHeader = (
+    <div className="overflow-x-auto flex-shrink-0 border-b border-gray-200 bg-gray-50 sticky top-0 z-10 shadow-sm">
+      <div className="flex min-w-[720px]" style={{ minWidth: MIN_TABLE_WIDTH }}>
+        <button type="button" onClick={() => onSort('name')} className={`${headerButtonClass} flex-[2] min-w-[140px]`}>
+          Name <SortIcon column="name" sortConfig={sortConfig} />
+        </button>
+        <button type="button" onClick={() => onSort('type')} className={`${headerButtonClass} w-24 shrink-0`}>
+          Type <SortIcon column="type" sortConfig={sortConfig} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSort('companyName')}
+          className={`${headerButtonClass} hidden sm:block w-32 shrink-0`}
+        >
+          Company <SortIcon column="companyName" sortConfig={sortConfig} />
+        </button>
+        <button type="button" onClick={() => onSort('contactNo')} className={`${headerButtonClass} w-28 shrink-0`}>
+          Phone <SortIcon column="contactNo" sortConfig={sortConfig} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSort('address')}
+          className={`${headerButtonClass} hidden lg:block flex-[1.5] min-w-[120px]`}
+        >
+          Address <SortIcon column="address" sortConfig={sortConfig} />
+        </button>
+        <button
+          type="button"
+          onClick={() => onSort('balance')}
+          className={`${headerButtonClass} w-28 shrink-0 text-right`}
+        >
+          Balance <SortIcon column="balance" sortConfig={sortConfig} />
+        </button>
+        <div className={`${headerButtonClass} w-20 shrink-0 text-right cursor-default hover:bg-gray-50`}>Actions</div>
+      </div>
+    </div>
+  );
+
+  const emptyState = (
+    <div className="flex flex-col items-center justify-center py-12 text-gray-500 flex-grow">
+      <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
+      <p>No contacts found.</p>
+    </div>
+  );
+
+  if (onFetchNextPage) {
+    return (
+      <InfiniteVirtualizedTable<ContactsRowExtra>
+        rowCount={contacts.length}
+        rowHeight={ROW_HEIGHT}
+        minTableWidth={MIN_TABLE_WIDTH}
+        overscanCount={OVERSCAN_COUNT}
+        rowComponent={ContactsTableRow}
+        rowProps={rowProps}
+        header={tableHeader}
+        emptyState={emptyState}
+        loading={loading}
+        loadingMore={loadingMore}
+        error={error}
+        hasNextPage={hasNextPage}
+        onFetchNextPage={onFetchNextPage}
+        loadedCount={contacts.length}
+        totalCount={totalCount}
+        footerLabel="Contacts"
+      />
+    );
+  }
+
   if (contacts.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-gray-500 flex-grow">
-        <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
-        <p>No contacts found.</p>
+      <div className="flex flex-col flex-grow min-h-0 h-full overflow-hidden">
+        {tableHeader}
+        {emptyState}
       </div>
     );
   }
 
   return (
     <div className="flex flex-col flex-grow min-h-0 h-full overflow-hidden">
-      <div className="overflow-x-auto flex-shrink-0 border-b border-gray-200 bg-gray-50 sticky top-0 z-10 shadow-sm">
-        <div className="flex min-w-[720px]" style={{ minWidth: MIN_TABLE_WIDTH }}>
-          <button type="button" onClick={() => onSort('name')} className={`${headerButtonClass} flex-[2] min-w-[140px]`}>
-            Name <SortIcon column="name" sortConfig={sortConfig} />
-          </button>
-          <button type="button" onClick={() => onSort('type')} className={`${headerButtonClass} w-24 shrink-0`}>
-            Type <SortIcon column="type" sortConfig={sortConfig} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onSort('companyName')}
-            className={`${headerButtonClass} hidden sm:block w-32 shrink-0`}
-          >
-            Company <SortIcon column="companyName" sortConfig={sortConfig} />
-          </button>
-          <button type="button" onClick={() => onSort('contactNo')} className={`${headerButtonClass} w-28 shrink-0`}>
-            Phone <SortIcon column="contactNo" sortConfig={sortConfig} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onSort('address')}
-            className={`${headerButtonClass} hidden lg:block flex-[1.5] min-w-[120px]`}
-          >
-            Address <SortIcon column="address" sortConfig={sortConfig} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onSort('balance')}
-            className={`${headerButtonClass} w-28 shrink-0 text-right`}
-          >
-            Balance <SortIcon column="balance" sortConfig={sortConfig} />
-          </button>
-          <div className={`${headerButtonClass} w-20 shrink-0 text-right cursor-default hover:bg-gray-50`}>Actions</div>
-        </div>
-      </div>
-
+      {tableHeader}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-x-auto">
         <List<ContactsRowExtra>
           rowCount={contacts.length}

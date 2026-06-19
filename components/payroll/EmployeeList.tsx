@@ -11,6 +11,8 @@ import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import VirtualizedEmployeeTable from './VirtualizedEmployeeTable';
+import { useDebouncedSearch } from '../../hooks/search';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 
 const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   const { tenant } = useAuth();
@@ -18,10 +20,24 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
   
   // Use PayrollContext for preserving search term across navigation
   const { workforceSearchTerm, setWorkforceSearchTerm } = usePayrollContext();
+
+  const {
+    value: searchInput,
+    debouncedValue: debouncedSearch,
+    setValue: setSearchInput,
+    debounceGeneration,
+    isLatestGeneration,
+  } = useDebouncedSearch({ initialValue: workforceSearchTerm, delayMs: 300 });
+
+  useEffect(() => {
+    setWorkforceSearchTerm(searchInput);
+  }, [searchInput, setWorkforceSearchTerm]);
   
   const [isExporting, setIsExporting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [employees, setEmployees] = useState<PayrollEmployee[]>([]);
+  const [serverSearchResults, setServerSearchResults] = useState<PayrollEmployee[] | null>(null);
+  const [isServerSearching, setIsServerSearching] = useState(false);
 
   // Deduplicate by id so each employee appears once
   const dedupeById = (list: PayrollEmployee[]): PayrollEmployee[] => {
@@ -63,10 +79,50 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
     fetchEmployees();
   }, [tenantId]);
 
-  // Filter employees based on search (using context for persistence)
+  useEffect(() => {
+    const term = debouncedSearch.trim();
+    if (!term || !isAccountingBackedByRemoteApi() || !tenantId) {
+      setServerSearchResults(null);
+      setIsServerSearching(false);
+      return;
+    }
+
+    const generation = debounceGeneration;
+    let cancelled = false;
+    setIsServerSearching(true);
+
+    (async () => {
+      try {
+        const page = await payrollApi.findEmployeesPage({
+          page: 1,
+          pageSize: 200,
+          search: term,
+        });
+        if (!cancelled && isLatestGeneration(generation)) {
+          setServerSearchResults(dedupeById(page.data));
+        }
+      } catch (error) {
+        console.warn('Server employee search failed:', error);
+        if (!cancelled && isLatestGeneration(generation)) {
+          setServerSearchResults(null);
+        }
+      } finally {
+        if (!cancelled && isLatestGeneration(generation)) {
+          setIsServerSearching(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch, debounceGeneration, tenantId, isLatestGeneration]);
+
+  // Filter employees based on search (local fallback when not on API search path)
   const filteredEmployees = useMemo(() => {
-    if (!workforceSearchTerm) return employees;
-    const term = workforceSearchTerm.toLowerCase();
+    if (serverSearchResults) return serverSearchResults;
+    if (!debouncedSearch) return employees;
+    const term = debouncedSearch.toLowerCase();
     return employees.filter(emp => 
       emp.name.toLowerCase().includes(term) ||
       emp.department.toLowerCase().includes(term) ||
@@ -74,7 +130,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
       emp.id.toLowerCase().includes(term) ||
       (emp.email?.toLowerCase().includes(term))
     );
-  }, [employees, workforceSearchTerm]);
+  }, [employees, debouncedSearch, serverSearchResults]);
 
   const handleExportCSV = () => {
     setIsExporting(true);
@@ -138,8 +194,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
         <input 
           type="text" 
           placeholder="Search workforce..." 
-          value={workforceSearchTerm}
-          onChange={(e) => setWorkforceSearchTerm(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="flex-1 min-w-0 outline-none text-app-text placeholder:text-[color:var(--text-placeholder)] bg-transparent text-sm font-medium"
         />
         <div className="h-6 w-[1px] bg-app-border hidden sm:block"></div>
@@ -195,7 +251,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
           ))
         ) : (
           <div className="bg-app-card rounded-2xl border border-app-border px-4 py-12 text-center text-app-muted font-medium text-sm">
-            {workforceSearchTerm ? 'No employees found matching your search.' : 'No employees added yet.'}
+            {debouncedSearch || isServerSearching ? 'No employees found matching your search.' : 'No employees added yet.'}
           </div>
         )}
       </div>
@@ -206,7 +262,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
           employees={filteredEmployees}
           onSelect={onSelect}
           emptyMessage={
-            workforceSearchTerm
+            debouncedSearch || isServerSearching
               ? 'No employees found matching your search.'
               : 'No employees added yet. Click "Add Employee" to get started.'
           }

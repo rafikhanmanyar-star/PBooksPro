@@ -9,6 +9,7 @@ import {
   getGoodsReceiptById,
   getPoReceiptContext,
   listGoodsReceipts,
+  listGoodsReceiptsPage,
   postGoodsReceipt,
   rowToGoodsReceiptApi,
   softDeleteGoodsReceipt,
@@ -16,6 +17,7 @@ import {
 } from '../services/goodsReceiptService.js';
 import { getGoodsReceiptReportSummary } from '../services/goodsReceiptReportService.js';
 import { rowToPurchaseOrderApi } from '../../purchase-orders/services/purchaseOrderService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 
 export const goodsReceiptsRouter = Router();
 
@@ -31,18 +33,31 @@ goodsReceiptsRouter.get('/goods-receipts', requireView, async (req: AuthedReques
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const vendorId = typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined;
+  const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+  const purchaseOrderId =
+    typeof req.query.purchaseOrderId === 'string' ? req.query.purchaseOrderId : undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listGoodsReceipts(client, tenantId, {
-        status: typeof req.query.status === 'string' ? req.query.status : undefined,
-        vendorId: typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined,
-        projectId: typeof req.query.projectId === 'string' ? req.query.projectId : undefined,
-        purchaseOrderId:
-          typeof req.query.purchaseOrderId === 'string' ? req.query.purchaseOrderId : undefined,
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () =>
+          listGoodsReceipts(client, tenantId, { status, vendorId, projectId, purchaseOrderId }),
+        listPage: (params) =>
+          listGoodsReceiptsPage(client, tenantId, {
+            ...params,
+            status,
+            vendorId,
+            projectId,
+            purchaseOrderId,
+          }),
+        mapRow: (row) => row,
       });
-      sendSuccess(res, rows);
     } finally {
       client.release();
     }

@@ -224,6 +224,38 @@ export async function listPurchaseOrders(
   return new PurchaseOrderRepository(tenantId).list(client, filters);
 }
 
+export type PurchaseOrderListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  status?: string;
+  vendorId?: string;
+  projectId?: string;
+};
+
+export async function listPurchaseOrdersPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: PurchaseOrderListPageQuery
+): Promise<{ rows: PurchaseOrderRow[]; total: number }> {
+  return new PurchaseOrderRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    filters: {
+      status: query.status,
+      vendorId: query.vendorId,
+      projectId: query.projectId,
+    },
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+}
+
 export async function getPurchaseOrderById(client: pg.PoolClient, tenantId: string, id: string) {
   const row = await new PurchaseOrderRepository(tenantId).getById(client, id);
   return row ? rowToPurchaseOrderApi(row) : null;

@@ -7,6 +7,8 @@
 
 import { apiClient } from '../client';
 import { Contact } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 /** Map API JSON (camelCase or snake_case) to app Contact */
 export function normalizeContactFromApi(api: Record<string, unknown> | Contact): Contact {
@@ -27,10 +29,44 @@ export function normalizeContactFromApi(api: Record<string, unknown> | Contact):
 
 export class ContactsApiRepository {
   /**
-   * Get all contacts
+   * Get all contacts (legacy full list — used by bulk sync).
    */
   async findAll(): Promise<Contact[]> {
     return apiClient.get<Contact[]>('/contacts');
+  }
+
+  /**
+   * Paginated contacts list (PERF-A3.2 infinite scroll).
+   */
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    typeGroup?: string;
+    contactId?: string;
+    search?: string;
+    sortKey?: string;
+    sortDir?: 'asc' | 'desc';
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+  }): Promise<PaginatedResponse<Contact>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, {
+      page: params.page,
+      pageSize: params.pageSize,
+      search: params.search,
+      sortBy: params.sortBy ?? params.sortKey,
+      sortDirection: params.sortDirection ?? params.sortDir,
+      sortKey: params.sortKey,
+      sortDir: params.sortDir,
+    });
+    if (params.typeGroup) q.set('typeGroup', params.typeGroup);
+    if (params.contactId) q.set('contactId', params.contactId);
+
+    const raw = await apiClient.get<PaginatedResponse<Record<string, unknown>>>(`/contacts?${q.toString()}`);
+    return {
+      ...raw,
+      data: (raw.data ?? []).map((row) => normalizeContactFromApi(row)),
+    };
   }
 
   /**

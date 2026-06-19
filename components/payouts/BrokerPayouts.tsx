@@ -17,6 +17,8 @@ import BrokerProjectFeeDimensionReport from './BrokerProjectFeeDimensionReport';
 import Card from '../ui/Card';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
+import { useAuth } from '../../context/AuthContext';
+import { useBrokerBalancesAggregation } from '../../hooks/queries/useAggregationQueries';
 
 interface BrokerBalance {
     brokerId: string;
@@ -31,6 +33,7 @@ interface BrokerPayoutsProps {
 }
 
 const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
+    const { isAuthenticated } = useAuth();
     const categories = useCategories();
     const contacts = useContacts();
     const transactions = useTransactions();
@@ -42,7 +45,28 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
+    const aggregationContext = context ?? 'all';
+    const { data: brokerAggregation, isSuccess: brokerAggregationSuccess } = useBrokerBalancesAggregation(
+        isAuthenticated,
+        aggregationContext
+    );
+
     const brokerBalances = useMemo<BrokerBalance[]>(() => {
+        if (isAuthenticated && brokerAggregationSuccess && brokerAggregation?.rows) {
+            return brokerAggregation.rows
+                .map((r) => {
+                    const broker = contacts.find((c) => c.id === r.brokerId);
+                    return {
+                        brokerId: r.brokerId,
+                        brokerName: broker?.name || 'Unknown Broker',
+                        earned: r.commissionsEarned,
+                        paid: r.commissionsPaid,
+                        balance: r.outstandingCommission,
+                    };
+                })
+                .sort((a, b) => b.balance - a.balance);
+        }
+
         const brokerFeeCategory = categories.find(c => c.name === 'Broker Fee');
         const rebateCategory = categories.find(c => c.name === 'Rebate Amount');
         const brokerFeeCategoryId = brokerFeeCategory?.id;
@@ -123,7 +147,7 @@ const BrokerPayouts: React.FC<BrokerPayoutsProps> = ({ context }) => {
             };
         }).filter(item => Math.abs(item.balance) > 0.01 || item.earned > 0 || item.paid > 0).sort((a,b) => b.balance - a.balance);
 
-    }, [rentalAgreements, projectAgreements, transactions, contacts, categories, context]);
+    }, [isAuthenticated, brokerAggregationSuccess, brokerAggregation?.rows, rentalAgreements, projectAgreements, transactions, contacts, categories, context]);
 
     const filteredBrokerBalances = useMemo(() => {
         if (!searchQuery) return brokerBalances;

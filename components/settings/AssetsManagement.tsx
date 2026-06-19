@@ -3,6 +3,7 @@ import { useDispatchOnly, useEntityCatalogState } from '../../hooks/useSelective
 import { useProjectSellingCatalogBootstrap } from '../../hooks/useProjectSellingCatalogBootstrap';
 import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useInventorySummary } from '../../hooks/queries/useDashboardSummaryQueries';
 import { getAppStateApiService } from '../../services/api/appStateApi';
 import { AppAction, Project, Building, Property, Unit, UnitOccupancyStatus, ContactType, TransactionType } from '../../types';
 import { ICONS, CURRENCY } from '../../constants';
@@ -64,6 +65,7 @@ const AssetsManagement: React.FC = () => {
     const { isAuthenticated } = useAuth();
     /** Match delete flow / header: persist when JWT exists even if AuthContext lags behind the token. */
     const hasAuthToken = typeof window !== 'undefined' && !!localStorage.getItem('auth_token');
+    const { data: inventorySummary } = useInventorySummary(isAuthenticated || hasAuthToken);
     const { showConfirm, showToast } = useNotification();
     
     // Form state
@@ -832,6 +834,26 @@ const AssetsManagement: React.FC = () => {
     return (
         <>
         <div className="flex flex-col h-full space-y-4 overflow-hidden px-0 pt-2 pb-2">
+            {inventorySummary && (
+                <div className="flex-shrink-0 grid grid-cols-2 lg:grid-cols-4 gap-2">
+                    <div className="rounded-lg border border-app-border bg-app-card px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">Total assets</p>
+                        <p className="text-lg font-bold text-app-text tabular-nums">{inventorySummary.totalItems.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border border-app-border bg-app-card px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">Inventory value</p>
+                        <p className="text-lg font-bold text-app-text tabular-nums">{inventorySummary.inventoryValue.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border border-app-border bg-app-card px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">Available units</p>
+                        <p className="text-lg font-bold text-app-text tabular-nums">{inventorySummary.availableUnits.toLocaleString()}</p>
+                    </div>
+                    <div className="rounded-lg border border-app-border bg-app-card px-3 py-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-app-muted">Open POs</p>
+                        <p className="text-lg font-bold text-app-text tabular-nums">{inventorySummary.pendingProcurement.toLocaleString()}</p>
+                    </div>
+                </div>
+            )}
             {/* Asset Type Filter Tabs - Top Level */}
             <div className="flex-shrink-0">
                 <div className="flex items-start justify-between gap-3 overflow-x-auto pb-2">

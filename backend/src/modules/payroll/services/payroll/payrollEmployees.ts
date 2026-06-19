@@ -14,6 +14,33 @@ export async function listEmployees(client: pg.PoolClient, tenantId: string): Pr
   return new PayrollEmployeeRepository(tenantId).listActive(client);
 }
 
+export type EmployeeListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  departmentId?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listEmployeesPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: EmployeeListPageQuery
+): Promise<{ rows: PayrollEmployeeRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new PayrollEmployeeRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    departmentId: query.departmentId,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getEmployee(
   client: pg.PoolClient,
   tenantId: string,

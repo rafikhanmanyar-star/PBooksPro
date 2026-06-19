@@ -2,17 +2,33 @@ import React, { useState, useMemo, useCallback, useRef, useEffect, memo } from '
 import { List } from 'react-window';
 import { Bill, InvoiceStatus } from '../../types';
 import { useFinanceDomain } from '../../context/domains';
+import { useAuth } from '../../context/AuthContext';
 import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Input from '../ui/Input';
 import Select from '../ui/Select';
-import { useDebounce } from '../../hooks/useDebounce';
+import { useDebouncedSearch } from '../../hooks/search';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { BillsApiRepository } from '../../services/api/repositories/billsApi';
+
+const billsApi = new BillsApiRepository();
 
 interface AllBillsTableProps {
     onEditBill?: (bill: Bill) => void;
 }
 
 type SortKey = 'issueDate' | 'billNumber' | 'vendorName' | 'amount' | 'paidAmount' | 'balance' | 'status' | 'description';
+
+const SORT_KEY_SERVER: Record<SortKey, string> = {
+    issueDate: 'issueDate',
+    billNumber: 'billNumber',
+    vendorName: 'vendorName',
+    amount: 'amount',
+    paidAmount: 'paidAmount',
+    balance: 'amount',
+    status: 'status',
+    description: 'description',
+};
 
 const ROW_H = 52;
 const VIRTUALIZE_MIN = 45;
@@ -109,13 +125,46 @@ const VirtualBillRow = memo(function VirtualBillRow({
 });
 
 const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
+    const { isAuthenticated } = useAuth();
     const { bills: allBills, vendors } = useFinanceDomain();
-    const [search, setSearch] = useState('');
-    const debouncedSearch = useDebounce(search, 300);
+    const { value: search, debouncedValue: debouncedSearch, setValue: setSearch } =
+        useDebouncedSearch();
     const [statusFilter, setStatusFilter] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
         key: 'issueDate',
         direction: 'desc',
+    });
+
+    const serverFilters = useMemo(
+        () => ({
+            search: debouncedSearch.trim() || undefined,
+            status: statusFilter !== 'All' ? statusFilter : undefined,
+            sortBy: SORT_KEY_SERVER[sortConfig.key],
+            sortDir: sortConfig.direction,
+        }),
+        [debouncedSearch, statusFilter, sortConfig]
+    );
+
+    const {
+        items: serverBills,
+        loading: serverLoading,
+        loadingMore,
+        hasNextPage,
+        fetchNextPage,
+        totalCount,
+    } = useInfiniteEntityQuery<Bill>({
+        queryKey: ['bills', 'all-vendor-table'],
+        enabled: isAuthenticated,
+        filters: serverFilters,
+        fetchPage: ({ pageParam, pageSize, filters }) =>
+            billsApi.findPage({
+                page: pageParam,
+                pageSize,
+                search: filters.search as string | undefined,
+                status: filters.status as string | undefined,
+                sortBy: filters.sortBy as string,
+                sortDirection: filters.sortDir as 'asc' | 'desc',
+            }),
     });
 
     const vendorById = useMemo(() => {
@@ -135,6 +184,13 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
     }, [allBills, vendorById]);
 
     const filteredBills = useMemo(() => {
+        if (isAuthenticated) {
+            return serverBills.filter((b) => {
+                const vendorId = b.vendorId;
+                if (!vendorId) return false;
+                return vendorById.has(vendorId);
+            });
+        }
         let result = bills;
         if (statusFilter !== 'All') {
             result = result.filter((b) => b.status === statusFilter);
@@ -199,7 +255,7 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [bills, debouncedSearch, statusFilter, sortConfig, vendorById]);
+    }, [isAuthenticated, serverBills, bills, debouncedSearch, statusFilter, sortConfig, vendorById]);
 
     const handleSort = useCallback((key: SortKey) => {
         setSortConfig((current) => ({
@@ -336,7 +392,23 @@ const AllBillsTable: React.FC<AllBillsTableProps> = ({ onEditBill }) => {
                             ) : (
                                 <tr>
                                     <td colSpan={8} className="px-4 py-12 text-center text-app-muted">
-                                        No bills found matching your filters.
+                                        {serverLoading ? 'Loading bills…' : 'No bills found matching your filters.'}
+                                    </td>
+                                </tr>
+                            )}
+                            {isAuthenticated && hasNextPage && (
+                                <tr>
+                                    <td colSpan={8} className="px-4 py-3 text-center border-t border-app-border">
+                                        <button
+                                            type="button"
+                                            className="text-sm text-primary hover:underline disabled:opacity-50"
+                                            onClick={() => fetchNextPage()}
+                                            disabled={loadingMore}
+                                        >
+                                            {loadingMore
+                                                ? 'Loading more…'
+                                                : `Load more (${filteredBills.length} of ${totalCount})`}
+                                        </button>
                                     </td>
                                 </tr>
                             )}

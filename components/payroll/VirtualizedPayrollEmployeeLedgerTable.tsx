@@ -30,6 +30,11 @@ export interface VirtualizedPayrollEmployeeLedgerTableProps {
     rows: BuiltPayrollLedgerRow[];
     loading: boolean;
     emptyMessage: string;
+    hasMore?: boolean;
+    loadingMore?: boolean;
+    onLoadMore?: () => void;
+    loadedCount?: number;
+    totalCount?: number;
 }
 
 type PayrollLedgerRowExtra = {
@@ -97,6 +102,11 @@ const VirtualizedPayrollEmployeeLedgerTable: React.FC<VirtualizedPayrollEmployee
     rows,
     loading,
     emptyMessage,
+    hasMore = false,
+    loadingMore = false,
+    onLoadMore,
+    loadedCount,
+    totalCount,
 }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [height, setHeight] = useState(FALLBACK_LIST_HEIGHT);
@@ -160,6 +170,22 @@ const VirtualizedPayrollEmployeeLedgerTable: React.FC<VirtualizedPayrollEmployee
                     style={{ height, width: '100%', minWidth: MIN_TABLE_WIDTH }}
                 />
             </div>
+            {hasMore && onLoadMore ? (
+                <div className="flex-shrink-0 border-t border-app-border px-3 py-2 flex items-center justify-between gap-3 bg-app-card">
+                    <span className="text-xs text-app-muted">
+                        Showing {(loadedCount ?? rows.length).toLocaleString()}
+                        {totalCount != null ? ` of ${totalCount.toLocaleString()} rows` : ' rows'}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={onLoadMore}
+                        disabled={loadingMore}
+                        className="text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-50"
+                    >
+                        {loadingMore ? 'Loading…' : 'Load more'}
+                    </button>
+                </div>
+            ) : null}
         </div>
     );
 };

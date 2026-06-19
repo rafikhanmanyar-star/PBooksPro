@@ -19,6 +19,14 @@ import {
   runHealthChecks,
 } from '../../../services/monitoring/monitoringHealthService.js';
 import { getObservabilityStatus } from '../../../services/monitoring/observabilityProvider.js';
+import {
+  getApiMetricsSummary,
+  getSlowApiReport,
+  getAuditCoverageReport,
+  getDatabaseObservability,
+  getHealthCenterSnapshot,
+  getSyncDiagnostics,
+} from '../../../services/telemetry/index.js';
 
 export const adminMonitoringRouter = Router();
 
@@ -118,6 +126,66 @@ adminMonitoringRouter.post('/admin/monitoring/alerts/:id/resolve', async (req, r
     sendSuccess(res, { ok: true });
   } catch (e) {
     handleRouteError(res, e, { route: 'POST /admin/monitoring/alerts/:id/resolve' });
+  } finally {
+    client.release();
+  }
+});
+
+adminMonitoringRouter.get('/admin/monitoring/health-center', async (_req, res) => {
+  const client = await getPool().connect();
+  try {
+    const snapshot = await getHealthCenterSnapshot(client);
+    sendSuccess(res, snapshot);
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /admin/monitoring/health-center' });
+  } finally {
+    client.release();
+  }
+});
+
+adminMonitoringRouter.get('/admin/monitoring/api-stats', async (req, res) => {
+  const minutes = Math.min(Number(req.query.minutes ?? 60), 1440);
+  sendSuccess(res, getApiMetricsSummary(minutes));
+});
+
+adminMonitoringRouter.get('/admin/monitoring/slow-apis', async (req, res) => {
+  const minutes = Math.min(Number(req.query.minutes ?? 60), 1440);
+  const limit = Math.min(Number(req.query.limit ?? 20), 100);
+  sendSuccess(res, {
+    endpoints: getSlowApiReport(minutes, limit),
+    thresholds: getApiMetricsSummary(minutes).thresholds,
+  });
+});
+
+adminMonitoringRouter.get('/admin/monitoring/database', async (_req, res) => {
+  const client = await getPool().connect();
+  try {
+    sendSuccess(res, await getDatabaseObservability(client));
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /admin/monitoring/database' });
+  } finally {
+    client.release();
+  }
+});
+
+adminMonitoringRouter.get('/admin/monitoring/sync-diagnostics', async (_req, res) => {
+  const client = await getPool().connect();
+  try {
+    sendSuccess(res, await getSyncDiagnostics(client));
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /admin/monitoring/sync-diagnostics' });
+  } finally {
+    client.release();
+  }
+});
+
+adminMonitoringRouter.get('/admin/monitoring/audit-coverage', async (req, res) => {
+  const days = Math.min(Number(req.query.days ?? 30), 365);
+  const client = await getPool().connect();
+  try {
+    sendSuccess(res, await getAuditCoverageReport(client, days));
+  } catch (e) {
+    handleRouteError(res, e, { route: 'GET /admin/monitoring/audit-coverage' });
   } finally {
     client.release();
   }

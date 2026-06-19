@@ -7,10 +7,12 @@ import {
   createVendor,
   getVendorById,
   listVendors,
+  listVendorsPage,
   rowToVendorApi,
   softDeleteVendor,
   updateVendor,
 } from '../services/vendorsService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const vendorsRouter = Router();
@@ -25,8 +27,15 @@ vendorsRouter.get('/vendors', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listVendors(client, tenantId);
-      sendSuccess(res, rows.map((r) => rowToVendorApi(r)));
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () => listVendors(client, tenantId),
+        listPage: (params) =>
+          listVendorsPage(client, tenantId, params).then(({ rows, total }) => ({ rows, total })),
+        mapRow: rowToVendorApi,
+      });
     } finally {
       client.release();
     }

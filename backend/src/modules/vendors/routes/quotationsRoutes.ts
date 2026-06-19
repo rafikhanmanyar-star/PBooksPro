@@ -6,11 +6,13 @@ import { getPool, withTransaction } from '../../../db/pool.js';
 import {
   getQuotationById,
   listQuotations,
+  listQuotationsPage,
   rowToQuotationApi,
   softDeleteQuotation,
   upsertQuotation,
 } from '../services/quotationsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 
 export const quotationsRouter = Router();
 
@@ -20,12 +22,22 @@ quotationsRouter.get('/quotations', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const vendorId = typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listQuotations(client, tenantId);
-      sendSuccess(res, rows.map((r) => rowToQuotationApi(r)));
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () =>
+          listQuotations(client, tenantId).then((rows) =>
+            vendorId ? rows.filter((r) => r.vendor_id === vendorId) : rows
+          ),
+        listPage: (params) => listQuotationsPage(client, tenantId, { ...params, vendorId }),
+        mapRow: rowToQuotationApi,
+      });
     } finally {
       client.release();
     }

@@ -6,10 +6,12 @@ import {
   createProperty,
   getPropertyById,
   listProperties,
+  listPropertiesPage,
   rowToPropertyApi,
   softDeleteProperty,
   updateProperty,
 } from '../services/propertiesService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const propertiesRouter = Router();
@@ -25,8 +27,18 @@ propertiesRouter.get('/properties', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listProperties(client, tenantId, buildingId ? { buildingId } : undefined);
-      sendSuccess(res, rows.map((r) => rowToPropertyApi(r)));
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () => listProperties(client, tenantId, buildingId ? { buildingId } : undefined),
+        listPage: (params) =>
+          listPropertiesPage(client, tenantId, { ...params, buildingId }).then(({ rows, total }) => ({
+            rows,
+            total,
+          })),
+        mapRow: rowToPropertyApi,
+      });
     } finally {
       client.release();
     }

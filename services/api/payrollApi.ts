@@ -9,6 +9,8 @@ import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { getCurrentTenantId, getCurrentUserId } from '../sessionContext';
 import { apiClient } from './client';
 import { todayLocalYyyyMmDd } from '../../utils/dateUtils';
+import type { PaginatedResponse } from '../../shared/types/pagination';
+import { appendEntitySearchParams } from './entitySearchParams';
 import {
   PayrollEmployee,
   PayrollRun,
@@ -56,6 +58,54 @@ export const payrollApi = {
       console.error('Error fetching employees:', error);
       return [];
     }
+  },
+
+  async findEmployeesPage(params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+    departmentId?: string;
+  }): Promise<PaginatedResponse<PayrollEmployee>> {
+    if (!isAccountingBackedByRemoteApi()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      const { tenantId } = getTenantAndUser();
+      storageService.init(tenantId);
+      let list = storageService.getEmployees(tenantId);
+      const term = params.search?.trim().toLowerCase();
+      if (term) {
+        list = list.filter(
+          (emp) =>
+            emp.name.toLowerCase().includes(term) ||
+            emp.department.toLowerCase().includes(term) ||
+            emp.designation.toLowerCase().includes(term) ||
+            emp.id.toLowerCase().includes(term) ||
+            (emp.email?.toLowerCase().includes(term) ?? false)
+        );
+      }
+      const totalCount = list.length;
+      const offset = (params.page - 1) * params.pageSize;
+      const data = list.slice(offset, offset + params.pageSize);
+      return {
+        data,
+        totalCount,
+        page: params.page,
+        pageSize: params.pageSize,
+        totalPages: Math.max(1, Math.ceil(totalCount / params.pageSize)),
+      };
+    }
+
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    if (params.departmentId) q.set('departmentId', params.departmentId);
+    const raw = await apiClient.get<PaginatedResponse<Record<string, unknown>>>(
+      `/payroll/employees?${q.toString()}`
+    );
+    return {
+      ...raw,
+      data: (raw.data ?? []).map(normalizeEmployee),
+    };
   },
 
   // Get single employee by ID
@@ -665,7 +715,15 @@ export const payrollApi = {
   /** Payroll ledger + balance summary (PostgreSQL/API mode only). */
   async getEmployeeLedger(
     employeeId: string,
-    opts?: { type?: string; limit?: number; offset?: number }
+    opts?: {
+      type?: string;
+      page?: number;
+      pageSize?: number;
+      limit?: number;
+      offset?: number;
+      year?: number | '';
+      month?: number | '';
+    }
   ): Promise<{
     employee: any;
     summary: {
@@ -687,13 +745,40 @@ export const payrollApi = {
       balance_after: number;
       source_transaction_id?: string;
     }>;
+    data: Array<{
+      id: string;
+      transaction_date: string;
+      transaction_type: string;
+      reference_id?: string;
+      payroll_run_id?: string;
+      description: string;
+      debit: number;
+      credit: number;
+      balance_after: number;
+      source_transaction_id?: string;
+    }>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
     pagination: { limit: number; offset: number; total: number };
   } | null> {
     if (!isAccountingBackedByRemoteApi()) return null;
     const q = new URLSearchParams();
     if (opts?.type && opts.type !== 'all') q.set('type', opts.type);
-    q.set('limit', String(opts?.limit ?? 5000));
-    q.set('offset', String(opts?.offset ?? 0));
+    const usePageStyle =
+      opts?.page !== undefined ||
+      opts?.pageSize !== undefined ||
+      (opts?.limit === undefined && opts?.offset === undefined);
+    if (usePageStyle) {
+      q.set('page', String(opts?.page ?? 1));
+      q.set('pageSize', String(opts?.pageSize ?? 50));
+    } else {
+      q.set('limit', String(opts?.limit ?? 50));
+      q.set('offset', String(opts?.offset ?? 0));
+    }
+    if (opts?.year !== undefined && opts.year !== '') q.set('year', String(opts.year));
+    if (opts?.month !== undefined && opts.month !== '') q.set('month', String(opts.month));
     const qs = q.toString();
     try {
       return await apiClient.get(

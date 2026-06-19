@@ -7,6 +7,8 @@
 
 import { apiClient } from '../client';
 import { Transaction } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 import { normalizeTransactionFromApi } from '../normalizeTransactionFromApi';
 
 export interface TransactionFilters {
@@ -50,6 +52,38 @@ export class TransactionsApiRepository {
     
     const rows = await apiClient.get<Record<string, unknown>[]>(endpoint);
     return rows.map((row) => normalizeTransactionFromApi(row));
+  }
+
+  /**
+   * Paginated transaction search (PERF-A3.4).
+   */
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+    filters?: TransactionFilters;
+  }): Promise<PaginatedResponse<Transaction>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    const f = params.filters ?? {};
+    if (f.projectId) q.set('projectId', f.projectId);
+    if (f.startDate) q.set('startDate', f.startDate);
+    if (f.endDate) q.set('endDate', f.endDate);
+    if (f.type) q.set('type', f.type);
+    if (f.invoiceId) q.set('invoiceId', f.invoiceId);
+    if (f.ownerId) q.set('ownerId', f.ownerId);
+    if (f.propertyId) q.set('propertyId', f.propertyId);
+    if (f.rentalInvoiceOnly) q.set('rentalInvoiceOnly', 'true');
+
+    const raw = await apiClient.get<PaginatedResponse<Record<string, unknown>>>(
+      `/transactions?${q.toString()}`
+    );
+    return {
+      ...raw,
+      data: (raw.data ?? []).map((row) => normalizeTransactionFromApi(row)),
+    };
   }
 
   /**

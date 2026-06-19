@@ -246,6 +246,32 @@ export async function listQuotations(client: pg.PoolClient, tenantId: string): P
   return new QuotationRepository(tenantId).listActive(client);
 }
 
+export type QuotationListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  vendorId?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listQuotationsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: QuotationListPageQuery
+): Promise<{ rows: QuotationRow[]; total: number }> {
+  return new QuotationRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    vendorId: query.vendorId,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+}
+
 export async function getQuotationById(
   client: pg.PoolClient,
   tenantId: string,

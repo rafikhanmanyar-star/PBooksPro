@@ -6,13 +6,30 @@
 
 import { apiClient } from '../client';
 import { Vendor } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 export class VendorsApiRepository {
     /**
-     * Get all vendors
+     * Get all vendors (bulk sync).
      */
     async findAll(): Promise<Vendor[]> {
         return apiClient.get<Vendor[]>('/vendors');
+    }
+
+    /**
+     * Paginated vendor search (PERF-A3.4).
+     */
+    async findPage(params: {
+        page: number;
+        pageSize: number;
+        search?: string;
+        sortBy?: string;
+        sortDirection?: 'asc' | 'desc';
+    }): Promise<PaginatedResponse<Vendor>> {
+        const q = new URLSearchParams();
+        appendEntitySearchParams(q, params);
+        return apiClient.get<PaginatedResponse<Vendor>>(`/vendors?${q.toString()}`);
     }
 
     /**

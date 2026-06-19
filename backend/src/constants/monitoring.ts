@@ -10,7 +10,8 @@ export type MonitoringCategory =
   | 'payment'
   | 'performance'
   | 'email'
-  | 'user_activity';
+  | 'user_activity'
+  | 'sync';
 
 export type MonitoringSeverity = 'debug' | 'info' | 'warn' | 'error' | 'critical';
 
@@ -23,6 +24,7 @@ export const MONITORING_CATEGORIES: MonitoringCategory[] = [
   'performance',
   'email',
   'user_activity',
+  'sync',
 ];
 
 export const CATEGORY_LABELS: Record<MonitoringCategory, string> = {
@@ -34,6 +36,7 @@ export const CATEGORY_LABELS: Record<MonitoringCategory, string> = {
   performance: 'Performance Bottlenecks',
   email: 'Failed Emails',
   user_activity: 'User Activity',
+  sync: 'Synchronization',
 };
 
 export function getSlowRequestThresholdMs(): number {

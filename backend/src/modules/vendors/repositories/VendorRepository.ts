@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 import type { VendorRow } from '../services/vendorsService.js';
 
 const VENDOR_COLUMNS = `id, tenant_id, name, contact_no, company_name, address, description, is_active, user_id, version, deleted_at, created_at, updated_at`;
@@ -47,6 +49,61 @@ export class VendorRepository extends TenantRepository {
       [this.tenantId]
     );
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: VendorRow[]; total: number }> {
+    const conditions: string[] = ['tenant_id = $1', 'deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    const searchClause = buildIlikeSearchClause(
+      ['name', 'contact_no', 'company_name', 'address', 'description'],
+      opts.search,
+      params,
+      paramIndex
+    );
+    if (searchClause.clause) {
+      conditions.push(searchClause.clause);
+      paramIndex = searchClause.nextParamIndex;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const sortWhitelist: Record<string, string> = {
+      name: 'name',
+      companyName: 'company_name',
+      contactNo: 'contact_no',
+      address: 'address',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'asc',
+      sortWhitelist,
+      'name'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM vendors WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const r = await client.query<VendorRow>(
+      `SELECT ${VENDOR_COLUMNS} FROM vendors WHERE ${whereClause} ${orderClause} LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async listChangedSince(client: pg.PoolClient, since: Date): Promise<VendorRow[]> {

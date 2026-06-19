@@ -117,6 +117,33 @@ export async function listUnits(
   return new UnitRepository(tenantId).list(client, filters);
 }
 
+export type UnitListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  projectId?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listUnitsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: UnitListPageQuery
+): Promise<{ rows: UnitRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new UnitRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    projectId: query.projectId,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getUnitById(
   client: pg.PoolClient,
   tenantId: string,

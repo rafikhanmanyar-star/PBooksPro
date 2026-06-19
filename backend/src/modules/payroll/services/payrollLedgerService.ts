@@ -161,13 +161,20 @@ export async function fetchEmployeeLedgerPage(
   client: pg.PoolClient,
   tenantId: string,
   employeeId: string,
-  opts: { typeFilter?: string | null; limit: number; offset: number }
+  opts: {
+    typeFilter?: string | null;
+    limit: number;
+    offset: number;
+    year?: number | null;
+    month?: number | null;
+  }
 ): Promise<{ total: number; rows: PayrollLedgerRowDb[] }> {
   const limit = Math.min(Math.max(Number(opts.limit) || 50, 1), 5000);
   const offset = Math.max(Number(opts.offset) || 0, 0);
 
   let filterSql = '';
   const filterParams: unknown[] = [];
+  let paramIndex = 3;
 
   const tfRaw = opts.typeFilter || 'all';
   const tf = String(tfRaw).toLowerCase();
@@ -181,8 +188,20 @@ export async function fetchEmployeeLedgerPage(
       ` AND (transaction_type IN ('ADVANCE','ADVANCE_ADJUSTMENT','MANUAL_ADJUSTMENT')` +
       ` OR (transaction_type = 'PAYMENT' AND balance_after < -0.01))`;
   } else if (tf !== 'all' && LEDGER_ALLOWED_TYPES.has(String(tfRaw))) {
-    filterSql = ` AND transaction_type = $3`;
+    filterSql = ` AND transaction_type = $${paramIndex}`;
     filterParams.push(tfRaw);
+    paramIndex += 1;
+  }
+
+  if (opts.year != null && Number.isFinite(opts.year)) {
+    filterSql += ` AND EXTRACT(YEAR FROM transaction_date::date) = $${paramIndex}`;
+    filterParams.push(Math.trunc(opts.year));
+    paramIndex += 1;
+  }
+  if (opts.month != null && Number.isFinite(opts.month)) {
+    filterSql += ` AND EXTRACT(MONTH FROM transaction_date::date) = $${paramIndex}`;
+    filterParams.push(Math.trunc(opts.month));
+    paramIndex += 1;
   }
 
   const ledgerRepo = new PayrollTransactionRepository(tenantId);

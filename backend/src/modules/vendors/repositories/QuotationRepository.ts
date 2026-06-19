@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { QuotationRow } from '../services/quotationsService.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 
 const QUOTATION_COLUMNS = `id, tenant_id, vendor_id, name, quotation_number, date, expiry_date, enable_price_validation, validation_scope, is_active,
   contact_person, contact_phone, contact_email, currency, project_id, building_id, package_name, quotation_type, status,
@@ -100,6 +102,78 @@ export class QuotationRepository extends TenantRepository {
       [this.tenantId]
     );
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      vendorId?: string;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: QuotationRow[]; total: number }> {
+    const conditions: string[] = ['q.tenant_id = $1', 'q.deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    if (opts.vendorId) {
+      conditions.push(`q.vendor_id = $${paramIndex++}`);
+      params.push(opts.vendorId);
+    }
+
+    const searchTerm = opts.search?.trim();
+    if (searchTerm) {
+      const pattern = `%${searchTerm}%`;
+      params.push(pattern);
+      const p = `$${paramIndex++}`;
+      conditions.push(`(
+        q.name ILIKE ${p} OR q.quotation_number ILIKE ${p} OR q.remarks ILIKE ${p}
+        OR v.name ILIKE ${p} OR v.company_name ILIKE ${p}
+        OR EXISTS (
+          SELECT 1 FROM quotation_items qi
+          WHERE qi.quotation_id = q.id AND qi.tenant_id = q.tenant_id
+            AND (qi.item_name ILIKE ${p} OR qi.specification ILIKE ${p})
+        )
+      )`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const fromJoin = `FROM quotations q
+      LEFT JOIN vendors v ON v.id = q.vendor_id AND v.tenant_id = q.tenant_id`;
+    const sortWhitelist: Record<string, string> = {
+      name: 'q.name',
+      quotationNumber: 'q.quotation_number',
+      date: 'q.date',
+      totalAmount: 'q.total_amount',
+      status: 'q.status',
+      vendorName: 'v.name',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'desc',
+      sortWhitelist,
+      'date'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count ${fromJoin} WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const selectCols = QUOTATION_COLUMNS.split(',').map((c) => `q.${c.trim()}`).join(', ');
+    const r = await client.query<QuotationRow>(
+      `SELECT ${selectCols} ${fromJoin} WHERE ${whereClause} ${orderClause}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async listChangedSince(client: pg.PoolClient, since: Date): Promise<QuotationRow[]> {

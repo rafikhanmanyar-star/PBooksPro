@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { BillRow } from '../services/billsService.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 
 const BILL_COLUMNS = `id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
   description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
@@ -133,6 +135,82 @@ export class BillRepository extends TenantRepository {
     q += ' ORDER BY issue_date DESC, bill_number ASC';
     const r = await client.query<BillRow>(q, params);
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      filters?: BillListFilters;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: BillRow[]; total: number }> {
+    const conditions: string[] = ['b.tenant_id = $1', 'b.deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    if (opts.filters?.status) {
+      conditions.push(`b.status = $${paramIndex++}`);
+      params.push(opts.filters.status);
+    }
+    if (opts.filters?.projectId) {
+      conditions.push(`b.project_id = $${paramIndex++}`);
+      params.push(opts.filters.projectId);
+    }
+    if (opts.filters?.propertyId) {
+      conditions.push(`b.property_id = $${paramIndex++}`);
+      params.push(opts.filters.propertyId);
+    }
+
+    const searchClause = buildIlikeSearchClause(
+      ['b.bill_number', 'b.description', 'v.name', 'v.company_name'],
+      opts.search,
+      params,
+      paramIndex
+    );
+    if (searchClause.clause) {
+      conditions.push(searchClause.clause);
+      paramIndex = searchClause.nextParamIndex;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const fromJoin = `FROM bills b
+      LEFT JOIN vendors v ON v.id = b.vendor_id AND v.tenant_id = b.tenant_id`;
+    const sortWhitelist: Record<string, string> = {
+      billNumber: 'b.bill_number',
+      issueDate: 'b.issue_date',
+      amount: 'b.amount',
+      paidAmount: 'b.paid_amount',
+      status: 'b.status',
+      vendorName: 'v.name',
+      description: 'b.description',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'desc',
+      sortWhitelist,
+      'issueDate'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count ${fromJoin} WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const r = await client.query<BillRow>(
+      `SELECT ${BILL_COLUMNS.split(',').map((c) => `b.${c.trim()}`).join(', ')}
+       ${fromJoin} WHERE ${whereClause} ${orderClause}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   /** Unique index is on (tenant_id, bill_number) for all rows including soft-deleted. */

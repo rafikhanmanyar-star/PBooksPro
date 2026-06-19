@@ -40,7 +40,7 @@ import EnterpriseAuditViewer from './EnterpriseAuditViewer';
 import { usePermissions } from '../../hooks/usePermissions';
 import CustomerBillingPortal from '../billing/CustomerBillingPortal';
 import AdminSubscriptionDashboard from '../billing/AdminSubscriptionDashboard';
-import AdminMonitoringDashboard from '../monitoring/AdminMonitoringDashboard';
+import SystemHealthCenter from '../monitoring/SystemHealthCenter';
 import AdminReferralDashboard from '../referrals/AdminReferralDashboard';
 import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
@@ -250,7 +250,7 @@ const SettingsPage: React.FC = () => {
                     ...(perms.enterpriseRole === 'super_admin'
                       ? [
                           { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
-                          { id: 'admin-monitoring', label: 'Monitoring', icon: ICONS.activity || '📡' },
+                          { id: 'admin-monitoring', label: 'System Health Center', icon: ICONS.activity || '📡' },
                           { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
                         ]
                       : []),
@@ -1347,7 +1347,7 @@ const SettingsPage: React.FC = () => {
                         )}
                         {activeCategory === 'admin-monitoring' && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <AdminMonitoringDashboard />
+                                <SystemHealthCenter />
                             </div>
                         )}
                         {activeCategory === 'admin-referrals' && (

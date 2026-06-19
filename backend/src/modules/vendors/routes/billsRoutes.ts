@@ -5,6 +5,7 @@ import { getPool, withTransaction } from '../../../db/pool.js';
 import {
   getBillById,
   listBills,
+  listBillsPage,
   rowToBillApi,
   enrichBillApiFromRow,
   softDeleteBill,
@@ -25,6 +26,7 @@ import { rowToTransactionApi } from '../../accounting/services/transactionsServi
 import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import { emitFinancialPosted } from '../../../core/realtime.js';
 import { respondVersionConflict } from '../../../utils/versionConflict.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 
 const VENDOR_SETTLEMENT_SOURCE_MODULE = 'vendor_bill_advance_clearing';
 
@@ -62,8 +64,15 @@ billsRouter.get('/bills', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listBills(client, tenantId, { status, projectId, propertyId });
-      sendSuccess(res, rows.map((r) => rowToBillApi(r)));
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () => listBills(client, tenantId, { status, projectId, propertyId }),
+        listPage: (params) =>
+          listBillsPage(client, tenantId, { ...params, status, projectId, propertyId }),
+        mapRow: rowToBillApi,
+      });
     } finally {
       client.release();
     }

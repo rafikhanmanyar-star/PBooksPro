@@ -114,6 +114,7 @@
     "test:amount-input": "tsx tests/AmountInput.test.tsx",
     "test:phase1-sync": "tsx --test tests/realtimeTrace.test.ts tests/entityEventRefreshPolicy.test.ts tests/entityQueryInvalidation.test.ts tests/approvalQueryInvalidation.test.ts tests/mobileApprovalQueryInvalidation.test.ts tests/queryClientPhase1.test.ts tests/appStateMerge.test.ts tests/bidirDownstreamMerge.test.ts tests/RealtimeDispatchHub.test.ts tests/entityReducerPatch.test.ts",
     "verify:track-a3": "node scripts/verify-realtime-hub-gates.mjs",
+    "benchmark:a37": "node scripts/perf/a37-enterprise-benchmark.mjs",
     "dev:backend": "npm run dev --prefix backend",
     "start:backend": "npm run start --prefix backend",
     "build:backend": "npm install --prefix backend --include=dev && npm run build --prefix backend",

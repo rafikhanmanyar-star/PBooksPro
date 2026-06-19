@@ -6,10 +6,12 @@ import {
   createUnit,
   getUnitById,
   listUnits,
+  listUnitsPage,
   rowToUnitApi,
   softDeleteUnit,
   updateUnit,
 } from '../services/unitsService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
 export const unitsRouter = Router();
@@ -25,8 +27,18 @@ unitsRouter.get('/units', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listUnits(client, tenantId, projectId ? { projectId } : undefined);
-      sendSuccess(res, rows.map((r) => rowToUnitApi(r)));
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () => listUnits(client, tenantId, projectId ? { projectId } : undefined),
+        listPage: (params) =>
+          listUnitsPage(client, tenantId, { ...params, projectId }).then(({ rows, total }) => ({
+            rows,
+            total,
+          })),
+        mapRow: rowToUnitApi,
+      });
     } finally {
       client.release();
     }

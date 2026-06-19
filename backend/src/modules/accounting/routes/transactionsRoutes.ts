@@ -6,6 +6,7 @@ import {
   getTransactionById,
   getTransactionByIdIncludingDeleted,
   listTransactions,
+  listTransactionsPage,
   rowToTransactionApi,
   softDeleteTransaction,
   updateTransaction,
@@ -14,6 +15,8 @@ import {
   approvePayment,
   type ListTransactionFilters,
 } from '../services/transactionsService.js';
+import { buildPaginatedResponse } from '../../../utils/pagination/index.js';
+import { parseEntitySearchQuery } from '../../../services/search/index.js';
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
 import { getBillById, rowToBillApi } from '../../vendors/services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
@@ -97,10 +100,36 @@ transactionsRouter.get('/transactions', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const query = req.query as Record<string, unknown>;
+  const useSearchPage =
+    query.page !== undefined || query.pageSize !== undefined || query.search !== undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
+      if (useSearchPage) {
+        const { page, pageSize, limit, offset, search, sortBy, sortDir } = parseEntitySearchQuery(query, {
+          defaultPageSize: 50,
+          maxPageSize: 500,
+        });
+        const filters = parseListFilters(req);
+        const { rows, total } = await listTransactionsPage(client, tenantId, {
+          page,
+          pageSize,
+          limit,
+          offset,
+          filters,
+          search,
+          sortBy,
+          sortDir,
+        });
+        sendSuccess(
+          res,
+          buildPaginatedResponse(rows.map((r) => rowToTransactionApi(r)), total, page, pageSize)
+        );
+        return;
+      }
+
       const rows = await listTransactions(client, tenantId, parseListFilters(req));
       sendSuccess(res, rows.map((r) => rowToTransactionApi(r)));
     } finally {

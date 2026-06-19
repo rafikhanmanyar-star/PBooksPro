@@ -47,6 +47,20 @@ const clientErrorSchema = z.object({
   metadata: z.record(z.unknown()).optional(),
 });
 
+const telemetrySchema = z.object({
+  metrics: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(120),
+        value: z.number(),
+        unit: z.enum(['ms', 'bytes', 'count', 'score']),
+        tags: z.record(z.string()).optional(),
+        timestamp: z.string().optional(),
+      })
+    )
+    .max(50),
+});
+
 monitoringIngestRouter.post('/monitoring/client-errors', async (req, res) => {
   const parsed = clientErrorSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -69,4 +83,31 @@ monitoringIngestRouter.post('/monitoring/client-errors', async (req, res) => {
   });
 
   sendSuccess(res, { recorded: true });
+});
+
+monitoringIngestRouter.post('/monitoring/telemetry', async (req, res) => {
+  const parsed = telemetrySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.message);
+    return;
+  }
+
+  const authed = req as AuthedRequest;
+  const { captureMonitoringEvent } = await import('../../../services/monitoring/monitoringCapture.js');
+
+  for (const metric of parsed.data.metrics) {
+    const isSlow = metric.unit === 'ms' && metric.value >= 500;
+    captureMonitoringEvent({
+      category: 'performance',
+      severity: metric.unit === 'ms' && metric.value >= 1000 ? 'warn' : 'info',
+      message: `Client ${metric.name}: ${metric.value}${metric.unit}`,
+      code: isSlow ? 'CLIENT_SLOW_METRIC' : 'CLIENT_TELEMETRY',
+      tenantId: authed.tenantId ?? null,
+      userId: authed.userId ?? null,
+      durationMs: metric.unit === 'ms' ? metric.value : undefined,
+      metadata: { ...metric.tags, unit: metric.unit, clientTimestamp: metric.timestamp },
+    });
+  }
+
+  sendSuccess(res, { recorded: parsed.data.metrics.length });
 });

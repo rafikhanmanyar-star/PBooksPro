@@ -5,6 +5,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import './index.css';
 import { setupElectronFocusRecovery } from './utils/electronFocusRecovery';
 import { initStabilityLayer } from './services/stability/stabilityLayer';
+import { initClientTelemetry } from './services/telemetry';
 import { ensureLegacyOfflineApiSessionMarked } from './config/apiUrl';
 import { bootstrapTrialAuthFromUrl } from './utils/trialAuthBootstrap';
 import {
@@ -18,6 +19,7 @@ import { resetDemoTourSession } from './services/tours/demoTourSession';
 const rootElement = document.getElementById('root');
 
 initStabilityLayer();
+initClientTelemetry();
 ensureLegacyOfflineApiSessionMarked();
 
 /**

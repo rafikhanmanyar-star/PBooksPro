@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 import type {
   ListTransactionFilters,
   TransactionRow,
@@ -151,6 +153,105 @@ export class TransactionRepository extends TenantRepository {
 
     const r = await client.query<TransactionRow>(q, params);
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      filters?: ListTransactionFilters;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: TransactionRow[]; total: number }> {
+    const filters = opts.filters ?? {};
+    const params: unknown[] = [this.tenantId];
+    const rentalOnly = filters.rentalInvoiceOnly === true;
+    let fromClause = 'FROM transactions t';
+    if (rentalOnly) {
+      fromClause += ` INNER JOIN invoices i ON i.id = t.invoice_id AND i.tenant_id = t.tenant_id`;
+    }
+    const conditions: string[] = ['t.tenant_id = $1', 't.deleted_at IS NULL'];
+    if (rentalOnly) {
+      conditions.push(`i.deleted_at IS NULL AND i.invoice_type IN ('Rental', 'Security Deposit', 'Service Charge')`);
+    }
+
+    let paramIndex = 2;
+    if (filters.projectId) {
+      conditions.push(`t.project_id = $${paramIndex++}`);
+      params.push(filters.projectId);
+    }
+    if (filters.startDate) {
+      conditions.push(`t.date >= $${paramIndex++}::date`);
+      params.push(filters.startDate);
+    }
+    if (filters.endDate) {
+      conditions.push(`t.date <= $${paramIndex++}::date`);
+      params.push(filters.endDate);
+    }
+    if (filters.type) {
+      conditions.push(`t.type = $${paramIndex++}`);
+      params.push(filters.type);
+    }
+    if (filters.invoiceId) {
+      conditions.push(`t.invoice_id = $${paramIndex++}`);
+      params.push(filters.invoiceId);
+    }
+    if (filters.ownerId) {
+      conditions.push(`t.owner_id = $${paramIndex++}`);
+      params.push(filters.ownerId);
+    }
+    if (filters.propertyId) {
+      conditions.push(`t.property_id = $${paramIndex++}`);
+      params.push(filters.propertyId);
+    }
+
+    const searchClause = buildIlikeSearchClause(
+      ['t.description', 't.reference', 't.id', 't.amount::text'],
+      opts.search,
+      params,
+      paramIndex
+    );
+    if (searchClause.clause) {
+      conditions.push(searchClause.clause);
+      paramIndex = searchClause.nextParamIndex;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const sortWhitelist: Record<string, string> = {
+      date: 't.date',
+      amount: 't.amount',
+      type: 't.type',
+      description: 't.description',
+      reference: 't.reference',
+    };
+    const { orderClause: baseOrder } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'desc',
+      sortWhitelist,
+      'date'
+    );
+    const orderClause =
+      opts.sortBy && sortWhitelist[opts.sortBy]
+        ? `${baseOrder}, t.id DESC`
+        : 'ORDER BY t.date DESC, t.id DESC';
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count ${fromClause} WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const r = await client.query<TransactionRow>(
+      `${SELECT_ROW} ${fromClause} WHERE ${whereClause} ${orderClause} LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async getById(client: pg.PoolClient, id: string): Promise<TransactionRow | null> {

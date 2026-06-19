@@ -31,6 +31,11 @@ export const queryKeys = {
     /** Warmed while on Visual Layout; read for instant counts / future API merge */
     invoicesList: () => ['rental', 'invoices', 'list'] as const,
   },
+  contacts: {
+    /** Dedicated infinite-list key — does not participate in global invalidation maps. */
+    infinite: (filters: unknown, syncFingerprint: unknown) =>
+      ['contacts', 'infinite', filters, syncFingerprint] as const,
+  },
   projects: {
     all: ['projects'] as const,
   },

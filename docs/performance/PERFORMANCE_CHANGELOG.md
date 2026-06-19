@@ -1,3 +1,240 @@
+## PERF-A4
+
+Status: Implemented
+
+Scope:
+
+- Application telemetry (`services/telemetry/`, `backend/src/services/telemetry/`)
+- Error tracking standard model (`shared/reliability/observabilityTypes.ts`)
+- API monitoring with 500ms/1000ms thresholds (`apiMetricsStore`, middleware)
+- Database observability (pool, locks, slow queries)
+- Sync diagnostics (read-only `sync_queue` / `change_log`)
+- Audit coverage report
+- System Health Center UI (`components/monitoring/SystemHealthCenter.tsx`)
+- Documentation (`docs/reliability/A4_*.md`, certification report)
+
+Synchronization Impact:
+
+- None (observe-only; no hub/queue/ordering changes)
+
+Verification:
+
+- `npm run build:backend`
+- `npm run build`
+- Settings → System Health Center (super_admin)
+
+---
+
+## PERF-A3.7
+
+Status: Certified (benchmark & documentation)
+
+Scope:
+
+- Enterprise scale benchmark report (`docs/performance/A3_7_ENTERPRISE_BENCHMARK.md`)
+- Scalability certification (`docs/performance/PBOOKSPRO_SCALABILITY_CERTIFICATION.md`)
+- API benchmark runner (`scripts/perf/a37-enterprise-benchmark.mjs`)
+- Risk assessment + sizing guidance
+
+Synchronization Impact:
+
+- None (benchmark read-path only)
+
+Verification:
+
+- A3.1–A3.6 implementation reports reviewed
+- Certification matrix completed
+- Operator benchmark procedure documented
+
+---
+
+## PERF-A3.6
+
+Status: Implemented
+
+Scope:
+
+- Procurement/inventory pagination (PO, GRN, bills, quotations)
+- Infinite scroll on procurement screens
+- `GET /aggregations/procurement-stock`
+- Migration `132_procurement_entity_search_trigram_indexes.sql`
+- Frontend: PurchaseOrdersPage, GoodsReceiptsPage, AllBillsTable, QuotationSmartTable, VendorDirectoryPage
+
+Synchronization Impact:
+
+- None (read-path only; bulk sync unchanged)
+
+Verification:
+
+- `npm run build:backend`
+- `npm run build`
+
+---
+
+## PERF-A3.5
+
+Status: Implemented
+
+Scope:
+
+- Dashboard summary services (`backend/src/services/dashboard/summaries/`)
+- Endpoints: financial, rental, inventory, project, procurement summaries
+- Frontend hooks + pilot screens (Project Agreements, Rental Agreements, Rental AR, Assets/Inventory)
+- Main dashboard already server-backed (metrics + A3.3 KPI aggregation)
+
+Synchronization Impact:
+
+- None (read-path only; dedicated React Query keys)
+
+Risk:
+
+- Low (client reduce fallbacks retained for offline / unauthenticated)
+
+Verification:
+
+- `npm run build:backend`
+- `npm run build`
+
+Expected Gain:
+
+- Summary cards no longer scan full AppState on each render; large tenants see faster dashboard modules
+
+---
+
+## PERF-A3.4
+
+Status: Implemented
+
+Scope:
+
+- Backend search infrastructure (`backend/src/services/search/`)
+- Paginated search on contacts, vendors, transactions, employees, properties, units
+- Migration `131_entity_search_trigram_indexes.sql` (pg_trgm GIN)
+- `useDebouncedSearch` hook + pilot UI (Contacts, Vendor Directory, Employee List)
+- API `findPage` helpers for all target entities
+
+Synchronization Impact:
+
+- None (read-path only; dedicated query keys for search/infinite lists)
+
+Risk:
+
+- Low (bulk sync full-list responses unchanged without pagination params)
+
+Verification:
+
+- `npm run db:migrate:staging`
+- `npm run build:backend`
+- `npm run build`
+
+Expected Gain:
+
+- Search payloads drop from full dataset to one page; ILIKE uses trigram indexes at scale
+
+---
+
+## PERF-A3.3
+
+Status: Implemented
+
+Scope:
+
+- Backend aggregation service layer (`backend/src/services/aggregations/`)
+- Owner / vendor / broker balance APIs + compact dashboard KPI API
+- Pilot UI: Owner Payouts, Broker Payouts, Vendor Directory, KPI panel supplement
+
+Synchronization Impact:
+
+- None (read-path only; dedicated React Query keys)
+
+Risk:
+
+- Low (client fallbacks retained)
+
+Verification:
+
+- `npm run build:backend`
+- `npm run build`
+
+Expected Gain:
+
+- Owner/broker/vendor list screens avoid O(n) client reduces on large AppState
+
+---
+
+## PERF-A3.2
+
+Status: Implemented
+
+Scope:
+
+- Reusable `useInfiniteEntityQuery` + `InfiniteVirtualizedTable`
+- Contacts pilot (server infinite scroll + virtualization)
+- `GET /contacts` paginated when `page` query present
+
+Implementation:
+
+- `hooks/pagination/useInfiniteEntityQuery.ts`
+- `components/common/InfiniteVirtualizedTable.tsx`
+- `ContactRepository.listPage` + contacts route/service/API
+- `ContactsPage` + `VirtualizedContactsTable` infinite props
+
+Synchronization Impact:
+
+- None (read-path only; dedicated query key + `syncFingerprint`, no global invalidation changes)
+
+Risk:
+
+- Low
+
+Verification:
+
+- `npm run build:backend`
+- `npm run build`
+
+Expected Gain:
+
+- ~95% smaller initial Contacts table API payload (50 vs full list)
+
+---
+
+## PERF-A3.1
+
+Status: Implemented
+
+Scope:
+
+- Server-side pagination foundation
+- Payroll employee ledger pilot (pageSize 50)
+
+Implementation:
+
+- `shared/types/pagination.ts`
+- `backend/src/utils/pagination/`
+- `hooks/pagination/usePaginatedList.ts`
+- Payroll ledger API: `page`/`pageSize`, server `year`/`month` filters
+- PayrollHub + virtual table load-more
+
+Synchronization Impact:
+
+- None (read-path only; existing refresh triggers preserved)
+
+Risk:
+
+- Low
+
+Verification:
+
+- `npm run build:backend` PASS
+- `npm run build` PASS
+- Pagination unit tests PASS (5)
+
+Expected Gain:
+
+- ~40× smaller initial payroll ledger API payload (50 vs 5000 rows)
+
+---
+
 ## PERF-A2.4
 
 Status: Implemented

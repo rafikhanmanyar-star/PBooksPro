@@ -21,8 +21,23 @@ import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import { useDevRenderCount } from '../../hooks/useDevRenderCount';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useOptimisticEntity } from '../../hooks/useOptimisticEntity';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
+import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
 
 import VirtualizedContactsTable, { type ContactsSortKey } from './VirtualizedContactsTable';
+
+const contactsApi = new ContactsApiRepository();
+
+function tabToTypeGroup(tab: string): string {
+    switch (tab) {
+        case 'Owners': return 'owners';
+        case 'Tenants': return 'tenants';
+        case 'Brokers': return 'brokers';
+        case 'Friends & Family': return 'friends';
+        default: return 'all';
+    }
+}
 
 interface ContactTreeNode {
     id: string;
@@ -146,7 +161,8 @@ const ContactsPage: React.FC = () => {
     const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
-    const [searchQuery, setSearchQuery] = useState('');
+    const { value: searchQuery, debouncedValue: debouncedSearchQuery, setValue: setSearchQuery } =
+        useDebouncedSearch({ delayMs: 300 });
     const [activeTab, setActiveTab] = useState<string>('All');
     const [sortConfig, setSortConfig] = useState<{ key: ContactsSortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
 
@@ -314,8 +330,8 @@ const ContactsPage: React.FC = () => {
             filtered = [...filtered, ...((vendors || []) as unknown as Contact[])];
         }
 
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
+        if (debouncedSearchQuery) {
+            const q = debouncedSearchQuery.toLowerCase();
             filtered = filtered.filter(c =>
                 c.name.toLowerCase().includes(q) ||
                 c.contactNo?.includes(q) ||
@@ -340,7 +356,61 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [contactsFromStore, vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
+    }, [contactsFromStore, vendors, activeTab, debouncedSearchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
+
+    const useClientListPath = useMemo(() => {
+        if (!isAuthenticated) return true;
+        if (activeTab === 'Vendors') return true;
+        if (selectedTreeType === 'contact' && selectedTreeId && vendorsMap.has(selectedTreeId)) return true;
+        return false;
+    }, [isAuthenticated, activeTab, selectedTreeType, selectedTreeId, vendorsMap]);
+
+    const contactsSyncFingerprint = useMemo(
+        () => contactsFromStore.reduce((acc, c) => acc + (c.version ?? 0), contactsFromStore.length),
+        [contactsFromStore]
+    );
+
+    const infiniteFilters = useMemo(
+        () => ({
+            typeGroup: tabToTypeGroup(activeTab),
+            contactId:
+                selectedTreeType === 'contact' && selectedTreeId && !vendorsMap.has(selectedTreeId)
+                    ? selectedTreeId
+                    : undefined,
+            search: debouncedSearchQuery.trim() || undefined,
+            sortKey: sortConfig.key,
+            sortDir: sortConfig.direction,
+        }),
+        [activeTab, selectedTreeType, selectedTreeId, vendorsMap, debouncedSearchQuery, sortConfig]
+    );
+
+    const {
+        items: infiniteContacts,
+        totalCount: infiniteTotalCount,
+        loading: infiniteLoading,
+        loadingMore: infiniteLoadingMore,
+        error: infiniteError,
+        hasNextPage: infiniteHasNextPage,
+        fetchNextPage: fetchNextContactsPage,
+    } = useInfiniteEntityQuery<Contact>({
+        queryKey: ['contacts', 'infinite'],
+        enabled: !useClientListPath,
+        filters: infiniteFilters,
+        syncFingerprint: contactsSyncFingerprint,
+        fetchPage: ({ pageParam, pageSize, filters }) =>
+            contactsApi.findPage({
+                page: pageParam,
+                pageSize,
+                typeGroup: filters.typeGroup as string | undefined,
+                contactId: filters.contactId as string | undefined,
+                search: filters.search as string | undefined,
+                sortKey: filters.sortKey as string | undefined,
+                sortDir: filters.sortDir as 'asc' | 'desc' | undefined,
+            }),
+    });
+
+    const tableContacts = useClientListPath ? contacts : infiniteContacts;
+    const tableTotalCount = useClientListPath ? contacts.length : infiniteTotalCount;
 
     const handleSort = (key: ContactsSortKey) => {
         setSortConfig(current => ({
@@ -613,17 +683,25 @@ const ContactsPage: React.FC = () => {
 
                     <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-0">
                         <VirtualizedContactsTable
-                            contacts={contacts}
+                            contacts={tableContacts}
                             contactBalances={contactBalances}
                             sortConfig={sortConfig}
                             onSort={handleSort}
                             onOpenLedger={openLedger}
                             onEdit={openEditModal}
                             onWhatsApp={handleSendWhatsApp}
+                            loading={!useClientListPath && infiniteLoading}
+                            loadingMore={!useClientListPath && infiniteLoadingMore}
+                            error={!useClientListPath ? infiniteError : null}
+                            hasNextPage={!useClientListPath && infiniteHasNextPage}
+                            onFetchNextPage={!useClientListPath ? fetchNextContactsPage : undefined}
+                            totalCount={!useClientListPath ? tableTotalCount : undefined}
                         />
-                        <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium flex-shrink-0">
-                            Total Contacts: {contacts.length}
-                        </div>
+                        {useClientListPath ? (
+                            <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium flex-shrink-0">
+                                Total Contacts: {tableTotalCount}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>

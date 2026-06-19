@@ -244,6 +244,38 @@ export async function listBills(
   return new BillRepository(tenantId).list(client, filters);
 }
 
+export type BillListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  status?: string;
+  projectId?: string;
+  propertyId?: string;
+};
+
+export async function listBillsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: BillListPageQuery
+): Promise<{ rows: BillRow[]; total: number }> {
+  return new BillRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    filters: {
+      status: query.status,
+      projectId: query.projectId,
+      propertyId: query.propertyId,
+    },
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+}
+
 export async function getBillById(
   client: pg.PoolClient,
   tenantId: string,

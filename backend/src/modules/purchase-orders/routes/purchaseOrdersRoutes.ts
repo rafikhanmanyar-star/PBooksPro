@@ -7,6 +7,7 @@ import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import {
   getPurchaseOrderById,
   listPurchaseOrders,
+  listPurchaseOrdersPage,
   rowToPurchaseOrderApi,
   softDeletePurchaseOrder,
   submitPurchaseOrder,
@@ -16,6 +17,7 @@ import {
 } from '../services/purchaseOrderService.js';
 import { getPurchaseOrderReportSummary } from '../services/purchaseOrderReportService.js';
 import { getPurchaseOrderBillingContext } from '../services/purchaseOrderBillingService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 
 export const purchaseOrdersRouter = Router();
 
@@ -31,16 +33,22 @@ purchaseOrdersRouter.get('/purchase-orders', requireView, async (req: AuthedRequ
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const vendorId = typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined;
+  const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listPurchaseOrders(client, tenantId, {
-        status: typeof req.query.status === 'string' ? req.query.status : undefined,
-        vendorId: typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined,
-        projectId: typeof req.query.projectId === 'string' ? req.query.projectId : undefined,
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () => listPurchaseOrders(client, tenantId, { status, vendorId, projectId }),
+        listPage: (params) =>
+          listPurchaseOrdersPage(client, tenantId, { ...params, status, vendorId, projectId }),
+        mapRow: rowToPurchaseOrderApi,
       });
-      sendSuccess(res, rows.map(rowToPurchaseOrderApi));
     } finally {
       client.release();
     }

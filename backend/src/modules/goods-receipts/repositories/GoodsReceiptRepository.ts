@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 
 export type GoodsReceiptRow = {
   id: string;
@@ -123,6 +125,91 @@ export class GoodsReceiptRepository extends TenantRepository {
       params
     );
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      filters?: GoodsReceiptListFilters;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: GoodsReceiptRow[]; total: number }> {
+    const conditions: string[] = ['gr.tenant_id = $1', 'gr.deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    if (opts.filters?.status) {
+      conditions.push(`gr.status = $${paramIndex++}`);
+      params.push(opts.filters.status);
+    }
+    if (opts.filters?.vendorId) {
+      conditions.push(`gr.vendor_id = $${paramIndex++}`);
+      params.push(opts.filters.vendorId);
+    }
+    if (opts.filters?.projectId) {
+      conditions.push(`gr.project_id = $${paramIndex++}`);
+      params.push(opts.filters.projectId);
+    }
+    if (opts.filters?.purchaseOrderId) {
+      conditions.push(`gr.purchase_order_id = $${paramIndex++}`);
+      params.push(opts.filters.purchaseOrderId);
+    }
+
+    const searchTerm = opts.search?.trim();
+    if (searchTerm) {
+      const pattern = `%${searchTerm}%`;
+      params.push(pattern);
+      const p = `$${paramIndex++}`;
+      conditions.push(`(
+        gr.grn_number ILIKE ${p} OR gr.notes ILIKE ${p}
+        OR v.name ILIKE ${p} OR v.company_name ILIKE ${p}
+        OR po.po_number ILIKE ${p}
+        OR EXISTS (
+          SELECT 1 FROM goods_receipt_lines grl
+          WHERE grl.goods_receipt_id = gr.id AND grl.tenant_id = gr.tenant_id
+            AND (grl.item_name ILIKE ${p} OR grl.description ILIKE ${p})
+        )
+      )`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const fromJoin = `FROM goods_receipts gr
+      LEFT JOIN vendors v ON v.id = gr.vendor_id AND v.tenant_id = gr.tenant_id
+      LEFT JOIN purchase_orders po ON po.id = gr.purchase_order_id AND po.tenant_id = gr.tenant_id`;
+    const sortWhitelist: Record<string, string> = {
+      grnNumber: 'gr.grn_number',
+      receivedDate: 'gr.received_date',
+      status: 'gr.status',
+      vendorName: 'v.name',
+      poNumber: 'po.po_number',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'desc',
+      sortWhitelist,
+      'receivedDate'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count ${fromJoin} WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const r = await client.query<GoodsReceiptRow>(
+      `SELECT ${GRN_COLUMNS.split(',').map((c) => `gr.${c.trim()}`).join(', ')}
+       ${fromJoin} WHERE ${whereClause} ${orderClause}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async getNextGrnNumber(client: pg.PoolClient): Promise<string> {

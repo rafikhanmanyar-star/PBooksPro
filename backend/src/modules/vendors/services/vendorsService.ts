@@ -78,6 +78,31 @@ export async function listVendors(client: pg.PoolClient, tenantId: string): Prom
   return new VendorRepository(tenantId).listActive(client);
 }
 
+export type VendorListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listVendorsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: VendorListPageQuery
+): Promise<{ rows: VendorRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new VendorRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getVendorById(
   client: pg.PoolClient,
   tenantId: string,
