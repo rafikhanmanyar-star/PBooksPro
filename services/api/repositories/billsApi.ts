@@ -7,10 +7,12 @@
 
 import { apiClient } from '../client';
 import { Bill } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 export class BillsApiRepository {
   /**
-   * Get all bills
+   * Get all bills (bulk sync).
    */
   async findAll(filters?: { status?: string; projectId?: string; categoryId?: string }): Promise<Bill[]> {
     const params = new URLSearchParams();
@@ -20,6 +22,27 @@ export class BillsApiRepository {
     
     const query = params.toString();
     return apiClient.get<Bill[]>(`/bills${query ? `?${query}` : ''}`);
+  }
+
+  /**
+   * Paginated bill search (PERF-A3.6).
+   */
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+    status?: string;
+    projectId?: string;
+    propertyId?: string;
+  }): Promise<PaginatedResponse<Bill>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    if (params.status) q.set('status', params.status);
+    if (params.projectId) q.set('projectId', params.projectId);
+    if (params.propertyId) q.set('propertyId', params.propertyId);
+    return apiClient.get<PaginatedResponse<Bill>>(`/bills?${q.toString()}`);
   }
 
   /**

@@ -4,6 +4,8 @@ import { dashboardMetricsApi } from '../services/api/dashboardMetricsApi';
 import { dashboardSnapshotsApi } from '../services/api/dashboardSnapshotsApi';
 import { useDashboardFiltersStore } from '../stores/dashboardFiltersStore';
 import { clearDashboardRefreshPending } from '../stores/dashboardRefreshIndicatorStore';
+import { rtTraceDuration } from '../services/realtime/realtimeTrace';
+import { usePageQueryEnabled } from './usePageQueryEnabled';
 import type { DashboardFilters } from '../types/dashboardMetrics.types';
 
 export const dashboardMetricsQueryKeys = {
@@ -20,13 +22,15 @@ const REFETCH_MS = 120_000;
 export function useDashboardMetrics(enabled = true) {
   const filters = useDashboardFiltersStore((s) => s.filters);
   const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled && hasHydrated;
 
   return useQuery({
     queryKey: dashboardMetricsQueryKeys.metrics(filters),
     queryFn: () => dashboardMetricsApi.getMetrics(filters),
-    enabled: enabled && hasHydrated,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: REFETCH_MS,
+    refetchInterval: queryEnabled ? REFETCH_MS : false,
     refetchIntervalInBackground: false,
   });
 }
@@ -34,13 +38,15 @@ export function useDashboardMetrics(enabled = true) {
 export function useDashboardCharts(year: number, enabled = true) {
   const filters = useDashboardFiltersStore((s) => s.filters);
   const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled && hasHydrated;
 
   return useQuery({
     queryKey: dashboardMetricsQueryKeys.charts(filters, year),
     queryFn: () => dashboardMetricsApi.getCharts(filters, year),
-    enabled: enabled && hasHydrated,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: REFETCH_MS,
+    refetchInterval: queryEnabled ? REFETCH_MS : false,
     refetchIntervalInBackground: false,
   });
 }
@@ -55,23 +61,29 @@ export function useDashboardMetricsWithFilters(filters: DashboardFilters, enable
 }
 
 export function useDashboardSnapshots(date?: string, enabled = true) {
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled;
+
   return useQuery({
     queryKey: [...dashboardMetricsQueryKeys.root, 'snapshots', date ?? 'today'] as const,
     queryFn: () => dashboardSnapshotsApi.getSnapshots(date),
-    enabled: enabled,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: REFETCH_MS,
+    refetchInterval: queryEnabled ? REFETCH_MS : false,
     refetchIntervalInBackground: false,
   });
 }
 
 export function useDashboardActivity(limit = 5, enabled = true) {
+  const pageEnabled = usePageQueryEnabled();
+  const queryEnabled = enabled && pageEnabled;
+
   return useQuery({
     queryKey: dashboardMetricsQueryKeys.activity(limit),
     queryFn: () => dashboardMetricsApi.getActivity(limit),
-    enabled,
+    enabled: queryEnabled,
     staleTime: STALE_MS,
-    refetchInterval: REFETCH_MS,
+    refetchInterval: queryEnabled ? REFETCH_MS : false,
     refetchIntervalInBackground: false,
   });
 }
@@ -85,13 +97,28 @@ type DashboardQueryBundle = {
 
 /** Refetch executive dashboard queries (metrics, charts, activity, snapshots). */
 export async function refetchDashboardQueries(queries: DashboardQueryBundle): Promise<void> {
+  const start = Date.now();
   const tasks: Promise<unknown>[] = [];
-  if (queries.activity) tasks.push(queries.activity.refetch());
-  if (queries.metrics) tasks.push(queries.metrics.refetch());
-  if (queries.snapshots) tasks.push(queries.snapshots.refetch());
-  if (queries.charts) tasks.push(queries.charts.refetch());
+  const targets: string[] = [];
+  if (queries.activity) {
+    tasks.push(queries.activity.refetch());
+    targets.push('activity');
+  }
+  if (queries.metrics) {
+    tasks.push(queries.metrics.refetch());
+    targets.push('metrics');
+  }
+  if (queries.snapshots) {
+    tasks.push(queries.snapshots.refetch());
+    targets.push('snapshots');
+  }
+  if (queries.charts) {
+    tasks.push(queries.charts.refetch());
+    targets.push('charts');
+  }
   await Promise.all(tasks);
   clearDashboardRefreshPending();
+  rtTraceDuration('ui.refetched', start, { targets });
 }
 
 /**

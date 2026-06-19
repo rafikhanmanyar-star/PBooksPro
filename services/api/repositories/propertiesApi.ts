@@ -7,13 +7,30 @@
 
 import { apiClient } from '../client';
 import { Property } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 export class PropertiesApiRepository {
   /**
-   * Get all properties
+   * Get all properties (bulk sync).
    */
   async findAll(): Promise<Property[]> {
     return apiClient.get<Property[]>('/properties');
+  }
+
+  /** Paginated property search (PERF-A3.4). */
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    buildingId?: string;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+  }): Promise<PaginatedResponse<Property>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    if (params.buildingId) q.set('buildingId', params.buildingId);
+    return apiClient.get<PaginatedResponse<Property>>(`/properties?${q.toString()}`);
   }
 
   /**

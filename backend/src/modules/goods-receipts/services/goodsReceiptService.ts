@@ -131,6 +131,42 @@ export async function listGoodsReceipts(
   return out;
 }
 
+export type GoodsReceiptListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+  status?: string;
+  vendorId?: string;
+  projectId?: string;
+  purchaseOrderId?: string;
+};
+
+/** Paginated GRN headers only (no line N+1) for list/infinite-scroll UIs. */
+export async function listGoodsReceiptsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: GoodsReceiptListPageQuery
+): Promise<{ rows: ReturnType<typeof rowToGoodsReceiptApi>[]; total: number }> {
+  const { rows, total } = await new GoodsReceiptRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    filters: {
+      status: query.status,
+      vendorId: query.vendorId,
+      projectId: query.projectId,
+      purchaseOrderId: query.purchaseOrderId,
+    },
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows: rows.map((row) => rowToGoodsReceiptApi(row)), total };
+}
+
 export async function getGoodsReceiptById(client: pg.PoolClient, tenantId: string, id: string) {
   return loadGrnApi(client, tenantId, id);
 }

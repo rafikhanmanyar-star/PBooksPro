@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 
 export type PurchaseOrderRow = {
   id: string;
@@ -150,6 +152,85 @@ export class PurchaseOrderRepository extends TenantRepository {
       params
     );
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      filters?: PurchaseOrderListFilters;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: PurchaseOrderRow[]; total: number }> {
+    const conditions: string[] = ['po.tenant_id = $1', 'po.deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    if (opts.filters?.status) {
+      conditions.push(`po.status = $${paramIndex++}`);
+      params.push(opts.filters.status);
+    }
+    if (opts.filters?.vendorId) {
+      conditions.push(`po.vendor_id = $${paramIndex++}`);
+      params.push(opts.filters.vendorId);
+    }
+    if (opts.filters?.projectId) {
+      conditions.push(`po.project_id = $${paramIndex++}`);
+      params.push(opts.filters.projectId);
+    }
+
+    const searchTerm = opts.search?.trim();
+    if (searchTerm) {
+      const pattern = `%${searchTerm}%`;
+      params.push(pattern);
+      const p = `$${paramIndex++}`;
+      conditions.push(`(
+        po.po_number ILIKE ${p} OR po.description ILIKE ${p}
+        OR v.name ILIKE ${p} OR v.company_name ILIKE ${p}
+        OR EXISTS (
+          SELECT 1 FROM purchase_order_lines pol
+          WHERE pol.purchase_order_id = po.id AND pol.tenant_id = po.tenant_id
+            AND (pol.item_name ILIKE ${p} OR pol.description ILIKE ${p})
+        )
+      )`);
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const fromJoin = `FROM purchase_orders po
+      LEFT JOIN vendors v ON v.id = po.vendor_id AND v.tenant_id = po.tenant_id`;
+    const sortWhitelist: Record<string, string> = {
+      poNumber: 'po.po_number',
+      issueDate: 'po.issue_date',
+      totalAmount: 'po.total_amount',
+      status: 'po.status',
+      vendorName: 'v.name',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'desc',
+      sortWhitelist,
+      'issueDate'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count ${fromJoin} WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const selectCols = PO_COLUMNS.split(',').map((c) => `po.${c.trim()}`).join(', ');
+    const r = await client.query<PurchaseOrderRow>(
+      `SELECT ${selectCols} ${fromJoin} WHERE ${whereClause} ${orderClause}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async getNextPoNumber(client: pg.PoolClient): Promise<string> {

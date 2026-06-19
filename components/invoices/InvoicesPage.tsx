@@ -1,5 +1,20 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback, memo } from 'react';
-import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
+import {
+  useAccounts,
+  useBuildings,
+  useCategories,
+  useContacts,
+  useDispatchOnly,
+  useInvoices,
+  useProjectAgreements,
+  useProjects,
+  useProperties,
+  useRentalAgreements,
+  useStateSelector,
+  useTransactions,
+  useUnits,
+  selectDefaultProjectId,
+} from '../../hooks/useSelectiveState';
 import { Invoice, InvoiceType, InvoiceStatus, Transaction, TransactionType, Bill, RecurringInvoiceTemplate } from '../../types';
 import InvoiceBillForm from './InvoiceBillForm';
 import BulkPaymentModal from './BulkPaymentModal';
@@ -231,20 +246,20 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
     const canReceivePaymentInThisContext = !isProjectSellingContext || canReceiveProjectSellingPayments;
     const effectiveShowCreateButton = showCreateButton && canCreateInThisContext;
     const dispatch = useDispatchOnly();
-    const invoices = useStateSelector(s => s.invoices);
+    const invoices = useInvoices();
     /** Exclude soft-deleted (PostgreSQL) so tree / totals match server after delete. */
     const activeInvoices = useMemo(() => invoices.filter(isActiveInvoice), [invoices]);
-    const contacts = useStateSelector(s => s.contacts);
-    const accounts = useStateSelector(s => s.accounts);
-    const transactions = useStateSelector(s => s.transactions);
-    const properties = useStateSelector(s => s.properties);
-    const units = useStateSelector(s => s.units);
-    const buildings = useStateSelector(s => s.buildings);
-    const projects = useStateSelector(s => s.projects);
-    const projectAgreements = useStateSelector(s => s.projectAgreements);
-    const rentalAgreements = useStateSelector(s => s.rentalAgreements);
-    const categories = useStateSelector(s => s.categories);
-    const defaultProjectId = useStateSelector(s => s.defaultProjectId);
+    const contacts = useContacts();
+    const accounts = useAccounts();
+    const transactions = useTransactions();
+    const properties = useProperties();
+    const units = useUnits();
+    const buildings = useBuildings();
+    const projects = useProjects();
+    const projectAgreements = useProjectAgreements();
+    const rentalAgreements = useRentalAgreements();
+    const categories = useCategories();
+    const defaultProjectId = useStateSelector(selectDefaultProjectId);
     const { showConfirm, showToast, showAlert } = useNotification();
 
     // Persistent View Settings

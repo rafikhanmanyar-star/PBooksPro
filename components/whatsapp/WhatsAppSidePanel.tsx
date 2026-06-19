@@ -3,7 +3,7 @@ import { Contact, Vendor } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
 import { useAuth } from '../../context/AuthContext';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {} });
+import { getRealtimeSocket } from '../../core/socket';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
 
@@ -31,7 +31,6 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
   const [isConfigured, setIsConfigured] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const wsClient = getWebSocketClient();
 
   // Get phone number from contact or prop
   const phoneNumber = contact?.contactNo || propPhoneNumber || '';
@@ -99,6 +98,9 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
   // Listen for real-time WhatsApp messages via WebSocket
   useEffect(() => {
     if (!isOpen || !phoneNumber) return;
+
+    const socket = getRealtimeSocket();
+    if (!socket) return;
 
     const handleWhatsAppMessageSent = (data: WhatsAppMessage) => {
       const dataNorm = normalizePhoneForMatch(data.phoneNumber || '');
@@ -177,16 +179,16 @@ const WhatsAppSidePanel: React.FC<WhatsAppSidePanelProps> = ({
     };
 
     // Register WebSocket listeners
-    wsClient.on('whatsapp:message:sent', handleWhatsAppMessageSent);
-    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
-    wsClient.on('whatsapp:message:status', handleWhatsAppMessageStatus);
+    socket.on('whatsapp:message:sent', handleWhatsAppMessageSent);
+    socket.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+    socket.on('whatsapp:message:status', handleWhatsAppMessageStatus);
 
     return () => {
-      wsClient.off('whatsapp:message:sent', handleWhatsAppMessageSent);
-      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
-      wsClient.off('whatsapp:message:status', handleWhatsAppMessageStatus);
+      socket.off('whatsapp:message:sent', handleWhatsAppMessageSent);
+      socket.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+      socket.off('whatsapp:message:status', handleWhatsAppMessageStatus);
     };
-  }, [isOpen, phoneNumber, wsClient]);
+  }, [isOpen, phoneNumber]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

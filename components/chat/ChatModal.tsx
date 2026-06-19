@@ -9,7 +9,7 @@ import {
     getInMemoryConversationsForUser,
     markInMemoryChatRead,
     type InMemoryChatMessage } from '../../services/chat/inMemoryChatStore';
-import { connectRealtimeSocket } from '../../core/socket';
+import { getRealtimeSocket } from '../../core/socket';
 
 interface OnlineUser {
     id: string;
@@ -51,9 +51,8 @@ const ChatModal: React.FC<ChatModalProps> = ({ isOpen, onClose, onlineUsers }) =
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        const token = apiClient.getToken();
-        if (!token) return;
-        const socket = connectRealtimeSocket(token);
+        const socket = getRealtimeSocket();
+        if (!socket) return;
 
         const handleChatMessage = async (data: ChatMessage) => {
             if ((data as any).phoneNumber || (data as any).direction || !data.senderId) {

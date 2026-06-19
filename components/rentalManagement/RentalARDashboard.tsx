@@ -14,10 +14,13 @@ import RentalFinancialGrid, { FinancialRecord } from '../invoices/RentalFinancia
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
+import { useRentalSummary } from '../../hooks/queries/useDashboardSummaryQueries';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { isSecurityInvoice } from '../../utils/rentalInvoiceClassification';
+import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 
 const RENTAL_INVOICE_TYPES = [InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT];
 
@@ -85,6 +88,10 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
   const dispatch = useDispatchOnly();
   const { showConfirm, showToast, showAlert } = useNotification();
+  const { isAuthenticated } = useAuth();
+  const { data: rentalSummary } = useRentalSummary(isAuthenticated && listMode, {
+    includeArBreakdown: true,
+  });
   // Filters — list and summary use separate keys so both persist
   const [viewByList, setViewByList] = useLocalStorage<ViewBy>('rental_invoices_groupBy', 'building');
   const [viewBySummary, setViewBySummary] = useLocalStorage<ViewBy>('ar_dashboard_viewBy', 'building');
@@ -239,6 +246,9 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
   // Due = unpaid + partially unpaid (outstanding); Paid = paid + partially paid (amount received)
   const summaryStats = useMemo(() => {
     if (!listMode) return null;
+    if (isAuthenticated && rentalSummary?.arBreakdown) {
+      return rentalSummary.arBreakdown;
+    }
     const invList = filteredInvoices;
     const isDue = (inv: Invoice) => inv.status !== InvoiceStatus.PAID;
     const dueAmount = (inv: Invoice) => Math.max(0, inv.amount - inv.paidAmount);
@@ -266,7 +276,7 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
       totalPaidAmount: rentalPaidAmount + securityPaidAmount,
       totalInvoiceCount: invList.length,
     };
-  }, [listMode, filteredInvoices]);
+  }, [listMode, filteredInvoices, isAuthenticated, rentalSummary]);
 
   // Build tree from filtered invoices
   const treeData = useMemo((): ARTreeNode[] => {
@@ -675,6 +685,20 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     if (recordTypeFilter === 'Invoices') return financialRecords.filter(r => r.type === 'Invoice');
     return financialRecords.filter(r => r.type.includes('Payment'));
   }, [financialRecords, recordTypeFilter]);
+
+  useEffect(() => {
+    if (!listMode) return;
+    logPaymentListUiTrace({
+      component: 'RentalARDashboard',
+      sourceTransactionCount: transactions.length,
+      recordsPropCount: financialRecords.length,
+      filteredRecordCount: financialRecordsFiltered.length,
+      displayedRecordCount: financialRecordsFiltered.length,
+      transactions,
+      displayedRecords: financialRecordsFiltered,
+      recordTypeFilter,
+    });
+  }, [listMode, transactions, financialRecords, financialRecordsFiltered, recordTypeFilter]);
 
   // Sorted invoices for the list (summary mode table)
   const sortedInvoices = useMemo(() => {

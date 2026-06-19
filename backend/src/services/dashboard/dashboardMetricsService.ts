@@ -198,7 +198,7 @@ async function countInPeriod(
   return Number(r.rows[0]?.c ?? 0);
 }
 
-async function computeSnapshot(
+export async function computeSnapshot(
   client: pg.PoolClient,
   tenantId: string,
   filters: DashboardFilters

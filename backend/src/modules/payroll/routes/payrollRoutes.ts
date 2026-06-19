@@ -5,6 +5,8 @@ import { getPool, withTransaction } from '../../../db/pool.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { perfPayrollLog, perfPayrollNow } from '../../../utils/payrollPerf.js';
+import { parsePaginationQuery, buildPaginatedResponse } from '../../../utils/pagination/index.js';
+import { hasPaginationQuery, parseEntitySearchQuery } from '../../../services/search/index.js';
 import { LockGuardError } from '../../../services/recordLocksService.js';
 import type { BulkPayPayslipLine } from '../services/payrollService.js';
 import {
@@ -18,6 +20,7 @@ import {
   getTenantConfig,
   listDepartments,
   listEmployees,
+  listEmployeesPage,
   listEmployeesByDepartment,
   listGrades,
   listPayrollProjects,
@@ -290,12 +293,38 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const query = req.query as Record<string, unknown>;
   try {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const rows = await listEmployees(c, tenantId);
-      sendSuccess(res, rows.map((r) => rowToEmployeeApi(r)));
+      if (!hasPaginationQuery(query)) {
+        const rows = await listEmployees(c, tenantId);
+        sendSuccess(res, rows.map((r) => rowToEmployeeApi(r)));
+        return;
+      }
+
+      const { page, pageSize, limit, offset, search, sortBy, sortDir } = parseEntitySearchQuery(query, {
+        defaultPageSize: 50,
+        maxPageSize: 500,
+      });
+      const departmentId =
+        typeof query.departmentId === 'string' ? query.departmentId : undefined;
+
+      const { rows, total } = await listEmployeesPage(c, tenantId, {
+        page,
+        pageSize,
+        limit,
+        offset,
+        departmentId,
+        search,
+        sortBy,
+        sortDir,
+      });
+      sendSuccess(
+        res,
+        buildPaginatedResponse(rows.map((r) => rowToEmployeeApi(r)), total, page, pageSize)
+      );
     } finally {
       c.release();
     }
@@ -394,8 +423,20 @@ payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedReq
   const typeFilterRaw = typeof req.query.type === 'string' ? req.query.type : '';
   const typeFilter =
     typeFilterRaw && typeFilterRaw.toLowerCase() !== 'all' ? typeFilterRaw : 'all';
-  const limit = Math.min(Number(req.query.limit ?? 50) || 50, 5000);
-  const offset = Math.max(Number(req.query.offset ?? 0) || 0, 0);
+  const { page, pageSize, limit, offset } = parsePaginationQuery(req.query as Record<string, unknown>, {
+    pageSize: 50,
+    maxPageSize: 5000,
+  });
+  const yearRaw = req.query.year;
+  const monthRaw = req.query.month;
+  const year =
+    typeof yearRaw === 'string' && yearRaw !== '' && Number.isFinite(Number(yearRaw))
+      ? Math.trunc(Number(yearRaw))
+      : null;
+  const month =
+    typeof monthRaw === 'string' && monthRaw !== '' && Number.isFinite(Number(monthRaw))
+      ? Math.trunc(Number(monthRaw))
+      : null;
   try {
     const pool = getPool();
     const c = await pool.connect();
@@ -410,7 +451,11 @@ payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedReq
         typeFilter,
         limit,
         offset,
+        year,
+        month,
       });
+      const transactions = rows.map((r) => rowToLedgerApi(r));
+      const paginated = buildPaginatedResponse(transactions, total, page, pageSize);
       sendSuccess(res, {
         employee: rowToEmployeeApi(emp),
         summary: {
@@ -420,7 +465,12 @@ payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedReq
           payableAmount: summary.payableAmount,
           advanceAmount: summary.advanceAmount,
         },
-        transactions: rows.map((r) => rowToLedgerApi(r)),
+        transactions: paginated.data,
+        data: paginated.data,
+        totalCount: paginated.totalCount,
+        page: paginated.page,
+        pageSize: paginated.pageSize,
+        totalPages: paginated.totalPages,
         pagination: { limit, offset, total },
       });
     } finally {

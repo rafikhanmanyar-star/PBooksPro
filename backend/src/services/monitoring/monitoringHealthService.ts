@@ -124,6 +124,56 @@ export async function runHealthChecks(client: pg.PoolClient): Promise<HealthComp
     /* monitoring tables may not exist yet */
   }
 
+  try {
+    const syncCounts = await client.query<{ status: string; c: string }>(
+      `SELECT status, COUNT(*)::text AS c FROM sync_queue GROUP BY status`
+    );
+    const pending = Number(syncCounts.rows.find((r) => r.status === 'pending')?.c ?? 0);
+    const failed = Number(syncCounts.rows.find((r) => r.status === 'failed')?.c ?? 0);
+    const syncStatus = failed > 0 ? 'degraded' : pending > 50 ? 'degraded' : 'healthy';
+    const syncMsg = `pending=${pending}, failed=${failed}`;
+    results.push({
+      component: 'sync_queue',
+      status: syncStatus,
+      message: syncMsg,
+      details: { pending, failed },
+      checkedAt: now,
+    });
+    await healthRepo.upsert(client, 'sync_queue', syncStatus, syncMsg, JSON.stringify({ pending, failed }));
+  } catch {
+    results.push({
+      component: 'sync_queue',
+      status: 'unknown',
+      message: 'sync_queue table not available',
+      checkedAt: now,
+    });
+  }
+
+  try {
+    const pool = getPool();
+    const poolStatus =
+      pool.waitingCount > 0 ? 'degraded' : pool.totalCount >= ((pool as { options?: { max?: number } }).options?.max ?? 20) ? 'degraded' : 'healthy';
+    const poolMsg = `active=${pool.totalCount - pool.idleCount}, idle=${pool.idleCount}, waiting=${pool.waitingCount}`;
+    results.push({
+      component: 'connection_pool',
+      status: poolStatus,
+      message: poolMsg,
+      details: {
+        totalCount: pool.totalCount,
+        idleCount: pool.idleCount,
+        waitingCount: pool.waitingCount,
+      },
+      checkedAt: now,
+    });
+    await healthRepo.upsert(client, 'connection_pool', poolStatus, poolMsg, JSON.stringify({
+      totalCount: pool.totalCount,
+      idleCount: pool.idleCount,
+      waitingCount: pool.waitingCount,
+    }));
+  } catch {
+    /* pool unavailable */
+  }
+
   return results;
 }
 

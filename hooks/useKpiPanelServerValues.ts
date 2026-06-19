@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
 import { useDashboardMetrics } from './useDashboardMetrics';
+import { useDashboardKpiAggregation } from './queries/useAggregationQueries';
+import { useDashboardFiltersStore } from '../stores/dashboardFiltersStore';
 import type { DashboardMetricValue, MetricFormat } from '../types/dashboardMetrics.types';
 
 /** Maps KPI panel definition ids to executive dashboard metric ids (PostgreSQL API). */
@@ -37,16 +39,21 @@ function flattenMetrics(groups: {
 /** Server-backed KPI values for the right panel when API metrics are available. */
 export function useKpiPanelServerValues(enabled: boolean): Map<string, KpiPanelServerMetric> {
   const { data } = useDashboardMetrics(enabled);
+  const filters = useDashboardFiltersStore((s) => s.filters);
+  const hasHydrated = useDashboardFiltersStore((s) => s.hasHydrated);
+  const { data: kpiAggregation } = useDashboardKpiAggregation(enabled && hasHydrated, filters);
 
   return useMemo(() => {
     const result = new Map<string, KpiPanelServerMetric>();
-    if (!data) return result;
+    if (!data && !kpiAggregation) return result;
 
-    const byMetricId = flattenMetrics({
-      financial: data.financial,
-      realEstate: data.realEstate,
-      activity: data.activity,
-    });
+    const byMetricId = data
+      ? flattenMetrics({
+          financial: data.financial,
+          realEstate: data.realEstate,
+          activity: data.activity,
+        })
+      : new Map<string, DashboardMetricValue>();
 
     for (const [kpiId, metricId] of Object.entries(KPI_TO_METRIC_ID)) {
       const m = byMetricId.get(metricId);
@@ -58,6 +65,19 @@ export function useKpiPanelServerValues(enabled: boolean): Map<string, KpiPanelS
         });
       }
     }
+
+    if (kpiAggregation) {
+      if (!result.has('totalIncome')) {
+        result.set('totalIncome', { value: kpiAggregation.revenue, format: 'currency' });
+      }
+      if (!result.has('totalExpense')) {
+        result.set('totalExpense', { value: kpiAggregation.expenses, format: 'currency' });
+      }
+      if (!result.has('netIncome')) {
+        result.set('netIncome', { value: kpiAggregation.netIncome, format: 'currency' });
+      }
+    }
+
     return result;
-  }, [data]);
+  }, [data, kpiAggregation]);
 }

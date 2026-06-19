@@ -712,6 +712,7 @@ const EnhancedLedgerPage: React.FC = () => {
 
                 {/* Main Table Area */}
                 <div className="flex-1 min-h-[400px] md:min-h-[500px] bg-app-card rounded-xl border border-app-border shadow-ds-card overflow-hidden flex flex-col relative transition-shadow duration-ds">
+                <div className="flex-1 min-h-0 flex overflow-hidden">
                 {isLoadingTransactions && paginatedTransactions.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center bg-app-toolbar/30">
                         <div className="relative w-12 h-12 mb-4">
@@ -721,7 +722,8 @@ const EnhancedLedgerPage: React.FC = () => {
                         <p className="text-sm font-medium text-app-muted">Retrieving ledger data...</p>
                     </div>
                 ) : (
-                    <div className="flex-1 min-h-0 overflow-hidden p-1 custom-scrollbar">
+                    <>
+                    <div className="flex-1 min-w-0 min-h-0 overflow-hidden p-1 custom-scrollbar">
                         {useVirtualization && sortedTransactions.length > 20 ? (
                             <VirtualizedLedgerTable
                                 groups={groupedTransactions}
@@ -746,9 +748,18 @@ const EnhancedLedgerPage: React.FC = () => {
                                 showGrouping={filters.groupBy !== 'none'}
                             />
                         )}
-
                     </div>
+
+                    {/* Transaction Detail Panel — inline within table bounds */}
+                    <TransactionDetailDrawer
+                        isOpen={isDrawerOpen}
+                        onClose={() => setIsDrawerOpen(false)}
+                        transaction={selectedTransaction}
+                        onTransactionUpdated={() => setIsDrawerOpen(false)}
+                    />
+                    </>
                 )}
+                </div>
 
                 {/* Status Bar */}
                 <div className="px-3 py-1.5 bg-app-toolbar border-t border-app-border flex items-center text-[9px] font-bold text-app-muted uppercase tracking-widest flex-shrink-0">
@@ -768,14 +779,6 @@ const EnhancedLedgerPage: React.FC = () => {
             </div>
                 <ReportFooter />
             </div>
-
-            {/* Transaction Detail Drawer */}
-            <TransactionDetailDrawer
-                isOpen={isDrawerOpen}
-                onClose={() => setIsDrawerOpen(false)}
-                transaction={selectedTransaction}
-                onTransactionUpdated={() => setIsDrawerOpen(false)}
-            />
 
             {/* Add Transaction Modal */}
             <Modal

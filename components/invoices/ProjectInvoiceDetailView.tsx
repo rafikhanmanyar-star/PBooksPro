@@ -14,6 +14,7 @@ import { usePrintContext } from '../../context/PrintContext';
 import type { InvoicePrintData } from '../print/InvoicePrintTemplate';
 import { accountIdMatchesLogical } from '../../services/systemEntityIds';
 import { sumOutstandingInvoiceBalancesForContact } from '../../utils/sumOutstandingInvoiceBalancesForContact';
+import { buildLedgerPaidByInvoiceMap, getEffectivePaidForInvoice } from '../../utils/ledgerInvoicePayments';
 
 const SECTION_SPACING = 'mb-5 sm:mb-6';
 const CARD_PADDING = 'p-4 sm:p-5';
@@ -58,7 +59,7 @@ const ProjectInvoiceDetailView: React.FC<ProjectInvoiceDetailViewProps> = ({
   const {
     contactId,
     amount,
-    paidAmount,
+    paidAmount: invoicePaidAmount,
     issueDate,
     status,
     description,
@@ -92,8 +93,6 @@ const ProjectInvoiceDetailView: React.FC<ProjectInvoiceDetailViewProps> = ({
   const project = state.projects.find(p => p.id === resolvedProjectId);
   const unit = state.units.find(u => u.id === resolvedUnitId);
 
-  const balance = amount - paidAmount;
-
   const projectAgreement = agreementId ? state.projectAgreements.find(pa => pa.id === agreementId) : undefined;
   const isAgreementCancelled = projectAgreement?.status === ProjectAgreementStatus.CANCELLED;
 
@@ -102,6 +101,17 @@ const ProjectInvoiceDetailView: React.FC<ProjectInvoiceDetailViewProps> = ({
       .filter(t => t.invoiceId === invoice.id && t.type === TransactionType.INCOME)
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [invoice.id, state.transactions]);
+
+  // Derive paid amount from the transaction ledger (same source as the payment rows below and the
+  // grid) so the header stays correct even if a stale invoice snapshot momentarily reverts
+  // invoice.paidAmount during a server refresh. Falls back to the invoice aggregate when no
+  // ledger rows exist.
+  const ledgerPaidByInvoiceId = useMemo(
+    () => buildLedgerPaidByInvoiceMap(state.transactions),
+    [state.transactions]
+  );
+  const paidAmount = getEffectivePaidForInvoice(invoice.id, invoicePaidAmount, ledgerPaidByInvoiceId);
+  const balance = amount - paidAmount;
 
   const { print: triggerPrint } = usePrintContext();
 

@@ -25,25 +25,27 @@ import {
     syncPairedExpenseToRentFromSecurityIncome,
     syncRentFromSecurityIncomeToPairedExpense,
 } from '../utils/rentalSecurityDepositSettlement';
-import { connectRealtimeSocket, disconnectRealtimeSocket } from '../core/socket';
+import { disconnectRealtimeSocket } from '../core/socket';
 import { getQueryClient } from '../config/queryClient';
 import {
-    invalidateQueriesForEntityEvent,
-    invalidateQueriesForFinancialPosted,
-} from '../services/realtime/entityQueryInvalidation';
+    API_REFRESH_COOLDOWN_MS,
+    API_REFRESH_DEBOUNCE_MS,
+    TAB_VISIBILITY_COOLDOWN_MS,
+    isWithinRefreshCooldown,
+} from '../services/realtime/entityEventRefreshPolicy';
+import { applyEntityReducerPatch } from '../services/realtime/entityReducerPatch';
+import { initRealtimeDispatchHub } from '../services/realtime/RealtimeDispatchHub';
 import {
-    maybeMarkDashboardRefreshForEntity,
-    markDashboardRefreshForFinancialPosted,
-} from '../services/realtime/dashboardRefreshIndicator';
-import type { RealtimeEntityPayload } from '../services/realtime/realtimePayload';
-import {
-  normalizeRemoteContactRow,
-  normalizeRemoteContractRow,
-  normalizeRemoteProjectRow,
-  normalizeRemoteVendorRow,
-  resolveDeletedEntityId,
-  shouldApplyRemoteEntityPatch,
-} from '../services/realtime/normalizeRemoteEntity';
+    logPaymentTrace,
+    logPaymentTraceTransition,
+    logPaymentTraceAddTransaction,
+    logPaymentTraceAddTransactionEnter,
+    buildPaymentTraceTxExtra,
+    buildExistsBeforeExtra,
+    buildExistsAfterExtra,
+    installPaymentDebugDevGlobals,
+    syncDevAppStateExposure,
+} from '../services/debug/paymentDisappearanceTrace';
 import { toLocalDateString } from '../utils/dateUtils';
 import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
@@ -83,86 +85,6 @@ import {
 } from './reducers/appStateMerge';
 import { useAuth } from './AuthContext';
 import { useCompanyOptional } from './CompanyContext';
-
-/** Normalize API / WebSocket transaction payloads (camelCase or snake_case) for reducer merge. */
-function normalizeRemoteTransactionRow(raw: Record<string, unknown>): Transaction {
-    const t = raw as Record<string, unknown>;
-    return {
-        id: String(t.id),
-        type: t.type as TransactionType,
-        subtype: (t.subtype as string | undefined) || undefined,
-        amount: typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount ?? '0')),
-        date: String(t.date),
-        description: (t.description as string | undefined) || undefined,
-        accountId: String(t.accountId ?? t.account_id ?? ''),
-        fromAccountId: (t.fromAccountId ?? t.from_account_id ?? undefined) as string | undefined,
-        toAccountId: (t.toAccountId ?? t.to_account_id ?? undefined) as string | undefined,
-        categoryId: (t.categoryId ?? t.category_id ?? undefined) as string | undefined,
-        contactId: (t.contactId ?? t.contact_id ?? undefined) as string | undefined,
-        vendorId: (t.vendorId ?? t.vendor_id ?? undefined) as string | undefined,
-        projectId: (t.projectId ?? t.project_id ?? undefined) as string | undefined,
-        buildingId: (t.buildingId ?? t.building_id ?? undefined) as string | undefined,
-        propertyId: (t.propertyId ?? t.property_id ?? undefined) as string | undefined,
-        unitId: (t.unitId ?? t.unit_id ?? undefined) as string | undefined,
-        invoiceId: (t.invoiceId ?? t.invoice_id ?? undefined) as string | undefined,
-        billId: (t.billId ?? t.bill_id ?? undefined) as string | undefined,
-        contractId: (t.contractId ?? t.contract_id ?? undefined) as string | undefined,
-        agreementId: (t.agreementId ?? t.agreement_id ?? undefined) as string | undefined,
-        batchId: (t.batchId ?? t.batch_id ?? undefined) as string | undefined,
-        projectAssetId: (t.projectAssetId ?? t.project_asset_id ?? undefined) as string | undefined,
-        ownerId: (t.ownerId ?? t.owner_id ?? undefined) as string | undefined,
-        isSystem:
-            t.isSystem === true ||
-            t.is_system === true ||
-            t.is_system === 1,
-        userId: (t.userId ?? t.user_id ?? undefined) as string | undefined,
-        payslipId: (t.payslipId ?? t.payslip_id ?? undefined) as string | undefined,
-        reference: (t.reference as string | undefined) || undefined,
-        version:
-            typeof t.version === 'number'
-                ? t.version
-                : t.version != null
-                  ? parseInt(String(t.version), 10)
-                  : undefined,
-    };
-}
-
-/** Normalize API / WebSocket unit payloads (camelCase or snake_case) for reducer merge. */
-function normalizeRemoteUnitRow(raw: Record<string, unknown>): Unit {
-    const u = raw;
-    const label = String(u.unitNumber ?? u.unit_number ?? u.name ?? '').trim() || String(u.id);
-    return {
-        id: String(u.id),
-        name: label,
-        unitNumber: String(u.unitNumber ?? u.unit_number ?? label),
-        projectId: String(u.projectId ?? u.project_id ?? ''),
-        contactId: (u.contactId ?? u.contact_id ?? u.ownerContactId ?? u.owner_contact_id ?? undefined) as
-            | string
-            | undefined,
-        ownerContactId: (u.ownerContactId ?? u.owner_contact_id ?? undefined) as string | undefined,
-        salePrice: (() => {
-            const price = u.salePrice ?? u.sale_price;
-            if (price == null) return undefined;
-            return typeof price === 'number' ? price : parseFloat(String(price));
-        })(),
-        description: (u.description as string | undefined) || undefined,
-        type: (u.unitType ?? u.unit_type ?? u.type ?? undefined) as string | undefined,
-        size: u.size != null && u.size !== '' ? String(u.size) : undefined,
-        area: (() => {
-            const areaValue = u.area;
-            if (areaValue == null) return undefined;
-            return typeof areaValue === 'number' ? areaValue : parseFloat(String(areaValue));
-        })(),
-        floor: (u.floor as string | undefined) || undefined,
-        status: (u.status as Unit['status']) || 'available',
-        version:
-            typeof u.version === 'number'
-                ? u.version
-                : u.version != null
-                  ? parseInt(String(u.version), 10)
-                  : undefined,
-    };
-}
 
 // Re-export store accessors for backward compatibility (useSelectiveState, personalFinanceSync, etc.)
 export {
@@ -243,6 +165,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const dispatchRef = useRef<React.Dispatch<AppAction> | null>(null);
     /** Set after refreshFromApi is defined; used from dispatch for post-conflict merge (declared early for closure). */
     const refreshFromApiRef = useRef<(() => Promise<void>) | null>(null);
+    /** Shared across socket debounce, reconnect, and tab-visibility refresh (Phase 1). */
+    const lastApiRefreshAtRef = useRef(0);
     useEffect(() => {
         if (storedState) {
             storedStateRef.current = storedState;
@@ -499,6 +423,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return;
             }
             if ((action as { _isRemote?: boolean })._isRemote) {
+                const remote = action as { type: string; payload?: unknown; _isRemote?: boolean };
+                const remotePrev = latestStateRef.current;
+                if (remote.type === 'ADD_TRANSACTION') {
+                    const tx = remote.payload as Transaction;
+                    logPaymentTraceAddTransactionEnter('dispatch remote before baseDispatch', remotePrev.transactions, tx, {
+                        isRemote: true,
+                    });
+                    baseDispatch(action);
+                    logPaymentTraceAddTransaction(
+                        'dispatch remote after baseDispatch',
+                        remotePrev.transactions,
+                        latestStateRef.current.transactions,
+                        tx,
+                        { isRemote: true }
+                    );
+                    return;
+                } else if (remote.type === 'UPDATE_TRANSACTION') {
+                    const tx = remote.payload as Transaction;
+                    logPaymentTrace('UPDATE_TRANSACTION', 'dispatch remote (_isRemote)', remotePrev.transactions, {
+                        ...buildExistsBeforeExtra(remotePrev.transactions, tx),
+                    });
+                } else if (remote.type === 'SET_STATE') {
+                    const partial = remote.payload as Partial<AppState>;
+                    logPaymentTrace('SET_STATE', 'dispatch remote (_isRemote) before reducer', remotePrev.transactions, {
+                        payloadTransactionCount: partial.transactions?.length,
+                        ...buildExistsAfterExtra(remotePrev.transactions, partial.transactions ?? remotePrev.transactions),
+                    });
+                }
                 baseDispatch(action);
                 return;
             }
@@ -508,6 +460,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'ADD_TRANSACTION') {
                 const tx = a.payload as Transaction;
+                logPaymentTraceAddTransactionEnter('dispatch intercept before baseDispatch', prev.transactions, tx);
                 const invoiceToSave =
                     tx.invoiceId && tx.id
                         ? (() => {
@@ -523,6 +476,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                           })()
                         : undefined;
                 baseDispatch(action);
+                logPaymentTraceAddTransaction(
+                    'dispatch intercept after baseDispatch',
+                    prev.transactions,
+                    latestStateRef.current.transactions,
+                    tx
+                );
                 if (!tx?.id) return;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
@@ -535,6 +494,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     payload: { ...tx, version: v },
                                     _isRemote: true,
                                 } as AppAction);
+                                logPaymentTrace(
+                                    'UPDATE_TRANSACTION',
+                                    'dispatch intercept saveTransaction HTTP ack',
+                                    latestStateRef.current.transactions,
+                                    {
+                                        ...buildPaymentTraceTxExtra({ ...tx, version: v }),
+                                        transactionCountBefore: prev.transactions.length,
+                                        transactionCountAfter: latestStateRef.current.transactions.length,
+                                    }
+                                );
                             }
                             // Server recalculates invoice/bill paid_amount + version in the same txn; do not POST stale rows (409 + spurious modal).
                             if (invoiceToSave && tx.invoiceId) {
@@ -780,8 +749,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'UPDATE_TRANSACTION') {
                 const updatedTx = a.payload as Transaction;
+                logPaymentTrace('UPDATE_TRANSACTION', 'dispatch intercept before baseDispatch', prev.transactions, {
+                    ...buildExistsBeforeExtra(prev.transactions, updatedTx),
+                    isRemote: !!(action as { _isRemote?: boolean })._isRemote,
+                });
                 flushSync(() => {
                     baseDispatch(action);
+                });
+                logPaymentTrace('UPDATE_TRANSACTION', 'dispatch intercept after baseDispatch', latestStateRef.current.transactions, {
+                    ...buildExistsAfterExtra(prev.transactions, latestStateRef.current.transactions, updatedTx),
                 });
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
@@ -1618,7 +1594,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const stateRef = useRef(state);
     useEffect(() => {
         stateRef.current = state;
+        syncDevAppStateExposure(state);
     }, [state]);
+
+    useEffect(() => {
+        installPaymentDebugDevGlobals();
+    }, []);
 
     // Tenant isolation: clear all cached state when the tenant/organization changes.
     // Prevents data from one company leaking into another company's session.
@@ -1651,7 +1632,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         let hydrationStarted = false;
         try {
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
-            const base = stateRef.current;
+            // Use latestStateRef (updated synchronously in render body) rather than stateRef
+            // (updated in a passive useEffect). The async refresh continuation can run before the
+            // effect flushes, so stateRef may be one render stale and miss a just-added optimistic
+            // payment — which then gets dropped by the merge if the server snapshot also lacks it.
+            const base = latestStateRef.current;
+            logPaymentTrace('refreshFromApi', 'start', base.transactions, {
+                path: 'enter',
+            });
             const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
             const syncTenant = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
 
@@ -1686,27 +1674,70 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (lastSync && cursorMatchesTenant && baselineHasCoreData) {
                 try {
-                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(lastSync, base);
-                    merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
+                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(
+                        lastSync,
+                        latestStateRef.current
+                    );
+                    const mergeBaseline = latestStateRef.current;
+                    logPaymentTrace('refreshFromApi', 'before merge (incremental)', mergeBaseline.transactions, {
+                        path: 'incremental',
+                        lastSync,
+                    });
+                    merged = mergePartialStateIntoBaseline(
+                        mergeBaseline,
+                        inc,
+                        pickTenantSettingsPartial(inc)
+                    );
+                    logPaymentTraceTransition(
+                        'refreshFromApi',
+                        'after merge (incremental)',
+                        mergeBaseline.transactions,
+                        merged.transactions,
+                        { path: 'incremental', lastSync, nextSyncCursor: serverCursor }
+                    );
                     nextSyncCursor = serverCursor;
                 } catch {
                     const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                    const mergeBaseline = latestStateRef.current;
+                    logPaymentTrace('refreshFromApi', 'before merge (incremental fallback full)', mergeBaseline.transactions, {
+                        path: 'incremental-fallback-full',
+                    });
                     merged = mergePartialStateIntoBaseline(
-                        base,
+                        mergeBaseline,
                         partial,
                         pickTenantSettingsPartial(partial)
+                    );
+                    logPaymentTraceTransition(
+                        'refreshFromApi',
+                        'after merge (incremental fallback full)',
+                        mergeBaseline.transactions,
+                        merged.transactions,
+                        { path: 'incremental-fallback-full' }
                     );
                     nextSyncCursor = await getServerTimeIso();
                 }
             } else {
                 const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                const mergeBaseline = latestStateRef.current;
                 // When the sync cursor doesn't match the current tenant (or is missing),
                 // use initialState as the baseline to avoid mixing old tenant data.
-                const safeBase = cursorMatchesTenant ? base : initialState;
+                const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
+                logPaymentTrace('refreshFromApi', 'before merge (full)', safeBase.transactions, {
+                    path: 'full',
+                    lastSync,
+                    cursorMatchesTenant,
+                });
                 merged = mergePartialStateIntoBaseline(
                     safeBase,
                     partial,
                     pickTenantSettingsPartial(partial)
+                );
+                logPaymentTraceTransition(
+                    'refreshFromApi',
+                    'after merge (full)',
+                    safeBase.transactions,
+                    merged.transactions,
+                    { path: 'full', lastSync }
                 );
                 nextSyncCursor = await getServerTimeIso();
             }
@@ -1717,6 +1748,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             dispatch({ type: 'SET_STATE', payload: merged, _isRemote: true } as any);
+            logPaymentTrace('SET_STATE', 'dispatch from refreshFromApi', merged.transactions, {
+                path: 'refreshFromApi',
+                incremental: !!(lastSync && baselineHasCoreData),
+            });
             setStoredState(prev => ({ ...prev, ...merged } as AppState));
 
             if (currentTenantId && roleHasPermission(auth.user?.role, 'payroll.read')) {
@@ -1804,7 +1839,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         void refreshFromApi();
     }, [isAuthenticated, isInitializing, apiStateLoadFailed, refreshFromApi]);
 
-    /** Socket.IO: merge server state when another user mutates data (tenant-scoped rooms on API). */
+    /** Socket.IO: RealtimeDispatchHub owns connect + entity/financial/notification/reconnect listeners. */
     useEffect(() => {
         if (!isAuthenticated || apiStateLoadFailed) {
             disconnectRealtimeSocket();
@@ -1817,309 +1852,49 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
 
         let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-        let lastRefreshAt = 0;
-        const DEBOUNCE_MS = 2000;
-        const COOLDOWN_MS = 3000;
+        const DEBOUNCE_MS = API_REFRESH_DEBOUNCE_MS;
+        const COOLDOWN_MS = API_REFRESH_COOLDOWN_MS;
+
+        const runRefreshFromApi = () => {
+            lastApiRefreshAtRef.current = Date.now();
+            void refreshFromApiRef.current?.();
+        };
 
         const scheduleRefresh = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            const sinceLastRefresh = Date.now() - lastRefreshAt;
+            const sinceLastRefresh = Date.now() - lastApiRefreshAtRef.current;
             if (sinceLastRefresh < COOLDOWN_MS) {
                 debounceTimer = setTimeout(() => {
                     debounceTimer = null;
-                    lastRefreshAt = Date.now();
-                    void refreshFromApiRef.current?.();
+                    runRefreshFromApi();
                 }, COOLDOWN_MS - sinceLastRefresh);
                 return;
             }
             debounceTimer = setTimeout(() => {
                 debounceTimer = null;
-                lastRefreshAt = Date.now();
-                void refreshFromApiRef.current?.();
+                runRefreshFromApi();
             }, DEBOUNCE_MS);
         };
 
-        const handleEntity = (payload: RealtimeEntityPayload) => {
-            void invalidateQueriesForEntityEvent(getQueryClient(), payload, {
-                currentUserId: auth.user?.id,
-                currentTenantId: currentTenantId ?? undefined,
-            });
-            maybeMarkDashboardRefreshForEntity(payload, { currentUserId: auth.user?.id });
-
-            if (payload?.tenantId && currentTenantId && payload.tenantId !== currentTenantId) {
-                return;
-            }
-
-            const d = payload?.data;
-            const bulkRefresh =
-                payload.type === 'settings' &&
-                payload.action === 'updated' &&
-                d &&
-                typeof d === 'object' &&
-                d !== null &&
-                'bulkRefresh' in d &&
-                typeof (d as { bulkRefresh: unknown }).bulkRefresh === 'string'
-                    ? (d as { bulkRefresh: string }).bulkRefresh
-                    : undefined;
-            if (bulkRefresh) {
-                void refreshFromApiRef.current?.();
-                return;
-            }
-
-            const isOwnMutation =
-                !!(payload?.sourceUserId && auth.user?.id && payload.sourceUserId === auth.user.id);
-            if (isOwnMutation) {
-                return;
-            }
-            /* Apply entity patches immediately so other sessions see changes without waiting for debounced full refresh (multi-user). */
-            if (payload.type === 'unit' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_UNIT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'contract' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_CONTRACT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'vendor' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_VENDOR',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'contact' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_CONTACT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'project' && payload.action === 'deleted') {
-                const deletedId = resolveDeletedEntityId(payload, d);
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_PROJECT',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'bill' && payload.action === 'deleted' && typeof payload.id === 'string') {
-                baseDispatch({
-                    type: 'DELETE_BILL',
-                    payload: payload.id,
-                    _isRemote: true,
-                } as AppAction);
-            } else if (payload.type === 'transaction' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_TRANSACTION',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'invoice' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_INVOICE',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'installment_plan' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_INSTALLMENT_PLAN',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (payload.type === 'plan_amenity' && payload.action === 'deleted') {
-                const deletedId =
-                    typeof payload.id === 'string'
-                        ? payload.id
-                        : d &&
-                            typeof d === 'object' &&
-                            d !== null &&
-                            'id' in d &&
-                            typeof (d as { id: unknown }).id === 'string'
-                          ? (d as { id: string }).id
-                          : undefined;
-                if (deletedId) {
-                    baseDispatch({
-                        type: 'DELETE_PLAN_AMENITY',
-                        payload: deletedId,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            } else if (
-                payload.action !== 'deleted' &&
-                d &&
-                typeof d === 'object' &&
-                d !== null &&
-                'id' in d &&
-                typeof (d as { id: unknown }).id === 'string'
-            ) {
-                if (payload.type === 'bill') {
-                    baseDispatch({
-                        type: 'UPDATE_BILL',
-                        payload: d as Bill,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'invoice') {
-                    const inv = d as Invoice;
-                    const exists = latestStateRef.current.invoices.some((i) => i.id === inv.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_INVOICE' : 'ADD_INVOICE',
-                        payload: inv,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'transaction') {
-                    const tx = normalizeRemoteTransactionRow(d as Record<string, unknown>);
-                    const exists = latestStateRef.current.transactions.some((t) => t.id === tx.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_TRANSACTION' : 'ADD_TRANSACTION',
-                        payload: tx,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'unit') {
-                    const unit = normalizeRemoteUnitRow(d as Record<string, unknown>);
-                    const exists = latestStateRef.current.units.some((u) => u.id === unit.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_UNIT' : 'ADD_UNIT',
-                        payload: unit,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'installment_plan') {
-                    const plan = d as InstallmentPlan;
-                    const exists = latestStateRef.current.installmentPlans.some((p) => p.id === plan.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_INSTALLMENT_PLAN' : 'ADD_INSTALLMENT_PLAN',
-                        payload: plan,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'plan_amenity') {
-                    const amenity = d as PlanAmenity;
-                    const exists = latestStateRef.current.planAmenities.some((a) => a.id === amenity.id);
-                    baseDispatch({
-                        type: exists ? 'UPDATE_PLAN_AMENITY' : 'ADD_PLAN_AMENITY',
-                        payload: amenity,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'contract') {
-                    const contract = normalizeRemoteContractRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.contracts?.find((c) => c.id === contract.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, contract.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_CONTRACT' : 'ADD_CONTRACT',
-                        payload: contract,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'vendor') {
-                    const vendor = normalizeRemoteVendorRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.vendors?.find((v) => v.id === vendor.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, vendor.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_VENDOR' : 'ADD_VENDOR',
-                        payload: vendor,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'contact') {
-                    const contact = normalizeRemoteContactRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.contacts?.find((c) => c.id === contact.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, contact.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_CONTACT' : 'ADD_CONTACT',
-                        payload: contact,
-                        _isRemote: true,
-                    } as AppAction);
-                } else if (payload.type === 'project') {
-                    const project = normalizeRemoteProjectRow(d as Record<string, unknown>);
-                    const existing = latestStateRef.current.projects?.find((p) => p.id === project.id);
-                    if (!shouldApplyRemoteEntityPatch(existing, project.version)) {
-                        return;
-                    }
-                    const exists = !!existing;
-                    baseDispatch({
-                        type: exists ? 'UPDATE_PROJECT' : 'ADD_PROJECT',
-                        payload: project,
-                        _isRemote: true,
-                    } as AppAction);
-                }
-            }
-            scheduleRefresh();
-        };
-
-        const handleFinancialPosted = () => {
-            void invalidateQueriesForFinancialPosted(getQueryClient());
-            markDashboardRefreshForFinancialPosted();
-            scheduleRefresh();
-        };
-
-        const s = connectRealtimeSocket(token);
-        s.on('entity_created', handleEntity);
-        s.on('entity_updated', handleEntity);
-        s.on('entity_deleted', handleEntity);
-        s.on('financial.posted', handleFinancialPosted);
+        const cleanupHub = initRealtimeDispatchHub({
+            authToken: token,
+            queryClient: getQueryClient(),
+            currentUserId: auth.user?.id,
+            currentTenantId: currentTenantId ?? undefined,
+            getLastRefreshAt: () => lastApiRefreshAtRef.current,
+            scheduleRefresh,
+            runRefreshFromApi,
+            onEntityReducerPatch: (payload) => {
+                applyEntityReducerPatch(payload, {
+                    latestState: latestStateRef.current,
+                    dispatch: baseDispatch,
+                });
+            },
+        });
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
-            s.off('entity_created', handleEntity);
-            s.off('entity_updated', handleEntity);
-            s.off('entity_deleted', handleEntity);
-            s.off('financial.posted', handleFinancialPosted);
+            cleanupHub();
         };
     }, [isAuthenticated, auth.user?.id, currentTenantId, apiStateLoadFailed]);
 
@@ -2129,9 +1904,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         let debounce: ReturnType<typeof setTimeout> | null = null;
         const onVisibility = () => {
             if (document.visibilityState !== 'visible') return;
+            if (isWithinRefreshCooldown(Date.now(), lastApiRefreshAtRef.current, TAB_VISIBILITY_COOLDOWN_MS)) {
+                return;
+            }
             if (debounce) clearTimeout(debounce);
             debounce = setTimeout(() => {
                 debounce = null;
+                lastApiRefreshAtRef.current = Date.now();
                 void refreshFromApiRef.current?.();
             }, 1200);
         };
@@ -2150,8 +1929,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
                 const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
                 const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                // Synchronous ref (see refreshFromApi) so a just-created payment isn't dropped when
+                // the bidir-complete handler runs before stateRef's passive effect has flushed.
+                const mergeBaseline = latestStateRef.current;
+                const lastSync =
+                    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
+                const syncTenant =
+                    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
+                const cursorMatchesTenant = !lastSync || syncTenant === currentTenantId;
+                const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
                 const loadedState = mergePartialStateIntoBaseline(
-                    initialState,
+                    safeBase,
                     partial,
                     pickTenantSettingsPartial(partial)
                 );
@@ -2174,7 +1962,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         window.addEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
         return () => window.removeEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
-    }, [dispatch, setStoredState, isAuthenticated]);
+    }, [dispatch, setStoredState, isAuthenticated, currentTenantId]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {

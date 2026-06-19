@@ -78,7 +78,18 @@ export function applyChangeLogToMergedState(
       if (existing && incomingVersion < entityVersion(existing)) {
         continue;
       }
-      map.set(payloadId, payload);
+      // change_log payloads are partial summaries (e.g. a transaction payload omits invoiceId/billId).
+      // Shallow-merge onto the full row already present from the entities feed / baseline so we don't
+      // drop fields the UI relies on — a payment whose invoiceId/billId is dropped vanishes from the
+      // screen until a full reload (logout/login).
+      const mergedRow =
+        existing && typeof existing === 'object'
+          ? { ...(existing as Record<string, unknown>), ...(payload as Record<string, unknown>) }
+          : (payload as Record<string, unknown>);
+      if (typeof incomingVersion === 'number' && (mergedRow as { version?: unknown }).version == null) {
+        (mergedRow as Record<string, unknown>).version = incomingVersion;
+      }
+      map.set(payloadId, mergedRow);
     }
 
     (merged as Record<string, unknown>)[stateKey] = Array.from(map.values());

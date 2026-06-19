@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Contact } from '../../types';
 import { WhatsAppChatService, WhatsAppMessage, normalizePhoneForMatch } from '../../services/whatsappChatService';
 import { useNotification } from '../../context/NotificationContext';
-const getWebSocketClient = () => ({ on: (_e: string, _h: any) => () => {}, off: (_e?: string, _h?: any) => {} });
+import { getRealtimeSocket } from '../../core/socket';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import { ICONS } from '../../constants';
@@ -30,7 +30,6 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   const [isConfigured, setIsConfigured] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const wsClient = getWebSocketClient();
 
   // Get phone number from contact or prop
   const phoneNumber = contact?.contactNo || propPhoneNumber || '';
@@ -108,6 +107,9 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
   // Listen for real-time WhatsApp messages via WebSocket
   useEffect(() => {
     if (!isOpen || !phoneNumber) return;
+
+    const socket = getRealtimeSocket();
+    if (!socket) return;
 
     const handleWhatsAppMessageSent = (data: WhatsAppMessage) => {
       devLogger.log('[WhatsAppChatWindow] WebSocket: Message sent received', {
@@ -242,17 +244,17 @@ const WhatsAppChatWindow: React.FC<WhatsAppChatWindowProps> = ({
     };
 
     // Register WebSocket listeners
-    wsClient.on('whatsapp:message:sent', handleWhatsAppMessageSent);
-    wsClient.on('whatsapp:message:received', handleWhatsAppMessageReceived);
-    wsClient.on('whatsapp:message:status', handleWhatsAppMessageStatus);
+    socket.on('whatsapp:message:sent', handleWhatsAppMessageSent);
+    socket.on('whatsapp:message:received', handleWhatsAppMessageReceived);
+    socket.on('whatsapp:message:status', handleWhatsAppMessageStatus);
 
     return () => {
       // Cleanup: remove listeners
-      wsClient.off('whatsapp:message:sent', handleWhatsAppMessageSent);
-      wsClient.off('whatsapp:message:received', handleWhatsAppMessageReceived);
-      wsClient.off('whatsapp:message:status', handleWhatsAppMessageStatus);
+      socket.off('whatsapp:message:sent', handleWhatsAppMessageSent);
+      socket.off('whatsapp:message:received', handleWhatsAppMessageReceived);
+      socket.off('whatsapp:message:status', handleWhatsAppMessageStatus);
     };
-  }, [isOpen, phoneNumber, contact?.id, wsClient]);
+  }, [isOpen, phoneNumber, contact?.id]);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });

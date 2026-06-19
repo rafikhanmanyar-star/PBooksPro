@@ -7,14 +7,31 @@
 
 import { apiClient } from '../client';
 import { Unit } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 export class UnitsApiRepository {
   /**
-   * Get all units, optionally filtered by project
+   * Get all units, optionally filtered by project (bulk sync).
    */
   async findAll(projectId?: string): Promise<Unit[]> {
     const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : '';
     return apiClient.get<Unit[]>(`/units${q}`);
+  }
+
+  /** Paginated unit / inventory search (PERF-A3.4). */
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    projectId?: string;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+  }): Promise<PaginatedResponse<Unit>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    if (params.projectId) q.set('project_id', params.projectId);
+    return apiClient.get<PaginatedResponse<Unit>>(`/units?${q.toString()}`);
   }
 
   /**

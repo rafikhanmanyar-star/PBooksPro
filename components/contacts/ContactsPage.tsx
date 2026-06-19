@@ -7,7 +7,7 @@ import { Contact, Vendor, ContactType, TransactionType, LoanSubtype } from '../.
 import ContactForm from '../settings/ContactForm';
 import Button from '../ui/Button';
 import Modal from '../ui/Modal';
-import { ICONS, CURRENCY } from '../../constants';
+import { ICONS } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import Input from '../ui/Input';
 import SettingsLedgerModal from '../settings/SettingsLedgerModal';
@@ -21,8 +21,23 @@ import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import { useDevRenderCount } from '../../hooks/useDevRenderCount';
 import { useSubmitGuard } from '../../hooks/useSubmitGuard';
 import { useOptimisticEntity } from '../../hooks/useOptimisticEntity';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
+import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
 
-type SortKey = 'name' | 'type' | 'companyName' | 'contactNo' | 'address' | 'balance';
+import VirtualizedContactsTable, { type ContactsSortKey } from './VirtualizedContactsTable';
+
+const contactsApi = new ContactsApiRepository();
+
+function tabToTypeGroup(tab: string): string {
+    switch (tab) {
+        case 'Owners': return 'owners';
+        case 'Tenants': return 'tenants';
+        case 'Brokers': return 'brokers';
+        case 'Friends & Family': return 'friends';
+        default: return 'all';
+    }
+}
 
 interface ContactTreeNode {
     id: string;
@@ -146,10 +161,10 @@ const ContactsPage: React.FC = () => {
     const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
 
-    const [searchQuery, setSearchQuery] = useState('');
+    const { value: searchQuery, debouncedValue: debouncedSearchQuery, setValue: setSearchQuery } =
+        useDebouncedSearch({ delayMs: 300 });
     const [activeTab, setActiveTab] = useState<string>('All');
-    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
-    const [displayLimit, setDisplayLimit] = useState(200);
+    const [sortConfig, setSortConfig] = useState<{ key: ContactsSortKey; direction: 'asc' | 'desc' }>({ key: 'name', direction: 'asc' });
 
     // Tree sidebar (same style as Project Agreements)
     const [treeSearchQuery, setTreeSearchQuery] = useState('');
@@ -315,8 +330,8 @@ const ContactsPage: React.FC = () => {
             filtered = [...filtered, ...((vendors || []) as unknown as Contact[])];
         }
 
-        if (searchQuery) {
-            const q = searchQuery.toLowerCase();
+        if (debouncedSearchQuery) {
+            const q = debouncedSearchQuery.toLowerCase();
             filtered = filtered.filter(c =>
                 c.name.toLowerCase().includes(q) ||
                 c.contactNo?.includes(q) ||
@@ -341,20 +356,68 @@ const ContactsPage: React.FC = () => {
             if (valA > valB) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [contactsFromStore, vendors, activeTab, searchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
+    }, [contactsFromStore, vendors, activeTab, debouncedSearchQuery, sortConfig, contactBalances, selectedTreeType, selectedTreeId, vendorsMap]);
 
-    const handleSort = (key: SortKey) => {
+    const useClientListPath = useMemo(() => {
+        if (!isAuthenticated) return true;
+        if (activeTab === 'Vendors') return true;
+        if (selectedTreeType === 'contact' && selectedTreeId && vendorsMap.has(selectedTreeId)) return true;
+        return false;
+    }, [isAuthenticated, activeTab, selectedTreeType, selectedTreeId, vendorsMap]);
+
+    const contactsSyncFingerprint = useMemo(
+        () => contactsFromStore.reduce((acc, c) => acc + (c.version ?? 0), contactsFromStore.length),
+        [contactsFromStore]
+    );
+
+    const infiniteFilters = useMemo(
+        () => ({
+            typeGroup: tabToTypeGroup(activeTab),
+            contactId:
+                selectedTreeType === 'contact' && selectedTreeId && !vendorsMap.has(selectedTreeId)
+                    ? selectedTreeId
+                    : undefined,
+            search: debouncedSearchQuery.trim() || undefined,
+            sortKey: sortConfig.key,
+            sortDir: sortConfig.direction,
+        }),
+        [activeTab, selectedTreeType, selectedTreeId, vendorsMap, debouncedSearchQuery, sortConfig]
+    );
+
+    const {
+        items: infiniteContacts,
+        totalCount: infiniteTotalCount,
+        loading: infiniteLoading,
+        loadingMore: infiniteLoadingMore,
+        error: infiniteError,
+        hasNextPage: infiniteHasNextPage,
+        fetchNextPage: fetchNextContactsPage,
+    } = useInfiniteEntityQuery<Contact>({
+        queryKey: ['contacts', 'infinite'],
+        enabled: !useClientListPath,
+        filters: infiniteFilters,
+        syncFingerprint: contactsSyncFingerprint,
+        fetchPage: ({ pageParam, pageSize, filters }) =>
+            contactsApi.findPage({
+                page: pageParam,
+                pageSize,
+                typeGroup: filters.typeGroup as string | undefined,
+                contactId: filters.contactId as string | undefined,
+                search: filters.search as string | undefined,
+                sortKey: filters.sortKey as string | undefined,
+                sortDir: filters.sortDir as 'asc' | 'desc' | undefined,
+            }),
+    });
+
+    const tableContacts = useClientListPath ? contacts : infiniteContacts;
+    const tableTotalCount = useClientListPath ? contacts.length : infiniteTotalCount;
+
+    const handleSort = (key: ContactsSortKey) => {
         setSortConfig(current => ({
             key,
             direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
         }));
     };
-
-    const SortIcon = ({ column }: { column: SortKey }) => (
-        <span className="ml-1 text-[10px] text-slate-400">
-            {sortConfig.key === column ? (sortConfig.direction === 'asc' ? '▲' : '▼') : '↕'}
-        </span>
-    );
 
     const handleSaveContact = async (contactData: Omit<Contact, 'id'>) => {
         await guardSubmit(
@@ -618,122 +681,27 @@ const ContactsPage: React.FC = () => {
                         </div>
                     </div>
 
-                    <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col">
-                        {/* Mobile: Horizontal scroll wrapper with subtle scroll indicator */}
-                        <div className="overflow-x-auto overflow-y-auto flex-grow -mx-px">
-                            <table className="min-w-full divide-y divide-gray-200 text-xs md:text-sm">
-                                <thead className="bg-gray-50 sticky top-0 z-10 shadow-sm border-b border-gray-200">
-                                    <tr>
-                                        <th onClick={() => handleSort('name')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Name <SortIcon column="name" />
-                                        </th>
-                                        <th onClick={() => handleSort('type')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Type <SortIcon column="type" />
-                                        </th>
-                                        <th onClick={() => handleSort('companyName')} className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Company <SortIcon column="companyName" />
-                                        </th>
-                                        <th onClick={() => handleSort('contactNo')} className="px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Phone <SortIcon column="contactNo" />
-                                        </th>
-                                        <th onClick={() => handleSort('address')} className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-left text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Address <SortIcon column="address" />
-                                        </th>
-                                        <th onClick={() => handleSort('balance')} className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 cursor-pointer hover:bg-gray-100 active:bg-gray-200 select-none whitespace-nowrap transition-colors touch-manipulation">
-                                            Balance <SortIcon column="balance" />
-                                        </th>
-                                        <th className="px-2 md:px-4 py-2 md:py-3 text-right text-[10px] md:text-xs font-semibold text-gray-700 whitespace-nowrap">
-                                            Actions
-                                        </th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-100">
-                                    {contacts.length > 0 ? (
-                                        contacts.slice(0, displayLimit).map((contact, index) => {
-                                            const balance = contactBalances.get(contact.id) || 0;
-                                            return (
-                                                <tr
-                                                    key={contact.id}
-                                                    className={`cursor-pointer transition-colors group touch-manipulation ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/70'} hover:bg-slate-100`}
-                                                    onClick={() => openLedger(contact)}
-                                                >
-                                                    <td className={`px-2 md:px-4 py-2 md:py-3 font-medium whitespace-nowrap text-xs md:text-sm ${contact.isActive === false ? 'text-slate-400 line-through' : 'text-gray-800'}`}>
-                                                        {contact.name}
-                                                        {contact.isActive === false && (
-                                                            <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-slate-100 text-[8px] text-slate-500 uppercase font-bold tracking-tight">Deactivated</span>
-                                                        )}
-                                                    </td>
-                                                    <td className="px-2 md:px-4 py-2 md:py-3">
-                                                        <span className="inline-block bg-gray-100 text-gray-700 text-[9px] md:text-[10px] px-1.5 md:px-2 py-0.5 rounded-full font-medium uppercase tracking-wide whitespace-nowrap">
-                                                            {contact.type}
-                                                        </span>
-                                                    </td>
-                                                    <td className="hidden sm:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 whitespace-nowrap text-xs md:text-sm">
-                                                        {contact.companyName || '-'}
-                                                    </td>
-                                                    <td className="px-2 md:px-4 py-2 md:py-3 text-gray-600 font-mono whitespace-nowrap text-xs md:text-sm">
-                                                        {contact.contactNo || '-'}
-                                                    </td>
-                                                    <td className="hidden lg:table-cell px-2 md:px-4 py-2 md:py-3 text-gray-600 truncate max-w-xs text-xs md:text-sm" title={contact.address}>
-                                                        {contact.address || '-'}
-                                                    </td>
-                                                    <td className={`px-2 md:px-4 py-2 md:py-3 text-right font-bold font-mono whitespace-nowrap text-xs md:text-sm ${balance > 0 ? 'text-green-600' : balance < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                                        <span className="hidden sm:inline">{CURRENCY} </span>{Math.abs(balance).toLocaleString()}
-                                                        <span className="text-[9px] md:text-[10px] font-normal ml-0.5 md:ml-1 text-gray-400">
-                                                            {balance > 0 ? '(Cr)' : balance < 0 ? '(Dr)' : ''}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-2 md:px-4 py-2 md:py-3 text-right">
-                                                        <div className="flex justify-end gap-0.5 md:gap-1">
-                                                            {contact.contactNo && WhatsAppService.isValidPhoneNumber(contact.contactNo) && (
-                                                                <button
-                                                                    onClick={(e) => handleSendWhatsApp(contact, e)}
-                                                                    className="text-gray-400 hover:text-green-600 active:text-green-700 p-1 md:p-1.5 rounded-full hover:bg-green-50 active:bg-green-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
-                                                                    title="Send WhatsApp Message"
-                                                                >
-                                                                    <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.whatsapp}</div>
-                                                                </button>
-                                                            )}
-                                                            <button
-                                                                onClick={(e) => openEditModal(contact, e)}
-                                                                className="text-gray-400 hover:text-blue-600 active:text-blue-700 p-1 md:p-1.5 rounded-full hover:bg-blue-50 active:bg-blue-100 transition-colors md:opacity-0 md:group-hover:opacity-100 touch-manipulation"
-                                                                title="Edit Contact"
-                                                            >
-                                                                <div className="w-3.5 h-3.5 md:w-4 md:h-4">{ICONS.edit}</div>
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })
-                                    ) : (
-                                        <tr>
-                                            <td colSpan={7} className="px-4 py-12 text-center text-gray-500">
-                                                <div className="flex flex-col items-center justify-center">
-                                                    <div className="w-12 h-12 opacity-20 mb-2">{ICONS.users}</div>
-                                                    <p>No contacts found.</p>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    )}
-                                    {contacts.length > displayLimit && (
-                                        <tr>
-                                            <td colSpan={7} className="text-center py-3">
-                                                <button
-                                                    onClick={() => setDisplayLimit(prev => prev + 200)}
-                                                    className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                                                >
-                                                    Showing {displayLimit} of {contacts.length} — Load more
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium">
-                            Total Contacts: {contacts.length}
-                        </div>
+                    <div className="flex-grow overflow-hidden bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col min-h-0">
+                        <VirtualizedContactsTable
+                            contacts={tableContacts}
+                            contactBalances={contactBalances}
+                            sortConfig={sortConfig}
+                            onSort={handleSort}
+                            onOpenLedger={openLedger}
+                            onEdit={openEditModal}
+                            onWhatsApp={handleSendWhatsApp}
+                            loading={!useClientListPath && infiniteLoading}
+                            loadingMore={!useClientListPath && infiniteLoadingMore}
+                            error={!useClientListPath ? infiniteError : null}
+                            hasNextPage={!useClientListPath && infiniteHasNextPage}
+                            onFetchNextPage={!useClientListPath ? fetchNextContactsPage : undefined}
+                            totalCount={!useClientListPath ? tableTotalCount : undefined}
+                        />
+                        {useClientListPath ? (
+                            <div className="p-2 md:p-3 border-t border-slate-200 bg-slate-50 text-[10px] md:text-xs text-slate-500 font-medium flex-shrink-0">
+                                Total Contacts: {tableTotalCount}
+                            </div>
+                        ) : null}
                     </div>
                 </div>
             </div>

@@ -84,6 +84,33 @@ export async function listProperties(
   return new PropertyRepository(tenantId).list(client, filters);
 }
 
+export type PropertyListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  buildingId?: string;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listPropertiesPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: PropertyListPageQuery
+): Promise<{ rows: PropertyRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new PropertyRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    buildingId: query.buildingId,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getPropertyById(
   client: pg.PoolClient,
   tenantId: string,

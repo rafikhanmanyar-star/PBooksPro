@@ -1,8 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import type { GoodsReceiptLine, TenantGoodsReceipt } from '../../types';
-import { useGoodsReceiptMutations, useGoodsReceipts } from '../../hooks/useGoodsReceipts';
-import { usePurchaseOrders } from '../../hooks/usePurchaseOrders';
+import { useGoodsReceiptMutations } from '../../hooks/useGoodsReceipts';
+import { fetchGoodsReceiptsPage } from '../../services/goodsReceiptsApi';
+import { fetchPurchaseOrdersPage } from '../../services/purchaseOrdersApi';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -61,21 +65,58 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
   const { openChat } = useWhatsApp();
   const { showConfirm, showAlert } = useNotification();
   const [statusFilter, setStatusFilter] = useState('');
+  const { value: searchInput, debouncedValue: debouncedSearch, setValue: setSearchInput } =
+    useDebouncedSearch();
   const [editing, setEditing] = useState<TenantGoodsReceipt | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [loadingPo, setLoadingPo] = useState(false);
 
-  const filters = useMemo(
+  const listFilters = useMemo(
     () => ({
+      search: debouncedSearch.trim() || undefined,
       status: statusFilter || undefined,
       vendorId,
     }),
-    [statusFilter, vendorId]
+    [debouncedSearch, statusFilter, vendorId]
   );
 
-  const { data: receipts = [], isFetching, refetch } = useGoodsReceipts(filters);
-  const { data: purchaseOrders = [] } = usePurchaseOrders({ vendorId });
+  const {
+    items: receipts,
+    loading: isFetching,
+    loadingMore,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+    totalCount,
+  } = useInfiniteEntityQuery<TenantGoodsReceipt>({
+    queryKey: ['goods-receipts', 'infinite'],
+    filters: listFilters,
+    fetchPage: ({ pageParam, pageSize, filters }) =>
+      fetchGoodsReceiptsPage({
+        page: pageParam,
+        pageSize,
+        search: filters.search as string | undefined,
+        status: filters.status as string | undefined,
+        vendorId: filters.vendorId as string | undefined,
+        sortBy: 'receivedDate',
+        sortDirection: 'desc',
+      }),
+  });
+
+  const { data: poPickerPage } = useQuery({
+    queryKey: ['purchase-orders', 'grn-picker', vendorId],
+    queryFn: () =>
+      fetchPurchaseOrdersPage({
+        page: 1,
+        pageSize: 100,
+        vendorId,
+        sortBy: 'issueDate',
+        sortDirection: 'desc',
+      }),
+    staleTime: 30_000,
+  });
+  const purchaseOrders = poPickerPage?.data ?? [];
   const { save, post, close, remove } = useGoodsReceiptMutations();
 
   const receiptEligiblePos = useMemo(
@@ -304,7 +345,14 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
         </div>
       )}
 
-      <div className="flex gap-3 items-center">
+      <div className="flex flex-wrap gap-3 items-end">
+        <Input
+          label="Search"
+          placeholder="GRN #, PO #, vendor, item…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="min-w-[220px]"
+        />
         <Select
           id="grn-status-filter"
           label="Status"
@@ -312,7 +360,7 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
           onChange={(e) => setStatusFilter(e.target.value)}
           options={STATUSES.map((s) => ({ value: s, label: s || 'All' }))}
         />
-        {isFetching && <span className="text-xs text-app-muted">Refreshing…</span>}
+        {isFetching && <span className="text-xs text-app-muted pb-2">Refreshing…</span>}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-app-border">
@@ -382,10 +430,26 @@ const GoodsReceiptsPage: React.FC<GoodsReceiptsPageProps> = ({
                 </tr>
               );
             })}
-            {receipts.length === 0 && (
+            {receipts.length === 0 && !isFetching && (
               <tr>
                 <td colSpan={6} className="px-4 py-8 text-center text-app-muted">
                   No goods receipts found.
+                </td>
+              </tr>
+            )}
+            {hasNextPage && (
+              <tr>
+                <td colSpan={6} className="px-4 py-3 text-center border-t border-app-border">
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline disabled:opacity-50"
+                    onClick={() => fetchNextPage()}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore
+                      ? 'Loading more…'
+                      : `Load more (${receipts.length} of ${totalCount})`}
+                  </button>
                 </td>
               </tr>
             )}

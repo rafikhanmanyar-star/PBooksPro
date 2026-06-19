@@ -75,6 +75,35 @@ export async function listContacts(client: pg.PoolClient, tenantId: string): Pro
   return new ContactRepository(tenantId).listActive(client);
 }
 
+export type ContactListPageQuery = {
+  limit: number;
+  offset: number;
+  page: number;
+  pageSize: number;
+  typeGroup?: string;
+  contactId?: string;
+  search?: string;
+  sortKey?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listContactsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: ContactListPageQuery
+): Promise<{ rows: ContactRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new ContactRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    typeGroup: query.typeGroup,
+    contactId: query.contactId,
+    search: query.search,
+    sortKey: query.sortKey,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getContactById(
   client: pg.PoolClient,
   tenantId: string,

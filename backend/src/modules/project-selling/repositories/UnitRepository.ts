@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
+import type { SortDirection } from '../../../services/search/index.js';
 import type { UnitRow } from '../../properties/services/unitsService.js';
 
 const UNIT_COLUMNS = `id, tenant_id, project_id, unit_number, floor, unit_type, size, status, owner_contact_id, sale_price, description, area, user_id, version, deleted_at, created_at, updated_at`;
@@ -47,6 +49,68 @@ export class UnitRepository extends TenantRepository {
       params
     );
     return r.rows;
+  }
+
+  async listPage(
+    client: pg.PoolClient,
+    opts: {
+      limit: number;
+      offset: number;
+      projectId?: string;
+      search?: string;
+      sortBy?: string;
+      sortDir?: SortDirection;
+    }
+  ): Promise<{ rows: UnitRow[]; total: number }> {
+    const conditions: string[] = ['tenant_id = $1', 'deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    let paramIndex = 2;
+
+    if (opts.projectId) {
+      conditions.push(`project_id = $${paramIndex++}`);
+      params.push(opts.projectId);
+    }
+
+    const searchClause = buildIlikeSearchClause(
+      ['unit_number', 'unit_type', 'floor', 'size', 'description'],
+      opts.search,
+      params,
+      paramIndex
+    );
+    if (searchClause.clause) {
+      conditions.push(searchClause.clause);
+      paramIndex = searchClause.nextParamIndex;
+    }
+
+    const whereClause = conditions.join(' AND ');
+    const sortWhitelist: Record<string, string> = {
+      unitNumber: 'unit_number',
+      name: 'unit_number',
+      status: 'status',
+      floor: 'floor',
+      unitType: 'unit_type',
+    };
+    const { orderClause } = resolveSortExpression(
+      opts.sortBy,
+      opts.sortDir ?? 'asc',
+      sortWhitelist,
+      'unitNumber'
+    );
+
+    const countR = await client.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM units WHERE ${whereClause}`,
+      params
+    );
+    const total = parseInt(countR.rows[0]?.count ?? '0', 10);
+
+    params.push(opts.limit, opts.offset);
+    const limitIdx = paramIndex;
+    const offsetIdx = paramIndex + 1;
+    const r = await client.query<UnitRow>(
+      `SELECT ${UNIT_COLUMNS} FROM units WHERE ${whereClause} ${orderClause} LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params
+    );
+    return { rows: r.rows, total };
   }
 
   async listChangedSince(client: pg.PoolClient, since: Date): Promise<UnitRow[]> {

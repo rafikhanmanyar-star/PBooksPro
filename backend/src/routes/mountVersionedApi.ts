@@ -63,6 +63,8 @@ import { trialBalanceRouter } from './trialBalanceRoutes.js';
 import { financialReconciliationRouter } from './financialReconciliationRoutes.js';
 import { rentalOwnerSummariesRouter } from './rentalOwnerSummariesRoutes.js';
 import { dashboardMetricsRouter } from './dashboardMetricsRoutes.js';
+import { dashboardSummaryRouter } from './dashboardSummaryRoutes.js';
+import { aggregationRouter } from './aggregationRoutes.js';
 import { dashboardSnapshotsRouter } from '../modules/dashboard/routes/dashboardSnapshotsRoutes.js';
 import { rentalAnalyticsRouter } from './rentalAnalyticsRoutes.js';
 import { accountingAnalyticsRouter } from './accountingAnalyticsRoutes.js';
@@ -190,6 +192,8 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), mobileRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), notificationsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardMetricsRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardSummaryRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), aggregationRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), dashboardSnapshotsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rentalAnalyticsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), accountingAnalyticsRouter);

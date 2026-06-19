@@ -336,6 +336,33 @@ export async function listTransactions(
   return new TransactionRepository(tenantId).list(client, filters);
 }
 
+export type TransactionListPageQuery = {
+  page: number;
+  pageSize: number;
+  limit: number;
+  offset: number;
+  filters?: ListTransactionFilters;
+  search?: string;
+  sortBy?: string;
+  sortDir?: 'asc' | 'desc';
+};
+
+export async function listTransactionsPage(
+  client: pg.PoolClient,
+  tenantId: string,
+  query: TransactionListPageQuery
+): Promise<{ rows: TransactionRow[]; total: number; page: number; pageSize: number }> {
+  const { rows, total } = await new TransactionRepository(tenantId).listPage(client, {
+    limit: query.limit,
+    offset: query.offset,
+    filters: query.filters,
+    search: query.search,
+    sortBy: query.sortBy,
+    sortDir: query.sortDir,
+  });
+  return { rows, total, page: query.page, pageSize: query.pageSize };
+}
+
 export async function getTransactionById(
   client: pg.PoolClient,
   tenantId: string,

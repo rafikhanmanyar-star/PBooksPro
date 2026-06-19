@@ -1,17 +1,32 @@
 import React, {
   useState,
-  useMemo,
   useEffect,
   useCallback,
   useTransition,
   memo,
   useRef,
 } from 'react';
-import { useStateSelector, useDispatchOnly } from '../../hooks/useSelectiveState';
+import {
+  useAccounts,
+  useBills,
+  useBuildings,
+  useCategories,
+  useContacts,
+  useContracts,
+  useDispatchOnly,
+  useProjectAgreements,
+  useProjects,
+  useProperties,
+  useRentalAgreements,
+  useTransactions,
+  useUnits,
+  useVendors,
+} from '../../hooks/useSelectiveState';
 import Input from '../ui/Input';
 import { ICONS } from '../../constants';
 import { useDebounce } from '../../hooks/useDebounce';
-import { buildSearchRows, type BuiltSearchRow } from './searchModalResults';
+import { buildSearchRowsWithIndex, type BuiltSearchRow } from '../../hooks/useSearchIndex';
+import type { BuiltSearchRow as SearchRow } from './searchModalResults';
 
 interface GlobalSearchBarProps {
   autoFocus?: boolean;
@@ -23,8 +38,8 @@ const SearchResultButton = memo(function SearchResultButton({
   row,
   onPick,
 }: {
-  row: BuiltSearchRow;
-  onPick: (row: BuiltSearchRow) => void;
+  row: SearchRow;
+  onPick: (row: SearchRow) => void;
 }) {
   return (
     <button
@@ -45,7 +60,7 @@ export const openSettingsCategory = (categoryId: string) => {
 };
 
 export const navigateToSearchResult = (
-  row: BuiltSearchRow,
+  row: SearchRow,
   dispatch: ReturnType<typeof useDispatchOnly>
 ) => {
   if (row.session) {
@@ -63,85 +78,40 @@ export const navigateToSearchResult = (
   }
 };
 
-const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
-  autoFocus = false,
-  onClose,
-  className = '',
-}) => {
-  const dispatch = useDispatchOnly();
-  const transactions = useStateSelector((s) => s.transactions);
-  const accounts = useStateSelector((s) => s.accounts);
-  const categories = useStateSelector((s) => s.categories);
-  const contacts = useStateSelector((s) => s.contacts);
-  const bills = useStateSelector((s) => s.bills);
-  const contracts = useStateSelector((s) => s.contracts);
-  const vendors = useStateSelector((s) => s.vendors);
-  const projectAgreements = useStateSelector((s) => s.projectAgreements);
-  const rentalAgreements = useStateSelector((s) => s.rentalAgreements);
-  const projects = useStateSelector((s) => s.projects);
-  const buildings = useStateSelector((s) => s.buildings);
-  const properties = useStateSelector((s) => s.properties);
-  const units = useStateSelector((s) => s.units);
-
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isFocused, setIsFocused] = useState(false);
-  const debouncedSearch = useDebounce(searchQuery, 220);
-  const [searchRows, setSearchRows] = useState<BuiltSearchRow[]>([]);
+/** Subscribes to entity slices only while search is active (focused or has query). */
+const GlobalSearchIndexRunner = memo(function GlobalSearchIndexRunner({
+  debouncedSearch,
+  onRows,
+}: {
+  debouncedSearch: string;
+  onRows: (rows: BuiltSearchRow[]) => void;
+}) {
+  const transactions = useTransactions();
+  const accounts = useAccounts();
+  const categories = useCategories();
+  const contacts = useContacts();
+  const bills = useBills();
+  const contracts = useContracts();
+  const vendors = useVendors();
+  const projectAgreements = useProjectAgreements();
+  const rentalAgreements = useRentalAgreements();
+  const projects = useProjects();
+  const buildings = useBuildings();
+  const properties = useProperties();
+  const units = useUnits();
   const [, startSearchTransition] = useTransition();
-  const [, startPickTransition] = useTransition();
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const focusInput = useCallback(() => {
-    const input = document.getElementById('global-search-input') as HTMLInputElement | null;
-    input?.focus();
-  }, []);
-
-  const accountById = useMemo(() => {
-    const m = new Map<string, { name?: string }>();
-    for (const a of accounts) m.set(a.id, a);
-    return m;
-  }, [accounts]);
-
-  const categoryById = useMemo(() => {
-    const m = new Map<string, { name?: string }>();
-    for (const c of categories) m.set(c.id, c);
-    return m;
-  }, [categories]);
-
-  const contactById = useMemo(() => {
-    const m = new Map<string, (typeof contacts)[0]>();
-    for (const c of contacts) m.set(c.id, c);
-    return m;
-  }, [contacts]);
-
-  const vendorById = useMemo(() => {
-    const m = new Map<string, { name?: string }>();
-    for (const v of vendors ?? []) {
-      if (v?.id) m.set(v.id, v);
-    }
-    return m;
-  }, [vendors]);
-
-  const contractById = useMemo(() => {
-    const m = new Map<string, (typeof contracts)[0]>();
-    for (const x of contracts) m.set(x.id, x);
-    return m;
-  }, [contracts]);
-
-  const showDropdown = isFocused && (searchQuery.trim().length > 0 || debouncedSearch.trim().length > 0);
 
   useEffect(() => {
     const raw = debouncedSearch.trim();
     startSearchTransition(() => {
       if (!raw) {
-        setSearchRows([]);
+        onRows([]);
         return;
       }
-      const rows = buildSearchRows(raw, {
+      const rows = buildSearchRowsWithIndex(raw, {
         transactions,
         bills,
         contracts,
-        contractById,
         projectAgreements,
         rentalAgreements,
         contacts,
@@ -151,19 +121,15 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
         buildings,
         properties,
         units,
-        accountById,
-        categoryById,
-        contactById,
-        vendorById,
+        vendors,
       });
-      setSearchRows(rows);
+      onRows(rows);
     });
   }, [
     debouncedSearch,
     transactions,
     bills,
     contracts,
-    contractById,
     projectAgreements,
     rentalAgreements,
     contacts,
@@ -173,12 +139,47 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
     buildings,
     properties,
     units,
-    accountById,
-    categoryById,
-    contactById,
-    vendorById,
+    vendors,
+    onRows,
     startSearchTransition,
   ]);
+
+  return null;
+});
+
+const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
+  autoFocus = false,
+  onClose,
+  className = '',
+}) => {
+  const dispatch = useDispatchOnly();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isFocused, setIsFocused] = useState(false);
+  const debouncedSearch = useDebounce(searchQuery, 220);
+  const [searchRows, setSearchRows] = useState<BuiltSearchRow[]>([]);
+  const [, startPickTransition] = useTransition();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const needsEntityData =
+    isFocused || searchQuery.trim().length > 0 || debouncedSearch.trim().length > 0;
+
+  const handleRows = useCallback((rows: BuiltSearchRow[]) => {
+    setSearchRows(rows);
+  }, []);
+
+  const focusInput = useCallback(() => {
+    const input = document.getElementById('global-search-input') as HTMLInputElement | null;
+    input?.focus();
+  }, []);
+
+  const showDropdown =
+    isFocused && (searchQuery.trim().length > 0 || debouncedSearch.trim().length > 0);
+
+  useEffect(() => {
+    if (!needsEntityData) {
+      setSearchRows([]);
+    }
+  }, [needsEntityData]);
 
   useEffect(() => {
     if (!autoFocus) return;
@@ -210,7 +211,7 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
   }, [onClose]);
 
   const handlePick = useCallback(
-    (row: BuiltSearchRow) => {
+    (row: SearchRow) => {
       startPickTransition(() => {
         navigateToSearchResult(row, dispatch);
         setSearchQuery('');
@@ -228,6 +229,10 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
 
   return (
     <div ref={containerRef} className={`relative w-full ${className}`}>
+      {needsEntityData && (
+        <GlobalSearchIndexRunner debouncedSearch={debouncedSearch} onRows={handleRows} />
+      )}
+
       <div className="relative">
         <Input
           id="global-search-input"
@@ -253,7 +258,9 @@ const GlobalSearchBar: React.FC<GlobalSearchBarProps> = ({
             type="button"
             aria-label="Clear search"
           >
-            <span className="h-4 w-4 flex items-center justify-center [&>svg]:h-4 [&>svg]:w-4">{ICONS.x}</span>
+            <span className="h-4 w-4 flex items-center justify-center [&>svg]:h-4 [&>svg]:w-4">
+              {ICONS.x}
+            </span>
           </button>
         )}
       </div>

@@ -1,7 +1,4 @@
-import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getRealtimeSocket } from '../core/socket';
-import { useAuth } from '../context/AuthContext';
 import {
   closeGoodsReceipt,
   deleteGoodsReceipt,
@@ -18,30 +15,6 @@ export function useGoodsReceipts(filters?: {
   projectId?: string;
   purchaseOrderId?: string;
 }) {
-  const queryClient = useQueryClient();
-  const { tenantId } = useAuth();
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-    if (!socket || !tenantId) return;
-    const onEntity = (payload: { tenantId?: string; type?: string }) => {
-      if (payload.tenantId && payload.tenantId !== tenantId) return;
-      if (payload.type === 'goods_receipt' || payload.type === 'purchase_order') {
-        void queryClient.invalidateQueries({ queryKey: ['goods-receipts'] });
-        void queryClient.invalidateQueries({ queryKey: ['goods-receipt-report'] });
-        void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-      }
-    };
-    socket.on('entity_updated', onEntity);
-    socket.on('entity_created', onEntity);
-    socket.on('entity_deleted', onEntity);
-    return () => {
-      socket.off('entity_updated', onEntity);
-      socket.off('entity_created', onEntity);
-      socket.off('entity_deleted', onEntity);
-    };
-  }, [tenantId, queryClient]);
-
   return useQuery({
     queryKey: ['goods-receipts', filters],
     queryFn: () => fetchGoodsReceipts(filters),

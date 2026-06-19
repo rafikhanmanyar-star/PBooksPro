@@ -7,7 +7,17 @@ import { listAllTenantIds } from '../repositories/TenantListRepository.js';
 
 const INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+let snapshotInterval: ReturnType<typeof setInterval> | null = null;
+
+export function stopDashboardSnapshotScheduler(): void {
+  if (snapshotInterval) {
+    clearInterval(snapshotInterval);
+    snapshotInterval = null;
+  }
+}
+
 export function startDashboardSnapshotScheduler(): void {
+  stopDashboardSnapshotScheduler();
   const run = async () => {
     const pool = getPool();
     const client = await pool.connect();
@@ -51,5 +61,5 @@ export function startDashboardSnapshotScheduler(): void {
   };
 
   void run();
-  setInterval(() => void run(), INTERVAL_MS);
+  snapshotInterval = setInterval(() => void run(), INTERVAL_MS);
 }

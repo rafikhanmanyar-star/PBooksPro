@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useLayoutEffect, memo, Suspense, startTransition, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, memo, startTransition } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
@@ -8,37 +8,30 @@ import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState
 import useLocalStorage from '../../hooks/useLocalStorage';
 /** Static import: nested lazy + file:// in Electron breaks dynamic chunk fetch (see ProjectManagementPage). */
 import { RentalCustomReportsPage } from '../../modules/report-designer/ReportDesignerPage';
-
-/** Lazy-load each rental sub-page so opening the module does not parse one giant bundle on the main thread. */
-const RentalSettingsPage = lazy(() => import('./RentalSettingsPage'));
-const RentalAgreementsPage = lazy(() => import('../rentalAgreements/RentalAgreementsPage'));
-const RentalInvoicesPage = lazy(() => import('./RentalInvoicesPage'));
-const MonthlyServiceChargesPage = lazy(() => import('./MonthlyServiceChargesPage'));
-const RentalBillsPage = lazy(() => import('./RentalBillsPage'));
-const OwnerPayoutsPage = lazy(() => import('../payouts/OwnerPayoutsPage'));
-const PropertyLayoutReport = lazy(() => import('../reports/PropertyLayoutReport'));
-const UnitStatusReport = lazy(() => import('../reports/UnitStatusReport'));
-const AgreementExpiryReport = lazy(() => import('../reports/AgreementExpiryReport'));
-const BuildingAccountsReport = lazy(() => import('../reports/BuildingAccountsReport'));
-const BMAnalysisReport = lazy(() => import('../reports/BMAnalysisReport'));
-const OwnerPayoutsReport = lazy(() => import('../reports/OwnerPayoutsReport'));
-const ServiceChargesDeductionReport = lazy(() => import('../reports/ServiceChargesDeductionReport'));
-const TenantLedgerReport = lazy(() => import('../reports/TenantLedgerReport'));
-const VendorLedgerReport = lazy(() => import('../reports/VendorLedgerReport'));
-const OwnerSecurityDepositReport = lazy(() => import('../reports/OwnerSecurityDepositReport'));
-const BrokerFeeReport = lazy(() => import('../reports/BrokerFeeReport'));
-const InvoicePaymentAnalysisReport = lazy(() => import('../reports/InvoicePaymentAnalysisReport'));
-const OwnerIncomeSummaryReport = lazy(() => import('../reports/OwnerIncomeSummaryReport'));
-const RentalReceivableReport = lazy(() => import('../reports/RentalReceivableReport'));
-const RentalAnalyticsPage = lazy(() => import('../../modules/rental-analytics/RentalAnalyticsPage'));
-const CollectionsAnalyticsPage = lazy(() => import('../../modules/collections-analytics/CollectionsAnalyticsPage'));
-const ExpenseAnalyticsPage = lazy(() => import('../../modules/expense-analytics/ExpenseAnalyticsPage'));
-
-const RENTAL_LAZY_FALLBACK = (
-    <div className="flex items-center justify-center h-full min-h-[200px] text-app-muted text-sm">
-        Loading…
-    </div>
-);
+/** Static imports: nested React.lazy + file:// in Electron causes "Failed to fetch dynamically imported module". */
+import RentalSettingsPage from './RentalSettingsPage';
+import RentalAgreementsPage from '../rentalAgreements/RentalAgreementsPage';
+import RentalInvoicesPage from './RentalInvoicesPage';
+import MonthlyServiceChargesPage from './MonthlyServiceChargesPage';
+import RentalBillsPage from './RentalBillsPage';
+import OwnerPayoutsPage from '../payouts/OwnerPayoutsPage';
+import PropertyLayoutReport from '../reports/PropertyLayoutReport';
+import UnitStatusReport from '../reports/UnitStatusReport';
+import AgreementExpiryReport from '../reports/AgreementExpiryReport';
+import BuildingAccountsReport from '../reports/BuildingAccountsReport';
+import BMAnalysisReport from '../reports/BMAnalysisReport';
+import OwnerPayoutsReport from '../reports/OwnerPayoutsReport';
+import ServiceChargesDeductionReport from '../reports/ServiceChargesDeductionReport';
+import TenantLedgerReport from '../reports/TenantLedgerReport';
+import VendorLedgerReport from '../reports/VendorLedgerReport';
+import OwnerSecurityDepositReport from '../reports/OwnerSecurityDepositReport';
+import BrokerFeeReport from '../reports/BrokerFeeReport';
+import InvoicePaymentAnalysisReport from '../reports/InvoicePaymentAnalysisReport';
+import OwnerIncomeSummaryReport from '../reports/OwnerIncomeSummaryReport';
+import RentalReceivableReport from '../reports/RentalReceivableReport';
+import RentalAnalyticsPage from '../../modules/rental-analytics/RentalAnalyticsPage';
+import CollectionsAnalyticsPage from '../../modules/collections-analytics/CollectionsAnalyticsPage';
+import ExpenseAnalyticsPage from '../../modules/expense-analytics/ExpenseAnalyticsPage';
 
 interface RentalManagementPageProps {
     initialPage: Page;
@@ -79,6 +72,9 @@ const LEDGER_REPORTS: RentalView[] = [
     'Security Deposit',
     'Broker Fees',
 ];
+
+/** Hidden from sub-nav only; routing and page code remain available. */
+const NAV_HIDDEN_REPORTS: RentalView[] = ['Custom Reports'];
 
 /** Ledger reports that keep their React state when switching to other rental views or app pages (Rental tab stays mounted). */
 type PersistedLedgerReportView = 'Owner Rental Income' | 'Broker Fees' | 'Security Deposit';
@@ -438,7 +434,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                                     <NavSectionLabel variant="section" className="py-1">Ledgers</NavSectionLabel>
                                 )}
                                 <div className="space-y-0.5">
-                                    {LEDGER_REPORTS.map((name) => (
+                                    {LEDGER_REPORTS.filter((name) => !NAV_HIDDEN_REPORTS.includes(name)).map((name) => (
                                         <NavItem key={name} view={name} label={name} />
                                     ))}
                                 </div>
@@ -455,7 +451,7 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
         { value: 'Visual Layout', label: 'Visual layout', group: 'Property views' },
         { value: 'Tabular Layout', label: 'Tabular layout', group: 'Property views' },
         ...ANALYSIS_REPORTS.map((v) => ({ value: v, label: v, group: 'Reports — Analysis' })),
-        ...LEDGER_REPORTS.map((v) => ({
+        ...LEDGER_REPORTS.filter((v) => !NAV_HIDDEN_REPORTS.includes(v)).map((v) => ({
             value: v,
             label: v === 'Custom Reports' ? 'Custom reports' : v,
             group: 'Reports — Ledgers',
@@ -500,7 +496,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                 </div>
 
             <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col relative">
-                <Suspense fallback={RENTAL_LAZY_FALLBACK}>
                     {isOperationalView && (
                         <div className="absolute inset-0 z-20 flex flex-col min-h-0 overflow-hidden">
                             {renderOperationalContent()}
@@ -523,7 +518,6 @@ const RentalManagementPage: React.FC<RentalManagementPageProps> = ({ initialPage
                         );
                     })}
                     {!isOperationalView && renderEphemeralReportContent()}
-                </Suspense>
             </div>
         </div>
     );

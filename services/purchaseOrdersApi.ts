@@ -1,5 +1,7 @@
 import { apiClient } from './api/client';
 import type { PurchaseOrderReportSummary, TenantPurchaseOrder } from '../types';
+import type { PaginatedResponse } from '../shared/types/pagination';
+import { appendEntitySearchParams } from './api/entitySearchParams';
 
 export async function fetchPurchaseOrders(params?: {
   status?: string;
@@ -12,6 +14,24 @@ export async function fetchPurchaseOrders(params?: {
   if (params?.projectId) qs.set('projectId', params.projectId);
   const suffix = qs.toString() ? `?${qs}` : '';
   return apiClient.get<TenantPurchaseOrder[]>(`/purchase-orders${suffix}`);
+}
+
+export async function fetchPurchaseOrdersPage(params: {
+  page: number;
+  pageSize: number;
+  search?: string;
+  sortBy?: string;
+  sortDirection?: 'asc' | 'desc';
+  status?: string;
+  vendorId?: string;
+  projectId?: string;
+}): Promise<PaginatedResponse<TenantPurchaseOrder>> {
+  const q = new URLSearchParams();
+  appendEntitySearchParams(q, params);
+  if (params.status) q.set('status', params.status);
+  if (params.vendorId) q.set('vendorId', params.vendorId);
+  if (params.projectId) q.set('projectId', params.projectId);
+  return apiClient.get<PaginatedResponse<TenantPurchaseOrder>>(`/purchase-orders?${q.toString()}`);
 }
 
 export async function fetchPurchaseOrderById(id: string): Promise<TenantPurchaseOrder> {

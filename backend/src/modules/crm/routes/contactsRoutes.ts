@@ -5,10 +5,13 @@ import {
   createContact,
   getContactById,
   listContacts,
+  listContactsPage,
   rowToContactApi,
   softDeleteContact,
   updateContact,
 } from '../services/contactsService.js';
+import { buildPaginatedResponse } from '../../../utils/pagination/index.js';
+import { hasPaginationQuery, parseEntitySearchQuery } from '../../../services/search/index.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
 import { respondVersionConflict } from '../../../utils/versionConflict.js';
@@ -21,12 +24,43 @@ contactsRouter.get('/contacts', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const query = req.query as Record<string, unknown>;
+  const usePagination = hasPaginationQuery(query);
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listContacts(client, tenantId);
-      sendSuccess(res, rows.map((r) => rowToContactApi(r)));
+      if (!usePagination) {
+        const rows = await listContacts(client, tenantId);
+        sendSuccess(res, rows.map((r) => rowToContactApi(r)));
+        return;
+      }
+
+      const { page, pageSize, limit, offset, search, sortBy, sortDir } = parseEntitySearchQuery(query, {
+        defaultPageSize: 50,
+        maxPageSize: 500,
+      });
+      const typeGroup = typeof query.typeGroup === 'string' ? query.typeGroup : undefined;
+      const contactId = typeof query.contactId === 'string' ? query.contactId : undefined;
+
+      const { rows, total } = await listContactsPage(client, tenantId, {
+        limit,
+        offset,
+        page,
+        pageSize,
+        typeGroup,
+        contactId,
+        search,
+        sortKey: sortBy,
+        sortDir,
+      });
+      const paginated = buildPaginatedResponse(
+        rows.map((r) => rowToContactApi(r)),
+        total,
+        page,
+        pageSize
+      );
+      sendSuccess(res, paginated);
     } finally {
       client.release();
     }

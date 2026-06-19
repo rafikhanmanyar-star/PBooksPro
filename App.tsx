@@ -44,6 +44,7 @@ const getWebSocketClient = () => _websocketClient as any;
 import { VersionUpdateNotification } from './components/ui/VersionUpdateNotification';
 import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
+import { PageActiveProvider, PageActiveScope } from './context/PageActiveContext';
 import Loading from './components/ui/Loading';
 import LoadingShell from './components/ui/LoadingShell';
 import PageRouteSkeleton from './components/ui/PageRouteSkeleton';
@@ -70,6 +71,7 @@ import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/d
 import { isAdminRole } from './hooks/useRecordLock';
 import { resolveEnterpriseRole } from './shared/rbac/permissions';
 import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
+import PaymentDisappearTracePanel from './components/debug/PaymentDisappearTracePanel';
 
 
 // Lazy Load Components
@@ -688,17 +690,19 @@ const App: React.FC = () => {
         id={pageId}
       >
         <div className="w-full h-full min-h-0">
-          <Suspense
-            fallback={
-              groupKey === 'TRANSACTIONS' ? (
-                <PageRouteSkeleton variant="ledger" />
-              ) : (
-                <PageRouteSkeleton />
-              )
-            }
-          >
-            {content}
-          </Suspense>
+          <PageActiveScope pageGroup={groupKey} isActive={isActive}>
+            <Suspense
+              fallback={
+                groupKey === 'TRANSACTIONS' ? (
+                  <PageRouteSkeleton variant="ledger" />
+                ) : (
+                  <PageRouteSkeleton />
+                )
+              }
+            >
+              {content}
+            </Suspense>
+          </PageActiveScope>
         </div>
         {!isFixedLayout && isActive && <ScrollToTop containerId={pageId} />}
       </div>
@@ -824,6 +828,7 @@ const App: React.FC = () => {
         <Sidebar currentPage={currentPage} setCurrentPage={handleSetPage} />
 
         {/* Main Content Wrapper – left padding follows ViewportContext (compact on 1366x768 etc.) */}
+        <PageActiveProvider activeGroup={activeGroup}>
         <div
           className="flex-1 flex flex-col min-w-0 max-w-full overflow-x-hidden transition-all duration-300 ease-in-out main-content-offset"
           style={{ marginRight: 'var(--right-sidebar-width, 0px)' }}
@@ -871,6 +876,7 @@ const App: React.FC = () => {
             <Footer isPanelOpen={isPanelOpen} onNavigate={handleSetPage} />
           </div>
         </div>
+        </PageActiveProvider>
 
         {/* Right Sidebar (KPI Panel) */}
         <KPIPanel />
@@ -897,6 +903,7 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
+      <PaymentDisappearTracePanel />
     </OfflineProvider>
   );
 };

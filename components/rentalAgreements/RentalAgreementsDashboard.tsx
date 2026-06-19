@@ -11,6 +11,8 @@ import RentalAgreementTerminationModal from './RentalAgreementTerminationModal';
 import Modal from '../ui/Modal';
 import Button from '../ui/Button';
 import useLocalStorage from '../../hooks/useLocalStorage';
+import { useAuth } from '../../context/AuthContext';
+import { useRentalSummary } from '../../hooks/queries/useDashboardSummaryQueries';
 
 type ViewBy = 'building' | 'property' | 'tenant' | 'owner';
 type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
@@ -18,6 +20,7 @@ type StatusFilter = 'all' | 'active' | 'expiring' | 'renewed' | 'terminated';
 const RentalAgreementsDashboard: React.FC = () => {
   const state = useRentalReportAppState();
     const { contacts, buildings, properties, rentalAgreements } = state;
+  const { isAuthenticated } = useAuth();
 
   const [viewBy, setViewBy] = useLocalStorage<ViewBy>('agreements_dash_viewBy', 'building');
   const [statusFilter, setStatusFilter] = useLocalStorage<StatusFilter>('agreements_dash_status', 'all');
@@ -35,6 +38,15 @@ const RentalAgreementsDashboard: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [sortConfig, setSortConfig] = useState<{ key: string; dir: 'asc' | 'desc' }>({ key: 'startDate', dir: 'desc' });
+
+  const rentalSummaryParams = useMemo(
+    () => ({
+      status: statusFilter === 'all' ? undefined : statusFilter,
+      search: searchQuery.trim() || undefined,
+    }),
+    [statusFilter, searchQuery]
+  );
+  const { data: rentalSummary } = useRentalSummary(isAuthenticated, rentalSummaryParams);
 
   const contactMap = useMemo(() => new Map(contacts.map(c => [c.id, c])), [contacts]);
   const propertyMap = useMemo(() => new Map(properties.map(p => [p.id, p])), [properties]);
@@ -561,8 +573,14 @@ const RentalAgreementsDashboard: React.FC = () => {
             <div className="px-3 py-1.5 bg-app-toolbar/40 border-t border-app-border flex items-center justify-between text-xs text-app-muted flex-shrink-0">
               <span>{sortedAgreements.length} agreements</span>
               <div className="flex gap-4 tabular-nums">
-                <span>Rent: <strong className="text-app-text">{CURRENCY} {sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0).toLocaleString()}</strong></span>
-                <span>Security: <strong className="text-app-text">{CURRENCY} {sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.securityDeposit)) || 0), 0).toLocaleString()}</strong></span>
+                <span>Rent: <strong className="text-app-text">{CURRENCY} {(isAuthenticated && rentalSummary
+                  ? rentalSummary.activeMonthlyRent
+                  : sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.monthlyRent)) || 0), 0)
+                ).toLocaleString()}</strong></span>
+                <span>Security: <strong className="text-app-text">{CURRENCY} {(isAuthenticated && rentalSummary
+                  ? rentalSummary.activeSecurityDeposits
+                  : sortedAgreements.filter(a => a.status === RentalAgreementStatus.ACTIVE).reduce((s, a) => s + (parseFloat(String(a.securityDeposit)) || 0), 0)
+                ).toLocaleString()}</strong></span>
               </div>
             </div>
           </div>

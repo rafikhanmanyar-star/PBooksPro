@@ -5,10 +5,10 @@ import { queryKeys } from './queryKeys';
 /**
  * Organization users for reports (e.g. marketing activity); cached via React Query defaults.
  */
-export function useOrgUsersQuery() {
+export function useOrgUsersQuery(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: queryKeys.reports.orgUsers(),
-    queryFn: () => apiClient.get<{ id: string; name: string; username: string }[]>('/users'),
-    enabled: true,
+    queryKey: queryKeys.orgUsers(),
+    queryFn: () => apiClient.get<{ id: string; name: string; username: string; role?: string }[]>('/users'),
+    enabled: options?.enabled ?? true,
   });
 }

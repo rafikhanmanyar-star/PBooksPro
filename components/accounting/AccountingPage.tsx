@@ -1,4 +1,4 @@
-import React, { memo, Suspense, useEffect, useState } from 'react';
+import React, { memo, useEffect, useState } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
@@ -15,20 +15,20 @@ import {
 export type { AccountingView } from './accountingReportTypes';
 export { ACCOUNTING_FINANCIAL_REPORTS, ACCOUNTING_PORTFOLIO_REPORTS } from './accountingReportTypes';
 
-const ProjectProfitLossReport = React.lazy(() => import('../reports/ProjectProfitLossReport'));
-const ProjectBalanceSheetReport = React.lazy(() => import('../reports/ProjectBalanceSheetReport'));
-const TrialBalanceReport = React.lazy(() => import('../reports/TrialBalanceReport'));
-const ReconciliationDashboard = React.lazy(() => import('../reports/ReconciliationDashboard'));
-const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
-const ProjectInvestorReport = React.lazy(() => import('../reports/ProjectInvestorReport'));
-const ProjectBuildingFundsReport = React.lazy(() => import('../dashboard/ProjectBuildingFundsReport'));
-const BankAccountsReport = React.lazy(() => import('../dashboard/BankAccountsReport'));
-const AccountConsistencyReport = React.lazy(() => import('../dashboard/AccountConsistencyReport'));
-const AccountingAnalyticsPage = React.lazy(() => import('../../modules/accounting-analytics/AccountingAnalyticsPage'));
-const BankingAnalyticsPage = React.lazy(() => import('../../modules/banking-analytics/BankingAnalyticsPage'));
-/** Static import — Report Designer is a heavy shell; avoid nested lazy chunks in Electron file:// mode. */
+/** Static imports: nested React.lazy + file:// in Electron causes "Failed to fetch dynamically imported module". */
+import ProjectProfitLossReport from '../reports/ProjectProfitLossReport';
+import ProjectBalanceSheetReport from '../reports/ProjectBalanceSheetReport';
+import TrialBalanceReport from '../reports/TrialBalanceReport';
+import ReconciliationDashboard from '../reports/ReconciliationDashboard';
+import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
+import ProjectInvestorReport from '../reports/ProjectInvestorReport';
+import ProjectBuildingFundsReport from '../dashboard/ProjectBuildingFundsReport';
+import BankAccountsReport from '../dashboard/BankAccountsReport';
+import AccountConsistencyReport from '../dashboard/AccountConsistencyReport';
+import AccountingAnalyticsPage from '../../modules/accounting-analytics/AccountingAnalyticsPage';
+import BankingAnalyticsPage from '../../modules/banking-analytics/BankingAnalyticsPage';
 import ReportDesignerPage from '../../modules/report-designer/ReportDesignerPage';
-const UnpostedTransactionsQueuePage = React.lazy(() => import('./UnpostedTransactionsQueuePage'));
+import UnpostedTransactionsQueuePage from './UnpostedTransactionsQueuePage';
 
 const DEFAULT_VIEW: AccountingView = 'Profit & Loss';
 
@@ -291,9 +291,7 @@ const AccountingPage: React.FC = () => {
             </label>
           </div>
         )}
-        <Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading...</div>}>
-          {renderContent()}
-        </Suspense>
+        {renderContent()}
       </div>
     </div>
   );

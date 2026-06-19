@@ -43,6 +43,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   performance: 'Performance',
   email: 'Email',
   user_activity: 'Activity',
+  sync: 'Synchronization',
 };
 
 const AdminMonitoringDashboard: React.FC = () => {

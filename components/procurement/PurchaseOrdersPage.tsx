@@ -1,7 +1,10 @@
 import React, { useMemo, useState } from 'react';
 import { useFinancialReportAppState } from '../../hooks/useSelectiveState';
 import { TransactionType, type POItem, type TenantPurchaseOrder } from '../../types';
-import { usePurchaseOrderMutations, usePurchaseOrders } from '../../hooks/usePurchaseOrders';
+import { usePurchaseOrderMutations } from '../../hooks/usePurchaseOrders';
+import { fetchPurchaseOrdersPage } from '../../services/purchaseOrdersApi';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 import { useNotification } from '../../context/NotificationContext';
@@ -95,20 +98,44 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
   const { openChat } = useWhatsApp();
   const { showConfirm, showAlert } = useNotification();
   const [statusFilter, setStatusFilter] = useState('');
+  const { value: searchInput, debouncedValue: debouncedSearch, setValue: setSearchInput } =
+    useDebouncedSearch();
   const [editing, setEditing] = useState<TenantPurchaseOrder | null>(null);
   const [viewing, setViewing] = useState<TenantPurchaseOrder | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const filters = useMemo(
+  const listFilters = useMemo(
     () => ({
+      search: debouncedSearch.trim() || undefined,
       status: statusFilter || undefined,
       vendorId,
     }),
-    [statusFilter, vendorId]
+    [debouncedSearch, statusFilter, vendorId]
   );
 
-  const { data: orders = [], isFetching, refetch } = usePurchaseOrders(filters);
+  const {
+    items: orders,
+    loading: isFetching,
+    loadingMore,
+    hasNextPage,
+    fetchNextPage,
+    refetch,
+    totalCount,
+  } = useInfiniteEntityQuery<TenantPurchaseOrder>({
+    queryKey: ['purchase-orders', 'infinite'],
+    filters: listFilters,
+    fetchPage: ({ pageParam, pageSize, filters }) =>
+      fetchPurchaseOrdersPage({
+        page: pageParam,
+        pageSize,
+        search: filters.search as string | undefined,
+        status: filters.status as string | undefined,
+        vendorId: filters.vendorId as string | undefined,
+        sortBy: 'issueDate',
+        sortDirection: 'desc',
+      }),
+  });
   const { save, submit, approve, cancel, remove } = usePurchaseOrderMutations();
 
   const expenseCategories = useMemo(
@@ -316,7 +343,14 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
         </div>
       </div>
 
-      <div className="flex gap-3 items-end">
+      <div className="flex flex-wrap gap-3 items-end">
+        <Input
+          label="Search"
+          placeholder="PO #, vendor, item name…"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          className="min-w-[220px]"
+        />
         <Select label="Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
           {STATUSES.map((s) => (
             <option key={s || 'all'} value={s}>
@@ -471,6 +505,22 @@ const PurchaseOrdersPage: React.FC<PurchaseOrdersPageProps> = ({ vendorId, onCre
                   </tr>
                 );
               })
+            )}
+            {hasNextPage && (
+              <tr>
+                <td colSpan={8} className="px-3 py-3 text-center border-t border-app-border">
+                  <button
+                    type="button"
+                    className="text-sm text-primary hover:underline disabled:opacity-50"
+                    onClick={() => fetchNextPage()}
+                    disabled={loadingMore}
+                  >
+                    {loadingMore
+                      ? 'Loading more…'
+                      : `Load more (${orders.length} of ${totalCount})`}
+                  </button>
+                </td>
+              </tr>
             )}
           </tbody>
         </table>

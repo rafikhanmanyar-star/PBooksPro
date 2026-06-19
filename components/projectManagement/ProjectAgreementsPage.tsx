@@ -15,6 +15,8 @@ import { ImportType } from '../../types';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../context/AuthContext';
+import { useProjectSummary } from '../../hooks/queries/useDashboardSummaryQueries';
 
 type SortKey = 'agreementNumber' | 'owner' | 'project' | 'units' | 'price' | 'paid' | 'balance' | 'date' | 'status';
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
@@ -127,6 +129,7 @@ const ProjectAgreementsPage: React.FC = () => {
     const { units: appUnits } = state;
     const dispatch = useDispatchOnly();
     const { canWriteProjectSellingAgreements } = usePermissions();
+    const { isAuthenticated } = useAuth();
     const [searchQuery, setSearchQuery] = useState('');
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [agreementToEdit, setAgreementToEdit] = useState<ProjectAgreement | null>(null);
@@ -436,15 +439,54 @@ const ProjectAgreementsPage: React.FC = () => {
 
     }, [dateFilteredAgreements, state.projects, state.contacts, state.units, state.invoices, searchQuery, selectedTreeId, selectedTreeType, selectedTreeParentId, sortConfig]);
 
-    // Summary for cards: same scope as table (date + tree + search). When tree item selected, shows that project/owner/unit summary.
+    const projectSummaryParams = useMemo(
+        () => ({
+            from: startDate || undefined,
+            to: endDate || undefined,
+            projectId:
+                selectedTreeType === 'project'
+                    ? selectedTreeId ?? undefined
+                    : selectedTreeParentId ?? undefined,
+            clientId: selectedTreeType === 'owner' ? selectedTreeId ?? undefined : undefined,
+            unitId: selectedTreeType === 'unit' ? selectedTreeId ?? undefined : undefined,
+            search: searchQuery.trim() || undefined,
+        }),
+        [
+            startDate,
+            endDate,
+            selectedTreeType,
+            selectedTreeId,
+            selectedTreeParentId,
+            searchQuery,
+        ]
+    );
+
+    const { data: serverProjectSummary } = useProjectSummary(
+        isAuthenticated,
+        projectSummaryParams
+    );
+
+    // Summary for cards: server aggregation when API-backed; client reduce fallback offline.
     const summaryStats = useMemo(() => {
+        if (isAuthenticated && serverProjectSummary) {
+            return {
+                totalValue: serverProjectSummary.totalValue,
+                totalPaid: serverProjectSummary.totalPaid,
+                totalOutstanding: serverProjectSummary.totalOutstanding,
+                totalAgreements: serverProjectSummary.totalAgreements,
+                totalUnits: serverProjectSummary.totalUnits,
+            };
+        }
         const totalValue = filteredAgreements.reduce((sum, a) => sum + (a.sellingPrice || 0), 0);
         const totalPaid = filteredAgreements.reduce((sum, a) => sum + (a.paid || 0), 0);
         const totalOutstanding = filteredAgreements.reduce((sum, a) => sum + (a.balance || 0), 0);
         const totalAgreements = filteredAgreements.length;
-        const totalUnits = filteredAgreements.reduce((sum, a) => sum + (Array.isArray(a.unitIds) ? a.unitIds.length : 0), 0);
+        const totalUnits = filteredAgreements.reduce(
+            (sum, a) => sum + (Array.isArray(a.unitIds) ? a.unitIds.length : 0),
+            0
+        );
         return { totalValue, totalPaid, totalOutstanding, totalAgreements, totalUnits };
-    }, [filteredAgreements]);
+    }, [isAuthenticated, serverProjectSummary, filteredAgreements]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({

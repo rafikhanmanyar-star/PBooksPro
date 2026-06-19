@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import { useDispatchOnly, useStateSelector } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
+import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -11,7 +12,7 @@ import { BillTreeNode } from '../bills/BillTreeView';
 import ComboBox from '../ui/ComboBox';
 import DatePicker from '../ui/DatePicker';
 import Select from '../ui/Select';
-import { formatDate, parseStoredDateToYyyyMmDdInput, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
+import { parseStoredDateToYyyyMmDdInput, toLocalDateString, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import useLocalStorage from '../../hooks/useLocalStorage';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
@@ -20,7 +21,8 @@ import LinkedTransactionWarningModal from '../transactions/LinkedTransactionWarn
 import { ImportType } from '../../types';
 import BillBulkPaymentModal from './BillBulkPaymentModal';
 import VendorBillPaymentModal from '../vendors/VendorBillPaymentModal';
-import { openDocumentById } from '../../services/documentUploadService';
+import VirtualizedBillsTable from './VirtualizedBillsTable';
+import type { BillsSortKey, BillsTableRow } from './billsTableTypes';
 import TreeExpandCollapseControls from '../ui/TreeExpandCollapseControls';
 import { collectExpandableParentIds } from '../ui/treeExpandCollapseUtils';
 import RecordSupplierAdvanceModal from '../vendors/RecordSupplierAdvanceModal';
@@ -34,26 +36,6 @@ import type { Vendor } from '../../types';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
-type SortKey = 'issueDate' | 'entityName' | 'dueDate' | 'amount' | 'status' | 'balance' | 'vendorName' | 'billNumber' | 'contract' | 'type';
-
-interface TableRow {
-    id: string;
-    type: 'bill' | 'payment' | 'advance' | 'vendor_settlement';
-    bill?: Bill;
-    payment?: Transaction;
-    advance?: ContractorLedgerAdvance;
-    vendorSettlement?: VendorBillSettlementRow;
-    date: string;
-    billNumber?: string;
-    vendorName?: string;
-    projectName?: string;
-    contractNumber?: string;
-    dueDate?: string;
-    amount: number;
-    status?: string;
-    balance?: number;
-}
-
 interface BillsPageProps {
     projectContext?: boolean; // When true, indicates bills are being managed from project management section
 }
@@ -283,6 +265,7 @@ const BillTreeSidebar: React.FC<{
 const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const dispatch = useDispatchOnly();
     const state = useStateSelector(s => s);
+    const transactions = useTransactions();
     const { showToast, showAlert } = useNotification();
     const { openChat } = useWhatsApp();
 
@@ -292,9 +275,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     const [dateRange, setDateRange] = useLocalStorage<DateRangeOption>('bills_dateRange', 'all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [displayLimit, setDisplayLimit] = useState(200);
     const [projectFilter, setProjectFilter] = useLocalStorage<string>('bills_projectFilter', state.defaultProjectId || 'all');
-    const [sortConfig, setSortConfig] = useLocalStorage<{ key: SortKey; direction: 'asc' | 'desc' }>('bills_sort', { key: 'issueDate', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useLocalStorage<{ key: BillsSortKey; direction: 'asc' | 'desc' }>('bills_sort', { key: 'issueDate', direction: 'desc' });
 
     // --- State: View & Selection ---
     const [selectedNode, setSelectedNode] = useState<{ id: string; type: 'group' | 'vendor'; parentId?: string } | null>(null);
@@ -563,8 +545,8 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
     }, [baseBills, projectMap, vendorMap, projectFilter]);
 
     // --- Unified Table Data (Bills + Payments) ---
-    const tableRows = useMemo<TableRow[]>(() => {
-        const rows: TableRow[] = [];
+    const tableRows = useMemo<BillsTableRow[]>(() => {
+        const rows: BillsTableRow[] = [];
 
         // Add bill rows
         if (typeFilter === 'All' || typeFilter === 'Bills') {
@@ -811,6 +793,25 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         projectFilter,
     ]);
 
+    useEffect(() => {
+        const paymentRows = filteredRows.filter((row) => row.type === 'payment' && row.payment);
+        logPaymentListUiTrace({
+            component: 'BillsPage',
+            sourceTransactionCount: transactions.length,
+            recordsPropCount: tableRows.length,
+            filteredRecordCount: filteredRows.length,
+            displayedRecordCount: filteredRows.length,
+            transactions,
+            displayedRecords: paymentRows.map((row) => ({
+                id: row.id,
+                type: 'payment',
+                raw: row.payment as Transaction,
+            })),
+            typeFilter,
+            dateFilter: dateRange,
+        });
+    }, [transactions, tableRows, filteredRows, typeFilter, dateRange]);
+
     // --- Sidebar Resize: container-relative width to prevent jumping ---
     const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {
         if (!containerRef.current) return;
@@ -867,33 +868,25 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
 
     const filteredBillTreeData = useMemo(() => filterBillTree(treeData, treeSearchQuery), [treeData, treeSearchQuery, filterBillTree]);
 
-    const handleSort = (key: SortKey) => {
+    const handleSort = useCallback((key: BillsSortKey) => {
         setSortConfig(current => ({
             key,
             direction: current.key === key && current.direction === 'asc' ? 'desc' : 'asc'
         }));
-    };
+    }, [setSortConfig]);
 
+    const handleToggleBillSelection = useCallback((billId: string) => {
+        setSelectedBillIds(prev => {
+            const next = new Set(prev);
+            if (next.has(billId)) next.delete(billId);
+            else next.add(billId);
+            return next;
+        });
+    }, []);
 
-    const SortIcon = ({ column }: { column: SortKey }) => {
-        if (sortConfig.key !== column) return <span className="text-app-muted/50 ml-1 text-[10px]">↕</span>;
-        return <span className="text-ds-primary ml-1 text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>;
-    };
-
-    const billStatusBadgeClass = (status: string) => {
-        switch (status) {
-            case 'Paid':
-                return 'ds-badge-paid';
-            case 'Unpaid':
-                return 'ds-badge-unpaid';
-            case 'Partially Paid':
-                return 'ds-badge-partial';
-            case 'Overdue':
-                return 'ds-badge-overdue';
-            default:
-                return 'inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-app-surface-2 text-app-muted border border-app-border';
-        }
-    };
+    const handleEditSettlement = useCallback((settlement: VendorBillSettlementRow, vendor: Vendor) => {
+        setVendorSettlementEdit({ settlement, vendor });
+    }, []);
 
     const handleViewVendor = (vendorId: string) => {
         sessionStorage.setItem('openVendorId', vendorId);
@@ -1014,7 +1007,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         return undefined;
     }, [projectContext, selectedNode, projectFilter]);
 
-    const handleSendWhatsApp = (e: React.MouseEvent, bill: Bill) => {
+    const handleSendWhatsApp = useCallback((e: React.MouseEvent, bill: Bill) => {
         e.stopPropagation();
         const vendorId = bill.vendorId;
         const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
@@ -1039,16 +1032,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         } catch (error) {
             showAlert(error instanceof Error ? error.message : 'Failed to open WhatsApp');
         }
-    };
-
-    const getStatusBadge = (status: string) => {
-        return <span className={billStatusBadgeClass(status)}>{status}</span>;
-    };
-
-    const thClass =
-        'px-3 py-2.5 text-[10px] font-bold text-app-muted uppercase tracking-wider cursor-pointer hover:bg-app-table-hover border-b border-app-border transition-colors';
-    const thClassRight = `${thClass} text-right`;
-    const thClassCenter = `${thClass} text-center`;
+    }, [vendorMap, showAlert, state, openChat]);
 
     return (
         <div className="flex flex-col h-full bg-app-bg p-4 sm:p-6 gap-4 sm:gap-6">
@@ -1239,316 +1223,23 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 </div>
 
                 {/* Right Data Grid (Table) */}
-                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-app-card rounded-xl border border-app-border shadow-ds-card">
-                    <div className="flex-grow overflow-auto">
-                        <table className="min-w-full divide-y divide-app-border text-xs border-separate border-spacing-0">
-                            <thead className="bg-app-table-header sticky top-0 z-20">
-                                <tr>
-                                    <th className="px-3 py-2.5 w-10 text-center border-b border-app-border bg-app-table-header"></th>
-                                    <th onClick={() => handleSort('type')} className={`${thClass} text-left`}>Type <SortIcon column="type" /></th>
-                                    <th onClick={() => handleSort('issueDate')} className={`${thClass} text-left`}>Date <SortIcon column="issueDate" /></th>
-                                    <th onClick={() => handleSort('billNumber')} className={`${thClass} text-left`}>Ref # <SortIcon column="billNumber" /></th>
-                                    <th onClick={() => handleSort('entityName')} className={`${thClass} text-left`}>Project <SortIcon column="entityName" /></th>
-                                    <th onClick={() => handleSort('vendorName')} className={`${thClass} text-left`}>Vendor <SortIcon column="vendorName" /></th>
-                                    <th onClick={() => handleSort('amount')} className={thClassRight}>Amount <SortIcon column="amount" /></th>
-                                    <th onClick={() => handleSort('status')} className={thClassCenter}>Status <SortIcon column="status" /></th>
-                                    <th onClick={() => handleSort('balance')} className={thClassRight}>Due / Pay <SortIcon column="balance" /></th>
-                                    <th className="px-3 py-2.5 w-10 border-b border-app-border bg-app-table-header"></th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-app-border">
-                                {filteredRows.length > 0 ? filteredRows.slice(0, displayLimit).map((row, index) => {
-                                    const isBill = row.type === 'bill';
-                                    const isPayment = row.type === 'payment';
-                                    const bill = row.bill;
-                                    const payment = row.payment;
-
-                                    if (isBill && bill) {
-                                        return (
-                                            <tr
-                                                key={row.id}
-                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
-                                                onClick={() => handleEdit(bill)}
-                                            >
-                                                <td className="px-3 py-2.5 text-center" onClick={(e) => e.stopPropagation()}>
-                                                    <input
-                                                        type="checkbox"
-                                                        aria-label={`Select bill ${bill.billNumber}`}
-                                                        className="rounded text-ds-primary focus:ring-ds-primary border-app-border w-3.5 h-3.5 cursor-pointer transition-all"
-                                                        checked={selectedBillIds.has(bill.id)}
-                                                        onChange={(e) => {
-                                                            e.stopPropagation();
-                                                            setSelectedBillIds(prev => {
-                                                                const next = new Set(prev);
-                                                                if (next.has(bill.id)) next.delete(bill.id);
-                                                                else next.add(bill.id);
-                                                                return next;
-                                                            });
-                                                        }}
-                                                    />
-                                                </td>
-                                                <td className="px-3 py-2.5">
-                                                    <span className="ds-pill-type">Bill</span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap">{formatDate(row.date)}</td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="font-mono text-[10px] font-medium text-app-muted bg-app-surface-2 px-1.5 py-0.5 rounded-md border border-app-border inline-block">
-                                                        {row.billNumber}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="font-semibold text-app-text leading-tight group-hover:text-ds-primary transition-colors">{row.projectName}</div>
-                                                    <div className="text-[10px] text-app-muted font-medium uppercase tracking-tight mt-0.5">{row.contractNumber || 'No Contract'}</div>
-                                                </td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-6 h-6 rounded-full bg-app-surface-2 flex items-center justify-center text-[10px] font-bold text-app-muted border border-app-border">
-                                                            {(row.vendorName || 'U')[0]}
-                                                        </div>
-                                                        <span className="text-app-text font-medium truncate max-w-[120px]">{row.vendorName}</span>
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-app-text tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    <div className="flex items-center justify-center gap-2">
-                                                        {row.status && (
-                                                            <span className={billStatusBadgeClass(row.status)}>
-                                                                {row.status}
-                                                            </span>
-                                                        )}
-                                                        {bill.paidAmount > 0 && (
-                                                            <button
-                                                                onClick={(e) => handleSendWhatsApp(e, bill)}
-                                                                className="text-ds-success hover:text-ds-success p-1 rounded-full hover:bg-app-table-hover transition-all opacity-0 group-hover:opacity-100"
-                                                            >
-                                                                <div className="w-3.5 h-3.5">{ICONS.whatsapp}</div>
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <span className={`font-bold tabular-nums ${(row.balance || 0) > 0.01 ? 'text-ds-danger' : 'text-app-muted font-normal'}`}>
-                                                            {CURRENCY} {Math.abs(row.balance || 0).toLocaleString()}
-                                                        </span>
-                                                        {(row.balance || 0) > 0.01 && (
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleRecordPayment(bill); }}
-                                                                className="text-ds-on-primary bg-ds-primary hover:bg-ds-primary-hover px-2 py-0.5 rounded text-[10px] font-bold transition-all shadow-sm"
-                                                            >
-                                                                Pay
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    {(bill.documentId || bill.documentPath) && (
-                                                        <button
-                                                            onClick={async (e) => {
-                                                                e.stopPropagation();
-                                                                if (bill.documentId) {
-                                                                    await openDocumentById(bill.documentId, state.documents, url => window.open(url, '_blank'), showAlert);
-                                                                } else if (bill.documentPath) {
-                                                                    const electronAPI = (window as any).electronAPI;
-                                                                    if (electronAPI?.openDocumentFile) {
-                                                                        electronAPI.openDocumentFile({ filePath: bill.documentPath }).catch((err: any) => console.error('Error opening document:', err));
-                                                                    }
-                                                                }
-                                                            }}
-                                                            className="text-app-muted hover:text-ds-primary transition-colors"
-                                                            title="View Document"
-                                                        >
-                                                            <div className="w-4 h-4">{ICONS.fileText}</div>
-                                                        </button>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    } else if (isPayment && payment && bill) {
-                                        const account = payment.accountId ? accountMap.get(payment.accountId) : undefined;
-                                        return (
-                                            <tr
-                                                key={row.id}
-                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
-                                                onClick={() => setTransactionToEdit(payment)}
-                                            >
-                                                <td className="px-3 py-2.5"></td>
-                                                <td className="px-3 py-2.5">
-                                                    <span className="ds-pill-type-payment">Payment</span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-muted whitespace-nowrap italic">{formatDate(row.date)}</td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="text-[10px] text-app-muted font-medium px-1.5 py-0.5 inline-block">
-                                                        linked to {row.billNumber}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-muted">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-app-muted italic">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-medium text-ds-success tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    <span className="text-[10px] font-medium text-app-muted uppercase tracking-tighter">{account?.name || 'Cash/Bank'}</span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right italic text-app-muted tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2.5"></td>
-                                            </tr>
-                                        );
-                                    } else if (row.type === 'vendor_settlement' && row.vendorSettlement && bill) {
-                                        const vs = row.vendorSettlement;
-                                        const advPart =
-                                            vs.adjustments?.reduce((s, x) => s + x.amount, 0) ??
-                                            Math.max(0, vs.totalAmount - vs.cashAmount);
-                                        return (
-                                            <tr
-                                                key={row.id}
-                                                className={`ds-fin-row cursor-pointer group ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''}`}
-                                                onClick={() => {
-                                                    const v = bill.vendorId ? vendorMap.get(bill.vendorId) : undefined;
-                                                    if (!v || !bill.vendorId) {
-                                                        showAlert('Could not find vendor for this settlement.');
-                                                        return;
-                                                    }
-                                                    setVendorSettlementEdit({ settlement: vs, vendor: v });
-                                                }}
-                                                title="Open to view or edit prepaid and bank amounts"
-                                            >
-                                                <td className="px-3 py-2.5"></td>
-                                                <td className="px-3 py-2.5">
-                                                    <span className="inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight bg-app-highlight text-ds-primary border border-app-border">
-                                                        Settlement
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-text whitespace-nowrap">{formatDate(row.date)}</td>
-                                                <td className="px-3 py-2.5">
-                                                    <div className="text-[10px] text-app-muted font-medium px-1.5 py-0.5 inline-block">
-                                                        Bill #{row.billNumber}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-text">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-app-text">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-ds-primary tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                    <span className="block text-[9px] font-normal text-app-muted normal-case tracking-normal">
-                                                        prepaid {CURRENCY} {advPart.toLocaleString()} · bank {CURRENCY}{' '}
-                                                        {vs.cashAmount.toLocaleString()}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-app-highlight text-ds-primary border border-app-border">
-                                                        {row.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right italic text-app-muted tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2.5"></td>
-                                            </tr>
-                                        );
-                                    } else if (row.type === 'advance' && row.advance) {
-                                        const adv = row.advance;
-                                        const rem = adv.remainingAmount ?? 0;
-                                        const fullyApplied = rem <= 0.015 || row.status === 'Fully applied';
-                                        return (
-                                            <tr
-                                                key={row.id}
-                                                className={`ds-fin-row transition-colors ${index % 2 === 1 ? 'ds-fin-row-stripe' : ''} ${fullyApplied ? '' : 'bg-app-highlight/30'}`}
-                                            >
-                                                <td className="px-3 py-2.5 text-center"></td>
-                                                <td className="px-3 py-2.5">
-                                                    <span
-                                                        className={`inline-flex px-1.5 py-0.5 rounded-[6px] text-[10px] font-bold uppercase tracking-tight border ${
-                                                            fullyApplied
-                                                                ? 'bg-app-surface-2 text-app-muted border-app-border'
-                                                                : 'bg-app-highlight text-ds-warning border-app-border'
-                                                        }`}
-                                                    >
-                                                        Advance
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-text whitespace-nowrap">{formatDate(row.date)}</td>
-                                                <td className="px-3 py-2.5">
-                                                    <div
-                                                        className={`font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md border inline-block ${
-                                                            fullyApplied
-                                                                ? 'text-app-muted bg-app-surface-2 border-app-border'
-                                                                : 'text-ds-warning bg-app-highlight border-app-border'
-                                                        }`}
-                                                    >
-                                                        {row.billNumber}
-                                                    </div>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-app-text">{row.projectName}</td>
-                                                <td className="px-3 py-2.5 text-app-text">{row.vendorName}</td>
-                                                <td className="px-3 py-2.5 text-right font-semibold text-app-text tabular-nums">
-                                                    {CURRENCY} {(row.amount || 0).toLocaleString()}
-                                                </td>
-                                                <td className="px-3 py-2.5 text-center">
-                                                    <span
-                                                        className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                                                            fullyApplied
-                                                                ? 'bg-app-surface-2 text-app-muted border-app-border'
-                                                                : 'bg-app-highlight text-ds-warning border-app-border'
-                                                        }`}
-                                                    >
-                                                        {fullyApplied ? 'Fully applied' : 'Prepaid'}
-                                                    </span>
-                                                </td>
-                                                <td className="px-3 py-2.5 text-right">
-                                                    <div
-                                                        className={`font-bold tabular-nums ${fullyApplied ? 'text-app-muted' : 'text-ds-warning'}`}
-                                                    >
-                                                        {CURRENCY} {rem.toLocaleString()}
-                                                        <span className="block text-[9px] font-normal text-app-muted normal-case tracking-normal">
-                                                            {fullyApplied ? 'remaining prepaid' : 'remaining'}
-                                                        </span>
-                                                    </div>
-                                                    {(adv.description || '').trim() ? (
-                                                        <p
-                                                            className="mt-1 text-[10px] text-app-muted text-left leading-snug max-w-[220px] ml-auto whitespace-normal break-words"
-                                                            title={(adv.description || '').trim()}
-                                                        >
-                                                            {(adv.description || '').trim()}
-                                                        </p>
-                                                    ) : null}
-                                                </td>
-                                                <td className="px-3 py-2.5"></td>
-                                            </tr>
-                                        );
-                                    }
-                                    return null;
-                                }) : (
-                                    <tr>
-                                        <td colSpan={10} className="px-4 py-20 text-center">
-                                            <div className="flex flex-col items-center justify-center text-app-muted opacity-60">
-                                                <div className="w-12 h-12 bg-app-surface-2 rounded-full flex items-center justify-center mb-3">
-                                                    <div className="w-6 h-6">{ICONS.fileText}</div>
-                                                </div>
-                                                <p className="text-sm font-medium">No records matching your filters</p>
-                                                <p className="text-xs mt-1">Try adjusting the period, project, or search query</p>
-                                            </div>
-                                        </td>
-                                    </tr>
-                                )}
-                                {filteredRows.length > displayLimit && (
-                                    <tr>
-                                        <td colSpan={10} className="text-center py-3">
-                                            <button
-                                                onClick={() => setDisplayLimit(prev => prev + 200)}
-                                                className="text-xs text-ds-primary hover:text-ds-primary-hover font-medium"
-                                            >
-                                                Showing {displayLimit} of {filteredRows.length} — Load more
-                                            </button>
-                                        </td>
-                                    </tr>
-                                )}
-                            </tbody>
-                        </table>
-                    </div>
+                <div className="flex-1 min-w-0 overflow-hidden flex flex-col bg-app-card rounded-xl border border-app-border shadow-ds-card min-h-0">
+                    <VirtualizedBillsTable
+                        rows={filteredRows}
+                        sortConfig={sortConfig}
+                        onSort={handleSort}
+                        selectedBillIds={selectedBillIds}
+                        onToggleBillSelection={handleToggleBillSelection}
+                        accountMap={accountMap}
+                        vendorMap={vendorMap}
+                        documents={state.documents}
+                        showAlert={showAlert}
+                        onEditBill={handleEdit}
+                        onRecordPayment={handleRecordPayment}
+                        onSendWhatsApp={handleSendWhatsApp}
+                        onEditPayment={setTransactionToEdit}
+                        onEditSettlement={handleEditSettlement}
+                    />
                     {/* Compact Summary Footer */}
                     <div className="px-4 py-3 border-t border-app-border bg-app-toolbar flex justify-between items-center text-[10px] font-bold text-app-muted uppercase tracking-widest">
                         <div className="flex items-center gap-6">

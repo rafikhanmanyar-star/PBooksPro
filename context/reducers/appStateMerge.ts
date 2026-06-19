@@ -1,4 +1,5 @@
-import type { AppState, AppAction, Invoice, Bill, ProjectReceivedAsset, SalesReturn } from '../../types';
+import type { AppState, AppAction, Invoice, Bill, ProjectReceivedAsset, SalesReturn, Transaction } from '../../types';
+import { logPaymentTrace, logPaymentTraceTransition } from '../../services/debug/paymentDisappearanceTrace';
 
 export function mergeTenantSettingsFromAction(prev: AppState, action: AppAction): AppState | null {
     switch (action.type) {
@@ -96,15 +97,35 @@ export function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server:
     return out;
 }
 
+/**
+ * Merge server transaction rows into the current client baseline.
+ * Server wins on id conflict. Keeps optimistic rows (no server version yet) and versioned
+ * client rows missing from a stale partial (sync-gap / concurrent full refresh).
+ */
+export function mergeTransactionsWithServerBaseline(base: Transaction[], server: Transaction[]): Transaction[] {
+    const serverIds = new Set(server.map((t) => t.id).filter(Boolean));
+    const out = [...server];
+    for (const tx of base) {
+        if (!tx.id || serverIds.has(tx.id)) continue;
+        out.push(tx);
+    }
+    return out;
+}
+
 /** Merge a server partial snapshot into a client baseline (preserves optimistic rows). */
 export function mergePartialStateIntoBaseline(
     base: AppState,
     partial: Partial<AppState>,
     tenantSettings: Partial<AppState> = {}
 ): AppState {
-    return {
+    logPaymentTrace('mergePartialStateIntoBaseline', 'enter', base.transactions, {
+        partialTransactionCount: partial.transactions?.length ?? 0,
+        partialTransactions: (partial.transactions ?? []).map((t) => ({ id: t.id, version: t.version })),
+    });
+    const merged = {
         ...base,
         ...partial,
+        transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
         invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
         bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
         projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
@@ -118,4 +139,14 @@ export function mergePartialStateIntoBaseline(
         contracts: partial.contracts ?? base.contracts,
         ...tenantSettings,
     } as AppState;
+    logPaymentTraceTransition(
+        'mergePartialStateIntoBaseline',
+        'exit',
+        base.transactions,
+        merged.transactions,
+        {
+            partialTransactionCount: partial.transactions?.length ?? 0,
+        }
+    );
+    return merged;
 }

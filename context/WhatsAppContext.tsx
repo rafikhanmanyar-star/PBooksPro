@@ -4,7 +4,7 @@
  * Provides global WhatsApp chat side panel management
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
 import { Contact, Vendor } from '../types';
 import WhatsAppSidePanel from '../components/whatsapp/WhatsAppSidePanel';
 import { useAuth } from './AuthContext';
@@ -48,8 +48,13 @@ export const WhatsAppProvider: React.FC<{ children: ReactNode }> = ({ children }
     }
   }, [isAuthenticated, isOpen, closeChat]);
 
+  const contextValue = useMemo(
+    () => ({ openChat, closeChat, isOpen }),
+    [openChat, closeChat, isOpen]
+  );
+
   return (
-    <WhatsAppContext.Provider value={{ openChat, closeChat, isOpen }}>
+    <WhatsAppContext.Provider value={contextValue}>
       {children}
       <WhatsAppSidePanel
         isOpen={isOpen}

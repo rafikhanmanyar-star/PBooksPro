@@ -1,7 +1,4 @@
-import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getRealtimeSocket } from '../core/socket';
-import { useAuth } from '../context/AuthContext';
 import {
   approvePurchaseOrder,
   cancelPurchaseOrder,
@@ -18,29 +15,6 @@ export function usePurchaseOrders(filters?: {
   vendorId?: string;
   projectId?: string;
 }) {
-  const queryClient = useQueryClient();
-  const { tenantId } = useAuth();
-
-  useEffect(() => {
-    const socket = getRealtimeSocket();
-    if (!socket || !tenantId) return;
-    const onEntity = (payload: { tenantId?: string; type?: string }) => {
-      if (payload.tenantId && payload.tenantId !== tenantId) return;
-      if (payload.type === 'purchase_order' || payload.type === 'bill') {
-        void queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-        void queryClient.invalidateQueries({ queryKey: ['purchase-order-report'] });
-      }
-    };
-    socket.on('entity_updated', onEntity);
-    socket.on('entity_created', onEntity);
-    socket.on('entity_deleted', onEntity);
-    return () => {
-      socket.off('entity_updated', onEntity);
-      socket.off('entity_created', onEntity);
-      socket.off('entity_deleted', onEntity);
-    };
-  }, [tenantId, queryClient]);
-
   return useQuery({
     queryKey: ['purchase-orders', filters],
     queryFn: () => fetchPurchaseOrders(filters),

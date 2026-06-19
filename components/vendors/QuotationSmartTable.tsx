@@ -4,15 +4,22 @@ import { ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import { documentService } from '../../services/documentService';
 import { useNotification } from '../../context/NotificationContext';
+import { useAuth } from '../../context/AuthContext';
 import {
     useCategories,
     useDispatchOnly,
     useQuotations,
     useVendors,
 } from '../../hooks/useSelectiveState';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
+import { QuotationsApiRepository } from '../../services/api/repositories/quotationsApi';
 import { SmartTable, type SmartColumnDef } from '../erp/SmartTable';
 import Button from '../ui/Button';
+import Input from '../ui/Input';
 import SettingsTableActions from '../settings/SettingsTableActions';
+
+const quotationsApi = new QuotationsApiRepository();
 
 export interface QuotationSmartTableProps {
     vendorId?: string;
@@ -38,18 +45,52 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
     onEditQuotation,
     onNewQuotation,
 }) => {
-    const quotations = useQuotations();
+    const { isAuthenticated } = useAuth();
+    const appQuotations = useQuotations();
     const vendors = useVendors();
     const categories = useCategories();
     const dispatch = useDispatchOnly();
     const { showConfirm, showAlert } = useNotification();
+    const { value: searchQuery, debouncedValue: debouncedSearch, setValue: setSearchQuery } =
+        useDebouncedSearch();
+
+    const listFilters = useMemo(
+        () => ({
+            search: debouncedSearch.trim() || undefined,
+            vendorId,
+        }),
+        [debouncedSearch, vendorId]
+    );
+
+    const {
+        items: serverQuotations,
+        loading: serverLoading,
+        hasNextPage,
+        fetchNextPage,
+        loadingMore,
+        totalCount,
+    } = useInfiniteEntityQuery<Quotation>({
+        queryKey: ['quotations', 'infinite'],
+        enabled: isAuthenticated,
+        filters: listFilters,
+        fetchPage: ({ pageParam, pageSize, filters }) =>
+            quotationsApi.findPage({
+                page: pageParam,
+                pageSize,
+                search: filters.search as string | undefined,
+                vendorId: filters.vendorId as string | undefined,
+                sortBy: 'date',
+                sortDirection: 'desc',
+            }),
+    });
+
+    const sourceQuotations = useMemo(() => {
+        if (isAuthenticated) return serverQuotations;
+        return vendorId ? appQuotations.filter((q) => q.vendorId === vendorId) : appQuotations;
+    }, [isAuthenticated, serverQuotations, appQuotations, vendorId]);
 
     const rows = useMemo((): QuotationRow[] => {
-        const filtered = vendorId
-            ? quotations.filter((q) => q.vendorId === vendorId)
-            : quotations;
-
-        return filtered.map((quotation) => {
+        return sourceQuotations.map((quotation) => {
             const vendor = vendors?.find((v) => v.id === quotation.vendorId);
             const vendorName = vendor?.name || 'Unknown';
             const itemLines = quotation.items.map((item) => {
@@ -64,7 +105,7 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
                 itemsDetail: itemLines.slice(0, 2).join('; '),
             };
         });
-    }, [quotations, vendors, categories, vendorId]);
+    }, [sourceQuotations, vendors, categories]);
 
     const handleDelete = async (quotation: Quotation) => {
         const confirmed = await showConfirm(
@@ -241,7 +282,29 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
 
     return (
         <div className="h-full flex flex-col min-h-0">
-            {rows.length === 0 ? (
+            {isAuthenticated && (
+                <div className="flex flex-wrap items-end gap-3 mb-3 shrink-0">
+                    <Input
+                        placeholder={searchPlaceholder}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="max-w-md"
+                    />
+                    {hasNextPage && (
+                        <button
+                            type="button"
+                            className="text-sm text-primary hover:underline disabled:opacity-50 pb-2"
+                            onClick={() => fetchNextPage()}
+                            disabled={loadingMore}
+                        >
+                            {loadingMore
+                                ? 'Loading…'
+                                : `Load more (${rows.length} of ${totalCount})`}
+                        </button>
+                    )}
+                </div>
+            )}
+            {rows.length === 0 && !serverLoading ? (
                 <div className="flex flex-col items-center justify-center py-12 text-center">
                     <div className="w-16 h-16 rounded-full bg-app-toolbar flex items-center justify-center mb-4">
                         <div className="w-8 h-8 text-app-muted">{ICONS.fileText}</div>
@@ -262,7 +325,8 @@ const QuotationSmartTable: React.FC<QuotationSmartTableProps> = ({
                     data={rows}
                     getRowId={(r) => r.id}
                     tableHeight={tableHeight}
-                    searchPlaceholder={searchPlaceholder}
+                    loading={serverLoading}
+                    searchPlaceholder={isAuthenticated ? 'Filter loaded rows…' : searchPlaceholder}
                     showFooterSum
                 />
             )}

@@ -1,12 +1,14 @@
 /**
  * Real-Time First — maps backend entity events to React Query cache invalidation.
- * Extend this map when adding new modules; AppContext calls this on every entity_* socket event.
+ * Extend this map when adding new modules; RealtimeDispatchHub calls this on every entity_* socket event.
  */
 
 import type { QueryClient } from '@tanstack/react-query';
 import { queryKeys } from '../../hooks/queries/queryKeys';
 import { dashboardMetricsQueryKeys } from '../../hooks/useDashboardMetrics';
+import { logger } from '../logger';
 import type { InvalidateEntityEventContext, RealtimeEntityPayload } from './realtimePayload';
+import { rtTrace, rtTraceDuration } from './realtimeTrace';
 
 /** Entity types that affect selling-analytics dashboards. */
 export const SELLING_ANALYTICS_ENTITY_TYPES = new Set([
@@ -76,38 +78,62 @@ function isSettingsBulkRefresh(payload: RealtimeEntityPayload): boolean {
   );
 }
 
+async function invalidateAndTrace(
+  queryClient: QueryClient,
+  keys: readonly (readonly unknown[])[],
+  label: string
+): Promise<void> {
+  const start = Date.now();
+  await Promise.all(keys.map((queryKey) => queryClient.invalidateQueries({ queryKey })));
+  rtTraceDuration('query.invalidated', start, {
+    label,
+    keys: keys.map((k) => k[0]),
+  });
+}
+
 /** Full tenant cache sweep after clear-transactions / factory-reset (all connected sessions). */
 async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.reports.all }),
-    queryClient.invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all }),
-    queryClient.invalidateQueries({ queryKey: ['rental'] }),
-    queryClient.invalidateQueries({ queryKey: ['vendors'] }),
-    queryClient.invalidateQueries({ queryKey: ['contacts'] }),
-    queryClient.invalidateQueries({ queryKey: ['contracts'] }),
-    queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }),
-    queryClient.invalidateQueries({ queryKey: ['payroll'] }),
-    queryClient.invalidateQueries({ queryKey: ['documents'] }),
-    invalidateSellingAnalytics(queryClient),
-  ]);
+  await invalidateAndTrace(
+    queryClient,
+    [
+      queryKeys.ledger.all,
+      queryKeys.reports.all,
+      dashboardMetricsQueryKeys.root,
+      queryKeys.invoices.all,
+      ['rental'],
+      ['vendors'],
+      ['contacts'],
+      ['contracts'],
+      queryKeys.projects.all,
+      ['payroll'],
+      ['documents'],
+    ],
+    'bulk-tenant-refresh'
+  );
+  await invalidateSellingAnalytics(queryClient);
 }
 
 async function invalidateSellingAnalytics(queryClient: QueryClient): Promise<void> {
+  const start = Date.now();
   try {
     const { sellingAnalyticsQueryKeys } = await import(
       '../../modules/selling-analytics/hooks/useSellingAnalytics'
     );
     await queryClient.invalidateQueries({ queryKey: sellingAnalyticsQueryKeys.root });
-  } catch {
-    /* module not loaded */
+    rtTraceDuration('query.invalidated', start, {
+      label: 'selling-analytics',
+      keys: [sellingAnalyticsQueryKeys.root[0]],
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warnCategory('realtime', 'selling_analytics.invalidate_failed', message);
+    rtTrace('selling_analytics.invalidate_failed', { error: message });
   }
 }
 
 /**
  * Invalidate React Query caches affected by a tenant entity event.
- * Called from AppContext socket handlers (Real-Time First architecture).
+ * Called from RealtimeDispatchHub entity router (socket path).
  */
 export async function invalidateQueriesForEntityEvent(
   queryClient: QueryClient,
@@ -129,84 +155,119 @@ export async function invalidateQueriesForEntityEvent(
   }
 
   if (FINANCIAL_ENTITY_TYPES.has(entityType)) {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
-    await queryClient.invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root });
+    await invalidateAndTrace(
+      queryClient,
+      [queryKeys.ledger.all, queryKeys.reports.all, dashboardMetricsQueryKeys.root],
+      'financial'
+    );
   }
 
   if (entityType === 'invoice' || entityType === 'bill') {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.rental.invoicesList() });
+    await invalidateAndTrace(
+      queryClient,
+      [queryKeys.invoices.all, queryKeys.rental.invoicesList()],
+      'invoice-bill'
+    );
+  }
+
+  if (entityType === 'bill') {
+    await invalidateAndTrace(
+      queryClient,
+      [['purchase-order-report'], ['purchase-orders']],
+      'bill-procurement'
+    );
   }
 
   if (RENTAL_ENTITY_TYPES.has(entityType)) {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.rental.invoicesList() });
-    await queryClient.invalidateQueries({ queryKey: ['rental'] });
+    await invalidateAndTrace(
+      queryClient,
+      [queryKeys.rental.invoicesList(), ['rental']],
+      'rental'
+    );
   }
 
   if (entityType === 'contact') {
-    await queryClient.invalidateQueries({ queryKey: ['contacts'] });
-    await queryClient.invalidateQueries({ queryKey: queryKeys.reports.orgUsers() });
+    await invalidateAndTrace(queryClient, [['contacts'], queryKeys.orgUsers()], 'contact');
   }
 
   if (entityType === 'vendor' || entityType === 'quotation') {
-    await queryClient.invalidateQueries({ queryKey: ['vendors'] });
-    await queryClient.invalidateQueries({ queryKey: ['quotations'] });
-    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
-    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+    await invalidateAndTrace(
+      queryClient,
+      [['vendors'], ['quotations'], ['quotation-comparison'], ['procurement-dashboard']],
+      'vendor-quotation'
+    );
   }
 
   if (entityType === 'purchase_order') {
-    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
-    await queryClient.invalidateQueries({ queryKey: ['quotation-comparison'] });
+    await invalidateAndTrace(
+      queryClient,
+      [
+        ['purchase-orders'],
+        ['procurement-dashboard'],
+        ['quotation-comparison'],
+        ['purchase-order-report'],
+        ['goods-receipts'],
+        ['goods-receipt-report'],
+      ],
+      'purchase-order'
+    );
   }
 
   if (entityType === 'goods_receipt') {
-    await queryClient.invalidateQueries({ queryKey: ['goods-receipts'] });
-    await queryClient.invalidateQueries({ queryKey: ['goods-receipt-report'] });
-    await queryClient.invalidateQueries({ queryKey: ['purchase-orders'] });
-    await queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] });
+    await invalidateAndTrace(
+      queryClient,
+      [
+        ['goods-receipts'],
+        ['goods-receipt-report'],
+        ['purchase-orders'],
+        ['procurement-dashboard'],
+      ],
+      'goods-receipt'
+    );
   }
 
   if (entityType === 'approval_request' || entityType === 'settings') {
-    await queryClient.invalidateQueries({ queryKey: ['workflow'] });
+    await invalidateAndTrace(queryClient, [['workflow']], 'workflow-settings');
   }
 
   if (entityType === 'contract') {
-    await queryClient.invalidateQueries({ queryKey: ['contracts'] });
+    await invalidateAndTrace(queryClient, [['contracts']], 'contract');
   }
 
   if (entityType === 'project') {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.projects.all });
+    await invalidateAndTrace(queryClient, [queryKeys.projects.all], 'project');
   }
 
   if (entityType === 'user') {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.reports.orgUsers() });
+    await invalidateAndTrace(queryClient, [queryKeys.orgUsers()], 'user');
   }
 
   if (PAYROLL_ENTITY_TYPES.has(entityType)) {
-    await queryClient.invalidateQueries({ queryKey: ['payroll'] });
+    await invalidateAndTrace(queryClient, [['payroll']], 'payroll');
   }
 
   if (entityType === 'document') {
-    await queryClient.invalidateQueries({ queryKey: ['documents'] });
+    await invalidateAndTrace(queryClient, [['documents']], 'document');
   }
 
   if (entityType === 'personal_task' || entityType === 'personal_category' || entityType === 'personal_transaction') {
-    await queryClient.invalidateQueries({ queryKey: ['personal'] });
+    await invalidateAndTrace(queryClient, [['personal']], 'personal');
   }
 
   if (entityType === 'report_definition' || entityType === 'custom_report_template') {
-    await queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
-    await queryClient.invalidateQueries({ queryKey: ['reports', 'designer'] });
-    await queryClient.invalidateQueries({ queryKey: ['reports', 'custom'] });
+    await invalidateAndTrace(
+      queryClient,
+      [queryKeys.reports.all, ['reports', 'designer'], ['reports', 'custom']],
+      'report-definition'
+    );
   }
 }
 
 /** Invalidate caches when a GL journal entry is posted (financial.posted socket event). */
 export async function invalidateQueriesForFinancialPosted(queryClient: QueryClient): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all });
-  await queryClient.invalidateQueries({ queryKey: queryKeys.reports.all });
-  await queryClient.invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root });
+  await invalidateAndTrace(
+    queryClient,
+    [queryKeys.ledger.all, queryKeys.reports.all, dashboardMetricsQueryKeys.root],
+    'financial-posted'
+  );
 }

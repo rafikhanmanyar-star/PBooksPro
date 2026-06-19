@@ -1,9 +1,25 @@
 import { apiClient } from '../client';
 import { Quotation } from '../../../types';
+import type { PaginatedResponse } from '../../../shared/types/pagination';
+import { appendEntitySearchParams } from '../entitySearchParams';
 
 export class QuotationsApiRepository {
   async findAll(): Promise<Quotation[]> {
     return apiClient.get<Quotation[]>('/quotations');
+  }
+
+  async findPage(params: {
+    page: number;
+    pageSize: number;
+    search?: string;
+    sortBy?: string;
+    sortDirection?: 'asc' | 'desc';
+    vendorId?: string;
+  }): Promise<PaginatedResponse<Quotation>> {
+    const q = new URLSearchParams();
+    appendEntitySearchParams(q, params);
+    if (params.vendorId) q.set('vendorId', params.vendorId);
+    return apiClient.get<PaginatedResponse<Quotation>>(`/quotations?${q.toString()}`);
   }
 
   async findById(id: string): Promise<Quotation | null> {

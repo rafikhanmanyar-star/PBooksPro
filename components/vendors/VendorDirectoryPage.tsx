@@ -32,7 +32,13 @@ import GoodsReceiptsPage from '../procurement/GoodsReceiptsPage';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
-const VendorAnalyticsPage = React.lazy(() => import('../../modules/vendor-analytics/VendorAnalyticsPage'));
+import VendorAnalyticsPage from '../../modules/vendor-analytics/VendorAnalyticsPage';
+import { useVendorBalancesAggregation } from '../../hooks/queries/useAggregationQueries';
+import { useInfiniteEntityQuery } from '../../hooks/pagination';
+import { useDebouncedSearch } from '../../hooks/search';
+import { VendorsApiRepository } from '../../services/api/repositories/vendorsApi';
+
+const vendorsApi = new VendorsApiRepository();
 
 type ProcurementView =
     | 'Analytics'
@@ -175,6 +181,17 @@ const VendorDirectoryPage: React.FC = () => {
     } = state;
     const dispatch = useDispatchOnly();
     const { isAuthenticated } = useAuth();
+    const { data: vendorBalancesAggregation, isSuccess: vendorBalancesAggregationSuccess } =
+        useVendorBalancesAggregation(isAuthenticated);
+    const vendorPayableById = useMemo(() => {
+        const m = new Map<string, number>();
+        if (isAuthenticated && vendorBalancesAggregationSuccess && vendorBalancesAggregation?.rows) {
+            for (const row of vendorBalancesAggregation.rows) {
+                m.set(row.vendorId, row.outstandingBalance);
+            }
+        }
+        return m;
+    }, [isAuthenticated, vendorBalancesAggregationSuccess, vendorBalancesAggregation?.rows]);
     const { showConfirm, showAlert, showToast } = useNotification();
     const { openChat } = useWhatsApp();
     const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
@@ -192,7 +209,8 @@ const VendorDirectoryPage: React.FC = () => {
         action: 'edit' | 'delete' | null;
     }>({ isOpen: false, transaction: null, action: null });
 
-    const [vendorSearch, setVendorSearch] = useState('');
+    const { value: vendorSearchInput, debouncedValue: debouncedVendorSearch, setValue: setVendorSearchValue } =
+        useDebouncedSearch({ delayMs: 300 });
     const [activeTab, setActiveTab] = useLocalStorage<'Ledger' | 'Bills' | 'Quotations'>('vendorDirectory_activeTab', 'Ledger');
     const [storedProcurementView, setStoredProcurementView] = useLocalStorage<string>('vendorDirectory_optionsView', 'Directory');
     const procurementView = normalizeProcurementView(storedProcurementView);
@@ -274,22 +292,61 @@ const VendorDirectoryPage: React.FC = () => {
         return id ? vendors.find((v) => v.id === id) : undefined;
     }, [quotationFormVendorId, editingQuotation?.vendorId, selectedVendorId, vendors]);
 
+    const useServerVendorSearch = isAuthenticated;
+
+    const vendorsSyncFingerprint = useMemo(
+        () => (appVendors || []).reduce((acc, v) => acc + (v.version ?? 0), (appVendors || []).length),
+        [appVendors]
+    );
+
+    const vendorSearchFilters = useMemo(
+        () => ({
+            search: debouncedVendorSearch.trim(),
+            sortBy: sortConfig.key === 'payable' ? 'name' : sortConfig.key,
+            sortDirection: sortConfig.direction,
+        }),
+        [debouncedVendorSearch, sortConfig]
+    );
+
+    const { items: serverSearchVendors, hasNextPage: vendorHasNextPage, fetchNextPage: fetchMoreVendors, loadingMore: vendorLoadingMore, totalCount: vendorTotalCount } = useInfiniteEntityQuery<Vendor>({
+        queryKey: ['vendors', 'search'],
+        enabled: useServerVendorSearch,
+        filters: vendorSearchFilters,
+        fetchPage: ({ pageParam, pageSize, filters }) =>
+            vendorsApi.findPage({
+                page: pageParam,
+                pageSize,
+                search: filters.search as string,
+                sortBy: filters.sortBy as string,
+                sortDirection: filters.sortDirection as 'asc' | 'desc',
+            }),
+        syncFingerprint: vendorsSyncFingerprint,
+    });
+
     const filteredVendors = useMemo(() => {
-        if (!vendorSearch) return vendors;
-        const q = vendorSearch.toLowerCase();
-        return appVendors.filter(v => v.name.toLowerCase().includes(q) || (v.companyName && v.companyName.toLowerCase().includes(q)));
-    }, [appVendors, vendorSearch]);
+        if (useServerVendorSearch) return serverSearchVendors;
+        if (!vendorSearchInput) return vendors;
+        const q = vendorSearchInput.toLowerCase();
+        return appVendors.filter(
+            (v) =>
+                v.name.toLowerCase().includes(q) ||
+                (v.companyName && v.companyName.toLowerCase().includes(q))
+        );
+    }, [useServerVendorSearch, serverSearchVendors, vendors, vendorSearchInput, appVendors]);
 
     // Calculate payable amounts for each vendor
     const vendorsWithPayable = useMemo(() => {
         const vendors = filteredVendors.map(vendor => {
-            const vendorBills = (bills || []).filter(b => (b.vendorId || b.contactId) === vendor.id);
-
-            // Calculate total payable as sum of unpaid balances for all bills
-            const payableAmount = vendorBills.reduce((sum, bill) => {
-                const balance = bill.amount - (bill.paidAmount || 0);
-                return sum + Math.max(0, balance); // Only count positive balances
-            }, 0);
+            const payableAmount =
+                vendorPayableById.size > 0
+                    ? (vendorPayableById.get(vendor.id) ?? 0)
+                    : (() => {
+                          const vendorBills = (bills || []).filter(b => (b.vendorId || b.contactId) === vendor.id);
+                          return vendorBills.reduce((sum, bill) => {
+                              const balance = bill.amount - (bill.paidAmount || 0);
+                              return sum + Math.max(0, balance);
+                          }, 0);
+                      })();
 
             return {
                 ...vendor,
@@ -312,7 +369,7 @@ const VendorDirectoryPage: React.FC = () => {
             if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [filteredVendors, bills, sortConfig]);
+    }, [filteredVendors, bills, sortConfig, vendorPayableById]);
 
     const handleSort = (key: SortKey) => {
         setSortConfig(current => ({
@@ -455,6 +512,9 @@ const VendorDirectoryPage: React.FC = () => {
     };
 
     const getVendorPayable = (vendorId: string) => {
+        if (vendorPayableById.size > 0) {
+            return vendorPayableById.get(vendorId) ?? 0;
+        }
         const vendorBills = (bills || []).filter(b => (b.vendorId || b.contactId) === vendorId);
         return vendorBills.reduce((sum, bill) => {
             const balance = bill.amount - (bill.paidAmount || 0);
@@ -571,9 +631,7 @@ const VendorDirectoryPage: React.FC = () => {
                 );
             case 'Analytics':
                 return (
-                    <React.Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading analytics…</div>}>
-                        <VendorAnalyticsPage />
-                    </React.Suspense>
+                    <VendorAnalyticsPage />
                 );
             default:
                 return null;
@@ -661,8 +719,8 @@ const VendorDirectoryPage: React.FC = () => {
                             </div>
                             <input
                                 placeholder="Search..."
-                                value={vendorSearch}
-                                onChange={(e) => setVendorSearch(e.target.value)}
+                                value={vendorSearchInput}
+                                onChange={(e) => setVendorSearchValue(e.target.value)}
                                 className="w-full pl-8 pr-3 py-1.5 ds-input-field rounded-md text-sm transition-all"
                             />
                         </div>
@@ -746,6 +804,20 @@ const VendorDirectoryPage: React.FC = () => {
                         ) : (
                             <div className="flex flex-col items-center justify-center h-32 text-center p-4">
                                 <p className="text-xs font-semibold text-app-muted">No vendors found</p>
+                            </div>
+                        )}
+                        {useServerVendorSearch && vendorHasNextPage && (
+                            <div className="p-2 text-center">
+                                <button
+                                    type="button"
+                                    className="text-xs text-primary hover:underline disabled:opacity-50"
+                                    onClick={() => fetchMoreVendors()}
+                                    disabled={vendorLoadingMore}
+                                >
+                                    {vendorLoadingMore
+                                        ? 'Loading…'
+                                        : `Load more (${vendorsWithPayable.length} of ${vendorTotalCount})`}
+                                </button>
                             </div>
                         )}
                     </div>

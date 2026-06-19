@@ -3,6 +3,9 @@ import { networkInterfaces } from 'node:os';
 
 const BROADCAST_MS = 3000;
 
+let discoverySock: Socket | null = null;
+let discoveryInterval: ReturnType<typeof setInterval> | null = null;
+
 /** First non-internal IPv4 (for discovery payload when request is loopback). */
 export function getLanIPv4(): string {
   const nets = networkInterfaces();
@@ -21,7 +24,24 @@ export function getLanIPv4(): string {
  * Payload: PBOOKS_SERVER:<ip>:<httpPort>
  * Default UDP port 40000 (override with PBOOKS_DISCOVERY_UDP_PORT).
  */
+export function stopDiscoveryUdpBroadcast(): void {
+  if (discoveryInterval) {
+    clearInterval(discoveryInterval);
+    discoveryInterval = null;
+  }
+  if (discoverySock) {
+    try {
+      discoverySock.close();
+    } catch {
+      /* ignore */
+    }
+    discoverySock = null;
+  }
+}
+
 export function startDiscoveryUdpBroadcast(httpPort: number): void {
+  stopDiscoveryUdpBroadcast();
+
   const discoveryPort = Number(process.env.PBOOKS_DISCOVERY_UDP_PORT) || 40000;
   let sock: Socket;
   try {
@@ -30,6 +50,8 @@ export function startDiscoveryUdpBroadcast(httpPort: number): void {
     console.warn('[discovery] UDP broadcast disabled:', e);
     return;
   }
+
+  discoverySock = sock;
 
   sock.on('error', (err) => {
     console.warn('[discovery] UDP socket error:', err.message);
@@ -54,7 +76,7 @@ export function startDiscoveryUdpBroadcast(httpPort: number): void {
   };
 
   tick();
-  setInterval(tick, BROADCAST_MS);
+  discoveryInterval = setInterval(tick, BROADCAST_MS);
   console.log(
     `[discovery] UDP beacon every ${BROADCAST_MS}ms → :${discoveryPort} (PBOOKS_SERVER:<ip>:${httpPort})`
   );

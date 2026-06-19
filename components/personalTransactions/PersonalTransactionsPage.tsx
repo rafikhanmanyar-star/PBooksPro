@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense } from 'react';
+import React, { useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useStateSelector } from '../../hooks/useSelectiveState';
 import { useCompanyOptional } from '../../context/CompanyContext';
@@ -12,7 +12,7 @@ import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
 import { isAdminRole } from '../../hooks/useRecordLock';
 
-const LoanManagementPage = lazy(() => import('../loans/LoanManagementPage'));
+import LoanManagementPage from '../loans/LoanManagementPage';
 
 const TABS = ['Transactions', 'My wallets', 'My Tasks', 'Loan manager', 'Settings'] as const;
 type TabId = (typeof TABS)[number];
@@ -75,9 +75,7 @@ const PersonalTransactionsPage: React.FC = () => {
       case 'Loan manager':
         return (
           <div className="h-full overflow-hidden min-h-0 bg-app-bg">
-            <Suspense fallback={<p className="text-sm text-app-muted p-4">Loading Loan Manager…</p>}>
-              <LoanManagementPage />
-            </Suspense>
+            <LoanManagementPage />
           </div>
         );
       case 'Settings':

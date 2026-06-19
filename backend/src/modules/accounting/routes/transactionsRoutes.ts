@@ -6,6 +6,7 @@ import {
   getTransactionById,
   getTransactionByIdIncludingDeleted,
   listTransactions,
+  listTransactionsPage,
   rowToTransactionApi,
   softDeleteTransaction,
   updateTransaction,
@@ -14,12 +15,17 @@ import {
   approvePayment,
   type ListTransactionFilters,
 } from '../services/transactionsService.js';
+import { buildPaginatedResponse } from '../../../utils/pagination/index.js';
+import { parseEntitySearchQuery } from '../../../services/search/index.js';
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
 import { getBillById, rowToBillApi } from '../../vendors/services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { getContractById, rowToContractApi } from '../../vendors/services/contractsService.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import { memoryCacheDeletePrefix } from '../../../utils/memoryCache.js';
+import type { RequestWithId } from '../../../middleware/requestLogging.js';
+
+const DEBUG_REALTIME = process.env.DEBUG_REALTIME === 'true';
 
 export const transactionsRouter = Router();
 
@@ -37,7 +43,7 @@ async function emitRecalculatedInvoiceBillEvents(
     for (const iid of affectedInvoiceIds) {
       const invRow = await getInvoiceById(c, tenantId, iid);
       if (invRow) {
-        emitEntityEvent(tenantId, 'updated', 'invoice', {
+        queueEntityEvent(tenantId, 'updated', 'invoice', {
           data: rowToInvoiceApi(invRow),
           sourceUserId: userId,
         });
@@ -46,7 +52,7 @@ async function emitRecalculatedInvoiceBillEvents(
     for (const bid of affectedBillIds) {
       const billRow = await getBillById(c, tenantId, bid);
       if (billRow) {
-        emitEntityEvent(tenantId, 'updated', 'bill', {
+        queueEntityEvent(tenantId, 'updated', 'bill', {
           data: rowToBillApi(billRow),
           sourceUserId: userId,
         });
@@ -55,7 +61,7 @@ async function emitRecalculatedInvoiceBillEvents(
     for (const cid of affectedContractIds) {
       const contractRow = await getContractById(c, tenantId, cid);
       if (contractRow) {
-        emitEntityEvent(tenantId, 'updated', 'contract', {
+        queueEntityEvent(tenantId, 'updated', 'contract', {
           data: rowToContractApi(contractRow),
           sourceUserId: userId,
         });
@@ -94,10 +100,36 @@ transactionsRouter.get('/transactions', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const query = req.query as Record<string, unknown>;
+  const useSearchPage =
+    query.page !== undefined || query.pageSize !== undefined || query.search !== undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
+      if (useSearchPage) {
+        const { page, pageSize, limit, offset, search, sortBy, sortDir } = parseEntitySearchQuery(query, {
+          defaultPageSize: 50,
+          maxPageSize: 500,
+        });
+        const filters = parseListFilters(req);
+        const { rows, total } = await listTransactionsPage(client, tenantId, {
+          page,
+          pageSize,
+          limit,
+          offset,
+          filters,
+          search,
+          sortBy,
+          sortDir,
+        });
+        sendSuccess(
+          res,
+          buildPaginatedResponse(rows.map((r) => rowToTransactionApi(r)), total, page, pageSize)
+        );
+        return;
+      }
+
       const rows = await listTransactions(client, tenantId, parseListFilters(req));
       sendSuccess(res, rows.map((r) => rowToTransactionApi(r)));
     } finally {
@@ -153,7 +185,21 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
       if (isNew) {
         await assertDemoCanCreateTransaction(client, tenantId);
       }
-      return upsertTransaction(client, tenantId, body, req.userId ?? null);
+      const r = await upsertTransaction(client, tenantId, body, req.userId ?? null);
+      if (!r.conflict) {
+        const apiRow = rowToTransactionApi(r.row);
+        const action = r.wasInsert ? 'created' : 'updated';
+        if (DEBUG_REALTIME) {
+          console.log('[realtime] transaction.persisted', {
+            tenantId,
+            transactionId: apiRow.id,
+            action,
+            requestId: (req as RequestWithId).requestId,
+          });
+        }
+        queueEntityEvent(tenantId, action, 'transaction', { data: apiRow, sourceUserId: req.userId });
+      }
+      return r;
     });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user', { serverVersion: result.row.version });
@@ -162,8 +208,6 @@ transactionsRouter.post('/transactions', async (req: AuthedRequest, res) => {
     const apiRow = rowToTransactionApi(result.row);
     memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
     memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
-    const action = result.wasInsert ? 'created' : 'updated';
-    emitEntityEvent(tenantId, action, 'transaction', { data: apiRow, sourceUserId: req.userId });
     await emitRecalculatedInvoiceBillEvents(
       tenantId,
       req.userId,
@@ -199,7 +243,16 @@ transactionsRouter.put('/transactions/:id', async (req: AuthedRequest, res) => {
   }
   try {
     const body = { ...(req.body as Record<string, unknown>), id };
-    const result = await withTransaction((client) => updateTransaction(client, tenantId, id, body));
+    const result = await withTransaction(async (client) => {
+      const r = await updateTransaction(client, tenantId, id, body);
+      if (!r.conflict && r.row) {
+        queueEntityEvent(tenantId, 'updated', 'transaction', {
+          data: rowToTransactionApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
@@ -211,7 +264,6 @@ transactionsRouter.put('/transactions/:id', async (req: AuthedRequest, res) => {
     const apiRow = rowToTransactionApi(result.row);
     memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
     memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
-    emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
     await emitRecalculatedInvoiceBillEvents(
       tenantId,
       req.userId,
@@ -235,23 +287,28 @@ transactionsRouter.post('/transactions/:id/submit', async (req: AuthedRequest, r
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      submitPaymentForApproval(
+    const result = await withTransaction(async (client) => {
+      const r = await submitPaymentForApproval(
         client,
         tenantId,
         req.params.id,
         expectedVersion,
         req.userId ?? null,
         req.role ?? null
-      )
-    );
+      );
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'transaction', {
+          data: rowToTransactionApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
     }
-    const apiRow = rowToTransactionApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToTransactionApi(result.row));
   } catch (e) {
     handleRouteError(res, e);
   }
@@ -266,22 +323,28 @@ transactionsRouter.post('/transactions/:id/approve', async (req: AuthedRequest, 
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      approvePayment(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await approvePayment(client, tenantId, req.params.id, expectedVersion, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'transaction', {
+          data: rowToTransactionApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
     }
     const apiRow = rowToTransactionApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'transaction', { data: apiRow, sourceUserId: req.userId });
     const pool = getPool();
     const c = await pool.connect();
     try {
       if (result.row.bill_id) {
         const billRow = await getBillById(c, tenantId, result.row.bill_id);
         if (billRow) {
-          emitEntityEvent(tenantId, 'updated', 'bill', {
+          queueEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(billRow),
             sourceUserId: req.userId,
           });
@@ -290,7 +353,7 @@ transactionsRouter.post('/transactions/:id/approve', async (req: AuthedRequest, 
       if (result.row.contract_id) {
         const contractRow = await getContractById(c, tenantId, result.row.contract_id);
         if (contractRow) {
-          emitEntityEvent(tenantId, 'updated', 'contract', {
+          queueEntityEvent(tenantId, 'updated', 'contract', {
             data: rowToContractApi(contractRow),
             sourceUserId: req.userId,
           });
@@ -321,9 +384,18 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
 
   try {
-    const result = await withTransaction((client) =>
-      softDeleteTransaction(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await softDeleteTransaction(
+        client,
+        tenantId,
+        id,
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined
+      );
+      if (!r.conflict && r.ok) {
+        queueEntityEvent(tenantId, 'deleted', 'transaction', { id, sourceUserId: req.userId });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendFailure(res, 409, 'CONFLICT', 'Record was modified by another user');
       return;
@@ -334,14 +406,13 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
     }
     memoryCacheDeletePrefix(`rental_balances:${tenantId}:`);
     memoryCacheDeletePrefix(`rental_monthly:${tenantId}:`);
-    emitEntityEvent(tenantId, 'deleted', 'transaction', { id, sourceUserId: req.userId });
     const pool = getPool();
     const c = await pool.connect();
     try {
       if (result.recalculatedInvoiceId) {
         const invRow = await getInvoiceById(c, tenantId, result.recalculatedInvoiceId);
         if (invRow) {
-          emitEntityEvent(tenantId, 'updated', 'invoice', {
+          queueEntityEvent(tenantId, 'updated', 'invoice', {
             data: rowToInvoiceApi(invRow),
             sourceUserId: req.userId,
           });
@@ -350,7 +421,7 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
       if (result.recalculatedBillId) {
         const billRow = await getBillById(c, tenantId, result.recalculatedBillId);
         if (billRow) {
-          emitEntityEvent(tenantId, 'updated', 'bill', {
+          queueEntityEvent(tenantId, 'updated', 'bill', {
             data: rowToBillApi(billRow),
             sourceUserId: req.userId,
           });
@@ -359,7 +430,7 @@ transactionsRouter.delete('/transactions/:id', async (req: AuthedRequest, res) =
       if (result.recalculatedContractId) {
         const contractRow = await getContractById(c, tenantId, result.recalculatedContractId);
         if (contractRow) {
-          emitEntityEvent(tenantId, 'updated', 'contract', {
+          queueEntityEvent(tenantId, 'updated', 'contract', {
             data: rowToContractApi(contractRow),
             sourceUserId: req.userId,
           });

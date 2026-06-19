@@ -3,12 +3,13 @@ import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from 
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import {
   closeGoodsReceipt,
   getGoodsReceiptById,
   getPoReceiptContext,
   listGoodsReceipts,
+  listGoodsReceiptsPage,
   postGoodsReceipt,
   rowToGoodsReceiptApi,
   softDeleteGoodsReceipt,
@@ -16,6 +17,7 @@ import {
 } from '../services/goodsReceiptService.js';
 import { getGoodsReceiptReportSummary } from '../services/goodsReceiptReportService.js';
 import { rowToPurchaseOrderApi } from '../../purchase-orders/services/purchaseOrderService.js';
+import { respondEntitySearchList } from '../../../services/search/index.js';
 
 export const goodsReceiptsRouter = Router();
 
@@ -31,18 +33,31 @@ goodsReceiptsRouter.get('/goods-receipts', requireView, async (req: AuthedReques
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+  const vendorId = typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined;
+  const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
+  const purchaseOrderId =
+    typeof req.query.purchaseOrderId === 'string' ? req.query.purchaseOrderId : undefined;
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listGoodsReceipts(client, tenantId, {
-        status: typeof req.query.status === 'string' ? req.query.status : undefined,
-        vendorId: typeof req.query.vendorId === 'string' ? req.query.vendorId : undefined,
-        projectId: typeof req.query.projectId === 'string' ? req.query.projectId : undefined,
-        purchaseOrderId:
-          typeof req.query.purchaseOrderId === 'string' ? req.query.purchaseOrderId : undefined,
+      await respondEntitySearchList({
+        query: req.query as Record<string, unknown>,
+        res,
+        sendSuccess,
+        listAll: () =>
+          listGoodsReceipts(client, tenantId, { status, vendorId, projectId, purchaseOrderId }),
+        listPage: (params) =>
+          listGoodsReceiptsPage(client, tenantId, {
+            ...params,
+            status,
+            vendorId,
+            projectId,
+            purchaseOrderId,
+          }),
+        mapRow: (row) => row,
       });
-      sendSuccess(res, rows);
     } finally {
       client.release();
     }
@@ -125,19 +140,22 @@ goodsReceiptsRouter.post('/goods-receipts', requireCreate, async (req: AuthedReq
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      upsertGoodsReceipt(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await upsertGoodsReceipt(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'created', 'goods_receipt', {
+          data: r.api,
+          id: r.row.id,
+          sourceUserId: req.userId,
+          version: r.row.version,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    emitEntityEvent(tenantId, 'created', 'goods_receipt', {
-      data: result.api,
-      id: result.row.id,
-      sourceUserId: req.userId,
-      version: result.row.version,
-    });
     sendSuccess(res, result.api);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -153,19 +171,22 @@ goodsReceiptsRouter.put('/goods-receipts/:id', requireEdit, async (req: AuthedRe
   }
   try {
     const body = { ...(req.body as Record<string, unknown>), id: req.params.id };
-    const result = await withTransaction((client) =>
-      upsertGoodsReceipt(client, tenantId, body, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await upsertGoodsReceipt(client, tenantId, body, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'goods_receipt', {
+          data: r.api,
+          id: r.row.id,
+          sourceUserId: req.userId,
+          version: r.row.version,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    emitEntityEvent(tenantId, 'updated', 'goods_receipt', {
-      data: result.api,
-      id: result.row.id,
-      sourceUserId: req.userId,
-      version: result.row.version,
-    });
     sendSuccess(res, result.api);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -182,26 +203,29 @@ goodsReceiptsRouter.post('/goods-receipts/:id/post', requirePost, async (req: Au
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      postGoodsReceipt(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await postGoodsReceipt(client, tenantId, req.params.id, expectedVersion, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'goods_receipt', {
+          data: r.api,
+          id: r.row.id,
+          sourceUserId: req.userId,
+          version: r.row.version,
+        });
+        if (r.purchaseOrder) {
+          queueEntityEvent(tenantId, 'updated', 'purchase_order', {
+            data: rowToPurchaseOrderApi(r.purchaseOrder),
+            id: r.purchaseOrder.id,
+            sourceUserId: req.userId,
+            version: r.purchaseOrder.version,
+          });
+        }
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
-    }
-    emitEntityEvent(tenantId, 'updated', 'goods_receipt', {
-      data: result.api,
-      id: result.row.id,
-      sourceUserId: req.userId,
-      version: result.row.version,
-    });
-    if (result.purchaseOrder) {
-      emitEntityEvent(tenantId, 'updated', 'purchase_order', {
-        data: rowToPurchaseOrderApi(result.purchaseOrder),
-        id: result.purchaseOrder.id,
-        sourceUserId: req.userId,
-        version: result.purchaseOrder.version,
-      });
     }
     sendSuccess(res, result.api);
   } catch (e) {
@@ -219,19 +243,22 @@ goodsReceiptsRouter.post('/goods-receipts/:id/close', requireClose, async (req: 
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      closeGoodsReceipt(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await closeGoodsReceipt(client, tenantId, req.params.id, expectedVersion, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'goods_receipt', {
+          data: r.api,
+          id: r.row.id,
+          sourceUserId: req.userId,
+          version: r.row.version,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    emitEntityEvent(tenantId, 'updated', 'goods_receipt', {
-      data: result.api,
-      id: result.row.id,
-      sourceUserId: req.userId,
-      version: result.row.version,
-    });
     sendSuccess(res, result.api);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -246,24 +273,27 @@ goodsReceiptsRouter.delete('/goods-receipts/:id', requireEdit, async (req: Authe
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      softDeleteGoodsReceipt(client, tenantId, req.params.id, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await softDeleteGoodsReceipt(client, tenantId, req.params.id, req.userId ?? null);
+      if (r.deleted) {
+        queueEntityEvent(tenantId, 'deleted', 'goods_receipt', {
+          id: req.params.id,
+          sourceUserId: req.userId,
+        });
+        if (r.purchaseOrder) {
+          queueEntityEvent(tenantId, 'updated', 'purchase_order', {
+            data: rowToPurchaseOrderApi(r.purchaseOrder),
+            id: r.purchaseOrder.id,
+            sourceUserId: req.userId,
+            version: r.purchaseOrder.version,
+          });
+        }
+      }
+      return r;
+    });
     if (!result.deleted) {
       sendFailure(res, 404, 'NOT_FOUND', 'Goods receipt not found');
       return;
-    }
-    emitEntityEvent(tenantId, 'deleted', 'goods_receipt', {
-      id: req.params.id,
-      sourceUserId: req.userId,
-    });
-    if (result.purchaseOrder) {
-      emitEntityEvent(tenantId, 'updated', 'purchase_order', {
-        data: rowToPurchaseOrderApi(result.purchaseOrder),
-        id: result.purchaseOrder.id,
-        sourceUserId: req.userId,
-        version: result.purchaseOrder.version,
-      });
     }
     sendSuccess(res, { deleted: true });
   } catch (e) {

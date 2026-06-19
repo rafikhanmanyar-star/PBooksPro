@@ -5,7 +5,8 @@ import { CURRENCY, ICONS } from '../../constants';
 import { formatDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
-import { useContacts, useProperties, useBuildings, useProjects, useUnits, useStateSelector } from '../../hooks/useSelectiveState';
+import { useContacts, useProperties, useBuildings, useProjects, useUnits, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
+import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -72,6 +73,7 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
     const units = useUnits();
     const whatsAppTemplates = useStateSelector(s => s.whatsAppTemplates);
     const whatsAppMode = useStateSelector(s => s.whatsAppMode);
+    const transactions = useTransactions();
     const { showToast, showAlert } = useNotification();
 
     const projectAgreements = useStateSelector(s => s.projectAgreements);
@@ -329,6 +331,20 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
         });
         return sorted;
     }, [filteredRecords, sortConfig, getInvoiceContextNames]);
+
+    useEffect(() => {
+        logPaymentListUiTrace({
+            component: 'ProjectFinancialGrid',
+            sourceTransactionCount: transactions.length,
+            recordsPropCount: records.length,
+            filteredRecordCount: filteredRecords.length,
+            displayedRecordCount: sortedRecords.length,
+            transactions,
+            displayedRecords: sortedRecords,
+            typeFilter,
+            dateFilter,
+        });
+    }, [transactions, records, filteredRecords, sortedRecords, typeFilter, dateFilter]);
 
     const bulkExpandableRecordIds = useMemo(
         () =>

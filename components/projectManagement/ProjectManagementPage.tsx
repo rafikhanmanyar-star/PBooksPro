@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, memo, Suspense } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
@@ -23,30 +23,29 @@ import {
   ProjectSellingCustomReportsPage,
   ProjectConstructionCustomReportsPage,
 } from '../../modules/report-designer/ReportDesignerPage';
-
-// Lazy-loaded report imports to reduce initial bundle size
-const ProjectLayoutReport = React.lazy(() => import('../reports/ProjectLayoutReport'));
-const ProjectUnitReport = React.lazy(() => import('../reports/ProjectUnitReport'));
-const ProjectSummaryReport = React.lazy(() => import('../reports/ProjectSummaryReport'));
-const RevenueAnalysisReport = React.lazy(() => import('../reports/RevenueAnalysisReport'));
-const ClientLedgerReport = React.lazy(() => import('../reports/ClientLedgerReport'));
-const ProjectBrokerReport = React.lazy(() => import('../reports/ProjectBrokerReport'));
-const ProjectCategoryReport = React.lazy(() => import('../reports/ProjectCategoryReport'));
-const VendorLedgerReport = React.lazy(() => import('../reports/VendorLedgerReport'));
-const ProjectPMCostReport = React.lazy(() => import('../reports/ProjectPMCostReport'));
-const ProjectContractReport = React.lazy(() => import('../reports/ProjectContractReport'));
-const ContractRetentionRegisterReport = React.lazy(() => import('../reports/ContractRetentionRegisterReport'));
-const ProjectBudgetReport = React.lazy(() => import('../reports/ProjectBudgetReport'));
-const ProjectMaterialReport = React.lazy(() => import('../reports/ProjectMaterialReport'));
-const MarketingActivityReport = React.lazy(() => import('../reports/MarketingActivityReport'));
-const ProjectExpenseVoucherReportsPage = React.lazy(() => import('../reports/ProjectExpenseVoucherReportsPage'));
-const ProjectFinancialPositionReport = React.lazy(() => import('../reports/ProjectFinancialPositionReport'));
-const ProjectProfitabilityAnalytics = React.lazy(() => import('../../modules/project-profitability/ProjectProfitabilityAnalytics'));
-const ProjectCashFlowReport = React.lazy(() => import('../reports/ProjectCashFlowReport'));
-const InvoicesPage = React.lazy(() => import('../invoices/InvoicesPage'));
-const ExpenseAnalyticsPage = React.lazy(() => import('../../modules/expense-analytics/ExpenseAnalyticsPage'));
-const CollectionsAnalyticsPage = React.lazy(() => import('../../modules/collections-analytics/CollectionsAnalyticsPage'));
-const SellingAnalyticsPage = React.lazy(() => import('../../modules/selling-analytics/SellingAnalyticsPage'));
+/** Static imports: nested React.lazy + file:// in Electron causes "Failed to fetch dynamically imported module". */
+import ProjectLayoutReport from '../reports/ProjectLayoutReport';
+import ProjectUnitReport from '../reports/ProjectUnitReport';
+import ProjectSummaryReport from '../reports/ProjectSummaryReport';
+import RevenueAnalysisReport from '../reports/RevenueAnalysisReport';
+import ClientLedgerReport from '../reports/ClientLedgerReport';
+import ProjectBrokerReport from '../reports/ProjectBrokerReport';
+import ProjectCategoryReport from '../reports/ProjectCategoryReport';
+import VendorLedgerReport from '../reports/VendorLedgerReport';
+import ProjectPMCostReport from '../reports/ProjectPMCostReport';
+import ProjectContractReport from '../reports/ProjectContractReport';
+import ContractRetentionRegisterReport from '../reports/ContractRetentionRegisterReport';
+import ProjectBudgetReport from '../reports/ProjectBudgetReport';
+import ProjectMaterialReport from '../reports/ProjectMaterialReport';
+import MarketingActivityReport from '../reports/MarketingActivityReport';
+import ProjectExpenseVoucherReportsPage from '../reports/ProjectExpenseVoucherReportsPage';
+import ProjectFinancialPositionReport from '../reports/ProjectFinancialPositionReport';
+import ProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
+import ProjectCashFlowReport from '../reports/ProjectCashFlowReport';
+import InvoicesPage from '../invoices/InvoicesPage';
+import ExpenseAnalyticsPage from '../../modules/expense-analytics/ExpenseAnalyticsPage';
+import CollectionsAnalyticsPage from '../../modules/collections-analytics/CollectionsAnalyticsPage';
+import SellingAnalyticsPage from '../../modules/selling-analytics/SellingAnalyticsPage';
 
 interface ProjectManagementPageProps {
     initialPage: Page;
@@ -99,6 +98,9 @@ const CONSTRUCTION_OTHER_REPORTS: ProjectView[] = [
     'Expense by Category',
     'Petty cash report',
 ];
+
+/** Hidden from sub-nav only; routing and page code remain available. */
+const NAV_HIDDEN_REPORTS: ProjectView[] = ['Custom Reports'];
 
 const CONSTRUCTION_PERSISTENT_VIEWS: ProjectView[] = ['Contracts', 'Bills', 'Expense Vouchers', 'PM Payouts'];
 
@@ -409,7 +411,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                             {!subCollapsed && (
                                 <NavSectionLabel variant="section" className="px-3 py-1 pt-2">Operations</NavSectionLabel>
                             )}
-                            {SELLING_OTHER_REPORTS.map((name) => (
+                            {SELLING_OTHER_REPORTS.filter((name) => !NAV_HIDDEN_REPORTS.includes(name)).map((name) => (
                                 <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
                             ))}
                         </div>
@@ -477,7 +479,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
                             {!subCollapsed && (
                                 <NavSectionLabel variant="section" className="px-3 py-1 pt-2">Operations</NavSectionLabel>
                             )}
-                            {CONSTRUCTION_OTHER_REPORTS.map((name) => (
+                            {CONSTRUCTION_OTHER_REPORTS.filter((name) => !NAV_HIDDEN_REPORTS.includes(name)).map((name) => (
                                 <ModuleNavItem key={name} view={name} label={name} collapsed={subCollapsed} />
                             ))}
                         </div>
@@ -492,14 +494,14 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
         { value: 'Broker Payouts', label: 'Brokers', group: 'Payouts' },
         { value: 'Visual Layout', label: 'Visual', group: 'Project views' },
         { value: 'Tabular View', label: 'Units', group: 'Project views' },
-        ...SELLING_OTHER_REPORTS.map((v) => ({ value: v, label: v === 'Custom Reports' ? 'Custom reports' : v, group: 'Reports' })),
+        ...SELLING_OTHER_REPORTS.filter((v) => !NAV_HIDDEN_REPORTS.includes(v)).map((v) => ({ value: v, label: v === 'Custom Reports' ? 'Custom reports' : v, group: 'Reports' })),
         ...PROJECT_FINANCIAL_VIEWS.map((v) => ({ value: v, label: v, group: 'Financial reports' })),
     ];
 
     const allConstructionMobileOptions: { value: ProjectView; label: string; group: string }[] = [
         ...CONSTRUCTION_OPERATIONAL_VIEWS.map((v) => ({ value: v, label: v === 'Expense Vouchers' ? 'Petty Cash' : v, group: 'Operations' })),
         { value: 'PM Payouts', label: 'PM Fee Log', group: 'Payouts' },
-        ...CONSTRUCTION_OTHER_REPORTS.map((v) => ({
+        ...CONSTRUCTION_OTHER_REPORTS.filter((v) => !NAV_HIDDEN_REPORTS.includes(v)).map((v) => ({
             value: v,
             label: v === 'Custom Reports' ? 'Custom reports' : v,
             group: 'Reports',
@@ -509,9 +511,7 @@ const ProjectManagementPage: React.FC<ProjectManagementPageProps> = ({ initialPa
 
     const sharedContentShell = (children: React.ReactNode) => (
         <div className="flex-1 min-w-0 min-h-0 overflow-hidden flex flex-col px-2 sm:px-3 md:px-0 pt-2 md:pt-0">
-            <Suspense fallback={<div className="flex items-center justify-center h-full text-app-muted">Loading...</div>}>
-                {children}
-            </Suspense>
+            {children}
         </div>
     );
 

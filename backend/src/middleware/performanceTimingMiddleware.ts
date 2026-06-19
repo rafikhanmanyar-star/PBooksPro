@@ -2,9 +2,11 @@ import type { Response, NextFunction } from 'express';
 import { logger } from '../utils/logger.js';
 import type { AuthedRequest } from './authMiddleware.js';
 import type { RequestWithId } from './requestLogging.js';
+import { API_LATENCY_CRITICAL_MS, API_LATENCY_WARN_MS } from '../reliability/observabilityTypes.js';
+import { recordApiMetric } from '../services/telemetry/apiMetricsStore.js';
 
-const WARN_MS = 3000;
-const CRITICAL_MS = 10000;
+const WARN_MS = API_LATENCY_WARN_MS;
+const CRITICAL_MS = API_LATENCY_CRITICAL_MS;
 
 export type TimedRequest = AuthedRequest & RequestWithId & { perfStart?: number };
 
@@ -45,8 +47,15 @@ export function performanceTimingMiddleware(req: TimedRequest, res: Response, ne
     if (durationMs >= WARN_MS) {
       logger.warn('Slow API request', { ...payload, severity });
     } else {
-      logger.info('API timing', payload);
+      logger.debug('API timing', payload);
     }
+
+    recordApiMetric({
+      method,
+      path,
+      statusCode: res.statusCode,
+      durationMs,
+    });
 
     void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
       if (durationMs < WARN_MS) return;

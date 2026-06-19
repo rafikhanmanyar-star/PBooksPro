@@ -19,7 +19,7 @@ import {
   releaseRetention,
   validateRetentionThresholdForContract,
 } from '../../vendors/services/contractRetentionService.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 
 export const contractsRouter = Router();
 
@@ -109,17 +109,22 @@ contractsRouter.post('/contracts', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const result = await withTransaction((client) =>
-      upsertContract(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await upsertContract(client, tenantId, req.body as Record<string, unknown>, req.userId ?? null);
+      if (!r.conflict) {
+        const action = r.wasInsert ? 'created' : 'updated';
+        queueEntityEvent(tenantId, action, 'contract', {
+          data: rowToContractApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.row.version);
       return;
     }
-    const apiRow = rowToContractApi(result.row);
-    const action = result.wasInsert ? 'created' : 'updated';
-    emitEntityEvent(tenantId, action, 'contract', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow, result.wasInsert ? 201 : 200);
+    sendSuccess(res, rowToContractApi(result.row), result.wasInsert ? 201 : 200);
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -195,16 +200,21 @@ contractsRouter.post('/contracts/:id/release-retention', requirePermission('cont
     version?: number;
   };
   try {
-    const result = await withTransaction((client) =>
-      releaseRetention(client, tenantId, id, req.userId ?? null, body)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await releaseRetention(client, tenantId, id, req.userId ?? null, body);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'contract', {
+          data: rowToContractApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.row.version);
       return;
     }
-    const apiRow = rowToContractApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToContractApi(result.row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -220,23 +230,28 @@ contractsRouter.post('/contracts/:id/submit', async (req: AuthedRequest, res) =>
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      submitContractForApproval(
+    const result = await withTransaction(async (client) => {
+      const r = await submitContractForApproval(
         client,
         tenantId,
         req.params.id,
         expectedVersion,
         req.userId ?? null,
         req.role ?? null
-      )
-    );
+      );
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'contract', {
+          data: rowToContractApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    const apiRow = rowToContractApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToContractApi(result.row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -252,16 +267,21 @@ contractsRouter.post('/contracts/:id/approve', async (req: AuthedRequest, res) =
   const body = req.body as Record<string, unknown>;
   const expectedVersion = typeof body.version === 'number' ? body.version : undefined;
   try {
-    const result = await withTransaction((client) =>
-      approveContract(client, tenantId, req.params.id, expectedVersion, req.userId ?? null)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await approveContract(client, tenantId, req.params.id, expectedVersion, req.userId ?? null);
+      if (!r.conflict) {
+        queueEntityEvent(tenantId, 'updated', 'contract', {
+          data: rowToContractApi(r.row),
+          sourceUserId: req.userId,
+        });
+      }
+      return r;
+    });
     if (result.conflict) {
       sendVersionConflict(res, result.serverVersion);
       return;
     }
-    const apiRow = rowToContractApi(result.row);
-    emitEntityEvent(tenantId, 'updated', 'contract', { data: apiRow, sourceUserId: req.userId });
-    sendSuccess(res, apiRow);
+    sendSuccess(res, rowToContractApi(result.row));
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
@@ -279,9 +299,18 @@ contractsRouter.delete('/contracts/:id', async (req: AuthedRequest, res) => {
   const expectedVersion =
     typeof versionRaw === 'string' && versionRaw !== '' ? Number(versionRaw) : undefined;
   try {
-    const result = await withTransaction((client) =>
-      softDeleteContract(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
-    );
+    const result = await withTransaction(async (client) => {
+      const r = await softDeleteContract(
+        client,
+        tenantId,
+        id,
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined
+      );
+      if (!r.conflict && r.ok) {
+        queueEntityEvent(tenantId, 'deleted', 'contract', { id, sourceUserId: req.userId });
+      }
+      return r;
+    });
     if (result.conflict) {
       await respondVersionConflict(res, async () => {
         const pool = getPool();
@@ -298,7 +327,6 @@ contractsRouter.delete('/contracts/:id', async (req: AuthedRequest, res) => {
       sendFailure(res, 404, 'NOT_FOUND', 'Contract not found');
       return;
     }
-    emitEntityEvent(tenantId, 'deleted', 'contract', { id, sourceUserId: req.userId });
     sendSuccess(res, { id });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
