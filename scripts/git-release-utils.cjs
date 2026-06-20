@@ -37,6 +37,11 @@ function hasUncommittedChanges() {
   return status.length > 0;
 }
 
+function stashCount() {
+  const out = runOut('git stash list');
+  return out ? out.split('\n').filter(Boolean).length : 0;
+}
+
 const RELEASE_ARTIFACT_PATHS = [
   'release-api-client',
   'release-api-server',
@@ -104,16 +109,25 @@ function checkoutBranchPreservingChanges(name) {
   const branch = currentBranch();
   if (branch === name) return;
 
-  const hadChanges = hasUncommittedChanges();
-  if (hadChanges) {
+  // Only pop a stash we actually created. `git stash push` does NOT capture dirty
+  // submodule content, so a submodule-only "dirty" tree creates no stash entry —
+  // a blind `git stash pop` would then restore an unrelated old stash and wreck the
+  // working tree with conflicts. Compare stash depth before/after to detect this.
+  let stashed = false;
+  if (hasUncommittedChanges()) {
+    const before = stashCount();
     console.log(`[release] Stashing local changes before switching to "${name}"…`);
     run('git stash push -u -m "release:auto-stash before branch switch"');
+    stashed = stashCount() > before;
+    if (!stashed) {
+      console.log('[release] No stashable changes captured (e.g. submodule-only); skipping pop.');
+    }
   }
 
   console.log(`[release] Switching from "${branch}" to "${name}"…`);
   run(`git checkout ${name}`);
 
-  if (hadChanges) {
+  if (stashed) {
     console.log('[release] Restoring stashed local changes…');
     run('git stash pop');
   }
