@@ -4,7 +4,7 @@
 import type { RequestHandler } from 'express';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { sendFailure } from '../../../utils/apiResponse.js';
-import { isSystemOwnerSlug, permissionSetHas, type Permission } from '../../../auth/permissions.js';
+import { isSystemOwnerSlug, permissionSetHas, resolveEnterpriseRole, type Permission } from '../../../auth/permissions.js';
 
 function requestHasPermissionKey(req: AuthedRequest, key: string): boolean {
   const resolved = req.resolvedPermissions;
@@ -12,7 +12,8 @@ function requestHasPermissionKey(req: AuthedRequest, key: string): boolean {
     if ((resolved as readonly string[]).includes(key)) return true;
     if (permissionSetHas(resolved, key as Permission)) return true;
   }
-  if (isSystemOwnerSlug(req.role) || req.role === 'super_admin') return true;
+  const enterpriseRole = resolveEnterpriseRole(req.role ?? '');
+  if (isSystemOwnerSlug(req.role) || enterpriseRole === 'super_admin') return true;
   return false;
 }
 

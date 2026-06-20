@@ -46,18 +46,20 @@ const SecurityRolesSection: React.FC = () => {
     }
     setLoading(true);
     try {
-      const [roleList, templateList, auditList] = await Promise.all([
+      const [rolesResult, templatesResult, auditResult] = await Promise.allSettled([
         securityRbacApi.listRoles(),
         securityRbacApi.listTemplates(),
         securityRbacApi.listAudit(),
       ]);
-      setRoles(roleList);
-      setTemplates(templateList);
-      setAudit(auditList);
-    } catch (e) {
-      void showAlert(e instanceof Error ? e.message : 'Failed to load security roles', {
-        title: 'Security — Roles',
-      });
+      if (rolesResult.status === 'fulfilled') setRoles(rolesResult.value);
+      if (templatesResult.status === 'fulfilled') setTemplates(templatesResult.value);
+      if (auditResult.status === 'fulfilled') setAudit(auditResult.value);
+      if (rolesResult.status === 'rejected' || templatesResult.status === 'rejected') {
+        const err = rolesResult.status === 'rejected' ? rolesResult.reason : (templatesResult as PromiseRejectedResult).reason;
+        void showAlert(err instanceof Error ? err.message : 'Failed to load security roles', {
+          title: 'Security — Roles',
+        });
+      }
     } finally {
       setLoading(false);
     }
