@@ -1752,15 +1752,17 @@ export class AppStateApiService {
     // Other entities will remain from initial state or be loaded separately
     return {
       accounts: normalizedAccounts,
-      ...(normalizedContacts !== undefined ? { contacts: normalizedContacts } : {}),
+      // Deferred entities — omit key entirely when not fetched so mergePartialStateIntoBaseline
+      // knows to preserve the existing state (prevents flash-to-empty on every full sync).
+      ...(normalizedContacts !== undefined && { contacts: normalizedContacts as any }),
       transactions: normalizedTransactions,
       categories: normalizedCategories,
       projects: normalizedProjects,
       buildings: normalizedBuildings,
       properties: normalizedProperties,
       units: normalizedUnits,
-      ...(normalizedInvoices !== undefined ? { invoices: normalizedInvoices } : {}),
-      ...(normalizedBills !== undefined ? { bills: normalizedBills } : {}),
+      ...(normalizedInvoices !== undefined && { invoices: normalizedInvoices as any }),
+      ...(normalizedBills !== undefined && { bills: normalizedBills as any }),
       budgets: normalizedBudgets,
       planAmenities: normalizedPlanAmenities || [],
       installmentPlans: normalizedInstallmentPlans,
@@ -1813,11 +1815,11 @@ export class AppStateApiService {
         normalizePMCycleAllocationFromApi(p)
       ),
       transactionLog: transactionLog || [],
-      ...(normalizedVendors !== undefined ? { vendors: normalizedVendors } : {}),
+      ...(normalizedVendors !== undefined && { vendors: normalizedVendors as any }),
       personalCategories: normalizedPersonalCategories.filter((c) => !c.deletedAt),
-      ...(normalizedPersonalTransactions !== undefined
-        ? { personalTransactions: normalizedPersonalTransactions.filter((t) => !t.deletedAt) }
-        : {}),
+      ...(normalizedPersonalTransactions !== undefined && {
+        personalTransactions: normalizedPersonalTransactions.filter((t) => !t.deletedAt) as any,
+      }),
       ...this.buildSettingsPartialFromFlat(appSettingsFlat),
     };
   }
