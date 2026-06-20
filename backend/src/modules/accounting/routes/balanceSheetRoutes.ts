@@ -3,6 +3,7 @@ import { getPool } from '../../../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getBalanceSheetReportJson } from '../services/balanceSheetReportService.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const balanceSheetRouter = Router();
 
@@ -34,9 +35,11 @@ balanceSheetRouter.get('/reports/balance-sheet', async (req: AuthedRequest, res)
     const client = await pool.connect();
     try {
       const debug = req.query.debug === '1' || req.query.debug === 'true';
+      const scopeCtx = dataScopeContextFromRequest(req);
       const data = await getBalanceSheetReportJson(client, tenantId, dateStr, selectedProjectId, {
         includeDebug: debug,
         selectedBuildingId,
+        scopeCtx,
       });
       sendSuccess(res, data);
     } finally {

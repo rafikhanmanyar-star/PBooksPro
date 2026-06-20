@@ -1,9 +1,19 @@
 import jwt, { type SignOptions } from 'jsonwebtoken';
 
+export type SessionType = 'standard' | 'break_glass';
+
 export type JwtPayload = {
   sub: string;
   tenantId: string;
   role: string;
+};
+
+export type VerifiedAccessToken = JwtPayload & {
+  sessionType: SessionType;
+  breakGlassSessionId?: string;
+  breakGlassAccessHash?: string;
+  /** Composite access version hash at issue time (Phase 3). */
+  av?: string;
 };
 
 export type MfaTokenPurpose = 'mfa_challenge' | 'mfa_setup';
@@ -33,18 +43,51 @@ export function getJwtSecret(): string {
   return s;
 }
 
-export function signAccessToken(userId: string, tenantId: string, role: string): string {
+export function signAccessToken(
+  userId: string,
+  tenantId: string,
+  role: string,
+  options?: { av?: string }
+): string {
   const signOptions: SignOptions = {
     expiresIn: (process.env.JWT_EXPIRES_IN?.trim() || '7d') as SignOptions['expiresIn'],
   };
-  return jwt.sign({ sub: userId, tenantId, role }, getJwtSecret(), signOptions);
+  const payload: Record<string, unknown> = { sub: userId, tenantId, role, sessionType: 'standard' };
+  if (options?.av) payload.av = options.av;
+  return jwt.sign(payload, getJwtSecret(), signOptions);
 }
 
-export function verifyAccessToken(token: string): JwtPayload {
+export function signBreakGlassAccessToken(input: {
+  userId: string;
+  tenantId: string;
+  role: string;
+  sessionId: string;
+  expiresAt: Date;
+  accessHash: string;
+  av?: string;
+}): string {
+  const ttlSec = Math.max(60, Math.floor((input.expiresAt.getTime() - Date.now()) / 1000));
+  const payload: Record<string, unknown> = {
+    sub: input.userId,
+    tenantId: input.tenantId,
+    role: input.role,
+    sessionType: 'break_glass',
+    breakGlassSessionId: input.sessionId,
+    breakGlassAccessHash: input.accessHash,
+  };
+  if (input.av) payload.av = input.av;
+  return jwt.sign(payload, getJwtSecret(), { expiresIn: ttlSec });
+}
+
+export function verifyAccessToken(token: string): VerifiedAccessToken {
   const decoded = jwt.verify(token, getJwtSecret()) as jwt.JwtPayload & {
     tenantId?: string;
     role?: string;
     purpose?: string;
+    sessionType?: SessionType;
+    breakGlassSessionId?: string;
+    breakGlassAccessHash?: string;
+    av?: string;
   };
   if (decoded.purpose) {
     throw new Error('Invalid token type');
@@ -53,7 +96,16 @@ export function verifyAccessToken(token: string): JwtPayload {
   if (!userId || !decoded.tenantId || !decoded.role) {
     throw new Error('Invalid token payload');
   }
-  return { sub: userId, tenantId: decoded.tenantId, role: decoded.role };
+  const sessionType = decoded.sessionType === 'break_glass' ? 'break_glass' : 'standard';
+  return {
+    sub: userId,
+    tenantId: decoded.tenantId,
+    role: decoded.role,
+    sessionType,
+    breakGlassSessionId: decoded.breakGlassSessionId,
+    breakGlassAccessHash: decoded.breakGlassAccessHash,
+    av: decoded.av,
+  };
 }
 
 export function signMfaToken(

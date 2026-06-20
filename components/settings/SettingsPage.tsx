@@ -36,6 +36,12 @@ import AccountingPeriodsSection from './AccountingPeriodsSection';
 import PermissionManagementSection from './PermissionManagementSection';
 import RoleManagementSection from './RoleManagementSection';
 import PermissionCatalogSection from './PermissionCatalogSection';
+import SecurityRolesSection from './security/SecurityRolesSection';
+import SecurityDataScopesSection from './security/SecurityDataScopesSection';
+import SecurityApprovalMatrixSection from './security/SecurityApprovalMatrixSection';
+import { isRbacV2ApprovalMatrixUiEnabled } from '../../services/api/securityApprovalMatrixApi';
+import { isRbacV2RoleManagementUiEnabled } from '../../services/api/securityRbacApi';
+import { isRbacV2DataScopeUiEnabled } from '../../services/api/securityDataScopeApi';
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
 import { usePermissions } from '../../hooks/usePermissions';
 import CustomerBillingPortal from '../billing/CustomerBillingPortal';
@@ -229,6 +235,13 @@ const SettingsPage: React.FC = () => {
     const showPermissionManagement = perms.canReadPermissions;
     const showRoleManagement = perms.canViewRoles;
     const showPermissionCatalog = perms.canViewPermissionCatalog;
+    const showSecurityRoles = isRbacV2RoleManagementUiEnabled() && perms.canViewRoles;
+    const showSecurityDataScopes =
+      isRbacV2DataScopeUiEnabled() &&
+      (perms.canReadUsers || perms.has('administration.scopes.edit'));
+    const showSecurityApprovalMatrix =
+      isRbacV2ApprovalMatrixUiEnabled() &&
+      (perms.canReadUsers || perms.has('administration.approvals.final'));
     const showBillingPortal =
         perms.canReadBilling || perms.canManageBilling || perms.canReadUsers || perms.canManageUsers;
 
@@ -271,10 +284,19 @@ const SettingsPage: React.FC = () => {
                     { id: 'help', label: 'Customer Success', icon: ICONS.fileText },
                 ]
             },
-            ...(showRoleManagement || showPermissionCatalog
+            ...(showRoleManagement || showPermissionCatalog || showSecurityRoles || showSecurityDataScopes || showSecurityApprovalMatrix
               ? [{
                   title: 'Administration',
                   items: [
+                    ...(showSecurityRoles
+                      ? [{ id: 'security-roles', label: 'Security — Roles', icon: ICONS.shield || '🛡️' }]
+                      : []),
+                    ...(showSecurityDataScopes
+                      ? [{ id: 'security-data-scopes', label: 'Security — Data Scopes', icon: ICONS.shield || '🛡️' }]
+                      : []),
+                    ...(showSecurityApprovalMatrix
+                      ? [{ id: 'security-approval-matrix', label: 'Security — Approval Matrix', icon: ICONS.shield || '🛡️' }]
+                      : []),
                     ...(showRoleManagement
                       ? [{ id: 'role-management', label: 'Role Management', icon: ICONS.users }]
                       : []),
@@ -314,6 +336,9 @@ const SettingsPage: React.FC = () => {
         showUserManagement,
         showPermissionManagement,
         showRoleManagement,
+        showSecurityRoles,
+        showSecurityDataScopes,
+        showSecurityApprovalMatrix,
         showPermissionCatalog,
         perms.canReadAuditLogs,
         isSalesUser,
@@ -1386,6 +1411,15 @@ const SettingsPage: React.FC = () => {
                         {activeCategory === 'assets' && <AssetsManagement />}
                         {activeCategory === 'permissions' && showPermissionManagement && (
                             <PermissionManagementSection />
+                        )}
+                        {activeCategory === 'security-roles' && showSecurityRoles && (
+                            <SecurityRolesSection />
+                        )}
+                        {activeCategory === 'security-data-scopes' && showSecurityDataScopes && (
+                            <SecurityDataScopesSection />
+                        )}
+                        {activeCategory === 'security-approval-matrix' && showSecurityApprovalMatrix && (
+                            <SecurityApprovalMatrixSection />
                         )}
                         {activeCategory === 'role-management' && showRoleManagement && (
                             <RoleManagementSection />

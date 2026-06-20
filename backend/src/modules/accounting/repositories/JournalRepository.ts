@@ -12,6 +12,8 @@ import {
   type JournalLineInput,
 } from '../../../financial/validation.js';
 import { buildDimensionSql, type FinancialDimensionScope } from '../../../financial/dimensionScope.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { appendFinancialRbacScopeSql } from '../services/financialReportScope.js';
 
 export type InvestorTransactionType = 'investment' | 'profit_allocation' | 'withdrawal' | 'transfer';
 
@@ -584,7 +586,7 @@ export class JournalRepository extends TenantRepository {
 
   async loadLedgerInput(
     client: pg.PoolClient,
-    options?: { asOfDate?: string }
+    options?: { asOfDate?: string; scopeCtx?: DataScopeEnforcementContext }
   ): Promise<{
       journalLines: Array<{
       journalEntryId: string;
@@ -621,6 +623,12 @@ export class JournalRepository extends TenantRepository {
       linesDateCond = ' AND je.entry_date <= $3::date';
       linesParams.push(options.asOfDate);
     }
+    const lineScopeConditions: string[] = [];
+    appendFinancialRbacScopeSql(lineScopeConditions, linesParams, options?.scopeCtx, {
+      project: 'jl.project_id',
+      property: 'jl.property_id',
+    });
+    const lineScopeSql = lineScopeConditions.length ? ` AND ${lineScopeConditions.join(' AND ')}` : '';
 
     const linesR = await client.query(
       `SELECT
@@ -637,7 +645,7 @@ export class JournalRepository extends TenantRepository {
       INNER JOIN accounts a ON a.id = jl.account_id
         AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2::text)
         AND a.deleted_at IS NULL
-      WHERE je.tenant_id = $1${linesDateCond}
+      WHERE je.tenant_id = $1${linesDateCond}${lineScopeSql}
       ORDER BY je.entry_date ASC, je.id ASC, jl.line_number ASC`,
       linesParams
     );
@@ -695,6 +703,7 @@ export class JournalRepository extends TenantRepository {
       priorOnly?: boolean;
       priorBefore?: string;
       scope?: FinancialDimensionScope;
+      rbacScopeCtx?: DataScopeEnforcementContext;
     }
   ): Promise<
     Array<{
@@ -723,6 +732,12 @@ export class JournalRepository extends TenantRepository {
     }
 
     const dimensionSql = options.scope ? buildDimensionSql(options.scope, params) : '';
+    const rbacScopeConditions: string[] = [];
+    appendFinancialRbacScopeSql(rbacScopeConditions, params, options.rbacScopeCtx, {
+      project: 'jl.project_id',
+      property: 'jl.property_id',
+    });
+    const rbacScopeSql = rbacScopeConditions.length ? ` AND ${rbacScopeConditions.join(' AND ')}` : '';
 
     const r = await client.query(
       `SELECT
@@ -741,7 +756,7 @@ export class JournalRepository extends TenantRepository {
         AND (a.tenant_id = je.tenant_id OR a.tenant_id = $2)
       WHERE je.tenant_id = $1
         AND a.deleted_at IS NULL
-        ${dateCond}${dimensionSql}
+        ${dateCond}${dimensionSql}${rbacScopeSql}
       GROUP BY jl.account_id, a.name, a.type, a.parent_account_id, a.account_code, a.sub_type, a.is_active`,
       params
     );

@@ -1,6 +1,7 @@
 import type pg from 'pg';
 import { computeProfitLossReport } from '../../../reportEngines/index.js';
 import { loadBalanceSheetStateInput } from './balanceSheetReportService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../../constants/globalSystemChart.js';
 
 async function mergePlCategoryMappings(
@@ -49,9 +50,10 @@ export type PreparedProfitLossState = {
 export async function prepareProfitLossState(
   client: pg.PoolClient,
   tenantId: string,
-  asOfDate: string
+  asOfDate: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PreparedProfitLossState> {
-  const stateIn = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
+  const stateIn = await loadBalanceSheetStateInput(client, tenantId, asOfDate, scopeCtx);
   const categories = await mergePlCategoryMappings(
     client,
     tenantId,
@@ -125,8 +127,9 @@ export async function getProfitLossReportJson(
   from: string,
   to: string,
   selectedProjectId: string,
-  selectedBuildingId: string = 'all'
+  selectedBuildingId: string = 'all',
+  scopeCtx?: DataScopeEnforcementContext
 ) {
-  const prepared = await prepareProfitLossState(client, tenantId, to);
+  const prepared = await prepareProfitLossState(client, tenantId, to, scopeCtx);
   return computeProfitLossFromPrepared(prepared, from, to, selectedProjectId, selectedBuildingId);
 }

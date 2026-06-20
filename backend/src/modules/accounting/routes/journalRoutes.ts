@@ -4,6 +4,7 @@ import { z } from 'zod';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { requireLedgerRole } from '../../../middleware/authMiddleware.js';
 import { requirePermission } from '../../../middleware/rbacMiddleware.js';
+import { requirePermissionV2 } from '../../../auth/authorizeV2.js';
 import { withTransaction } from '../../../db/pool.js';
 import {
   getGeneralLedgerReport,
@@ -14,6 +15,13 @@ import {
   postManualJournalWithAudit,
   reverseManualJournalWithAudit,
 } from '../services/manualJournalService.js';
+import {
+  isJournalApprovalRequired,
+  submitManualJournalForApproval,
+  submitJournalReversalForApproval,
+  approveJournalDraft,
+  rejectJournalDraft,
+} from '../services/journalApprovalService.js';
 import { getTrialBalanceReportPayload } from '../services/trialBalanceReportService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
 
@@ -59,6 +67,13 @@ journalRouter.post('/transactions/journal', requireLedgerRole, async (req: Authe
   const body = parsed.data;
   const createdBy = body.createdBy ?? req.userId ?? null;
   try {
+    if (isJournalApprovalRequired()) {
+      const pending = await withTransaction((client) =>
+        submitManualJournalForApproval(client, tenantId, { ...body, createdBy }, req.userId ?? null)
+      );
+      sendSuccess(res, pending, 202);
+      return;
+    }
     const result = await withTransaction((client) =>
       postManualJournalWithAudit(client, tenantId, { ...body, createdBy }, req.userId ?? null)
     );
@@ -74,6 +89,61 @@ journalRouter.post('/transactions/journal', requireLedgerRole, async (req: Authe
     sendFailure(res, 400, 'JOURNAL_ERROR', msg);
   }
 });
+
+const journalApprovalActionSchema = z.object({
+  action: z.enum(['approve', 'reject']),
+  reason: z.string().optional(),
+});
+
+journalRouter.post(
+  '/transactions/journal/approvals/:draftId/action',
+  requirePermissionV2('accounting.journals.approve'),
+  async (req: AuthedRequest, res) => {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+      return;
+    }
+    const parsed = journalApprovalActionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.message);
+      return;
+    }
+    const { draftId } = req.params;
+    try {
+      if (parsed.data.action === 'approve') {
+        const result = await withTransaction((client) =>
+          approveJournalDraft(client, tenantId, draftId, req.userId ?? null, req)
+        );
+        emitEntityEvent(tenantId, 'created', 'journal_entry', {
+          data: result.emitPayload,
+          id: result.journalEntryId,
+          sourceUserId: req.userId,
+          version: result.emitPayload.version,
+        });
+        sendSuccess(res, { journalEntryId: result.journalEntryId });
+        return;
+      }
+      await withTransaction((client) =>
+        rejectJournalDraft(
+          client,
+          tenantId,
+          draftId,
+          req.userId ?? null,
+          parsed.data.reason ?? 'Rejected',
+          req
+        )
+      );
+      sendSuccess(res, { status: 'Rejected' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const code = (e as { code?: string }).code;
+      const status =
+        code === 'FORBIDDEN' ? 403 : code === 'NOT_FOUND' ? 404 : code === 'INVALID_STATE' ? 409 : 400;
+      sendFailure(res, status, code ?? 'JOURNAL_ERROR', msg);
+    }
+  }
+);
 
 journalRouter.get('/transactions/journal/reports/trial-balance', requirePermission('reports.trial_balance.read'), async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
@@ -184,6 +254,13 @@ journalRouter.post('/transactions/journal/:id/reverse', requireLedgerRole, async
   const { id } = req.params;
   const createdBy = req.userId ?? null;
   try {
+    if (isJournalApprovalRequired()) {
+      const pending = await withTransaction((client) =>
+        submitJournalReversalForApproval(client, tenantId, id, parsed.data.reason, createdBy)
+      );
+      sendSuccess(res, pending, 202);
+      return;
+    }
     const result = await withTransaction((client) =>
       reverseManualJournalWithAudit(client, tenantId, id, parsed.data.reason, createdBy)
     );

@@ -79,7 +79,7 @@ export interface CashFlowJournalReportResult {
   };
   flags: {
     negative_opening_cash: boolean;
-    source: 'journal';
+    source: 'journal' | 'transactions';
   };
   audit: CashFlowAuditRowResult[];
   meta: { cashLineCount: number };

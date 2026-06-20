@@ -1,0 +1,12 @@
+Environment: staging via .env.staging
+
+=== RBAC User Assignment Bootstrap ===
+Tenant: test company (test-company)
+Mode: EXECUTE
+Active users: 6
+
+
+Bootstrap summary: inserted=0, skipped=6, unmapped=0
+
+
+EXIT:0

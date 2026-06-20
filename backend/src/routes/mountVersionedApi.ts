@@ -89,6 +89,8 @@ import { tenantLedgerRouter } from './tenantLedgerRoutes.js';
 import { clientLedgerRouter } from './clientLedgerRoutes.js';
 import { vendorLedgerRouter } from './vendorLedgerRoutes.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
+import { requireRbacDataScopeConfiguration } from '../middleware/rbacDataScopeConfigMiddleware.js';
+import { requireRbacApprovalMatrixConfiguration } from '../middleware/rbacApprovalConfigMiddleware.js';
 import { requireActiveSubscription } from '../middleware/licenseEnforcementMiddleware.js';
 import {
   requireFinancialWriteOnMutations,
@@ -121,6 +123,12 @@ import { dataManagementRouter } from './dataManagementRoutes.js';
 import { mobileRouter } from './mobileRoutes.js';
 import { notificationsRouter } from '../modules/notifications/routes/notificationsRoutes.js';
 import { rbacRolesRouter, rbacCatalogRouter, rbacUserRolesRouter } from '../modules/rbac/routes/rbacRoutes.js';
+import { securityCatalogRouter } from '../modules/rbac/routes/securityCatalogRoutes.js';
+import { securityRoleRouter } from '../modules/rbac/routes/securityRoleRoutes.js';
+import { breakGlassRouter } from '../modules/rbac/routes/breakGlassRoutes.js';
+import { effectiveContextRouter } from '../modules/rbac/routes/effectiveContextRoutes.js';
+import { dataScopeRouter } from '../modules/rbac/routes/dataScopeRoutes.js';
+import { approvalMatrixRouter } from '../modules/rbac/routes/approvalMatrixRoutes.js';
 
 const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
@@ -129,6 +137,9 @@ const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', '
  * Exempt from versioning: /health, /api/webhooks/*, /api/admin.
  */
 export function mountVersionedApi(app: Express, prefix: string): void {
+  app.use(prefix, requireRbacDataScopeConfiguration);
+  app.use(prefix, requireRbacApprovalMatrixConfiguration);
+
   app.use(prefix, monitoringPublicRouter);
   app.use(prefix, legalRouter);
   app.use(prefix, mfaRouter);
@@ -150,6 +161,12 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), permissionsRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rbacRolesRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rbacCatalogRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), securityCatalogRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), securityRoleRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), breakGlassRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), effectiveContextRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), dataScopeRouter);
+  app.use(prefix, authMiddleware, requireActiveSubscription(), approvalMatrixRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), rbacUserRolesRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), auditTrailRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), privacyRouter);

@@ -1,6 +1,11 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { PayslipRow } from '../services/payroll/payrollTypes.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyDepartmentScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 const PAYSLIP_COLUMNS = `id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
   total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
@@ -52,11 +57,29 @@ export class PayslipRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
-  async listByRun(client: pg.PoolClient, runId: string): Promise<PayslipRow[]> {
+  async listByRun(
+    client: pg.PoolClient,
+    runId: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PayslipRow[]> {
+    const params: unknown[] = [this.tenantId, runId];
+    const conditions = ['ps.tenant_id = $1', 'ps.payroll_run_id = $2', 'ps.deleted_at IS NULL'];
+    appendScopeFragment(
+      conditions,
+      params,
+      applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'e.department_id', params.length + 1)
+    );
+    const joinEmployee =
+      scopeCtx?.enabled
+        ? ' INNER JOIN payroll_employees e ON e.id = ps.employee_id AND e.tenant_id = ps.tenant_id AND e.deleted_at IS NULL'
+        : '';
     const r = await client.query<PayslipRow>(
-      `SELECT ${PAYSLIP_COLUMNS}
-       FROM payslips WHERE tenant_id = $1 AND payroll_run_id = $2 AND deleted_at IS NULL ORDER BY id ASC`,
-      [this.tenantId, runId]
+      `SELECT ps.id, ps.tenant_id, ps.payroll_run_id, ps.employee_id, ps.basic_pay::text, ps.total_allowances::text, ps.total_deductions::text,
+        ps.total_adjustments::text, ps.gross_pay::text, ps.net_pay::text, ps.allowance_details, ps.deduction_details, ps.adjustment_details,
+        ps.assignment_snapshot, ps.is_paid, ps.paid_amount::text, ps.paid_at, ps.transaction_id, ps.deleted_at, ps.created_at, ps.updated_at
+       FROM payslips ps${joinEmployee}
+       WHERE ${conditions.join(' AND ')} ORDER BY ps.id ASC`,
+      params
     );
     return r.rows;
   }

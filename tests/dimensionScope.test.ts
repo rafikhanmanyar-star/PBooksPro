@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   applyDimensionFilter,
   buildDimensionSql,
+  buildCashFlowDimensionJoins,
+  buildCashFlowDimensionSql,
   DIMENSION_FILTER_ALL,
   isDimensionScopeActive,
   journalLineMatchesDimensionScope,
@@ -84,6 +86,22 @@ describe('dimensionScope', () => {
     assert.doesNotMatch(sql, /transactions/);
     assert.equal(params.length, 3);
     assert.equal(params[2], 'bld-9');
+  });
+
+  it('buildCashFlowDimensionSql resolves project from source transaction join', () => {
+    const params: unknown[] = [];
+    const sql = buildCashFlowDimensionSql(scopeFromReportFilters('proj-z', 'all'), params);
+    assert.match(sql, /t_cf_dim\.project_id/);
+    assert.match(sql, /i_cf_dim\.project_id/);
+    assert.match(sql, /b_cf_dim\.project_id/);
+    assert.equal(params[0], 'proj-z');
+  });
+
+  it('buildCashFlowDimensionJoins includes source document tables', () => {
+    const joins = buildCashFlowDimensionJoins('je');
+    assert.match(joins, /t_cf_dim/);
+    assert.match(joins, /i_cf_dim/);
+    assert.match(joins, /b_cf_dim/);
   });
 
   it('buildDimensionSql project filter uses journal project columns', () => {

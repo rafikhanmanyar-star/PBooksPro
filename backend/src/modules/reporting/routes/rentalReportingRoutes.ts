@@ -4,6 +4,7 @@ import { getPool } from '../../../db/pool.js';
 import { handleRouteError, sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 import {
   getRentalCollectionPerformance,
   getRentalReceivableReport,
@@ -41,7 +42,8 @@ rentalReportingRouter.get('/reports/rental-reporting/summary', reportLimiter, as
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const payload = await getRentalReportingSummary(client, tenantId, filters);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const payload = await getRentalReportingSummary(client, tenantId, filters, scopeCtx);
       memoryCacheSet(cacheKey, payload, TTL_MS);
       sendSuccess(res, payload);
     } finally { client.release(); }
@@ -62,13 +64,14 @@ rentalReportingRouter.get('/reports/rental-reporting/tab/:tab', reportLimiter, a
     const pool = getPool();
     const client = await pool.connect();
     try {
+      const scopeCtx = dataScopeContextFromRequest(req);
       let payload: unknown;
       switch (tab) {
         case 'ledger': payload = await getTenantLedgerPaginated(client, tenantId, filters, page, pageSize); break;
-        case 'receivable': payload = await getRentalReceivableReport(client, tenantId, filters, page, pageSize); break;
-        case 'defaulters': payload = await getTenantDefaultersReport(client, tenantId, filters, page, pageSize); break;
-        case 'schedule': payload = await getRentSchedule(client, tenantId, filters, page, pageSize); break;
-        case 'collection-performance': payload = { rows: await getRentalCollectionPerformance(client, tenantId, filters) }; break;
+        case 'receivable': payload = await getRentalReceivableReport(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'defaulters': payload = await getTenantDefaultersReport(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'schedule': payload = await getRentSchedule(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'collection-performance': payload = { rows: await getRentalCollectionPerformance(client, tenantId, filters, scopeCtx) }; break;
       }
       sendSuccess(res, payload);
     } finally { client.release(); }

@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { InvoiceRow } from '../services/invoicesService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { appendFinancialRbacScopeSql } from '../../accounting/services/financialReportScope.js';
 
 const INVOICE_COLUMNS = `id, tenant_id, invoice_number, contact_id, amount, paid_amount, status, issue_date, due_date,
   invoice_type, description, project_id, building_id, property_id, unit_id, category_id, agreement_id,
@@ -102,29 +104,37 @@ export class InvoiceRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
-  async list(client: pg.PoolClient, filters?: InvoiceListFilters): Promise<InvoiceRow[]> {
+  async list(
+    client: pg.PoolClient,
+    filters?: InvoiceListFilters,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<InvoiceRow[]> {
     const params: unknown[] = [this.tenantId];
-    let q = `SELECT ${INVOICE_COLUMNS} FROM invoices WHERE tenant_id = $1`;
+    const conditions = ['tenant_id = $1'];
     if (!filters?.includeDeleted) {
-      q += ` AND deleted_at IS NULL`;
+      conditions.push('deleted_at IS NULL');
     }
     if (filters?.status) {
       params.push(filters.status);
-      q += ` AND status = $${params.length}`;
+      conditions.push(`status = $${params.length}`);
     }
     if (filters?.invoiceType) {
       params.push(filters.invoiceType);
-      q += ` AND invoice_type = $${params.length}`;
+      conditions.push(`invoice_type = $${params.length}`);
     }
     if (filters?.projectId) {
       params.push(filters.projectId);
-      q += ` AND project_id = $${params.length}`;
+      conditions.push(`project_id = $${params.length}`);
     }
     if (filters?.agreementId) {
       params.push(filters.agreementId);
-      q += ` AND agreement_id = $${params.length}`;
+      conditions.push(`agreement_id = $${params.length}`);
     }
-    q += ' ORDER BY issue_date DESC, invoice_number ASC';
+    appendFinancialRbacScopeSql(conditions, params, scopeCtx, {
+      project: 'project_id',
+      property: 'property_id',
+    });
+    const q = `SELECT ${INVOICE_COLUMNS} FROM invoices WHERE ${conditions.join(' AND ')} ORDER BY issue_date DESC, invoice_number ASC`;
     const r = await client.query<InvoiceRow>(q, params);
     return r.rows;
   }

@@ -239,9 +239,10 @@ function billWriteFieldsFromPick(p: ReturnType<typeof pickBody>): BillWriteField
 export async function listBills(
   client: pg.PoolClient,
   tenantId: string,
-  filters?: { status?: string; projectId?: string; propertyId?: string }
+  filters?: { status?: string; projectId?: string; propertyId?: string },
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<BillRow[]> {
-  return new BillRepository(tenantId).list(client, filters);
+  return new BillRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export type BillListPageQuery = {

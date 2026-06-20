@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { storedRoleLabelForEnterpriseSlug } from '../../../auth/permissions.js';
+import { storedRoleLabelForEnterpriseSlug, permissionsForRole } from '../../../auth/permissions.js';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 
 export type RbacRoleRow = {
@@ -8,10 +8,14 @@ export type RbacRoleRow = {
   slug: string;
   name: string;
   description: string | null;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'archived';
   is_system: boolean;
   is_protected: boolean;
   is_hidden: boolean;
+  role_type: 'system' | 'custom' | 'template_instance';
+  archived_at: Date | null;
+  role_version_hash: string | null;
+  template_id: string | null;
   version: number;
   created_at: Date;
   updated_at: Date;
@@ -50,7 +54,7 @@ export class RbacRepository extends TenantRepository {
          WHERE tenant_id = $1
          GROUP BY role_id
        ) pc ON pc.role_id = r.id
-       WHERE r.tenant_id = $1 AND r.is_hidden = FALSE
+       WHERE r.tenant_id = $1 AND r.is_hidden = FALSE AND r.status <> 'archived'
        ORDER BY LOWER(r.name)`,
       [this.tenantId]
     );
@@ -83,15 +87,22 @@ export class RbacRepository extends TenantRepository {
     return r.rows.map((row) => row.permission_key);
   }
 
-  async listUserRoleAssignments(userId: string): Promise<RbacUserRoleRow[]> {
+  async listUserRoleAssignments(userId: string, activeOnly = false): Promise<RbacUserRoleRow[]> {
+    const activeClause = activeOnly
+      ? ' AND ur.is_active = TRUE AND (ur.expires_at IS NULL OR ur.expires_at > NOW())'
+      : '';
     const r = await this.query<RbacUserRoleRow>(
       `SELECT ur.user_id, ur.role_id, ur.assigned_at, ur.assigned_by, r.slug, r.name
        FROM rbac_user_roles ur
        INNER JOIN rbac_roles r ON r.id = ur.role_id AND r.tenant_id = ur.tenant_id
-       WHERE ur.tenant_id = $1 AND ur.user_id = $2`,
+       WHERE ur.tenant_id = $1 AND ur.user_id = $2${activeClause}`,
       [this.tenantId, userId]
     );
     return r.rows;
+  }
+
+  async listActiveUserRoleAssignments(userId: string): Promise<RbacUserRoleRow[]> {
+    return this.listUserRoleAssignments(userId, true);
   }
 
   async listRolesForPermission(permissionKey: string): Promise<{ id: string; slug: string; name: string }[]> {
@@ -145,11 +156,17 @@ export class RbacRepository extends TenantRepository {
     description?: string | null;
     status?: 'active' | 'inactive';
     permissions: string[];
+    roleType?: 'custom' | 'template_instance';
+    templateId?: string | null;
+    roleVersionHash?: string | null;
   }): Promise<RbacRoleRow> {
     const id = `rbac_${randomUUID().replace(/-/g, '')}`;
     const row = await this.queryOne<RbacRoleRow>(
-      `INSERT INTO rbac_roles (id, tenant_id, slug, name, description, status, is_system, is_protected, is_hidden)
-       VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, FALSE)
+      `INSERT INTO rbac_roles (
+         id, tenant_id, slug, name, description, status, is_system, is_protected, is_hidden,
+         role_type, template_id, role_version_hash
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, FALSE, $7, $8, $9)
        RETURNING *`,
       [
         id,
@@ -158,6 +175,9 @@ export class RbacRepository extends TenantRepository {
         input.name,
         input.description ?? null,
         input.status ?? 'active',
+        input.roleType ?? 'custom',
+        input.templateId ?? null,
+        input.roleVersionHash ?? null,
       ]
     );
     if (!row) throw new Error('Failed to create role');
@@ -287,5 +307,186 @@ export class RbacRepository extends TenantRepository {
       [this.tenantId, userId]
     );
     return row != null;
+  }
+
+  async setRoleVersionHash(roleId: string, hash: string): Promise<void> {
+    await this.query(
+      `UPDATE rbac_roles SET role_version_hash = $3, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2`,
+      [this.tenantId, roleId, hash]
+    );
+  }
+
+  async archiveRole(roleId: string, expectedVersion: number): Promise<RbacRoleRow | null> {
+    return this.queryOne<RbacRoleRow>(
+      `UPDATE rbac_roles
+       SET status = 'archived', archived_at = NOW(), version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND version = $3
+         AND is_system = FALSE AND is_protected = FALSE AND is_hidden = FALSE AND status <> 'archived'
+       RETURNING *`,
+      [this.tenantId, roleId, expectedVersion]
+    );
+  }
+
+  async deactivateAllAssignmentsForRole(roleId: string): Promise<string[]> {
+    const holders = await this.listRoleHolderUserIds(roleId);
+    await this.query(
+      `UPDATE rbac_user_roles SET is_active = FALSE
+       WHERE tenant_id = $1 AND role_id = $2`,
+      [this.tenantId, roleId]
+    );
+    return holders;
+  }
+
+  async listInactiveAssignmentUserIds(roleId: string): Promise<string[]> {
+    const r = await this.query<{ user_id: string }>(
+      `SELECT user_id FROM rbac_user_roles
+       WHERE tenant_id = $1 AND role_id = $2 AND is_active = FALSE`,
+      [this.tenantId, roleId]
+    );
+    return r.rows.map((row) => row.user_id);
+  }
+
+  async reactivateAllAssignmentsForRole(roleId: string): Promise<void> {
+    await this.query(
+      `UPDATE rbac_user_roles SET is_active = TRUE
+       WHERE tenant_id = $1 AND role_id = $2`,
+      [this.tenantId, roleId]
+    );
+  }
+
+  async restoreRole(roleId: string, expectedVersion: number): Promise<RbacRoleRow | null> {
+    return this.queryOne<RbacRoleRow>(
+      `UPDATE rbac_roles
+       SET status = 'active', archived_at = NULL, version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2 AND version = $3
+         AND is_system = FALSE AND is_protected = FALSE AND is_hidden = FALSE AND status = 'archived'
+       RETURNING *`,
+      [this.tenantId, roleId, expectedVersion]
+    );
+  }
+
+  async listRoleHolderUserIds(roleId: string): Promise<string[]> {
+    const r = await this.query<{ user_id: string }>(
+      `SELECT user_id FROM rbac_user_roles
+       WHERE tenant_id = $1 AND role_id = $2 AND is_active = TRUE
+         AND (expires_at IS NULL OR expires_at > NOW())`,
+      [this.tenantId, roleId]
+    );
+    return r.rows.map((row) => row.user_id);
+  }
+
+  async incrementUserAccessVersion(userId: string): Promise<void> {
+    await this.query(
+      `UPDATE users SET access_version = access_version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND id = $2`,
+      [this.tenantId, userId]
+    );
+  }
+
+  async incrementTenantUsersAccessVersion(): Promise<void> {
+    await this.query(
+      `UPDATE users SET access_version = access_version + 1, updated_at = NOW()
+       WHERE tenant_id = $1`,
+      [this.tenantId]
+    );
+  }
+
+  async assignUserRoleActive(
+    userId: string,
+    roleId: string,
+    assignedBy: string | null,
+    options?: { expiresAt?: Date | null; isActive?: boolean }
+  ): Promise<void> {
+    await this.query(
+      `INSERT INTO rbac_user_roles (tenant_id, user_id, role_id, assigned_by, is_active, expires_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id, role_id) DO UPDATE SET
+         assigned_by = EXCLUDED.assigned_by,
+         is_active = EXCLUDED.is_active,
+         expires_at = EXCLUDED.expires_at,
+         assigned_at = NOW()`,
+      [
+        this.tenantId,
+        userId,
+        roleId,
+        assignedBy,
+        options?.isActive ?? true,
+        options?.expiresAt ?? null,
+      ]
+    );
+    await this.incrementUserAccessVersion(userId);
+  }
+
+  async setUserRoleActive(userId: string, roleId: string, isActive: boolean): Promise<boolean> {
+    const r = await this.query(
+      `UPDATE rbac_user_roles SET is_active = $4
+       WHERE tenant_id = $1 AND user_id = $2 AND role_id = $3`,
+      [this.tenantId, userId, roleId, isActive]
+    );
+    if ((r.rowCount ?? 0) > 0) {
+      await this.incrementUserAccessVersion(userId);
+      return true;
+    }
+    return false;
+  }
+
+  async listRbacAuditLog(limit = 100): Promise<
+    {
+      id: string;
+      action: string;
+      target_type: string;
+      target_id: string | null;
+      target_user_id: string | null;
+      target_role_id: string | null;
+      reason: string | null;
+      actor_user_id: string | null;
+      created_at: Date;
+    }[]
+  > {
+    const r = await this.query(
+      `SELECT id, action, target_type, target_id, target_user_id, target_role_id,
+              reason, actor_user_id, created_at
+       FROM rbac_audit_log
+       WHERE tenant_id = $1
+       ORDER BY created_at DESC
+       LIMIT $2`,
+      [this.tenantId, limit]
+    );
+    return r.rows as {
+      id: string;
+      action: string;
+      target_type: string;
+      target_id: string | null;
+      target_user_id: string | null;
+      target_role_id: string | null;
+      reason: string | null;
+      actor_user_id: string | null;
+      created_at: Date;
+    }[];
+  }
+
+  async listUserRolesExpanded(userId: string, activeOnly = true): Promise<
+    { role_id: string; slug: string; permissions: string[] }[]
+  > {
+    const assignments = await this.listUserRoleAssignments(userId, activeOnly);
+    const result: { role_id: string; slug: string; permissions: string[] }[] = [];
+    for (const a of assignments) {
+      const role = await this.getRoleById(a.role_id, true);
+      if (!role || role.status === 'archived') continue;
+      const dbPerms = await this.listRolePermissionKeys(a.role_id);
+      if (dbPerms.length > 0) {
+        result.push({ role_id: a.role_id, slug: a.slug, permissions: dbPerms });
+        continue;
+      }
+      if (role.is_system) {
+        result.push({ role_id: a.role_id, slug: a.slug, permissions: permissionsForRole(a.slug) });
+      }
+    }
+    return result;
+  }
+
+  async listActiveUserRolesExpanded(userId: string) {
+    return this.listUserRolesExpanded(userId, true);
   }
 }

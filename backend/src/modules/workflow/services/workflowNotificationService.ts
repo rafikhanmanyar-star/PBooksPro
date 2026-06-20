@@ -17,9 +17,15 @@ export async function notifyApproversForRequest(
   tenantId: string,
   userIds: string[],
   request: ApprovalRequestRow,
-  entityType: WorkflowEntityType
+  entityType: WorkflowEntityType | string
 ): Promise<void> {
-  const label = ENTITY_LABELS[entityType] ?? entityType;
+  const label =
+    (ENTITY_LABELS as Record<string, string>)[entityType] ??
+    (entityType === 'manual_journal'
+      ? 'Manual Journal'
+      : entityType === 'journal_reversal'
+        ? 'Journal Reversal'
+        : entityType);
   const ref = request.entity_ref ?? request.entity_id;
   await createUserNotifications(client, tenantId, userIds, {
     category: 'workflow',

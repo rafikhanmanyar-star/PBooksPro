@@ -3,6 +3,8 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { BillRow } from '../services/billsService.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { appendFinancialRbacScopeSql } from '../../accounting/services/financialReportScope.js';
 
 const BILL_COLUMNS = `id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
   description, category_id, project_id, building_id, property_id, project_agreement_id, contract_id, staff_id,
@@ -115,24 +117,29 @@ export class BillRepository extends TenantRepository {
 
   async list(
     client: pg.PoolClient,
-    filters?: BillListFilters
+    filters?: BillListFilters,
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<BillRow[]> {
     const params: unknown[] = [this.tenantId];
-    let q = `SELECT ${BILL_COLUMNS}
-             FROM bills WHERE tenant_id = $1 AND deleted_at IS NULL`;
+    const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
     if (filters?.status) {
       params.push(filters.status);
-      q += ` AND status = $${params.length}`;
+      conditions.push(`status = $${params.length}`);
     }
     if (filters?.projectId) {
       params.push(filters.projectId);
-      q += ` AND project_id = $${params.length}`;
+      conditions.push(`project_id = $${params.length}`);
     }
     if (filters?.propertyId) {
       params.push(filters.propertyId);
-      q += ` AND property_id = $${params.length}`;
+      conditions.push(`property_id = $${params.length}`);
     }
-    q += ' ORDER BY issue_date DESC, bill_number ASC';
+    appendFinancialRbacScopeSql(conditions, params, scopeCtx, {
+      project: 'project_id',
+      property: 'property_id',
+    });
+    const q = `SELECT ${BILL_COLUMNS}
+             FROM bills WHERE ${conditions.join(' AND ')} ORDER BY issue_date DESC, bill_number ASC`;
     const r = await client.query<BillRow>(q, params);
     return r.rows;
   }

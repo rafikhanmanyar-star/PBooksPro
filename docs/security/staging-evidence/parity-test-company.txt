@@ -1,0 +1,149 @@
+Environment: staging via .env.staging
+
+=== RBAC Parity Report ===
+Tenant: test company (test-company)
+Users: 6
+
+OK: 0
+Permission loss: 3
+Permission gain (review required): 3
+
+--- Permission Loss ---
+  asd (Admin): missing v1 keys: pev.approve, procurement.quotations.approve, goods_receipt.post
+  Iht (Admin): missing v1 keys: pev.approve, procurement.quotations.approve, goods_receipt.post
+  Test (Accounts): missing v1 keys: pev.approve, procurement.quotations.approve, goods_receipt.post
+
+--- Permission Gain Review (human sign-off required) ---
+  Rafi (Admin): v1 +11 [permissions.view, permissions.manage, roles.view, roles.manage, users.role.assign…]
+    expanded: 115 → 126 (+11)
+    RESTRICTED GAIN: permissions.manage, roles.manage, users.role.assign
+  Sales1 (Sales User): v1 +6 [reports.profit_loss.read, procurement.quotations.approve, procurement.bills.approve, procurement.purchase_orders.approve, workflow.approve…]
+    expanded: 6 → 12 (+6)
+    RESTRICTED GAIN: accounting.journals.approve
+  Security (security_administrator): v1 +5 [roles.view, roles.manage, permissions.view, permissions.manage, users.role.assign]
+    expanded: 12 → 17 (+5)
+    RESTRICTED GAIN: roles.manage, permissions.manage, users.role.assign
+
+--- JSON summary ---
+{
+  "tenantId": "test-company",
+  "tenantName": "test company",
+  "users": 6,
+  "ok": 0,
+  "permissionLoss": 3,
+  "permissionGainReview": 3,
+  "losses": [
+    {
+      "user": "asd",
+      "userId": "user_7d38610cbbb74258a7d1ebc0fccd70c9",
+      "legacyRole": "Admin",
+      "missing": [
+        "pev.approve",
+        "procurement.quotations.approve",
+        "goods_receipt.post"
+      ],
+      "extra": []
+    },
+    {
+      "user": "Iht",
+      "userId": "user_6439e86279f94ba78e7e0e9c66bee5af",
+      "legacyRole": "Admin",
+      "missing": [
+        "pev.approve",
+        "procurement.quotations.approve",
+        "goods_receipt.post"
+      ],
+      "extra": []
+    },
+    {
+      "user": "Test",
+      "userId": "user_2d8fa930bdd74079a240515901bb981b",
+      "legacyRole": "Accounts",
+      "missing": [
+        "pev.approve",
+        "procurement.quotations.approve",
+        "goods_receipt.post"
+      ],
+      "extra": []
+    }
+  ],
+  "gainReview": [
+    {
+      "user": "Rafi",
+      "userId": "user_rafi_test_company",
+      "legacyRole": "Admin",
+      "enterpriseSlug": "company_admin",
+      "v1Gain": [
+        "permissions.view",
+        "permissions.manage",
+        "roles.view",
+        "roles.manage",
+        "users.role.assign",
+        "project_selling.read",
+        "project_selling.catalog.write",
+        "project_selling.marketing_plans.write",
+        "project_selling.agreements.write",
+        "project_selling.invoices.write",
+        "project_selling.payments.receive"
+      ],
+      "expandedGainCount": 11,
+      "restrictedGain": [
+        "permissions.manage",
+        "roles.manage",
+        "users.role.assign"
+      ],
+      "legacyV1Count": 44,
+      "rbacV1Count": 55,
+      "legacyExpandedCount": 115,
+      "rbacExpandedCount": 126
+    },
+    {
+      "user": "Sales1",
+      "userId": "user_88b61918539842919b93d0bf34c8cb00",
+      "legacyRole": "Sales User",
+      "enterpriseSlug": "sales_user",
+      "v1Gain": [
+        "reports.profit_loss.read",
+        "procurement.quotations.approve",
+        "procurement.bills.approve",
+        "procurement.purchase_orders.approve",
+        "workflow.approve",
+        "accounting.journals.approve"
+      ],
+      "expandedGainCount": 6,
+      "restrictedGain": [
+        "accounting.journals.approve"
+      ],
+      "legacyV1Count": 6,
+      "rbacV1Count": 12,
+      "legacyExpandedCount": 6,
+      "rbacExpandedCount": 12
+    },
+    {
+      "user": "Security",
+      "userId": "user_892a3c595d2f4ce08f495e11aa74f387",
+      "legacyRole": "security_administrator",
+      "enterpriseSlug": "read_only",
+      "v1Gain": [
+        "roles.view",
+        "roles.manage",
+        "permissions.view",
+        "permissions.manage",
+        "users.role.assign"
+      ],
+      "expandedGainCount": 5,
+      "restrictedGain": [
+        "roles.manage",
+        "permissions.manage",
+        "users.role.assign"
+      ],
+      "legacyV1Count": 12,
+      "rbacV1Count": 17,
+      "legacyExpandedCount": 12,
+      "rbacExpandedCount": 17
+    }
+  ]
+}
+
+
+EXIT:1

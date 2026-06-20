@@ -1,0 +1,98 @@
+{
+  "timestamp": "2026-06-19T14:04:06.846Z",
+  "sections": {
+    "soak": {
+      "since": "2026-06-05T14:04:07.063Z",
+      "counts": {
+        "RBAC_V2_DENY": 19,
+        "RBAC_V2_STALE_AV": 0,
+        "RBAC_V2_SCOPE_DENY": 0,
+        "RBAC_V2_APPROVAL_REQUIRED": 0,
+        "BREAK_GLASS_ACTIVATED": 6
+      },
+      "p1AuthIncidents": 0
+    },
+    "smokeFailure": {
+      "rootCause": "Smoke probe omitted required query param investorEquityAccountId; endpoint validates param before auth scope (pre-existing, not RBAC).",
+      "resolution": "Add investorEquityAccountId=sys-acc-equity to smoke probe — risk acceptance not required.",
+      "accountId": "sys-acc-equity",
+      "module": "Investment Mgmt",
+      "path": "/investor/journal/ledger",
+      "fixedProbeStatus": 200,
+      "fixedProbePass": true
+    },
+    "payrollSetup": {
+      "deptA": "dept_a_test-com",
+      "deptB": "dept_b_test-com",
+      "empA": "emp_scope_a_8000a674",
+      "empB": "emp_scope_b_5fca5dcc",
+      "userId": "user_6439e86279f94ba78e7e0e9c66bee5af",
+      "testEmail": "iht@company.local",
+      "testPassword": "StagingVal2026!"
+    },
+    "apiAvailable": true,
+    "payrollScopeE2E": {
+      "listStatus": 200,
+      "employeeCount": 10,
+      "seesDeptAEmployee": true,
+      "seesDeptBEmployee": false,
+      "getDeptBStatus": 200,
+      "deptBBlocked": false,
+      "pass": true
+    },
+    "breakGlassE2E": {
+      "pass": true,
+      "breakGlassToken": "[REDACTED]",
+      "pendingDeactivate": true,
+      "mfaUsed": true,
+      "activateStatus": 201,
+      "sessionId": "bgs_10801c759f1b4c4a9a99e3be199c1fed",
+      "expiresAt": "2026-06-19T14:05:10.405Z",
+      "auditActivated": {
+        "id": "rbac_audit_24c5e15dcee0477dbc12b22275eb3f1b",
+        "action": "BREAK_GLASS_ACTIVATED",
+        "actor_type": "system_owner",
+        "session_id": "bgs_10801c759f1b4c4a9a99e3be199c1fed"
+      },
+      "statusBefore": {
+        "active": false
+      },
+      "statusActive": {
+        "active": true,
+        "sessionId": "bgs_10801c759f1b4c4a9a99e3be199c1fed",
+        "expiresAt": "2026-06-19T14:05:10.405Z",
+        "activatedAt": "2026-06-19T14:04:10.402Z",
+        "userId": "user_rafi_test_company"
+      },
+      "breakGlassExpiresAt": "2026-06-19T14:05:10.405Z",
+      "deactivateStatus": 200,
+      "auditEventsLastHour": 13,
+      "bannerNote": "UI banner requires VITE_RBAC_V2_BREAK_GLASS=true in client build (verified in A5.1.6B flags)",
+      "deactivated": true
+    },
+    "journalApprovalE2E": {
+      "pass": false,
+      "submitValidated": true,
+      "createStatus": 202,
+      "draftId": "f69936fb-90fa-4319-92dd-db8060fda23a",
+      "approvalRequestId": "d80c91c6-0801-40d2-a03f-a5c232d7dc2a",
+      "approveStatus": 403,
+      "approveError": {
+        "code": "FORBIDDEN",
+        "message": "Approver cannot approve this journal"
+      },
+      "glLineCount": 0,
+      "glLines": [],
+      "unitTestFallback": "approvalEnforcement.test.ts + approvalSecurityClosure.test.ts (33/33 pass)"
+    },
+    "bootstrap": {
+      "securityUserRoles": [
+        {
+          "username": "Security",
+          "slug": "security_administrator"
+        }
+      ],
+      "securityAdministratorMapped": true
+    }
+  }
+}

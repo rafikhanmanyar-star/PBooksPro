@@ -3,7 +3,8 @@ import type { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import rateLimit from 'express-rate-limit';
 import { getPool } from '../../../db/pool.js';
-import { signAccessToken, verifyAccessToken, verifyMfaToken } from '../../../auth/jwt.js';
+import { verifyAccessToken, verifyMfaToken } from '../../../auth/jwt.js';
+import { issueStandardAccessToken } from '../../../auth/accessTokenIssuance.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { authMiddleware } from '../../../middleware/authMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
@@ -229,7 +230,7 @@ mfaRouter.post('/auth/mfa/enable', mfaSetupAuthMiddleware, async (req, res) => {
           sendFailure(res, 401, 'UNAUTHORIZED', 'User not found');
           return;
         }
-        const token = signAccessToken(profile.id, profile.tenantId, profile.role);
+        const token = await issueStandardAccessToken(profile.id, profile.tenantId, profile.role, client);
         Object.assign(payload, formatAuthPayload(profile, token, authed.loginEventId));
       }
 
@@ -273,7 +274,7 @@ mfaRouter.post('/auth/mfa/verify', mfaVerifyLimiter, async (req, res) => {
         sendFailure(res, 401, 'UNAUTHORIZED', 'User not found');
         return;
       }
-      const token = signAccessToken(profile.id, profile.tenantId, profile.role);
+      const token = await issueStandardAccessToken(profile.id, profile.tenantId, profile.role, client);
       sendSuccess(res, {
         ...formatAuthPayload(profile, token, challenge.loginEventId),
         usedRecoveryCode,

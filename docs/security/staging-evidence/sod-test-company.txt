@@ -1,0 +1,35 @@
+Environment: staging via .env.staging
+
+=== RBAC SoD Report ===
+Tenant: test company (test-company)
+Users: 6
+
+SoD violations: 1
+
+--- Violations ---
+  Rafi (super_admin): procurement.quotations.create + procurement.quotations.approve [extended] Procurement
+
+--- JSON summary ---
+{
+  "tenantId": "test-company",
+  "tenantName": "test company",
+  "violations": 1,
+  "rows": [
+    {
+      "user": "Rafi",
+      "userId": "user_rafi_test_company",
+      "legacyRole": "Admin",
+      "roleSlugs": [
+        "super_admin"
+      ],
+      "permissionA": "procurement.quotations.create",
+      "permissionB": "procurement.quotations.approve",
+      "context": "user:user_rafi_test_company",
+      "category": "extended",
+      "domain": "Procurement"
+    }
+  ]
+}
+
+
+EXIT:1

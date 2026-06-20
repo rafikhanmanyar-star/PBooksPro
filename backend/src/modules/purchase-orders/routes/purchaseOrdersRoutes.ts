@@ -17,6 +17,7 @@ import {
 } from '../services/purchaseOrderService.js';
 import { getPurchaseOrderReportSummary } from '../services/purchaseOrderReportService.js';
 import { getPurchaseOrderBillingContext } from '../services/purchaseOrderBillingService.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 import { respondEntitySearchList } from '../../../services/search/index.js';
 
 export const purchaseOrdersRouter = Router();
@@ -40,13 +41,14 @@ purchaseOrdersRouter.get('/purchase-orders', requireView, async (req: AuthedRequ
     const pool = getPool();
     const client = await pool.connect();
     try {
+      const scopeCtx = dataScopeContextFromRequest(req);
       await respondEntitySearchList({
         query: req.query as Record<string, unknown>,
         res,
         sendSuccess,
-        listAll: () => listPurchaseOrders(client, tenantId, { status, vendorId, projectId }),
+        listAll: () => listPurchaseOrders(client, tenantId, { status, vendorId, projectId }, scopeCtx),
         listPage: (params) =>
-          listPurchaseOrdersPage(client, tenantId, { ...params, status, vendorId, projectId }),
+          listPurchaseOrdersPage(client, tenantId, { ...params, status, vendorId, projectId }, scopeCtx),
         mapRow: rowToPurchaseOrderApi,
       });
     } finally {
@@ -87,7 +89,8 @@ purchaseOrdersRouter.get('/purchase-orders/:id', requireView, async (req: Authed
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const po = await getPurchaseOrderById(client, tenantId, req.params.id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const po = await getPurchaseOrderById(client, tenantId, req.params.id, scopeCtx);
       if (!po) {
         sendFailure(res, 404, 'NOT_FOUND', 'Purchase order not found');
         return;

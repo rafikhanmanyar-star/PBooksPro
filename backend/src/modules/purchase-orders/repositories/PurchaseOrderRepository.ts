@@ -2,6 +2,13 @@ import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyDepartmentScope,
+  applyProjectScope,
+  rowMatchesScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 export type PurchaseOrderRow = {
   id: string;
@@ -107,14 +114,22 @@ export class PurchaseOrderRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<PurchaseOrderRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PurchaseOrderRow | null> {
     const r = await client.query<PurchaseOrderRow>(
       `SELECT ${PO_COLUMNS}
        FROM purchase_orders
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx?.enabled) return row;
+    if (!rowMatchesScope(scopeCtx, 'project', row.project_id)) return null;
+    if (!rowMatchesScope(scopeCtx, 'department', row.department_id)) return null;
+    return row;
   }
 
   async getByIdForUpdate(client: pg.PoolClient, id: string): Promise<PurchaseOrderRow | null> {
@@ -128,7 +143,11 @@ export class PurchaseOrderRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
-  async list(client: pg.PoolClient, filters?: PurchaseOrderListFilters): Promise<PurchaseOrderRow[]> {
+  async list(
+    client: pg.PoolClient,
+    filters?: PurchaseOrderListFilters,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PurchaseOrderRow[]> {
     const clauses = ['tenant_id = $1', 'deleted_at IS NULL'];
     const params: unknown[] = [this.tenantId];
     let idx = 2;
@@ -144,6 +163,8 @@ export class PurchaseOrderRepository extends TenantRepository {
       clauses.push(`project_id = $${idx++}`);
       params.push(filters.projectId);
     }
+    appendScopeFragment(clauses, params, applyProjectScope(scopeCtx ?? { enabled: false, scopes: [] }, 'project_id', params.length + 1));
+    appendScopeFragment(clauses, params, applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'department_id', params.length + 1));
     const r = await client.query<PurchaseOrderRow>(
       `SELECT ${PO_COLUMNS}
        FROM purchase_orders
@@ -163,7 +184,8 @@ export class PurchaseOrderRepository extends TenantRepository {
       search?: string;
       sortBy?: string;
       sortDir?: SortDirection;
-    }
+    },
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<{ rows: PurchaseOrderRow[]; total: number }> {
     const conditions: string[] = ['po.tenant_id = $1', 'po.deleted_at IS NULL'];
     const params: unknown[] = [this.tenantId];
@@ -181,6 +203,8 @@ export class PurchaseOrderRepository extends TenantRepository {
       conditions.push(`po.project_id = $${paramIndex++}`);
       params.push(opts.filters.projectId);
     }
+    appendScopeFragment(conditions, params, applyProjectScope(scopeCtx ?? { enabled: false, scopes: [] }, 'po.project_id', params.length + 1));
+    appendScopeFragment(conditions, params, applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'po.department_id', params.length + 1));
 
     const searchTerm = opts.search?.trim();
     if (searchTerm) {

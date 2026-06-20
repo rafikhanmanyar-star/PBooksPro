@@ -64,6 +64,20 @@ async function login() {
   throw new Error(`Login failed (${res.status}): ${body?.error?.message || JSON.stringify(body)}`);
 }
 
+async function resolveInvestorLedgerPath(token) {
+  const accountsRes = await fetch(`${API}/accounts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!accountsRes.ok) return '/investor/journal/ledger?projectId=all';
+  const body = await accountsRes.json().catch(() => ({}));
+  const accounts = body?.data ?? [];
+  const investor =
+    accounts.find((a) => /investor|equity/i.test(a.name ?? '')) ?? accounts[0];
+  const id = investor?.id;
+  if (!id) return '/investor/journal/ledger?projectId=all';
+  return `/investor/journal/ledger?projectId=all&investorEquityAccountId=${encodeURIComponent(id)}`;
+}
+
 async function probe(token, { module, path }) {
   const url = `${API}${path}`;
   try {
@@ -92,8 +106,13 @@ async function main() {
   const token = await login();
   console.log('Login: OK\n');
 
+  const investorPath = await resolveInvestorLedgerPath(token);
+  const resolvedEndpoints = endpoints.map((ep) =>
+    ep.module === 'Investment Mgmt' ? { ...ep, path: investorPath } : ep
+  );
+
   const results = [];
-  for (const ep of endpoints) {
+  for (const ep of resolvedEndpoints) {
     const r = await probe(token, ep);
     results.push(r);
     const mark = r.ok ? '✓' : '✗';

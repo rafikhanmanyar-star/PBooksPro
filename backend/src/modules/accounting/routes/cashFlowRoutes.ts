@@ -3,6 +3,7 @@ import { getPool } from '../../../db/pool.js';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getCashFlowReportJson } from '../services/cashFlowReportService.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const cashFlowRouter = Router();
 
@@ -38,6 +39,7 @@ cashFlowRouter.get('/reports/cash-flow', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
+      const scopeCtx = dataScopeContextFromRequest(req);
       const data = await getCashFlowReportJson(
         client,
         tenantId,
@@ -45,7 +47,8 @@ cashFlowRouter.get('/reports/cash-flow', async (req: AuthedRequest, res) => {
         to,
         selectedProjectId,
         selectedBuildingId,
-        selectedCostCenterId
+        selectedCostCenterId,
+        scopeCtx
       );
       sendSuccess(res, data);
     } finally {

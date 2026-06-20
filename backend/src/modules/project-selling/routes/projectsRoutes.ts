@@ -13,6 +13,7 @@ import {
   updateProject,
 } from '../services/projectsService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const projectsRouter = Router();
 
@@ -26,7 +27,8 @@ projectsRouter.get('/projects', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listProjects(client, tenantId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const rows = await listProjects(client, tenantId, scopeCtx);
       sendSuccess(res, rows.map((r) => rowToProjectApi(r)));
     } finally {
       client.release();
@@ -47,7 +49,8 @@ projectsRouter.get('/projects/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getProjectById(client, tenantId, id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getProjectById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Project not found');
         return;

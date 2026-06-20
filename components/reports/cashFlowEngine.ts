@@ -57,6 +57,7 @@ export interface CashFlowReportResult {
   };
   flags: {
     negative_opening_cash: boolean;
+    source?: 'journal' | 'transactions';
   };
   audit?: CashFlowAuditRow[];
 }

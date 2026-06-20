@@ -17,3 +17,4 @@ export { computeOwnerSecurityDepositReport } from './ownerSecurityDepositReportE
 export { computeRentalReceivableReport } from './rentalReceivableReportEngine.js';
 export { computeServiceChargesDeductionReport } from './serviceChargesDeductionReportEngine.js';
 export { computeRentalBillsDashboard } from './rentalBillsDashboardEngine.js';
+export { buildCashFlowReportFromTransactions } from './cashFlowTransactionEngine.js';

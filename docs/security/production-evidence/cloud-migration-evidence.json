@@ -1,0 +1,93 @@
+{
+  "envFile": ".env.production.render",
+  "apply": true,
+  "before": {
+    "database": "pbookspro_ofm7",
+    "timestamp": "2026-06-20T02:26:14.889Z",
+    "migrations": {
+      "required": [
+        "133_rbac_v2_role_management.sql",
+        "134_break_glass_sessions.sql",
+        "135_rbac_data_scopes.sql",
+        "136_rbac_approval_matrix.sql",
+        "137_rbac_approval_matrix_seed.sql",
+        "138_rbac_roles_is_archived.sql"
+      ],
+      "missing": [
+        "133_rbac_v2_role_management.sql",
+        "134_break_glass_sessions.sql",
+        "135_rbac_data_scopes.sql",
+        "136_rbac_approval_matrix.sql",
+        "137_rbac_approval_matrix_seed.sql",
+        "138_rbac_roles_is_archived.sql"
+      ],
+      "latestApplied": [
+        "130_bill_po_lines.sql",
+        "131_entity_search_trigram_indexes.sql",
+        "131_fix_empty_goods_receipt_ids.sql",
+        "131_rbac_enhancement.sql",
+        "132_procurement_entity_search_trigram_indexes.sql"
+      ]
+    },
+    "rbacRolesIsArchived": {
+      "is_archived": false,
+      "archived_at": false
+    },
+    "rbacTables": {
+      "present": [],
+      "missing": [
+        "rbac_audit_log",
+        "rbac_user_data_scopes",
+        "rbac_role_data_scopes",
+        "rbac_approval_rules",
+        "rbac_approval_assignments",
+        "break_glass_sessions",
+        "platform_break_glass_capabilities"
+      ]
+    }
+  },
+  "migrationOutput": {
+    "exitCode": 0,
+    "stdout": "\n> pbooks-backend@0.1.0 migrate\n> tsx src/migrate.ts\n\nMigration skipped (already applied): 001_lan_core.sql\nMigration skipped (already applied): 002_contacts.sql\nMigration skipped (already applied): 003_rental_agreements.sql\nMigration skipped (already applied): 004_buildings_properties.sql\nMigration skipped (already applied): 005_projects_units.sql\nMigration skipped (already applied): 006_vendors.sql\nMigration skipped (already applied): 007_app_settings.sql\nMigration skipped (already applied): 008_invoices.sql\nMigration skipped (already applied): 009_accounts_incremental_index.sql\nMigration skipped (already applied): 010_transactions.sql\nMigration skipped (already applied): 011_categories.sql\nMigration skipped (already applied): 012_categories_system_defaults.sql\nMigration skipped (already applied): 013_bills.sql\nMigration skipped (already applied): 014_recurring_invoice_templates.sql\nMigration skipped (already applied): 015_project_agreements.sql\nMigration skipped (already applied): 016_project_received_assets.sql\nMigration skipped (already applied): 017_project_asset_categories.sql\nMigration skipped (already applied): 018_sales_returns.sql\nMigration skipped (already applied): 019_sales_return_categories.sql\nMigration skipped (already applied): 020_normalize_project_agreement_status.sql\nMigration skipped (already applied): 021_payroll.sql\nMigration skipped (already applied): 022_contracts.sql\nMigration skipped (already applied): 023_budgets.sql\nMigration skipped (already applied): 024_personal_finance.sql\nMigration skipped (already applied): 025_pm_cycle_allocations.sql\nMigration skipped (already applied): 026_global_system_chart.sql\nMigration skipped (already applied): 027_installment_plans_marketing.sql\nMigration skipped (already applied): 028_bill_payment_category_from_bill.sql\nMigration skipped (already applied): 029_record_locks.sql\nMigration skipped (already applied): 030_payslip_assignment_snapshot.sql\nMigration skipped (already applied): 031_chat_messages.sql\nMigration skipped (already applied): 032_transactions_transfer_account_fk.sql\nMigration skipped (already applied): 033_personal_tasks.sql\nMigration skipped (already applied): 034_accounts_balance_sheet_tags.sql\nMigration skipped (already applied): 035_pl_category_mapping.sql\nMigration skipped (already applied): 036_cashflow_category_mapping.sql\nMigration skipped (already applied): 037_accounts_chart_extensions.sql\nMigration skipped (already applied): 038_accounts_opening_balance.sql\nMigration skipped (already applied): 039_user_display_timezone.sql\nMigration skipped (already applied): 040_profit_share_expense_category.sql\nMigration skipped (already applied): 041_journal_lines_project_id.sql\nMigration skipped (already applied): 042_journal_entries_investor_metadata.sql\nMigration skipped (already applied): 043_backfill_investor_journal_mirror_transactions.sql\nMigration skipped (already applied): 044_inter_project_clearing_legacy_audit.sql\nMigration skipped (already applied): 045_rental_agreement_renewal_chain.sql\nMigration skipped (already applied): 046_transactions_project_date_index.sql\nMigration skipped (already applied): 047_property_ownership.sql\nMigration skipped (already applied): 048_repair_rental_agreement_contact_from_previous.sql\nMigration skipped (already applied): 049_backfill_transaction_owner_id.sql\nMigration skipped (already applied): 050_backfill_owner_from_agreement.sql\nMigration skipped (already applied): 051_property_ownership_segment_meta.sql\nMigration skipped (already applied): 052_rental_owner_performance.sql\nMigration skipped (already applied): 053_payslips_unique_active_only.sql\nMigration skipped (already applied): 054_drop_property_ownership.sql\nMigration skipped (already applied): 055_payroll_ledger_transactions.sql\nMigration skipped (already applied): 056_contractor_advances_bills.sql\nMigration skipped (already applied): 057_vendor_bill_advance_clearings.sql\nMigration skipped (already applied): 058_vendor_bill_advance_clearings_kind.sql\nMigration skipped (already applied): 059_backfill_vendor_settlement_cash_transactions.sql\nMigration skipped (already applied): 060_custom_reports_builder.sql\nMigration skipped (already applied): 061_schema_migrations.sql\nMigration skipped (already applied): 062_journal_immutability_triggers.sql\nMigration skipped (already applied): 063_transactions_payslip_index.sql\nMigration skipped (already applied): 064_quotations_documents.sql\nMigration skipped (already applied): 065_transaction_log.sql\nMigration skipped (already applied): 066_accounting_periods.sql\nMigration skipped (already applied): 067_enterprise_audit_trail.sql\nMigration skipped (already applied): 068_backup_scheduler.sql\nMigration skipped (already applied): 069_backup_offsite_storage.sql\nMigration skipped (already applied): 070_tenant_restore_runs.sql\nMigration skipped (already applied): 071_disaster_recovery.sql\nMigration skipped (already applied): 072_backup_security.sql\nMigration skipped (already applied): 073_subscription_billing.sql\nMigration skipped (already applied): 074_paddle_integration.sql\nMigration skipped (already applied): 075_license_enforcement.sql\nMigration skipped (already applied): 076_legal_compliance.sql\nMigration skipped (already applied): 077_privacy_requests.sql\nMigration skipped (already applied): 078_user_mfa.sql\nMigration skipped (already applied): 079_remove_shop_module.sql\nMigration skipped (already applied): 080_marketing_leads.sql\nMigration skipped (already applied): 081_support_tickets.sql\nMigration skipped (already applied): 082_subscription_grace_period.sql\nMigration skipped (already applied): 083_tenant_onboarding.sql\nMigration skipped (already applied): 084_referral_program.sql\nMigration skipped (already applied): 085_email_automation.sql\nMigration skipped (already applied): 086_production_monitoring.sql\nMigration skipped (already applied): 087_admin_portal.sql\nMigration skipped (already applied): 088_demo_bookings.sql\nMigration skipped (already applied): 089_lead_management.sql\nMigration skipped (already applied): 090_trial_onboarding_14d.sql\nMigration skipped (already applied): 091_marketing_email_tracking.sql\nMigration skipped (already applied): 092_fix_admin_default_password.sql\nMigration skipped (already applied): 093_project_expense_vouchers.sql\nMigration skipped (already applied): 094_project_expense_vouchers_use_categories.sql\nMigration skipped (already applied): 095_duplicate_submission_protection.sql\nMigration skipped (already applied): 096_user_tenants.sql\nMigration skipped (already applied): 097_organization_approval.sql\nMigration skipped (already applied): 098_organization_approval_admin_actor.sql\nMigration skipped (already applied): 099_users_global_login_identity_unique.sql\nMigration skipped (already applied): 100_user_sessions.sql\nMigration skipped (already applied): 101_performance_indexes.sql\nMigration skipped (already applied): 102_remove_shop_tenant_modules.sql\nMigration skipped (already applied): 105_accounting_periods_locked_status.sql\nMigration skipped (already applied): 106_soft_delete_standard_columns.sql\nMigration skipped (already applied): 107_document_metadata_r2.sql\nMigration skipped (already applied): 108_offline_sync_metadata.sql\nMigration skipped (already applied): 109_analytics_snapshots.sql\nMigration skipped (already applied): 110_document_metadata_api_fields.sql\nMigration skipped (already applied): 110_universal_report_designer.sql\nMigration skipped (already applied): 111_documents_table_retired.sql\nMigration skipped (already applied): 112_executive_mobile.sql\nMigration skipped (already applied): 113_report_dashboard_pins.sql\nMigration skipped (already applied): 114_report_templates_seed.sql\nMigration skipped (already applied): 115_user_notifications.sql\nMigration skipped (already applied): 116_email_auth_upgrade.sql\nMigration skipped (already applied): 117_executive_mobile_v2.sql\nMigration skipped (already applied): 117_reset_full_erp_interface_mode.sql\nMigration skipped (already applied): 118_quotation_price_validation.sql\nMigration skipped (already applied): 119_contract_retention.sql\nMigration skipped (already applied): 120_rk_builders_company_email.sql\nMigration skipped (already applied): 121_journal_dimensions.sql\nMigration skipped (already applied): 122_whatsapp_integration.sql\nMigration skipped (already applied): 123_vendor_quotation_intelligence.sql\nMigration skipped (already applied): 124_sync_user_tenants_role_from_users.sql\nMigration skipped (already applied): 125_quotation_comparison_workflow.sql\nMigration skipped (already applied): 126_purchase_order_lifecycle.sql\nMigration skipped (already applied): 127_workflow_engine.sql\nMigration skipped (already applied): 128_goods_receipts.sql\nMigration skipped (already applied): 129_workflow_entity_approval.sql\nMigration skipped (already applied): 130_bill_po_lines.sql\nMigration skipped (already applied): 131_entity_search_trigram_indexes.sql\nMigration skipped (already applied): 131_fix_empty_goods_receipt_ids.sql\nMigration skipped (already applied): 131_rbac_enhancement.sql\nMigration skipped (already applied): 132_procurement_entity_search_trigram_indexes.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\133_rbac_v2_role_management.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\134_break_glass_sessions.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\135_rbac_data_scopes.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\136_rbac_approval_matrix.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\137_rbac_approval_matrix_seed.sql\nMigration applied: C:\\My Projects\\PBooksPro -Local DB only\\database\\migrations\\138_rbac_roles_is_archived.sql\n",
+    "stderr": "(node:6320) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.\nIn the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.\n\nTo prepare for this change:\n- If you want the current behavior, explicitly use 'sslmode=verify-full'\n- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'\n\nSee https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.\n(Use `node --trace-warnings ...` to show where the warning was created)\n"
+  },
+  "after": {
+    "database": "pbookspro_ofm7",
+    "timestamp": "2026-06-20T02:26:30.190Z",
+    "migrations": {
+      "required": [
+        "133_rbac_v2_role_management.sql",
+        "134_break_glass_sessions.sql",
+        "135_rbac_data_scopes.sql",
+        "136_rbac_approval_matrix.sql",
+        "137_rbac_approval_matrix_seed.sql",
+        "138_rbac_roles_is_archived.sql"
+      ],
+      "missing": [],
+      "latestApplied": [
+        "134_break_glass_sessions.sql",
+        "135_rbac_data_scopes.sql",
+        "136_rbac_approval_matrix.sql",
+        "137_rbac_approval_matrix_seed.sql",
+        "138_rbac_roles_is_archived.sql"
+      ]
+    },
+    "rbacRolesIsArchived": {
+      "is_archived": true,
+      "archived_at": true
+    },
+    "rbacTables": {
+      "present": [
+        "rbac_audit_log",
+        "rbac_user_data_scopes",
+        "rbac_role_data_scopes",
+        "rbac_approval_rules",
+        "rbac_approval_assignments",
+        "break_glass_sessions",
+        "platform_break_glass_capabilities"
+      ],
+      "missing": []
+    }
+  },
+  "schemaPass": true
+}

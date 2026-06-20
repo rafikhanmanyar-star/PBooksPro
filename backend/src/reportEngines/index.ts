@@ -16,4 +16,5 @@ export {
   computeRentalReceivableReport,
   computeServiceChargesDeductionReport,
   computeRentalBillsDashboard,
+  buildCashFlowReportFromTransactions,
 } from '../report-engines/reportEngines.compiled.js';

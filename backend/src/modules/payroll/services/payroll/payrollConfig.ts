@@ -8,6 +8,8 @@ import { PayrollTenantConfigRepository } from '../../repositories/PayrollTenantC
 import { j, numStr, optStr } from './payrollHelpers.js';
 import { listDepartments } from './payrollDepartmentsGrades.js';
 import { listEmployees } from './payrollEmployees.js';
+import type { DataScopeEnforcementContext } from '../../../../auth/tenantRepositoryScope.js';
+import { scopeGrantForDimension } from '../../../../auth/tenantRepositoryScope.js';
 import {
   rowToPayrollProjectApi,
   rowToTenantConfigApi,
@@ -182,11 +184,17 @@ export async function migrateDepartmentNamesToIds(client: pg.PoolClient, tenantI
 
 export async function departmentStats(
   client: pg.PoolClient,
-  tenantId: string
+  tenantId: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{ id: string; name: string; code?: string; total_employees: number; active_employees: number; total_basic_salary: number; budget_allocation: number }[]> {
   const depts = await listDepartments(client, tenantId);
-  const emps = await listEmployees(client, tenantId);
-  return depts.map((d) => {
+  const emps = await listEmployees(client, tenantId, scopeCtx);
+  const deptGrant = scopeCtx?.enabled ? scopeGrantForDimension(scopeCtx.scopes, 'department') : undefined;
+  const visibleDepts =
+    deptGrant && deptGrant.mode === 'assigned'
+      ? depts.filter((d) => (deptGrant.entityIds ?? []).includes(d.id))
+      : depts;
+  return visibleDepts.map((d) => {
     const inDept = emps.filter((e) => e.department_id === d.id || e.department === d.name);
     const active = inDept.filter((e) => e.status === 'ACTIVE');
     const totalBasic = inDept.reduce((s, e) => {

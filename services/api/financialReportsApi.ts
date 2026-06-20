@@ -179,6 +179,7 @@ export async function fetchCashFlowReport(options: {
     },
     flags: {
       negative_opening_cash: Boolean(flags.negative_opening_cash),
+      source: flags.source === 'transactions' ? 'transactions' : 'journal',
     },
     audit: Array.isArray(raw.audit) ? (raw.audit as CashFlowReportResult['audit']) : [],
   };

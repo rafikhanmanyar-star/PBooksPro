@@ -66,6 +66,7 @@ import DemoProductTour from './components/onboarding/DemoProductTour';
 import OnboardingGate from './components/onboarding/OnboardingGate';
 import TrialUpgradeBanner from './components/billing/TrialUpgradeBanner';
 import DemoExploreBanner from './components/billing/DemoExploreBanner';
+import BreakGlassBanner from './components/security/BreakGlassBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
 import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/demoAuthBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
@@ -835,6 +836,7 @@ const App: React.FC = () => {
         >
           <DemoExploreBanner />
           <TrialUpgradeBanner />
+          <BreakGlassBanner />
           <Header title={getPageTitle(currentPage)} isNavigating={isPending || isPageDataNotReady} />
 
           <StabilityBanner />

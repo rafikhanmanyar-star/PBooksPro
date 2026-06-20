@@ -12,6 +12,7 @@ import { listProjects, rowToProjectApi } from '../../project-selling/services/pr
 import { listBuildings, rowToBuildingApi } from '../../properties/services/buildingsService.js';
 import { listProperties, rowToPropertyApi } from '../../properties/services/propertiesService.js';
 import { loadJournalLedgerInput } from './journalLedgerLoadService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 
 function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>): T {
   return x as T;
@@ -21,7 +22,12 @@ function asRecord<T extends Record<string, unknown>>(x: Record<string, unknown>)
  * Loads the minimal app state required by computeBalanceSheetReport (LAN / PostgreSQL).
  */
 /** Exported for profit-loss and other reports that share the same minimal state shape. */
-export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId: string, asOfDate: string) {
+export async function loadBalanceSheetStateInput(
+  client: pg.PoolClient,
+  tenantId: string,
+  asOfDate: string,
+  scopeCtx?: DataScopeEnforcementContext
+) {
   const [accountRows, txRows, catRows, invRows, billRows, praRows, unitRows, paWithUnits, plMap, projectRows, buildingRows, propertyRows, journalData] =
     await Promise.all([
       listAccounts(client, tenantId),
@@ -29,18 +35,18 @@ export async function loadBalanceSheetStateInput(client: pg.PoolClient, tenantId
         endDate: asOfDate,
         limit: 500_000,
         offset: 0,
-      }),
+      }, scopeCtx),
       listCategories(client, tenantId),
-      listInvoices(client, tenantId),
-      listBills(client, tenantId),
+      listInvoices(client, tenantId, undefined, scopeCtx),
+      listBills(client, tenantId, undefined, scopeCtx),
       listProjectReceivedAssets(client, tenantId),
       listUnits(client, tenantId),
       listProjectAgreementsWithUnits(client, tenantId),
       fetchPlSubTypesForTenant(client, tenantId),
-      listProjects(client, tenantId),
+      listProjects(client, tenantId, scopeCtx),
       listBuildings(client, tenantId),
-      listProperties(client, tenantId),
-      loadJournalLedgerInput(client, tenantId, { asOfDate }),
+      listProperties(client, tenantId, undefined, scopeCtx),
+      loadJournalLedgerInput(client, tenantId, { asOfDate, scopeCtx }),
     ]);
 
   const accounts = accountRows.map((r) => asRecord(rowToAccountApi(r)));
@@ -83,9 +89,9 @@ export async function getBalanceSheetReportJson(
   tenantId: string,
   asOfDate: string,
   selectedProjectId: string,
-  options?: { includeDebug?: boolean; selectedBuildingId?: string }
+  options?: { includeDebug?: boolean; selectedBuildingId?: string; scopeCtx?: DataScopeEnforcementContext }
 ) {
-  const state = await loadBalanceSheetStateInput(client, tenantId, asOfDate);
+  const state = await loadBalanceSheetStateInput(client, tenantId, asOfDate, options?.scopeCtx);
   const selectedBuildingId = options?.selectedBuildingId ?? 'all';
   const report = computeBalanceSheetReport(state as never, {
     asOfDate,

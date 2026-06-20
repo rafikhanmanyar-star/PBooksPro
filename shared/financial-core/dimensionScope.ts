@@ -150,6 +150,11 @@ export interface BuildDimensionSqlOptions {
   paramStyle?: DimensionSqlParamStyle;
 }
 
+export interface BuildCashFlowDimensionSqlOptions extends BuildDimensionSqlOptions {
+  /** Include LEFT JOINs to source documents (transactions, invoices, bills). Required when using buildCashFlowDimensionSql. */
+  withSourceJoins?: boolean;
+}
+
 function dimensionSqlParam(index: number, style: DimensionSqlParamStyle): string {
   return style === 'sqlite' ? '?' : `$${index}`;
 }
@@ -191,6 +196,81 @@ export function buildDimensionSql(
     const n = params.length;
     const p = dimensionSqlParam(n, paramStyle);
     // cost_center_id exists on journal_lines only (not journal_entries).
+    return ` AND NULLIF(TRIM(${lineAlias}.cost_center_id), '') = ${p}`;
+  }
+  return '';
+}
+
+/**
+ * LEFT JOINs so cash-flow / scoped GL queries can resolve project/building from source documents
+ * when journal line and entry headers lack dimension tags.
+ */
+export function buildCashFlowDimensionJoins(entryAlias = 'je'): string {
+  return `
+    LEFT JOIN transactions t_cf_dim ON ${entryAlias}.source_module = 'transaction'
+      AND ${entryAlias}.source_id = t_cf_dim.id
+      AND t_cf_dim.tenant_id = ${entryAlias}.tenant_id
+      AND t_cf_dim.deleted_at IS NULL
+    LEFT JOIN invoices i_cf_dim ON ${entryAlias}.source_module = 'invoice'
+      AND ${entryAlias}.source_id = i_cf_dim.id
+      AND i_cf_dim.tenant_id = ${entryAlias}.tenant_id
+      AND i_cf_dim.deleted_at IS NULL
+    LEFT JOIN properties p_inv_cf_dim ON p_inv_cf_dim.id = i_cf_dim.property_id
+      AND p_inv_cf_dim.tenant_id = i_cf_dim.tenant_id
+      AND p_inv_cf_dim.deleted_at IS NULL
+    LEFT JOIN bills b_cf_dim ON ${entryAlias}.source_module IN ('bill', 'vendor_bill_advance_clearing')
+      AND ${entryAlias}.source_id = b_cf_dim.id
+      AND b_cf_dim.tenant_id = ${entryAlias}.tenant_id
+      AND b_cf_dim.deleted_at IS NULL
+    LEFT JOIN properties p_bill_cf_dim ON p_bill_cf_dim.id = b_cf_dim.property_id
+      AND p_bill_cf_dim.tenant_id = b_cf_dim.tenant_id
+      AND p_bill_cf_dim.deleted_at IS NULL`;
+}
+
+/**
+ * Dimension filter for cash-flow journal queries — resolves project/building from
+ * journal line, entry header, and linked source document (transaction / invoice / bill).
+ */
+export function buildCashFlowDimensionSql(
+  scope: FinancialDimensionScope,
+  params: unknown[],
+  options: BuildCashFlowDimensionSqlOptions = {}
+): string {
+  const lineAlias = options.lineAlias ?? 'jl';
+  const entryAlias = options.entryAlias ?? 'je';
+  const paramStyle = options.paramStyle ?? 'postgres';
+  const s = normalizeScope(scope);
+
+  if (scopeTargetsBuilding(s)) {
+    params.push(s.buildingId);
+    const n = params.length;
+    const p = dimensionSqlParam(n, paramStyle);
+    return ` AND COALESCE(
+      NULLIF(TRIM(${lineAlias}.building_id), ''),
+      NULLIF(TRIM(${entryAlias}.building_id), ''),
+      NULLIF(TRIM(t_cf_dim.building_id), ''),
+      NULLIF(TRIM(i_cf_dim.building_id), ''),
+      NULLIF(TRIM(b_cf_dim.building_id), ''),
+      NULLIF(TRIM(p_inv_cf_dim.building_id), ''),
+      NULLIF(TRIM(p_bill_cf_dim.building_id), '')
+    ) = ${p}`;
+  }
+  if (scopeTargetsProject(s)) {
+    params.push(s.projectId);
+    const n = params.length;
+    const p = dimensionSqlParam(n, paramStyle);
+    return ` AND COALESCE(
+      NULLIF(TRIM(${lineAlias}.project_id), ''),
+      NULLIF(TRIM(${entryAlias}.project_id), ''),
+      NULLIF(TRIM(t_cf_dim.project_id), ''),
+      NULLIF(TRIM(i_cf_dim.project_id), ''),
+      NULLIF(TRIM(b_cf_dim.project_id), '')
+    ) = ${p}`;
+  }
+  if (scopeTargetsCostCenter(s)) {
+    params.push(s.costCenterId);
+    const n = params.length;
+    const p = dimensionSqlParam(n, paramStyle);
     return ` AND NULLIF(TRIM(${lineAlias}.cost_center_id), '') = ${p}`;
   }
   return '';

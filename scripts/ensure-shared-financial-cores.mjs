@@ -118,6 +118,23 @@ syncFile('shared/rbac/mfaPolicy.ts', 'backend/src/auth/mfaPolicy.ts', (s) =>
   s.replace("from './permissions'", "from './permissions.js'")
 );
 
+const rbacSyncTransform = (s) =>
+  s
+    .replaceAll("from './permissions.js'", "from './permissions.js'")
+    .replaceAll("from './permissionTypes.js'", "from './permissionTypes.js'")
+    .replaceAll("from './permissionBundles.js'", "from './permissionBundles.js'")
+    .replaceAll("from './sodPairs.js'", "from './sodPairs.js'")
+    .replaceAll("from './permissionCatalog.js'", "from './permissionCatalog.js'");
+
+syncFile('shared/rbac/permissionTypes.ts', 'backend/src/auth/permissionTypes.ts', rbacSyncTransform);
+syncFile('shared/rbac/permissionBundles.ts', 'backend/src/auth/permissionBundles.ts', rbacSyncTransform);
+syncFile('shared/rbac/sodPairs.ts', 'backend/src/auth/sodPairs.ts', rbacSyncTransform);
+syncFile('shared/rbac/permissionCatalog.ts', 'backend/src/auth/permissionCatalog.ts', rbacSyncTransform);
+syncFile('shared/rbac/restrictedPermissions.ts', 'backend/src/auth/restrictedPermissions.ts', rbacSyncTransform);
+syncFile('shared/rbac/roleTemplates.ts', 'backend/src/auth/roleTemplates.ts', rbacSyncTransform);
+syncFile('shared/rbac/dataScopeTypes.ts', 'backend/src/auth/dataScopeTypes.ts', rbacSyncTransform);
+syncFile('shared/rbac/approvalTypes.ts', 'backend/src/auth/approvalTypes.ts', rbacSyncTransform);
+
 syncFile(
   'shared/financial-core/financialReconciliationEngine.ts',
   'backend/src/financial/financialReconciliationEngine.ts',

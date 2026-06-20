@@ -282,6 +282,8 @@ export function ledgerTenantIdsForLocalQuery(raw: string | undefined | null): st
 export {
   applyDimensionFilter,
   buildDimensionSql,
+  buildCashFlowDimensionJoins,
+  buildCashFlowDimensionSql,
   isDimensionScopeActive,
   isJournalEntityScopeActive,
   journalLineMatchesDimensionScope,

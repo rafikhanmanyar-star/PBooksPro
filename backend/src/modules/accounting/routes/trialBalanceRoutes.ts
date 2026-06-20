@@ -8,6 +8,7 @@ import {
 } from '../services/trialBalanceReportService.js';
 import { scopeFromReportFilters } from '../../../financial/trialBalanceCore.js';
 import type { TrialBalanceBasis } from '../../../financial/trialBalanceCore.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const trialBalanceRouter = Router();
 
@@ -44,7 +45,8 @@ trialBalanceRouter.get('/reports/trial-balance', async (req: AuthedRequest, res)
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getTrialBalanceReportPayload(client, tenantId, { from, to, basis, scope });
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const data = await getTrialBalanceReportPayload(client, tenantId, { from, to, basis, scope, scopeCtx });
       sendSuccess(res, {
         from: data.from,
         to: data.to,

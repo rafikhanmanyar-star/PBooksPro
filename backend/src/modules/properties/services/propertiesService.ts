@@ -79,9 +79,10 @@ function pickBody(body: Record<string, unknown>) {
 export async function listProperties(
   client: pg.PoolClient,
   tenantId: string,
-  filters?: { buildingId?: string }
+  filters?: { buildingId?: string },
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<PropertyRow[]> {
-  return new PropertyRepository(tenantId).list(client, filters);
+  return new PropertyRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export type PropertyListPageQuery = {

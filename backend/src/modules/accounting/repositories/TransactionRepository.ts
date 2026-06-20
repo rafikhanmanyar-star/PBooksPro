@@ -1,5 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { appendFinancialRbacScopeSql } from '../services/financialReportScope.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type {
@@ -83,13 +85,18 @@ export class TransactionRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async list(client: pg.PoolClient, filters: ListTransactionFilters = {}): Promise<TransactionRow[]> {
+  async list(
+    client: pg.PoolClient,
+    filters: ListTransactionFilters = {},
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<TransactionRow[]> {
     const params: unknown[] = [this.tenantId];
     const rentalOnly = filters.rentalInvoiceOnly === true;
     let fromClause = 'FROM transactions t';
     if (rentalOnly) {
       fromClause += ` INNER JOIN invoices i ON i.id = t.invoice_id AND i.tenant_id = t.tenant_id`;
     }
+    const scopeConditions: string[] = [];
     let where = ' WHERE t.tenant_id = $1 AND t.deleted_at IS NULL';
     if (rentalOnly) {
       where += ` AND i.deleted_at IS NULL AND i.invoice_type IN ('Rental', 'Security Deposit', 'Service Charge')`;
@@ -122,6 +129,14 @@ export class TransactionRepository extends TenantRepository {
     if (filters.propertyId) {
       params.push(filters.propertyId);
       where += ` AND t.property_id = $${params.length}`;
+    }
+
+    appendFinancialRbacScopeSql(scopeConditions, params, scopeCtx, {
+      project: 't.project_id',
+      property: 't.property_id',
+    });
+    if (scopeConditions.length) {
+      where += ` AND ${scopeConditions.join(' AND ')}`;
     }
 
     const useKeyset =

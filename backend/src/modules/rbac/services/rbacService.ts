@@ -18,7 +18,7 @@ export type RoleApi = {
   slug: string;
   name: string;
   description: string | null;
-  status: 'active' | 'inactive';
+  status: 'active' | 'inactive' | 'archived';
   isSystem: boolean;
   isProtected: boolean;
   userCount: number;

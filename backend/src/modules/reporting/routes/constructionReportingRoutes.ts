@@ -4,6 +4,7 @@ import { getPool } from '../../../db/pool.js';
 import { handleRouteError, sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 import {
   getBillSchedule,
   getConstructionReportingSummary,
@@ -41,7 +42,8 @@ constructionReportingRouter.get('/reports/construction-reporting/summary', repor
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const payload = await getConstructionReportingSummary(client, tenantId, filters);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const payload = await getConstructionReportingSummary(client, tenantId, filters, scopeCtx);
       memoryCacheSet(cacheKey, payload, TTL_MS);
       sendSuccess(res, payload);
     } finally { client.release(); }
@@ -62,13 +64,14 @@ constructionReportingRouter.get('/reports/construction-reporting/tab/:tab', repo
     const pool = getPool();
     const client = await pool.connect();
     try {
+      const scopeCtx = dataScopeContextFromRequest(req);
       let payload: unknown;
       switch (tab) {
         case 'ledger': payload = await getVendorLedgerPaginated(client, tenantId, filters, page, pageSize); break;
-        case 'payable': payload = await getPayableReport(client, tenantId, filters, page, pageSize); break;
-        case 'overdue': payload = await getOverdueVendorsReport(client, tenantId, filters, page, pageSize); break;
-        case 'schedule': payload = await getBillSchedule(client, tenantId, filters, page, pageSize); break;
-        case 'payment-performance': payload = { rows: await getPaymentPerformance(client, tenantId, filters) }; break;
+        case 'payable': payload = await getPayableReport(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'overdue': payload = await getOverdueVendorsReport(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'schedule': payload = await getBillSchedule(client, tenantId, filters, page, pageSize, scopeCtx); break;
+        case 'payment-performance': payload = { rows: await getPaymentPerformance(client, tenantId, filters, scopeCtx) }; break;
       }
       sendSuccess(res, payload);
     } finally { client.release(); }

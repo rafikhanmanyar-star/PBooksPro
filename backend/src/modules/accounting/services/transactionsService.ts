@@ -331,9 +331,10 @@ function transactionWriteFields(
 export async function listTransactions(
   client: pg.PoolClient,
   tenantId: string,
-  filters: ListTransactionFilters = {}
+  filters: ListTransactionFilters = {},
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<TransactionRow[]> {
-  return new TransactionRepository(tenantId).list(client, filters);
+  return new TransactionRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export type TransactionListPageQuery = {

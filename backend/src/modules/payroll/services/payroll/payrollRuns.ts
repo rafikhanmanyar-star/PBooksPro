@@ -13,6 +13,7 @@ import { ExpenseCashValidationBatchContext } from '../../../../financial/expense
 import { createTransaction, rowToTransactionApi } from '../../../accounting/services/transactionsService.js';
 import { enforceLockForSave } from '../../../accounting/services/recordLocksService.js';
 import { dateStr, j, numStr, optStr } from './payrollHelpers.js';
+import type { DataScopeEnforcementContext } from '../../../../auth/tenantRepositoryScope.js';
 import { rowToPayrollRunApi, rowToPayslipApi } from './payrollRowMappers.js';
 import { employeeRowToLike, listEmployees } from './payrollEmployees.js';
 import {
@@ -57,16 +58,21 @@ async function auditPayslipMutation(
   });
 }
 
-export async function listPayrollRuns(client: pg.PoolClient, tenantId: string): Promise<PayrollRunRow[]> {
-  return new PayrollRunRepository(tenantId).listActive(client);
+export async function listPayrollRuns(
+  client: pg.PoolClient,
+  tenantId: string,
+  scopeCtx?: DataScopeEnforcementContext
+): Promise<PayrollRunRow[]> {
+  return new PayrollRunRepository(tenantId).listActive(client, scopeCtx);
 }
 
 export async function getPayrollRun(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayrollRunRow | null> {
-  return new PayrollRunRepository(tenantId).getById(client, id);
+  return new PayrollRunRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function createPayrollRun(
@@ -230,9 +236,10 @@ export async function deletePayrollRun(
 export async function listPayslipsByRun(
   client: pg.PoolClient,
   tenantId: string,
-  runId: string
+  runId: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayslipRow[]> {
-  return new PayslipRepository(tenantId).listByRun(client, runId);
+  return new PayslipRepository(tenantId).listByRun(client, runId, scopeCtx);
 }
 
 export async function listPayslipsByEmployee(

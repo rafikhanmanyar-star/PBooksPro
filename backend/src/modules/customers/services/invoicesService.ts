@@ -163,9 +163,10 @@ export async function listInvoices(
     agreementId?: string;
     /** When true, include soft-deleted rows. Needed for invoice number allocation: UNIQUE(tenant_id, invoice_number) applies even when deleted_at IS NOT NULL. */
     includeDeleted?: boolean;
-  }
+  },
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<InvoiceRow[]> {
-  return new InvoiceRepository(tenantId).list(client, filters);
+  return new InvoiceRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export async function getInvoiceById(

@@ -1,0 +1,19 @@
+Environment: staging via .env.staging
+
+=== RBAC SoD Report ===
+Tenant: Test2 (test2)
+Users: 1
+
+SoD violations: 0
+No SoD violations detected.
+
+--- JSON summary ---
+{
+  "tenantId": "test2",
+  "tenantName": "Test2",
+  "violations": 0,
+  "rows": []
+}
+
+
+EXIT:0

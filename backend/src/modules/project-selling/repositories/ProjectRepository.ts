@@ -1,6 +1,12 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { ProjectRow } from '../services/projectsService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyProjectScope,
+  rowMatchesScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 const PROJECT_COLUMNS = `id, tenant_id, name, location, project_type, description, color, status, pm_config, installment_config, user_id, version, deleted_at, created_at, updated_at`;
 
@@ -20,20 +26,29 @@ export class ProjectRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<ProjectRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<ProjectRow | null> {
     const r = await client.query<ProjectRow>(
       `SELECT ${PROJECT_COLUMNS}
        FROM projects WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx) return row;
+    return rowMatchesScope(scopeCtx, 'project', row.id) ? row : null;
   }
 
-  async listActive(client: pg.PoolClient): Promise<ProjectRow[]> {
+  async listActive(client: pg.PoolClient, scopeCtx?: DataScopeEnforcementContext): Promise<ProjectRow[]> {
+    const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    appendScopeFragment(conditions, params, applyProjectScope(scopeCtx ?? { enabled: false, scopes: [] }, 'id', 2));
     const r = await client.query<ProjectRow>(
       `SELECT ${PROJECT_COLUMNS}
-       FROM projects WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-      [this.tenantId]
+       FROM projects WHERE ${conditions.join(' AND ')} ORDER BY name ASC`,
+      params
     );
     return r.rows;
   }

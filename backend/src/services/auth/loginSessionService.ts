@@ -1,5 +1,6 @@
 import type { PoolClient } from 'pg';
-import { signAccessToken, signMfaToken, signTenantSelectionToken } from '../../auth/jwt.js';
+import { signMfaToken, signTenantSelectionToken } from '../../auth/jwt.js';
+import { issueStandardAccessToken } from '../../auth/accessTokenIssuance.js';
 import {
   getMfaStatus,
   isMfaEnforcementEnabled,
@@ -144,7 +145,7 @@ export async function completeLoginForAccount(
 
   return {
     kind: 'authenticated',
-    token: signAccessToken(account.userId, account.tenantId, account.role),
+    token: await issueStandardAccessToken(account.userId, account.tenantId, account.role, client),
     loginEventId,
     user,
     company,

@@ -16,6 +16,20 @@ import {
 import { getWorkflowEntityAdapter } from './workflowEntityAdapters.js';
 import { getWorkflowSettings, isApprovalWorkflowEnabled } from './workflowSettingsService.js';
 import { notifyApproversForRequest } from './workflowNotificationService.js';
+import { isRbacV2ApprovalMatrixEnabled } from '../../../auth/rbacApprovalFeatureFlag.js';
+import {
+  evaluateApprovalRequirement,
+  resolveApproverUserIds as resolveMatrixApproverUserIds,
+  canApprove,
+  isAutoApproveBlocked,
+} from '../../../approval/approvalEngine.js';
+import type { ApprovalEntityType } from '../../../auth/approvalTypes.js';
+
+const WORKFLOW_TO_APPROVAL_ENTITY: Partial<Record<WorkflowEntityType, ApprovalEntityType>> = {
+  purchase_order: 'purchase_order',
+  bill: 'bill',
+  payment: 'payment',
+};
 
 export type ApprovalRequestApi = ReturnType<typeof rowToApprovalRequestApi>;
 
@@ -47,8 +61,26 @@ export function rowToApprovalRequestApi(row: ApprovalRequestRow) {
 async function resolveApproverUserIds(
   client: pg.PoolClient,
   tenantId: string,
-  level: number
+  level: number,
+  options?: {
+    entityType?: ApprovalEntityType;
+    requiredPermission?: string;
+    requesterId?: string | null;
+  }
 ): Promise<string[]> {
+  if (
+    isRbacV2ApprovalMatrixEnabled() &&
+    options?.entityType &&
+    options.requiredPermission
+  ) {
+    return resolveMatrixApproverUserIds(client, tenantId, {
+      entityType: options.entityType,
+      requiredPermission: options.requiredPermission,
+      requesterId: options.requesterId ?? null,
+      level,
+    });
+  }
+
   const roles =
     level >= 3
       ? ['super_admin', 'company_admin']
@@ -111,8 +143,31 @@ export async function submitEntityForApproval(
   if (!ctx) throw new Error('Entity not found for approval workflow.');
 
   const enabled = await isApprovalWorkflowEnabled(client, tenantId);
+  const approvalEntityType = WORKFLOW_TO_APPROVAL_ENTITY[input.entityType];
+  const rbacMatrixOn = isRbacV2ApprovalMatrixEnabled();
 
-  if (!enabled) {
+  let matrixEvaluation: Awaited<ReturnType<typeof evaluateApprovalRequirement>> | null = null;
+  if (rbacMatrixOn && approvalEntityType) {
+    matrixEvaluation = await evaluateApprovalRequirement(
+      tenantId,
+      {
+        entityType: approvalEntityType,
+        amount: ctx.amount,
+        departmentId: ctx.departmentId,
+        projectId: ctx.projectId,
+        requesterId: input.requesterId,
+      },
+      client
+    );
+  }
+
+  if (!enabled && !(rbacMatrixOn && matrixEvaluation?.required)) {
+    if (rbacMatrixOn && approvalEntityType && isAutoApproveBlocked(approvalEntityType)) {
+      throw Object.assign(
+        new Error('Auto-approve is blocked for mandatory approval entity types'),
+        { code: 'APPROVAL_AUTO_APPROVE_BLOCKED' }
+      );
+    }
     const result = await adapter.applyApproved(client, tenantId, input.entityId, input.requesterId);
     await recordDomainMutation(client, {
       tenantId,
@@ -139,16 +194,23 @@ export async function submitEntityForApproval(
   }
 
   const settings = await getWorkflowSettings(client, tenantId);
-  const evaluation = evaluateWorkflowRules(settings.workflowConfig, {
-    entityType: input.entityType,
-    amount: ctx.amount,
-    departmentId: ctx.departmentId,
-    projectId: ctx.projectId,
-    requesterRole: input.requesterRole ?? null,
-  });
+  const evaluation = rbacMatrixOn && matrixEvaluation?.required
+    ? { maxLevel: matrixEvaluation.maxLevel, matchedLevel: 1 }
+    : evaluateWorkflowRules(settings.workflowConfig, {
+        entityType: input.entityType,
+        amount: ctx.amount,
+        departmentId: ctx.departmentId,
+        projectId: ctx.projectId,
+        requesterRole: input.requesterRole ?? null,
+      });
 
   const pending = await adapter.applyPending(client, tenantId, input.entityId, input.requesterId);
-  const approverIds = await resolveApproverUserIds(client, tenantId, 1);
+  const matrixStep = matrixEvaluation?.chain[0];
+  const approverIds = await resolveApproverUserIds(client, tenantId, 1, {
+    entityType: approvalEntityType,
+    requiredPermission: matrixStep?.requiredPermission,
+    requesterId: input.requesterId,
+  });
   const assignedApproverId = approverIds[0] ?? null;
 
   const reqRepo = new ApprovalRequestRepository(tenantId);
@@ -291,6 +353,41 @@ export async function performApprovalAction(
   const adapter = getWorkflowEntityAdapter(request.entity_type as WorkflowEntityType);
   const entityType = request.entity_type as WorkflowEntityType;
 
+  if (
+    (input.action === 'approve' || input.action === 'reject') &&
+    isRbacV2ApprovalMatrixEnabled()
+  ) {
+    const approvalEntity = WORKFLOW_TO_APPROVAL_ENTITY[entityType];
+    if (approvalEntity) {
+      const evaluation = await evaluateApprovalRequirement(
+        tenantId,
+        {
+          entityType: approvalEntity,
+          amount: request.amount != null ? Number(request.amount) : undefined,
+          departmentId: request.department_id,
+          projectId: request.project_id,
+          requesterId: request.requester_id,
+        },
+        client
+      );
+      const step = evaluation.chain.find((s) => s.level === request.current_level) ?? evaluation.chain[0];
+      if (step) {
+        const ok = await canApprove(client, tenantId, {
+          approverId: input.actorId ?? '',
+          entityType: approvalEntity,
+          requiredPermission: step.requiredPermission,
+          requesterId: request.requester_id,
+          allowSelfApproval: false,
+        });
+        if (!ok) {
+          throw Object.assign(new Error('Approver cannot act on this request (SoD or self-approval).'), {
+            code: 'FORBIDDEN',
+          });
+        }
+      }
+    }
+  }
+
   if (input.action === 'reject') {
     const updated = await reqRepo.updateRequest(client, request.id, {
       status: 'rejected',
@@ -387,7 +484,27 @@ export async function performApprovalAction(
 
   if (input.action === 'escalate') {
     const nextLevel = Math.min(request.current_level + 1, request.max_level);
-    const approverIds = await resolveApproverUserIds(client, tenantId, nextLevel);
+    const approvalEntity = WORKFLOW_TO_APPROVAL_ENTITY[entityType];
+    const matrixEval =
+      isRbacV2ApprovalMatrixEnabled() && approvalEntity
+        ? await evaluateApprovalRequirement(
+            tenantId,
+            {
+              entityType: approvalEntity,
+              amount: request.amount != null ? Number(request.amount) : undefined,
+              departmentId: request.department_id,
+              projectId: request.project_id,
+              requesterId: request.requester_id,
+            },
+            client
+          )
+        : null;
+    const matrixStep = matrixEval?.chain.find((s) => s.level === nextLevel);
+    const approverIds = await resolveApproverUserIds(client, tenantId, nextLevel, {
+      entityType: approvalEntity,
+      requiredPermission: matrixStep?.requiredPermission,
+      requesterId: request.requester_id,
+    });
     await reqRepo.updateRequest(client, request.id, {
       status: 'escalated',
       current_level: nextLevel,
@@ -420,7 +537,27 @@ export async function performApprovalAction(
   const isFinal = nextLevel > request.max_level;
 
   if (!isFinal) {
-    const approverIds = await resolveApproverUserIds(client, tenantId, nextLevel);
+    const approvalEntity = WORKFLOW_TO_APPROVAL_ENTITY[entityType];
+    const matrixEval =
+      isRbacV2ApprovalMatrixEnabled() && approvalEntity
+        ? await evaluateApprovalRequirement(
+            tenantId,
+            {
+              entityType: approvalEntity,
+              amount: request.amount != null ? Number(request.amount) : undefined,
+              departmentId: request.department_id,
+              projectId: request.project_id,
+              requesterId: request.requester_id,
+            },
+            client
+          )
+        : null;
+    const matrixStep = matrixEval?.chain.find((s) => s.level === nextLevel);
+    const approverIds = await resolveApproverUserIds(client, tenantId, nextLevel, {
+      entityType: approvalEntity,
+      requiredPermission: matrixStep?.requiredPermission,
+      requesterId: request.requester_id,
+    });
     const updated = await reqRepo.updateRequest(client, request.id, {
       current_level: nextLevel,
       assigned_approver_id: approverIds[0] ?? null,

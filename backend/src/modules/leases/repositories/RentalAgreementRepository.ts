@@ -1,6 +1,13 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { RentalAgreementRow } from '../services/rentalAgreementsService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyOwnerScope,
+  applyPropertyScope,
+  rowMatchesScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 const RENTAL_AGREEMENT_COLUMNS = `id, tenant_id, agreement_number, contact_id, property_id, start_date, end_date, monthly_rent,
   rent_due_date, status, description, security_deposit, broker_id, broker_fee, owner_id, previous_agreement_id,
@@ -52,13 +59,21 @@ export class RentalAgreementRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<RentalAgreementRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<RentalAgreementRow | null> {
     const r = await client.query<RentalAgreementRow>(
       `SELECT ${RENTAL_AGREEMENT_COLUMNS}
        FROM rental_agreements WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx?.enabled) return row;
+    if (!rowMatchesScope(scopeCtx, 'property', row.property_id)) return null;
+    if (!rowMatchesScope(scopeCtx, 'owner', row.owner_id)) return null;
+    return row;
   }
 
   async getOwnerIdById(client: pg.PoolClient, id: string): Promise<string | null> {
@@ -69,19 +84,33 @@ export class RentalAgreementRepository extends TenantRepository {
     return r.rows[0]?.owner_id ?? null;
   }
 
-  async list(client: pg.PoolClient, filters?: RentalAgreementListFilters): Promise<RentalAgreementRow[]> {
+  async list(
+    client: pg.PoolClient,
+    filters?: RentalAgreementListFilters,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<RentalAgreementRow[]> {
     const params: unknown[] = [this.tenantId];
-    let q = `SELECT ${RENTAL_AGREEMENT_COLUMNS}
-             FROM rental_agreements WHERE tenant_id = $1 AND deleted_at IS NULL`;
+    const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
     if (filters?.status) {
       params.push(filters.status);
-      q += ` AND status = $${params.length}`;
+      conditions.push(`status = $${params.length}`);
     }
     if (filters?.propertyId) {
       params.push(filters.propertyId);
-      q += ` AND property_id = $${params.length}`;
+      conditions.push(`property_id = $${params.length}`);
     }
-    q += ' ORDER BY start_date DESC, agreement_number ASC';
+    appendScopeFragment(
+      conditions,
+      params,
+      applyPropertyScope(scopeCtx ?? { enabled: false, scopes: [] }, 'property_id', params.length + 1)
+    );
+    appendScopeFragment(
+      conditions,
+      params,
+      applyOwnerScope(scopeCtx ?? { enabled: false, scopes: [] }, 'owner_id', params.length + 1)
+    );
+    const q = `SELECT ${RENTAL_AGREEMENT_COLUMNS}
+             FROM rental_agreements WHERE ${conditions.join(' AND ')} ORDER BY start_date DESC, agreement_number ASC`;
     const r = await client.query<RentalAgreementRow>(q, params);
     return r.rows;
   }

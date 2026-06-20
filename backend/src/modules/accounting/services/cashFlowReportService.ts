@@ -1,9 +1,13 @@
 import type pg from 'pg';
+import type { CashFlowJournalReportResult } from '../../../financial/cashFlowJournalCore.js';
 import { getCashFlowReportFromJournal } from './cashFlowJournalReportService.js';
+import { loadBalanceSheetStateInput } from './balanceSheetReportService.js';
+import { buildCashFlowReportFromTransactions } from '../../../reportEngines/index.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 
 /**
- * LAN/API cash flow: derived ONLY from journal_lines on Bank/Cash accounts (same source as Trial Balance).
- * Project scope resolves project from journal line, journal entry, or source transaction (same as Trial Balance / P&L).
+ * LAN/API cash flow: journal GL when bank/cash lines exist; otherwise operational transactions
+ * (same scope rules as P&L drill-down when journal mirrors are incomplete).
  */
 export async function getCashFlowReportJson(
   client: pg.PoolClient,
@@ -12,22 +16,37 @@ export async function getCashFlowReportJson(
   to: string,
   selectedProjectId: string,
   selectedBuildingId: string = 'all',
-  selectedCostCenterId: string = 'all'
+  selectedCostCenterId: string = 'all',
+  scopeCtx?: DataScopeEnforcementContext
 ) {
-  const report = await getCashFlowReportFromJournal(
+  const journalReport = await getCashFlowReportFromJournal(
     client,
     tenantId,
     from,
     to,
     selectedProjectId,
     selectedBuildingId,
-    selectedCostCenterId
+    selectedCostCenterId,
+    scopeCtx
   );
+
+  let report: CashFlowJournalReportResult = journalReport;
+  if (journalReport.meta.cashLineCount === 0) {
+    const stateIn = await loadBalanceSheetStateInput(client, tenantId, to, scopeCtx);
+    report = buildCashFlowReportFromTransactions({
+      from,
+      to,
+      state: stateIn as never,
+      selectedProjectId,
+      selectedBuildingId,
+      selectedCostCenterId,
+    }) as CashFlowJournalReportResult;
+  }
 
   return {
     from: report.from,
     to: report.to,
-    projectId: report.projectId,
+    projectId: selectedProjectId,
     operating: report.operating,
     investing: report.investing,
     financing: report.financing,

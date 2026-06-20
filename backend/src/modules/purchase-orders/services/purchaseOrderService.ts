@@ -216,12 +216,15 @@ async function syncLines(client: pg.PoolClient, tenantId: string, poId: string, 
   await lineRepo.replaceForPo(client, poId, itemsToLineWrites(items, poId));
 }
 
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+
 export async function listPurchaseOrders(
   client: pg.PoolClient,
   tenantId: string,
-  filters?: { status?: string; vendorId?: string; projectId?: string }
+  filters?: { status?: string; vendorId?: string; projectId?: string },
+  scopeCtx?: DataScopeEnforcementContext
 ) {
-  return new PurchaseOrderRepository(tenantId).list(client, filters);
+  return new PurchaseOrderRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export type PurchaseOrderListPageQuery = {
@@ -240,7 +243,8 @@ export type PurchaseOrderListPageQuery = {
 export async function listPurchaseOrdersPage(
   client: pg.PoolClient,
   tenantId: string,
-  query: PurchaseOrderListPageQuery
+  query: PurchaseOrderListPageQuery,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{ rows: PurchaseOrderRow[]; total: number }> {
   return new PurchaseOrderRepository(tenantId).listPage(client, {
     limit: query.limit,
@@ -253,11 +257,16 @@ export async function listPurchaseOrdersPage(
     search: query.search,
     sortBy: query.sortBy,
     sortDir: query.sortDir,
-  });
+  }, scopeCtx);
 }
 
-export async function getPurchaseOrderById(client: pg.PoolClient, tenantId: string, id: string) {
-  const row = await new PurchaseOrderRepository(tenantId).getById(client, id);
+export async function getPurchaseOrderById(
+  client: pg.PoolClient,
+  tenantId: string,
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
+) {
+  const row = await new PurchaseOrderRepository(tenantId).getById(client, id, scopeCtx);
   return row ? rowToPurchaseOrderApi(row) : null;
 }
 

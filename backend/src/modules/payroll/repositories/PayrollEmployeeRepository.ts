@@ -3,6 +3,12 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type { PayrollEmployeeRow } from '../services/payroll/payrollTypes.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyDepartmentScope,
+  rowMatchesScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 const EMPLOYEE_COLUMNS = `id, tenant_id, user_id, name, email, phone, address, photo, employee_code, designation, department,
   department_id, grade, status, joining_date, termination_date, salary, adjustments, projects, buildings,
@@ -34,13 +40,19 @@ export class PayrollEmployeeRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<PayrollEmployeeRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PayrollEmployeeRow | null> {
     const r = await client.query<PayrollEmployeeRow>(
       `SELECT ${EMPLOYEE_COLUMNS}
        FROM payroll_employees WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx) return row;
+    return rowMatchesScope(scopeCtx, 'department', row.department_id) ? row : null;
   }
 
   async getByIdIncludingDeleted(client: pg.PoolClient, id: string): Promise<PayrollEmployeeRow | null> {
@@ -52,11 +64,18 @@ export class PayrollEmployeeRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
-  async listActive(client: pg.PoolClient): Promise<PayrollEmployeeRow[]> {
+  async listActive(client: pg.PoolClient, scopeCtx?: DataScopeEnforcementContext): Promise<PayrollEmployeeRow[]> {
+    const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
+    const params: unknown[] = [this.tenantId];
+    appendScopeFragment(
+      conditions,
+      params,
+      applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'department_id', 2)
+    );
     const r = await client.query<PayrollEmployeeRow>(
       `SELECT ${EMPLOYEE_COLUMNS}
-       FROM payroll_employees WHERE tenant_id = $1 AND deleted_at IS NULL ORDER BY name ASC`,
-      [this.tenantId]
+       FROM payroll_employees WHERE ${conditions.join(' AND ')} ORDER BY name ASC`,
+      params
     );
     return r.rows;
   }
@@ -70,11 +89,17 @@ export class PayrollEmployeeRepository extends TenantRepository {
       search?: string;
       sortBy?: string;
       sortDir?: SortDirection;
-    }
+    },
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<{ rows: PayrollEmployeeRow[]; total: number }> {
     const conditions: string[] = ['tenant_id = $1', 'deleted_at IS NULL'];
     const params: unknown[] = [this.tenantId];
-    let paramIndex = 2;
+    appendScopeFragment(
+      conditions,
+      params,
+      applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'department_id', params.length + 1)
+    );
+    let paramIndex = params.length + 1;
 
     if (opts.departmentId) {
       conditions.push(`department_id = $${paramIndex++}`);

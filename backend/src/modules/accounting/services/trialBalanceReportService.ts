@@ -74,6 +74,8 @@ export type TrialBalanceReportOptions = {
 
   scope?: FinancialDimensionScope;
 
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext;
+
 };
 
 
@@ -172,6 +174,8 @@ export async function fetchTrialBalanceRawRows(
 
       scope: sqlScope,
 
+      rbacScopeCtx: options.scopeCtx,
+
     })
 
   ).map((r) => mapPgRow(r as unknown as Record<string, unknown>));
@@ -197,6 +201,8 @@ export async function fetchTrialBalanceRawRows(
         priorBefore: options.from,
 
         scope: sqlScope,
+
+        rbacScopeCtx: options.scopeCtx,
 
       })
 

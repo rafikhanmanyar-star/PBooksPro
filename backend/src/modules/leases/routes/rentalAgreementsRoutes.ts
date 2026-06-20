@@ -16,6 +16,7 @@ import {
 import { LockGuardError } from '../../../services/recordLocksService.js';
 import { listInvoices, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const rentalAgreementsRouter = Router();
 
@@ -31,7 +32,8 @@ rentalAgreementsRouter.get('/rental-agreements', async (req: AuthedRequest, res)
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const rows = await listRentalAgreements(client, tenantId, { status, propertyId });
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const rows = await listRentalAgreements(client, tenantId, { status, propertyId }, scopeCtx);
       sendSuccess(res, rows.map((r) => rowToRentalAgreementApi(r)));
     } finally {
       client.release();
@@ -81,7 +83,8 @@ rentalAgreementsRouter.get('/rental-agreements/:id/invoices', async (req: Authed
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getRentalAgreementById(client, tenantId, id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getRentalAgreementById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Agreement not found');
         return;
@@ -107,7 +110,8 @@ rentalAgreementsRouter.get('/rental-agreements/:id', async (req: AuthedRequest, 
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getRentalAgreementById(client, tenantId, id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getRentalAgreementById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Agreement not found');
         return;

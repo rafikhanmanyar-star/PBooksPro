@@ -4,6 +4,7 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import { requireResourceQuota } from '../../../middleware/licenseEnforcementMiddleware.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 import { perfPayrollLog, perfPayrollNow } from '../../../utils/payrollPerf.js';
 import { parsePaginationQuery, buildPaginatedResponse } from '../../../utils/pagination/index.js';
 import { hasPaginationQuery, parseEntitySearchQuery } from '../../../services/search/index.js';
@@ -90,7 +91,8 @@ payrollRouter.get('/payroll/departments/stats', async (req: AuthedRequest, res) 
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const stats = await departmentStats(c, tenantId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const stats = await departmentStats(c, tenantId, scopeCtx);
       sendSuccess(res, stats);
     } finally {
       c.release();
@@ -298,8 +300,9 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
+      const scopeCtx = dataScopeContextFromRequest(req);
       if (!hasPaginationQuery(query)) {
-        const rows = await listEmployees(c, tenantId);
+        const rows = await listEmployees(c, tenantId, scopeCtx);
         sendSuccess(res, rows.map((r) => rowToEmployeeApi(r)));
         return;
       }
@@ -320,7 +323,7 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
         search,
         sortBy,
         sortDir,
-      });
+      }, scopeCtx);
       sendSuccess(
         res,
         buildPaginatedResponse(rows.map((r) => rowToEmployeeApi(r)), total, page, pageSize)
@@ -513,7 +516,8 @@ payrollRouter.get('/payroll/runs', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const rows = await listPayrollRuns(c, tenantId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const rows = await listPayrollRuns(c, tenantId, scopeCtx);
       sendSuccess(res, rows.map((r) => rowToPayrollRunApi(r)));
     } finally {
       c.release();
@@ -533,7 +537,8 @@ payrollRouter.get('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const row = await getPayrollRun(c, tenantId, req.params.id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getPayrollRun(c, tenantId, req.params.id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Not found');
         return;
@@ -663,7 +668,8 @@ payrollRouter.get('/payroll/runs/:runId/payslips', async (req: AuthedRequest, re
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const rows = await listPayslipsByRun(c, tenantId, req.params.runId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const rows = await listPayslipsByRun(c, tenantId, req.params.runId, scopeCtx);
       sendSuccess(res, rows.map((r) => rowToPayslipApi(r)));
     } finally {
       c.release();

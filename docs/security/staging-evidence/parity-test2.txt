@@ -1,0 +1,39 @@
+Environment: staging via .env.staging
+
+=== RBAC Parity Report ===
+Tenant: Test2 (test2)
+Users: 1
+
+OK: 0
+Permission loss: 1
+Permission gain (review required): 0
+
+--- Permission Loss ---
+  Rafi (Admin): missing v1 keys: pev.approve, procurement.quotations.approve, goods_receipt.post
+
+--- JSON summary ---
+{
+  "tenantId": "test2",
+  "tenantName": "Test2",
+  "users": 1,
+  "ok": 0,
+  "permissionLoss": 1,
+  "permissionGainReview": 0,
+  "losses": [
+    {
+      "user": "Rafi",
+      "userId": "user_199f47741719479f973f5a4c0900f8ab",
+      "legacyRole": "Admin",
+      "missing": [
+        "pev.approve",
+        "procurement.quotations.approve",
+        "goods_receipt.post"
+      ],
+      "extra": []
+    }
+  ],
+  "gainReview": []
+}
+
+
+EXIT:1

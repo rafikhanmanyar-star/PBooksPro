@@ -12,6 +12,8 @@ import type {
   TenantDefaulterRow,
   TenantLedgerRow,
 } from '../types/rentalReportingTypes.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { mergeReportScopeIntoFilter } from '../query-builder/reportScopeSql.js';
 
 const AGING_LABELS: Record<AgingBucket['bucket'], string> = {
   current: 'Current',
@@ -47,10 +49,22 @@ export function parseRentalFilters(query: Record<string, unknown>): RentalReport
   };
 }
 
-function buildAgreementFilterSql(filters: RentalReportingFilters, startIdx: number): FilterSql {
+function buildAgreementFilterSql(
+  filters: RentalReportingFilters,
+  startIdx: number,
+  scopeCtx?: DataScopeEnforcementContext
+): FilterSql {
   const parts: string[] = [];
   const params: unknown[] = [];
   let idx = startIdx;
+
+  if (scopeCtx?.enabled) {
+    idx = mergeReportScopeIntoFilter(scopeCtx, parts, params, {
+      property: 'ra.property_id',
+      owner: 'ra.owner_id',
+    });
+  }
+
   if (filters.propertyId) {
     parts.push(`ra.property_id = $${idx++}`);
     params.push(filters.propertyId);
@@ -83,10 +97,19 @@ function buildAgreementFilterSql(filters: RentalReportingFilters, startIdx: numb
   return { sql: parts.length ? ` AND ${parts.join(' AND ')}` : '', params, nextIdx: idx };
 }
 
-function buildInvoiceFilterSql(filters: RentalReportingFilters, startIdx: number): FilterSql {
+function buildInvoiceFilterSql(
+  filters: RentalReportingFilters,
+  startIdx: number,
+  scopeCtx?: DataScopeEnforcementContext
+): FilterSql {
   const parts: string[] = [`i.invoice_type IN ('Rental', 'Security Deposit')`];
   const params: unknown[] = [];
   let idx = startIdx;
+
+  if (scopeCtx?.enabled) {
+    idx = mergeReportScopeIntoFilter(scopeCtx, parts, params, { property: 'i.property_id' });
+  }
+
   if (filters.propertyId) {
     parts.push(`i.property_id = $${idx++}`);
     params.push(filters.propertyId);
@@ -128,11 +151,12 @@ function paginate(page: number, pageSize: number) {
 export async function getRentalReportingSummary(
   client: pg.PoolClient,
   tenantId: string,
-  filters: RentalReportingFilters
+  filters: RentalReportingFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<RentalReportingSummary> {
-  const invFilter = buildInvoiceFilterSql(filters, 2);
-  const collectedInvFilter = buildInvoiceFilterSql(filters, 4);
-  const agrFilter = buildAgreementFilterSql(filters, 2);
+  const invFilter = buildInvoiceFilterSql(filters, 2, scopeCtx);
+  const collectedInvFilter = buildInvoiceFilterSql(filters, 4, scopeCtx);
+  const agrFilter = buildAgreementFilterSql(filters, 2, scopeCtx);
 
   const [tenantsR, receivableR, collectedR, defaultersR, overdueR, agingR] = await Promise.all([
     client.query<{ c: string }>(
@@ -210,10 +234,11 @@ export async function getRentalReceivableReport(
   tenantId: string,
   filters: RentalReportingFilters,
   page: number,
-  pageSize: number
+  pageSize: number,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PaginatedReportRows<RentalReceivableRow>> {
   const { page: p, pageSize: ps, offset } = paginate(page, pageSize);
-  const agrFilter = buildAgreementFilterSql(filters, 2);
+  const agrFilter = buildAgreementFilterSql(filters, 2, scopeCtx);
 
   const countR = await client.query<{ c: string }>(
     `SELECT COUNT(*)::text AS c FROM rental_agreements ra
@@ -273,10 +298,11 @@ export async function getTenantDefaultersReport(
   tenantId: string,
   filters: RentalReportingFilters,
   page: number,
-  pageSize: number
+  pageSize: number,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PaginatedReportRows<TenantDefaulterRow>> {
   const { page: p, pageSize: ps, offset } = paginate(page, pageSize);
-  const invFilter = buildInvoiceFilterSql(filters, 2);
+  const invFilter = buildInvoiceFilterSql(filters, 2, scopeCtx);
 
   const countR = await client.query<{ c: string }>(
     `SELECT COUNT(DISTINCT i.contact_id)::text AS c FROM invoices i
@@ -320,10 +346,11 @@ export async function getRentSchedule(
   tenantId: string,
   filters: RentalReportingFilters,
   page: number,
-  pageSize: number
+  pageSize: number,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PaginatedReportRows<RentScheduleRow>> {
   const { page: p, pageSize: ps, offset } = paginate(page, pageSize);
-  const invFilter = buildInvoiceFilterSql(filters, 4);
+  const invFilter = buildInvoiceFilterSql(filters, 4, scopeCtx);
 
   const countR = await client.query<{ c: string }>(
     `SELECT COUNT(*)::text AS c FROM invoices i
@@ -363,9 +390,10 @@ export async function getRentSchedule(
 export async function getRentalCollectionPerformance(
   client: pg.PoolClient,
   tenantId: string,
-  filters: RentalReportingFilters
+  filters: RentalReportingFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<CollectionPerformanceRow[]> {
-  const invFilter = buildInvoiceFilterSql(filters, 4);
+  const invFilter = buildInvoiceFilterSql(filters, 4, scopeCtx);
   const year = new Date(filters.to).getFullYear();
   const months: CollectionPerformanceRow[] = [];
 

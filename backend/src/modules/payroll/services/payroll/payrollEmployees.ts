@@ -10,8 +10,14 @@ import { dateStr, j, optStr } from './payrollHelpers.js';
 import { rowToEmployeeApi } from './payrollRowMappers.js';
 import { type PayrollEmployeeRow } from './payrollTypes.js';
 
-export async function listEmployees(client: pg.PoolClient, tenantId: string): Promise<PayrollEmployeeRow[]> {
-  return new PayrollEmployeeRepository(tenantId).listActive(client);
+import type { DataScopeEnforcementContext } from '../../../../auth/tenantRepositoryScope.js';
+
+export async function listEmployees(
+  client: pg.PoolClient,
+  tenantId: string,
+  scopeCtx?: DataScopeEnforcementContext
+): Promise<PayrollEmployeeRow[]> {
+  return new PayrollEmployeeRepository(tenantId).listActive(client, scopeCtx);
 }
 
 export type EmployeeListPageQuery = {
@@ -28,25 +34,31 @@ export type EmployeeListPageQuery = {
 export async function listEmployeesPage(
   client: pg.PoolClient,
   tenantId: string,
-  query: EmployeeListPageQuery
+  query: EmployeeListPageQuery,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{ rows: PayrollEmployeeRow[]; total: number; page: number; pageSize: number }> {
-  const { rows, total } = await new PayrollEmployeeRepository(tenantId).listPage(client, {
-    limit: query.limit,
-    offset: query.offset,
-    departmentId: query.departmentId,
-    search: query.search,
-    sortBy: query.sortBy,
-    sortDir: query.sortDir,
-  });
+  const { rows, total } = await new PayrollEmployeeRepository(tenantId).listPage(
+    client,
+    {
+      limit: query.limit,
+      offset: query.offset,
+      departmentId: query.departmentId,
+      search: query.search,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+    },
+    scopeCtx
+  );
   return { rows, total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getEmployee(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayrollEmployeeRow | null> {
-  return new PayrollEmployeeRepository(tenantId).getById(client, id);
+  return new PayrollEmployeeRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function listEmployeesByDepartment(

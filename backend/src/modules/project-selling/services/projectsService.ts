@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
 import { ProjectRepository } from '../repositories/ProjectRepository.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 
 export type ProjectRow = {
   id: string;
@@ -91,16 +92,21 @@ function pickBody(body: Record<string, unknown>) {
   };
 }
 
-export async function listProjects(client: pg.PoolClient, tenantId: string): Promise<ProjectRow[]> {
-  return new ProjectRepository(tenantId).listActive(client);
+export async function listProjects(
+  client: pg.PoolClient,
+  tenantId: string,
+  scopeCtx?: DataScopeEnforcementContext
+): Promise<ProjectRow[]> {
+  return new ProjectRepository(tenantId).listActive(client, scopeCtx);
 }
 
 export async function getProjectById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<ProjectRow | null> {
-  return new ProjectRepository(tenantId).getById(client, id);
+  return new ProjectRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function createProject(

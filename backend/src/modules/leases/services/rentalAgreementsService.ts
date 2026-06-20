@@ -16,6 +16,7 @@ import {
   RentalAgreementRepository,
   type RentalAgreementWriteFields,
 } from '../repositories/RentalAgreementRepository.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 
 export type RentalAgreementRow = {
   id: string;
@@ -149,17 +150,19 @@ function toRentalWriteFields(p: ReturnType<typeof pickBody>): RentalAgreementWri
 export async function listRentalAgreements(
   client: pg.PoolClient,
   tenantId: string,
-  filters?: { status?: string; propertyId?: string }
+  filters?: { status?: string; propertyId?: string },
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<RentalAgreementRow[]> {
-  return new RentalAgreementRepository(tenantId).list(client, filters);
+  return new RentalAgreementRepository(tenantId).list(client, filters, scopeCtx);
 }
 
 export async function getRentalAgreementById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<RentalAgreementRow | null> {
-  return new RentalAgreementRepository(tenantId).getById(client, id);
+  return new RentalAgreementRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function createRentalAgreement(

@@ -13,10 +13,24 @@ import {
   roleHasAnyPermission,
   roleHasPermission,
 } from '../auth/permissions.js';
+import { isV2AuthorizationActive } from '../auth/authorizationMode.js';
+import { hasPermission } from '../auth/permissionEvaluator.js';
+import { recordRbacDeny, recordRbacPermissionCheck } from '../auth/rbacV2Metrics.js';
 
 export { permissionsForRole, resolveEnterpriseRole, roleHasPermission };
 
+/**
+ * Exclusive authorization — never OR legacy matrix with v2 evaluator.
+ * Engine off → resolvedPermissions / legacy role matrix.
+ * Engine on  → req.effectiveAccess + permissionEvaluator only.
+ */
 function requestHasPermission(req: AuthedRequest, permission: Permission): boolean {
+  if (isV2AuthorizationActive()) {
+    const ctx = req.effectiveAccess;
+    if (!ctx) return false;
+    const enterprise = resolveEnterpriseRole(req.role);
+    return hasPermission(ctx, permission, enterprise);
+  }
   const resolved = req.resolvedPermissions;
   if (resolved && resolved.length > 0) {
     return permissionSetHas(resolved, permission);
@@ -24,14 +38,29 @@ function requestHasPermission(req: AuthedRequest, permission: Permission): boole
   return roleHasPermission(req.role, permission);
 }
 
+function denyPermission(
+  req: AuthedRequest,
+  res: Parameters<RequestHandler>[1],
+  permission: Permission | string
+): void {
+  if (isV2AuthorizationActive()) {
+    recordRbacDeny(req, String(permission));
+  }
+  sendFailure(res, 403, 'FORBIDDEN', `Missing permission: ${permission}`);
+}
+
 /** Require a single permission (server-side enforcement). */
 export function requirePermission(permission: Permission): RequestHandler {
   return (req, res, next) => {
-    if (requestHasPermission(req as AuthedRequest, permission)) {
+    const authed = req as AuthedRequest;
+    if (requestHasPermission(authed, permission)) {
+      if (isV2AuthorizationActive()) {
+        recordRbacPermissionCheck(authed, permission);
+      }
       next();
       return;
     }
-    sendFailure(res, 403, 'FORBIDDEN', `Missing permission: ${permission}`);
+    denyPermission(authed, res, permission);
   };
 }
 

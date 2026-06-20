@@ -33,6 +33,7 @@ import {
     type VendorBillSettlementRow,
 } from '../../services/api/contractorApi';
 import type { Vendor } from '../../types';
+import { getEffectiveBillPaymentDisplay } from '../../utils/rentalBillPayments';
 
 type DateRangeOption = 'all' | 'thisMonth' | 'lastMonth' | 'custom';
 type TypeFilter = 'All' | 'Bills' | 'Payments';
@@ -64,6 +65,14 @@ function billHasExpensePaymentForProject(
             tx.projectId === projectId &&
             !isVendorSettlementCashMirrorReference(tx.reference)
     );
+}
+
+/** Vendor on a table row: payment rows use the payer vendor, not only the bill header vendor. */
+function billsTableRowVendorId(row: BillsTableRow, bill: Bill | null | undefined): string | undefined {
+    if (row.type === 'payment' && row.payment) {
+        return row.payment.vendorId || bill?.vendorId;
+    }
+    return bill?.vendorId;
 }
 
 /** Unpaid vendor bill ids in current tree/project scope (VendorBillPaymentModal restrict list). */
@@ -507,7 +516,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         baseBills.forEach(bill => {
             const groupId = billPrimaryGroupId(bill, projectFilter);
             const group = groupMap.get(groupId);
-            const balance = bill.amount - bill.paidAmount;
+            const balance = getEffectiveBillPaymentDisplay(bill, state.transactions).balance;
 
             if (group) {
                 group.count++;
@@ -542,7 +551,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
             .filter(g => g.count > 0) // Only show groups with bills
             .sort((a, b) => a.name.localeCompare(b.name));
 
-    }, [baseBills, projectMap, vendorMap, projectFilter]);
+    }, [baseBills, projectMap, vendorMap, projectFilter, state.transactions]);
 
     // --- Unified Table Data (Bills + Payments) ---
     const tableRows = useMemo<BillsTableRow[]>(() => {
@@ -556,7 +565,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 const vendorId = bill.vendorId;
                 const vendor = vendorId ? vendorMap.get(vendorId) : undefined;
                 const contract = bill.contractId ? contractMap.get(bill.contractId) : undefined;
-                const balance = bill.amount - bill.paidAmount;
+                const { balance, status: effStatus } = getEffectiveBillPaymentDisplay(bill, state.transactions);
 
                 rows.push({
                     id: `bill-${bill.id}`,
@@ -569,7 +578,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     contractNumber: contract?.contractNumber,
                     dueDate: bill.dueDate,
                     amount: bill.amount,
-                    status: bill.status,
+                    status: effStatus,
                     balance
                 });
             });
@@ -672,7 +681,7 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                 result = result.filter(row => {
                     const bill = row.bill || (row.payment ? billMap.get(String(row.payment?.billId ?? (row.payment as any)?.bill_id ?? '')) : null);
                     if (!bill) return false;
-                    const vendorId = bill.vendorId;
+                    const vendorId = billsTableRowVendorId(row, bill);
                     const grp = billPrimaryGroupId(bill, projectFilter);
                     if (parentGroupId === 'unassigned') {
                         return grp === 'unassigned' && vendorId === selectedNode.id;
@@ -1272,7 +1281,11 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                         <div className="flex items-center gap-2">
                             <span>Outstanding Balance:</span>
                             <span className="text-ds-danger text-xs tabular-nums">
-                                {CURRENCY} {filteredRows.filter(r => r.type === 'bill').reduce((sum, r) => sum + (r.balance || 0), 0).toLocaleString()}
+                                {CURRENCY}{' '}
+                                {filteredRows
+                                    .filter((r) => r.type === 'bill')
+                                    .reduce((sum, r) => sum + Math.max(0, r.balance || 0), 0)
+                                    .toLocaleString()}
                             </span>
                         </div>
                     </div>
@@ -1303,7 +1316,9 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
                     transactionToEdit={{
                         id: '',
                         type: TransactionType.EXPENSE,
-                        amount: paymentBill ? (paymentBill.amount - paymentBill.paidAmount) : 0,
+                        amount: paymentBill
+                            ? getEffectiveBillPaymentDisplay(paymentBill, state.transactions).balance
+                            : 0,
                         date: paymentBill?.issueDate
                             ? parseStoredDateToYyyyMmDdInput(paymentBill.issueDate)
                             : toLocalDateString(new Date()),

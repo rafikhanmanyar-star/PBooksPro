@@ -5,6 +5,12 @@ import { sendFailure } from '../utils/apiResponse.js';
 import { requirePermission as requirePermissionGuard } from './rbacMiddleware.js';
 import type { Permission } from '../auth/permissions.js';
 import { resolveUserPermissions } from '../modules/rbac/services/rbacPermissionResolver.js';
+import { allCatalogPermissionKeys } from '../modules/rbac/services/rbacCatalogPermissions.js';
+import { validateBreakGlassSession } from '../modules/rbac/services/rbacBreakGlassService.js';
+import type { SessionType } from '../auth/jwt.js';
+import type { EffectiveAccessContext } from '../auth/effectiveAccessContext.js';
+import { isRbacV2AuthorizationEngineEnabled } from '../auth/rbacAuthorizationFeatureFlag.js';
+import { authorizeV2ForRequest } from '../auth/authorizeV2.js';
 import {
   isDemoEnvironmentEnabled,
   isDemoMasterTenant,
@@ -23,6 +29,11 @@ export type AuthedRequest = Request & {
   name?: string;
   /** Resolved from tenant RBAC tables with legacy matrix fallback. */
   resolvedPermissions?: Permission[];
+  /** C2 break-glass session metadata (when JWT sessionType = break_glass). */
+  sessionType?: SessionType;
+  breakGlassSessionId?: string;
+  /** RBAC 2.0 Phase 3 — canonical authorization context when engine enabled. */
+  effectiveAccess?: EffectiveAccessContext;
 };
 
 function normalizeRole(role: string | undefined): string {
@@ -112,7 +123,79 @@ export async function authMiddleware(
   const token = auth.slice(7);
   try {
     const payload = verifyAccessToken(token);
-    const cached = getCachedAuthUser(payload.sub, payload.tenantId);
+    const isBreakGlass = payload.sessionType === 'break_glass';
+
+    if (isBreakGlass) {
+      if (!payload.breakGlassSessionId) {
+        sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid break-glass token');
+        return;
+      }
+      const pool = getPool();
+      const client = await pool.connect();
+      try {
+        const session = await validateBreakGlassSession(
+          payload.breakGlassSessionId,
+          payload.tenantId,
+          payload.sub,
+          client
+        );
+        if (!session) {
+          sendFailure(res, 401, 'BREAK_GLASS_EXPIRED', 'Break-glass session expired. Please sign in again.');
+          return;
+        }
+        const r = await client.query<{
+          id: string;
+          tenant_id: string;
+          role: string;
+          username: string;
+          name: string;
+          is_active: boolean;
+          organization_status: string;
+          rejection_reason: string | null;
+        }>(
+          `SELECT u.id, ut.tenant_id, ut.role, u.username, u.name, u.is_active,
+                  COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+           FROM user_tenants ut
+           INNER JOIN users u ON u.id = ut.user_id
+           INNER JOIN tenants t ON t.id = ut.tenant_id
+           WHERE ut.user_id = $1 AND ut.tenant_id = $2`,
+          [payload.sub, payload.tenantId]
+        );
+        if (r.rows.length === 0 || !r.rows[0].is_active) {
+          sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');
+          return;
+        }
+        const user = r.rows[0];
+        req.userId = user.id;
+        req.tenantId = payload.tenantId;
+        req.role = user.role;
+        req.username = user.username;
+        req.name = user.name;
+        req.sessionType = 'break_glass';
+        req.breakGlassSessionId = payload.breakGlassSessionId;
+
+        if (isRbacV2AuthorizationEngineEnabled()) {
+          const authResult = await authorizeV2ForRequest(req, payload, user.role, client);
+          if (!authResult.ok) {
+            if (authResult.code === 'STALE_AV') {
+              sendFailure(res, 401, 'TOKEN_STALE', 'Session expired. Please sign in again.');
+              return;
+            }
+            sendFailure(res, 401, 'BREAK_GLASS_EXPIRED', 'Break-glass session expired. Please sign in again.');
+            return;
+          }
+        } else {
+          req.resolvedPermissions = allCatalogPermissionKeys();
+        }
+        next();
+        return;
+      } finally {
+        client.release();
+      }
+    }
+
+    const v2Engine = isRbacV2AuthorizationEngineEnabled();
+    const cached = v2Engine ? null : getCachedAuthUser(payload.sub, payload.tenantId);
     let user: {
       id: string;
       tenant_id: string;
@@ -173,18 +256,31 @@ export async function authMiddleware(
         return;
       }
       user = r.rows[0];
-      const resolvedPermissions = await resolveUserPermissions(user.tenant_id, user.id, user.role);
-      req.resolvedPermissions = resolvedPermissions;
-      setCachedAuthUser({
-        userId: user.id,
-        tenantId: user.tenant_id,
-        role: user.role,
-        username: user.username,
-        name: user.name,
-        organizationStatus: user.organization_status,
-        rejectionReason: user.rejection_reason,
-        resolvedPermissions,
-      });
+
+      if (v2Engine) {
+        const authResult = await authorizeV2ForRequest(req, payload, user.role);
+        if (!authResult.ok && authResult.code === 'STALE_AV') {
+          sendFailure(res, 401, 'TOKEN_STALE', 'Session expired. Please sign in again.');
+          return;
+        }
+        if (!authResult.ok) {
+          sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');
+          return;
+        }
+      } else {
+        const resolvedPermissions = await resolveUserPermissions(user.tenant_id, user.id, user.role);
+        req.resolvedPermissions = resolvedPermissions;
+        setCachedAuthUser({
+          userId: user.id,
+          tenantId: user.tenant_id,
+          role: user.role,
+          username: user.username,
+          name: user.name,
+          organizationStatus: user.organization_status,
+          rejectionReason: user.rejection_reason,
+          resolvedPermissions,
+        });
+      }
     }
 
     if (isTokenRoleStale(payload.role, user.role)) {
@@ -197,6 +293,7 @@ export async function authMiddleware(
     req.role = user.role;
     req.username = user.username;
     req.name = user.name;
+    req.sessionType = 'standard';
 
     if (isDemoEnvironmentEnabled() && isDemoMasterTenant(req.tenantId)) {
       sendFailure(res, 403, 'DEMO_MASTER_PROTECTED', 'This organization is not available for interactive access.');

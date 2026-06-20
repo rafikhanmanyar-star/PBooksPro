@@ -5,7 +5,8 @@
 import { fetchCashFlowReport } from '../api/financialReportsApi';
 import { roundMoney } from './validation';
 import {
-  buildDimensionSql,
+  buildCashFlowDimensionJoins,
+  buildCashFlowDimensionSql,
   isDimensionScopeActive,
   ledgerTenantIdsForLocalQuery,
   scopeFromReportFilters,
@@ -86,13 +87,15 @@ async function sumLocalCashBalance(
 ): Promise<number> {
   const params: unknown[] = [...tenantIds, asOfInclusive];
   const scopeSql = isDimensionScopeActive(scope)
-    ? buildDimensionSql(scope, params, { paramStyle: 'sqlite' })
+    ? buildCashFlowDimensionSql(scope, params, { paramStyle: 'sqlite' })
     : '';
+  const scopeJoins = isDimensionScopeActive(scope) ? buildCashFlowDimensionJoins('je') : '';
   const r = await bridge.query(
     `SELECT COALESCE(SUM(jl.debit_amount - jl.credit_amount), 0) AS s
      FROM journal_lines jl
      INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
      INNER JOIN accounts a ON a.id = jl.account_id
+     ${scopeJoins}
      WHERE je.tenant_id IN (${tenantPlaceholders})
        AND je.entry_date <= ?
        AND a.deleted_at IS NULL
@@ -121,8 +124,9 @@ async function fetchLocalCashFlowFromJournal(
 
   const params: unknown[] = [...tenantIds, options.from, options.to];
   const scopeSql = isDimensionScopeActive(scope)
-    ? buildDimensionSql(scope, params, { paramStyle: 'sqlite' })
+    ? buildCashFlowDimensionSql(scope, params, { paramStyle: 'sqlite' })
     : '';
+  const scopeJoins = isDimensionScopeActive(scope) ? buildCashFlowDimensionJoins('je') : '';
 
   const cashR = await bridge.query(
     `SELECT jl.id, jl.journal_entry_id, jl.account_id, jl.debit_amount, jl.credit_amount,
@@ -132,6 +136,7 @@ async function fetchLocalCashFlowFromJournal(
      FROM journal_lines jl
      INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
      INNER JOIN accounts a ON a.id = jl.account_id
+     ${scopeJoins}
      WHERE je.tenant_id IN (${tenantPlaceholders})
        AND je.entry_date >= ? AND je.entry_date <= ?
        AND a.deleted_at IS NULL

@@ -3,6 +3,13 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type { PropertyRow } from '../services/propertiesService.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import {
+  appendScopeFragment,
+  applyOwnerScope,
+  applyPropertyScope,
+  rowMatchesScope,
+} from '../../../auth/tenantRepositoryScope.js';
 
 const PROPERTY_COLUMNS = `id, tenant_id, name, owner_id, building_id, description, monthly_service_charge, version, deleted_at, created_at, updated_at`;
 
@@ -23,24 +30,38 @@ export class PropertyRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<PropertyRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PropertyRow | null> {
     const r = await client.query<PropertyRow>(
       `SELECT ${PROPERTY_COLUMNS}
        FROM properties WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx?.enabled) return row;
+    if (!rowMatchesScope(scopeCtx, 'property', row.id)) return null;
+    if (!rowMatchesScope(scopeCtx, 'owner', row.owner_id)) return null;
+    return row;
   }
 
-  async list(client: pg.PoolClient, filters?: PropertyListFilters): Promise<PropertyRow[]> {
+  async list(
+    client: pg.PoolClient,
+    filters?: PropertyListFilters,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PropertyRow[]> {
     const params: unknown[] = [this.tenantId];
-    let where = 'tenant_id = $1 AND deleted_at IS NULL';
+    const conditions = ['tenant_id = $1', 'deleted_at IS NULL'];
     if (filters?.buildingId) {
       params.push(filters.buildingId);
-      where += ` AND building_id = $${params.length}`;
+      conditions.push(`building_id = $${params.length}`);
     }
+    appendScopeFragment(conditions, params, applyPropertyScope(scopeCtx ?? { enabled: false, scopes: [] }, 'id', params.length + 1));
+    appendScopeFragment(conditions, params, applyOwnerScope(scopeCtx ?? { enabled: false, scopes: [] }, 'owner_id', params.length + 1));
     const r = await client.query<PropertyRow>(
-      `SELECT ${PROPERTY_COLUMNS} FROM properties WHERE ${where} ORDER BY name ASC`,
+      `SELECT ${PROPERTY_COLUMNS} FROM properties WHERE ${conditions.join(' AND ')} ORDER BY name ASC`,
       params
     );
     return r.rows;
