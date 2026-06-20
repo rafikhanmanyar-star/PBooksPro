@@ -126,8 +126,20 @@ export function mergePartialStateIntoBaseline(
         ...base,
         ...partial,
         transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
-        invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
-        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
+        // Deferred entities: only replace when the partial actually contains the entity.
+        // When loadStateBulkChunked runs (bootstrap without deferred entities), these keys
+        // are absent from partial, so we preserve the existing state to prevent flash.
+        invoices: partial.invoices !== undefined
+            ? mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices)
+            : (base.invoices || []),
+        bills: partial.bills !== undefined
+            ? mergeBillsWithServerBaseline(base.bills || [], partial.bills)
+            : (base.bills || []),
+        contacts: partial.contacts !== undefined ? partial.contacts : (base.contacts || []),
+        vendors: partial.vendors !== undefined ? partial.vendors : (base.vendors || []),
+        personalTransactions: partial.personalTransactions !== undefined
+            ? partial.personalTransactions
+            : (base.personalTransactions || []),
         projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
             base.projectReceivedAssets || [],
             partial.projectReceivedAssets || []

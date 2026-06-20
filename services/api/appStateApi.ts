@@ -1400,15 +1400,19 @@ export class AppStateApiService {
   private normalizeLoadedState(raw: Record<string, any>): Partial<AppState> {
     const appSettingsFlat = raw.appSettings || raw.app_settings || {};
     const accounts = raw.accounts || [];
-    const contacts = raw.contacts || [];
+    // Deferred entities: keep as undefined when absent so mergePartialStateIntoBaseline
+    // knows they were not fetched in this request. Converting undefined→[] causes merge
+    // functions to drop all existing server-versioned records until the deferred load
+    // restores them, producing a visible flash on every full-refresh sync.
+    const contacts: unknown[] | undefined = Array.isArray(raw.contacts) ? raw.contacts : (raw.contacts != null ? [] : undefined);
     const transactions = raw.transactions || [];
     const categories = raw.categories || [];
     const projects = raw.projects || [];
     const buildings = raw.buildings || [];
     const properties = raw.properties || [];
     const units = raw.units || [];
-    const invoices = raw.invoices || [];
-    const bills = raw.bills || [];
+    const invoices: unknown[] | undefined = Array.isArray(raw.invoices) ? raw.invoices : (raw.invoices != null ? [] : undefined);
+    const bills: unknown[] | undefined = Array.isArray(raw.bills) ? raw.bills : (raw.bills != null ? [] : undefined);
     const budgets = raw.budgets || [];
     const planAmenities = raw.planAmenities || [];
     const installmentPlans = raw.installmentPlans || [];
@@ -1422,9 +1426,13 @@ export class AppStateApiService {
     const recurringInvoiceTemplates = raw.recurringInvoiceTemplates || [];
     const pmCycleAllocations = raw.pmCycleAllocations || [];
     const transactionLog = raw.transactionLog || [];
-    const vendors = raw.vendors || [];
+    const vendors: unknown[] | undefined = Array.isArray(raw.vendors) ? raw.vendors : (raw.vendors != null ? [] : undefined);
     const personalCategoriesRaw = raw.personalCategories || raw.personal_categories || [];
-    const personalTransactionsRaw = raw.personalTransactions || raw.personal_transactions || [];
+    const personalTransactionsRaw: unknown[] | undefined = Array.isArray(raw.personalTransactions)
+      ? raw.personalTransactions
+      : Array.isArray(raw.personal_transactions)
+        ? raw.personal_transactions
+        : ((raw.personalTransactions ?? raw.personal_transactions) != null ? [] : undefined);
 
     const parseJsonSafe = <T,>(value: any, fallback: T): T => {
       if (value == null) return fallback;
@@ -1585,11 +1593,11 @@ export class AppStateApiService {
       (a: Record<string, unknown>) => normalizeProjectReceivedAssetFromApi(a)
     );
 
-    const normalizedBills = bills.map((b: any) => normalizeBillFromApi(b));
+    const normalizedBills = bills?.map((b: any) => normalizeBillFromApi(b));
 
     // Normalize invoices from API (transform snake_case to camelCase)
     // The server returns snake_case fields, but the client expects camelCase
-    const normalizedInvoices = invoices.map((inv: any) => ({
+    const normalizedInvoices = invoices?.map((inv: any) => ({
       id: inv.id,
       invoiceNumber: inv.invoice_number || inv.invoiceNumber || `INV-${inv.id}`,
       contactId: inv.contact_id || inv.contactId || '',
@@ -1640,7 +1648,7 @@ export class AppStateApiService {
     const normalizedAccounts = accounts.map((a: any) => normalizeAccountFromApi(a));
 
     // Normalize contacts from API
-    const normalizedContacts = contacts.map((c: any) => ({
+    const normalizedContacts = contacts?.map((c: any) => ({
       id: c.id,
       name: c.name || '',
       type: c.type,
@@ -1656,7 +1664,7 @@ export class AppStateApiService {
     }));
 
     // Normalize vendors from API (transform snake_case to camelCase)
-    const normalizedVendors = vendors.map((v: any) => ({
+    const normalizedVendors = vendors?.map((v: any) => ({
       id: v.id,
       name: v.name || '',
       description: v.description || undefined,
@@ -1734,23 +1742,27 @@ export class AppStateApiService {
     const normalizedPersonalCategories = (Array.isArray(personalCategoriesRaw) ? personalCategoriesRaw : []).map(
       (c: Record<string, unknown>) => normalizePersonalCategoryFromApi(c)
     );
-    const normalizedPersonalTransactions = (Array.isArray(personalTransactionsRaw) ? personalTransactionsRaw : []).map(
-      (t: Record<string, unknown>) => normalizePersonalTransactionFromApi(t)
-    );
+    const normalizedPersonalTransactions = personalTransactionsRaw !== undefined
+      ? (Array.isArray(personalTransactionsRaw) ? personalTransactionsRaw : []).map(
+          (t: Record<string, unknown>) => normalizePersonalTransactionFromApi(t)
+        )
+      : undefined;
 
     // Return partial state with API-loaded data
     // Other entities will remain from initial state or be loaded separately
     return {
       accounts: normalizedAccounts,
-      contacts: normalizedContacts,
+      // Deferred entities — omit key entirely when not fetched so mergePartialStateIntoBaseline
+      // knows to preserve the existing state (prevents flash-to-empty on every full sync).
+      ...(normalizedContacts !== undefined && { contacts: normalizedContacts as any }),
       transactions: normalizedTransactions,
       categories: normalizedCategories,
       projects: normalizedProjects,
       buildings: normalizedBuildings,
       properties: normalizedProperties,
       units: normalizedUnits,
-      invoices: normalizedInvoices,
-      bills: normalizedBills,
+      ...(normalizedInvoices !== undefined && { invoices: normalizedInvoices as any }),
+      ...(normalizedBills !== undefined && { bills: normalizedBills as any }),
       budgets: normalizedBudgets,
       planAmenities: normalizedPlanAmenities || [],
       installmentPlans: normalizedInstallmentPlans,
@@ -1803,9 +1815,11 @@ export class AppStateApiService {
         normalizePMCycleAllocationFromApi(p)
       ),
       transactionLog: transactionLog || [],
-      vendors: normalizedVendors || [],
+      ...(normalizedVendors !== undefined && { vendors: normalizedVendors as any }),
       personalCategories: normalizedPersonalCategories.filter((c) => !c.deletedAt),
-      personalTransactions: normalizedPersonalTransactions.filter((t) => !t.deletedAt),
+      ...(normalizedPersonalTransactions !== undefined && {
+        personalTransactions: normalizedPersonalTransactions.filter((t) => !t.deletedAt) as any,
+      }),
       ...this.buildSettingsPartialFromFlat(appSettingsFlat),
     };
   }
