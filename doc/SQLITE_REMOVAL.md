@@ -81,10 +81,6 @@ Files **removed** from `electron-builder-api-client.yml` and `electron-builder-a
 | Delete `services/legacySqliteLoader.ts` | Done |
 | Remove Vite `legacy-sqlite` alias + `vite-legacy-sqlite-stub-plugin.mjs` | Done |
 | Update `tests/dateOnlySerialization.test.ts` (no stub columnMapper) | Done |
-<<<<<<< Updated upstream
-
-=======
->>>>>>> Stashed changes
 
 ## Legacy tooling
 

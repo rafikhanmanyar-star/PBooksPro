@@ -12,7 +12,6 @@ import {
   rowToInstallmentPlanApi,
   upsertInstallmentPlan,
 } from '../../project-selling/services/installmentPlansService.js';
-<<<<<<< Updated upstream
 import { InstallmentPlanRepository } from '../../project-selling/repositories/InstallmentPlanRepository.js';
 import {
   normalizeMarketingPlanStatus,
@@ -21,8 +20,6 @@ import {
 import { listApprovalQueue, performApprovalAction } from '../../workflow/services/workflowEngineService.js';
 import { isApprovalWorkflowEnabled } from '../../workflow/services/workflowSettingsService.js';
 import { WORKFLOW_ENTITY_LABELS, type WorkflowEntityType } from '../../../workflow/workflowTypes.js';
-=======
->>>>>>> Stashed changes
 import {
   type MobileApprovalItem,
   isPendingInstallmentPlan,
