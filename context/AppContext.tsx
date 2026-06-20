@@ -2218,8 +2218,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             !apiStateLoadFailed &&
             !sessionRestoreRefreshDoneRef.current
         ) {
-            const hasData = (state.contacts?.length ?? 0) > 0 || (state.transactions?.length ?? 0) > 0 ||
-                (state.invoices?.length ?? 0) > 0 || (state.accounts?.length ?? 0) > 0;
+            const hasData =
+                (state.accounts?.length ?? 0) > 0 ||
+                (state.transactions?.length ?? 0) > 0 ||
+                (state.projects?.length ?? 0) > 0;
             const missingProjects = (state.projects?.length ?? 0) === 0;
             sessionRestoreRefreshDoneRef.current = true;
             if (!hasData || missingProjects) {
@@ -2236,9 +2238,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isAuthenticated,
         isInitializing,
         apiStateLoadFailed,
-        state.contacts?.length,
         state.transactions?.length,
-        state.invoices?.length,
         state.accounts?.length,
         state.projects?.length,
     ]);

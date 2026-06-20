@@ -69,6 +69,7 @@ import DemoExploreBanner from './components/billing/DemoExploreBanner';
 import BreakGlassBanner from './components/security/BreakGlassBanner';
 import { isDemoModeActive } from './config/demoEnvironment';
 import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/demoAuthBootstrap';
+import { usePageGroupDeferredBootstrap } from './hooks/usePageGroupDeferredBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
 import { resolveEnterpriseRole } from './shared/rbac/permissions';
 import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
@@ -575,6 +576,11 @@ const App: React.FC = () => {
 
   const isPageGroupMounting = !visitedGroups.has(activeGroup);
   const isPageDataNotReady = isAppDataLoading || isPageGroupMounting;
+
+  usePageGroupDeferredBootstrap(
+    activeGroup,
+    isAuthenticated && !authInitializing && !isInitialDataLoading
+  );
 
   // Show loading alert on navigation when route data or lazy chunks are not ready yet
   useEffect(() => {

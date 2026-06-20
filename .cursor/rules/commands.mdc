@@ -14,6 +14,7 @@ alwaysApply: true
 | **Env file** | `.env.staging` | `.env.production` |
 | **API port** (same machine) | **3001** | **3000** |
 | **Release command** | `npm run release:staging` | `npm run release:production` |
+| **Render (cloud) deploy** | `npm run render:staging` | `npm run render:production` |
 | **GitHub release type** | Prerelease (manual) | Full release (manual deploy; CI validates on push to `main`) |
 | **Installers** | API Server (Staging) + Client (Staging) | API Server + Client |
 
@@ -121,6 +122,64 @@ npm run release:production
 
 ---
 
+## Render cloud deploy (API + web app)
+
+Use these when deploying the **hosted Cloud Edition** on Render (`app.pbookspro.com` + `api.pbookspro.com`). They push source only — Render builds and deploys automatically. They do **not** bump version, build Electron installers, or publish GitHub releases.
+
+### Render staging
+
+```powershell
+npm run render:staging
+```
+
+**What it does:**
+1. Switches to the `staging` branch (if needed)
+2. Pulls latest `origin/staging`
+3. Commits any uncommitted local changes
+4. **Pushes `origin/staging`** — Render auto-deploys staging API + static site
+
+### Render production
+
+```powershell
+npm run render:production
+```
+
+**What it does:**
+1. Commits any uncommitted local changes
+2. Checks out `main` and pulls latest
+3. **Merges `origin/staging` into `main`**
+4. **Pushes `origin/main` once** — Render auto-deploys production API + static site
+5. Syncs `staging` branch with `main`
+
+**Post-deploy validation:** `doc/RENDER_DEPLOYMENT_VALIDATION.md`
+
+| Goal | Command |
+|------|---------|
+| Cloud app on Render only | `render:staging` / `render:production` |
+| Desktop installers + GitHub auto-update | `release:staging` / `release:production` |
+| Both cloud + desktop | Run `render:*` first to ship cloud, then `release:*` for installers |
+
+**Typical cloud workflow:**
+
+```powershell
+# 1. Develop on staging
+git checkout staging
+# ... make changes ...
+
+# 2. Deploy staging cloud app on Render
+npm run render:staging
+
+# 3. Test staging (local Electron or cloud URL)
+npm run test:staging
+
+# 4. When ready — deploy production cloud app on Render
+npm run render:production
+```
+
+Render runs PostgreSQL migrations on API startup (`backend/src/migrate.ts`). No local `.env` file is required for these commands — git credentials must be configured for `git push`.
+
+---
+
 ## Typical workflow
 
 ```powershell
@@ -145,6 +204,8 @@ npm run release:production
 |--------|---------|-----|-------------------|
 | Release staging | `npm run release:staging` | Push to `staging` | Prerelease (manual) |
 | Release production | `npm run release:production` | Merge staging→`main`, push | Full release (manual) |
+| Render staging | `npm run render:staging` | Push to `staging` | — (Render auto-build) |
+| Render production | `npm run render:production` | Merge staging→`main`, push | — (Render auto-build) |
 | CI on push to `main` | automatic | — | Build + tests only (no publish) |
 
 ---
@@ -238,6 +299,8 @@ npm run dev:backend:production
 |---------|-------------|
 | `npm run release:staging` | **Release staging:** push to `staging`, bump version, build + publish prerelease |
 | `npm run release:production` | **Release production:** merge staging→main, build + publish full release (auto-update) |
+| `npm run render:staging` | **Render staging:** push to `staging` — cloud API + app auto-deploy on Render |
+| `npm run render:production` | **Render production:** merge staging→main, push — cloud API + app auto-deploy on Render |
 | `npm run deploy:staging` | Staging build/publish only (no git push/merge) |
 | `npm run deploy:production` | Production build/publish only (no merge) |
 | `npm run test:staging` | Staging stack: `pBookspro_Staging` + API :3001 + Electron client (no version bump) |
