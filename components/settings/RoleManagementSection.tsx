@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { rbacApi, type RbacRoleDetail, type RbacRoleSummary } from '../../services/api/rbacApi';
 import { buildPermissionGroups } from '../../shared/rbac/permissionGroups';
 import { type Permission } from '../../shared/rbac/permissions';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import { useNotification } from '../../context/NotificationContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import Button from '../ui/Button';
@@ -191,7 +192,7 @@ const RoleManagementSection: React.FC = () => {
       setEditing(null);
       await load();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to save role';
+      const message = formatApiErrorMessage(e);
       await showAlert(message, { title: 'Could not save role' });
     } finally {
       setSaving(false);
