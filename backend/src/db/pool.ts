@@ -98,9 +98,20 @@ export function getPool(): pg.Pool {
 
     const ssl = resolvePoolSsl(url);
 
-    const base: pg.PoolConfig = { connectionString: url, max, idleTimeoutMillis };
+    // PERF-A6.5: bound the time callers wait for an available connection.
+    // Without this, pool exhaustion causes infinite hangs (node-postgres default = 0).
+    const connectionTimeoutMillis = Math.min(
+      Math.max(parseInt(process.env.PG_POOL_CONNECT_TIMEOUT_MS || '10000', 10) || 10_000, 1_000),
+      60_000
+    );
+
+    const base: pg.PoolConfig = { connectionString: url, max, idleTimeoutMillis, connectionTimeoutMillis };
 
     pool = new Pool(ssl ? { ...base, ssl } : base);
+
+    console.log(
+      `[POOL_INIT] max=${max} idleTimeoutMillis=${idleTimeoutMillis} connectionTimeoutMillis=${connectionTimeoutMillis}`
+    );
 
   }
 
@@ -108,6 +119,59 @@ export function getPool(): pg.Pool {
 
 }
 
+// ---------------------------------------------------------------------------
+// PERF-A6.4: pool connect instrumentation
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop-in replacement for pool.connect() that logs pool stats before and after
+ * acquiring a connection. Use in hot paths to observe starvation in production logs.
+ *
+ *   [POOL_CONNECT]  caller=X total=N idle=N waiting=N [OK|WARN|HIGH|CRITICAL]
+ *   [POOL_ACQUIRED] caller=X waitMs=N total=N idle=N waiting=N
+ *   [POOL_WARN]     when waitMs > 1 000 ms or waiting >= 5
+ *   [POOL_STALL]    when waitMs > 5 000 ms (pool was exhausted)
+ */
+export async function poolConnect(caller: string): Promise<pg.PoolClient> {
+  const p = getPool();
+  const pre = { total: p.totalCount, idle: p.idleCount, waiting: p.waitingCount };
+
+  const pressureLevel =
+    pre.waiting >= 10 ? 'CRITICAL' :
+    pre.waiting >= 5  ? 'HIGH' :
+    pre.waiting >= 1  ? 'WARN' : 'OK';
+
+  console.log(
+    `[POOL_CONNECT] caller=${caller} total=${pre.total} idle=${pre.idle} waiting=${pre.waiting} [${pressureLevel}]`
+  );
+
+  if (pre.waiting >= 5) {
+    console.warn(
+      `[POOL_PRESSURE] caller=${caller} waitingCount=${pre.waiting} idleCount=${pre.idle} totalCount=${pre.total}`
+    );
+  }
+
+  const t0 = Date.now();
+  const client = await p.connect();
+  const waitMs = Date.now() - t0;
+
+  const post = { total: p.totalCount, idle: p.idleCount, waiting: p.waitingCount };
+  console.log(
+    `[POOL_ACQUIRED] caller=${caller} waitMs=${waitMs} total=${post.total} idle=${post.idle} waiting=${post.waiting}`
+  );
+
+  if (waitMs >= 5_000) {
+    console.error(
+      `[POOL_STALL] 🔴 caller=${caller} waitMs=${waitMs} — pool was exhausted (max connections in use)`
+    );
+  } else if (waitMs >= 1_000) {
+    console.warn(
+      `[POOL_WARN] 🟡 caller=${caller} waitMs=${waitMs} — slow connection acquire`
+    );
+  }
+
+  return client;
+}
 
 
 /** Close all pool connections (e.g. before pg_restore). Next getPool() creates a new pool. */
