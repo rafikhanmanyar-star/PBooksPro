@@ -120,6 +120,47 @@ export function getPool(): pg.Pool {
 }
 
 // ---------------------------------------------------------------------------
+// PERF-A6.6: pool load-shedding helpers
+// ---------------------------------------------------------------------------
+
+export interface PoolPressureSnapshot {
+  total: number;
+  idle: number;
+  waiting: number;
+  saturated: boolean;
+}
+
+/**
+ * Waiting-queue depth at/above which heavy read endpoints shed load.
+ * Configurable via PG_POOL_SHED_WAITING (default 12). Set very high to disable.
+ */
+function poolShedWaitingThreshold(): number {
+  return Math.min(Math.max(parseInt(process.env.PG_POOL_SHED_WAITING || '12', 10) || 12, 1), 100_000);
+}
+
+/**
+ * True when the pool has no spare capacity AND a queue is already forming.
+ * Heavy read endpoints (e.g. GET /state/bulk*) call this to fast-fail with HTTP
+ * 503 instead of deepening the queue until the gateway times out (Cloudflare 524).
+ * A fast 503 carries CORS headers and lets the client back off, which prevents the
+ * retry storm that otherwise keeps the pool permanently saturated.
+ */
+export function isPoolSaturated(): boolean {
+  if (!pool) return false;
+  return pool.idleCount === 0 && pool.waitingCount >= poolShedWaitingThreshold();
+}
+
+export function getPoolPressure(): PoolPressureSnapshot {
+  if (!pool) return { total: 0, idle: 0, waiting: 0, saturated: false };
+  return {
+    total: pool.totalCount,
+    idle: pool.idleCount,
+    waiting: pool.waitingCount,
+    saturated: isPoolSaturated(),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // PERF-A6.4: pool connect instrumentation
 // ---------------------------------------------------------------------------
 
