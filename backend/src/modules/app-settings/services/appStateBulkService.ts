@@ -1,4 +1,5 @@
 import type pg from 'pg';
+import { getPool } from '../../../db/pool.js';
 import { listAccounts, rowToAccountApi } from '../../../services/accountsService.js';
 import { listContacts, rowToContactApi } from '../../../services/contactsService.js';
 import { listTransactions, rowToTransactionApi } from '../../../services/transactionsService.js';
@@ -125,6 +126,19 @@ function byteSize(value: unknown): number {
   }
 }
 
+// PERF-A6.6: give each loader its own connection so Promise.all is truly parallel.
+// A shared pg.PoolClient serialises concurrent .query() calls on one TCP connection;
+// withPoolClient acquires and releases a connection around a single loader, letting
+// node-postgres schedule up to pool.max loaders simultaneously.
+async function withPoolClient<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  const c = await getPool().connect();
+  try {
+    return await fn(c);
+  } finally {
+    c.release();
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 function parseEntityFilter(entitiesQuery: unknown): Set<string> | null {
@@ -152,7 +166,6 @@ function wantEntity(canonical: BulkEntityKey, filter: Set<string> | null): boole
  * Optional `entities` filter reduces payload when the client only needs a subset.
  */
 export async function getBulkAppState(
-  client: pg.PoolClient,
   tenantId: string,
   entitiesQuery?: unknown,
   userRole?: string,
@@ -194,33 +207,33 @@ export async function getBulkAppState(
     { result: personalTransactionRows,   durationMs: d_personalTransactions },
     { result: appSettingsFlat,           durationMs: d_appSettings },
   ] = await Promise.all([
-    timed('accounts',               () => wantEntity('accounts', filter) ? listAccounts(client, tenantId) : Promise.resolve([])),
-    timed('contacts',               () => wantEntity('contacts', filter) ? listContacts(client, tenantId) : Promise.resolve([])),
-    timed('transactions_inner',     () => wantEntity('transactions', filter) ? listTransactions(client, tenantId, { limit: BULK_TRANSACTION_CAP }) : Promise.resolve([])),
-    timed('categories',             () => wantEntity('categories', filter) ? listCategories(client, tenantId) : Promise.resolve([])),
-    timed('projects',               () => wantEntity('projects', filter) ? listProjects(client, tenantId) : Promise.resolve([])),
-    timed('buildings',              () => wantEntity('buildings', filter) ? listBuildings(client, tenantId) : Promise.resolve([])),
-    timed('properties',             () => wantEntity('properties', filter) ? listProperties(client, tenantId) : Promise.resolve([])),
-    timed('units',                  () => wantEntity('units', filter) ? listUnits(client, tenantId) : Promise.resolve([])),
-    timed('invoices',               () => wantEntity('invoices', filter) ? listInvoices(client, tenantId) : Promise.resolve([])),
-    timed('bills',                  () => wantEntity('bills', filter) ? listBills(client, tenantId) : Promise.resolve([])),
-    timed('budgets',                () => wantEntity('budgets', filter) ? listBudgets(client, tenantId) : Promise.resolve([])),
-    timed('planAmenities',          () => wantEntity('planAmenities', filter) ? listPlanAmenities(client, tenantId) : Promise.resolve([])),
-    timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? listInstallmentPlans(client, tenantId, undefined, { userId, role: userRole }) : Promise.resolve([])),
-    timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? listRentalAgreements(client, tenantId) : Promise.resolve([])),
-    timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? listProjectAgreementsWithUnits(client, tenantId) : Promise.resolve([])),
-    timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? listProjectReceivedAssets(client, tenantId) : Promise.resolve([])),
-    timed('contracts',              () => wantEntity('contracts', filter) ? listContracts(client, tenantId) : Promise.resolve([])),
-    timed('salesReturns',           () => wantEntity('salesReturns', filter) ? listSalesReturns(client, tenantId) : Promise.resolve([])),
-    timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? listRecurringInvoiceTemplates(client, tenantId) : Promise.resolve([])),
-    timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? listPmCycleAllocations(client, tenantId) : Promise.resolve([])),
-    timed('vendors',                () => wantEntity('vendors', filter) ? listVendors(client, tenantId) : Promise.resolve([])),
-    timed('quotations',             () => wantEntity('quotations', filter) ? listQuotations(client, tenantId) : Promise.resolve([])),
-    timed('documents',              () => wantEntity('documents', filter) ? listDocuments(client, tenantId) : Promise.resolve([])),
-    timed('transactionLog',         () => wantEntity('transactionLog', filter) ? listTransactionLogs(client, tenantId, { limit: 500 }) : Promise.resolve([])),
-    timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? listPersonalCategories(client, tenantId) : Promise.resolve([])),
-    timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? listPersonalTransactions(client, tenantId) : Promise.resolve([])),
-    timed('appSettings',            () => wantEntity('appSettings', filter) ? listAllSettings(client, tenantId) : Promise.resolve({})),
+    timed('accounts',               () => wantEntity('accounts', filter) ? withPoolClient(c => listAccounts(c, tenantId)) : Promise.resolve([])),
+    timed('contacts',               () => wantEntity('contacts', filter) ? withPoolClient(c => listContacts(c, tenantId)) : Promise.resolve([])),
+    timed('transactions_inner',     () => wantEntity('transactions', filter) ? withPoolClient(c => listTransactions(c, tenantId, { limit: BULK_TRANSACTION_CAP })) : Promise.resolve([])),
+    timed('categories',             () => wantEntity('categories', filter) ? withPoolClient(c => listCategories(c, tenantId)) : Promise.resolve([])),
+    timed('projects',               () => wantEntity('projects', filter) ? withPoolClient(c => listProjects(c, tenantId)) : Promise.resolve([])),
+    timed('buildings',              () => wantEntity('buildings', filter) ? withPoolClient(c => listBuildings(c, tenantId)) : Promise.resolve([])),
+    timed('properties',             () => wantEntity('properties', filter) ? withPoolClient(c => listProperties(c, tenantId)) : Promise.resolve([])),
+    timed('units',                  () => wantEntity('units', filter) ? withPoolClient(c => listUnits(c, tenantId)) : Promise.resolve([])),
+    timed('invoices',               () => wantEntity('invoices', filter) ? withPoolClient(c => listInvoices(c, tenantId)) : Promise.resolve([])),
+    timed('bills',                  () => wantEntity('bills', filter) ? withPoolClient(c => listBills(c, tenantId)) : Promise.resolve([])),
+    timed('budgets',                () => wantEntity('budgets', filter) ? withPoolClient(c => listBudgets(c, tenantId)) : Promise.resolve([])),
+    timed('planAmenities',          () => wantEntity('planAmenities', filter) ? withPoolClient(c => listPlanAmenities(c, tenantId)) : Promise.resolve([])),
+    timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? withPoolClient(c => listInstallmentPlans(c, tenantId, undefined, { userId, role: userRole })) : Promise.resolve([])),
+    timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? withPoolClient(c => listRentalAgreements(c, tenantId)) : Promise.resolve([])),
+    timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? withPoolClient(c => listProjectAgreementsWithUnits(c, tenantId)) : Promise.resolve([])),
+    timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? withPoolClient(c => listProjectReceivedAssets(c, tenantId)) : Promise.resolve([])),
+    timed('contracts',              () => wantEntity('contracts', filter) ? withPoolClient(c => listContracts(c, tenantId)) : Promise.resolve([])),
+    timed('salesReturns',           () => wantEntity('salesReturns', filter) ? withPoolClient(c => listSalesReturns(c, tenantId)) : Promise.resolve([])),
+    timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? withPoolClient(c => listRecurringInvoiceTemplates(c, tenantId)) : Promise.resolve([])),
+    timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? withPoolClient(c => listPmCycleAllocations(c, tenantId)) : Promise.resolve([])),
+    timed('vendors',                () => wantEntity('vendors', filter) ? withPoolClient(c => listVendors(c, tenantId)) : Promise.resolve([])),
+    timed('quotations',             () => wantEntity('quotations', filter) ? withPoolClient(c => listQuotations(c, tenantId)) : Promise.resolve([])),
+    timed('documents',              () => wantEntity('documents', filter) ? withPoolClient(c => listDocuments(c, tenantId)) : Promise.resolve([])),
+    timed('transactionLog',         () => wantEntity('transactionLog', filter) ? withPoolClient(c => listTransactionLogs(c, tenantId, { limit: 500 })) : Promise.resolve([])),
+    timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalCategories(c, tenantId)) : Promise.resolve([])),
+    timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalTransactions(c, tenantId)) : Promise.resolve([])),
+    timed('appSettings',            () => wantEntity('appSettings', filter) ? withPoolClient(c => listAllSettings(c, tenantId)) : Promise.resolve({})),
   ]);
 
   const parallelDone = Date.now() - t0;
@@ -228,7 +241,7 @@ export async function getBulkAppState(
 
   const t1 = Date.now();
   const plMap = categoryRows.length
-    ? await fetchPlSubTypesForTenant(client, tenantId)
+    ? await withPoolClient(c => fetchPlSubTypesForTenant(c, tenantId))
     : new Map<string, string | null>();
   const d_plMap = Date.now() - t1;
   if (d_plMap > 0) console.log(`[PERF_BULK] fetchPlSubTypesForTenant duration=${d_plMap}ms`);
@@ -403,11 +416,8 @@ export type BulkChunkResult = {
   next_offset: number | null;
 };
 
-export async function countTenantTransactions(
-  client: pg.PoolClient,
-  tenantId: string
-): Promise<number> {
-  const r = await client.query<{ c: number }>(
+export async function countTenantTransactions(tenantId: string): Promise<number> {
+  const r = await getPool().query<{ c: number }>(
     `SELECT COUNT(*)::int AS c FROM transactions WHERE tenant_id = $1 AND deleted_at IS NULL`,
     [tenantId]
   );
@@ -419,7 +429,6 @@ export async function countTenantTransactions(
  * subsequent requests return transaction pages only.
  */
 export async function getBulkAppStateChunked(
-  client: pg.PoolClient,
   tenantId: string,
   limitRaw: unknown,
   offsetRaw: unknown,
@@ -442,7 +451,7 @@ export async function getBulkAppStateChunked(
 
   // --- countTenantTransactions ---
   const t_count = Date.now();
-  const txTotal = await countTenantTransactions(client, tenantId);
+  const txTotal = await countTenantTransactions(tenantId);
   const d_count = Date.now() - t_count;
   perfLog('countTenantTransactions', d_count, { txTotal });
 
@@ -452,7 +461,7 @@ export async function getBulkAppStateChunked(
   if (offset === 0) {
     // --- getBulkAppState (static entities) ---
     const t_static = Date.now();
-    const staticState = await getBulkAppState(client, tenantId, BULK_STATIC_ENTITIES, userRole, userId);
+    const staticState = await getBulkAppState(tenantId, BULK_STATIC_ENTITIES, userRole, userId);
     const d_static = Date.now() - t_static;
     perfLog('getBulkAppState (static)', d_static, { keys: Object.keys(staticState) });
 
@@ -464,7 +473,7 @@ export async function getBulkAppStateChunked(
 
   // --- listTransactions (chunked page) ---
   const t_tx = Date.now();
-  const txRows = await listTransactions(client, tenantId, { limit, offset });
+  const txRows = await withPoolClient(c => listTransactions(c, tenantId, { limit, offset }));
   const d_tx = Date.now() - t_tx;
   const txPayload = JSON.stringify(txRows.map((r) => rowToTransactionApi(r)));
   const txPayloadBytes = Buffer.byteLength(txPayload);

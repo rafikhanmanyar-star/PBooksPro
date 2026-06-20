@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { Response } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
-import { getPool, withTransaction, isPoolSaturated, getPoolPressure } from '../../../db/pool.js';
+import { withTransaction, isPoolSaturated, getPoolPressure } from '../../../db/pool.js';
 import { getStateChanges } from '../services/stateChangesService.js';
 import { getBulkAppState, getBulkAppStateChunked } from '../services/appStateBulkService.js';
 
@@ -44,17 +44,7 @@ stateRouter.get('/state/bulk', async (req: AuthedRequest, res) => {
   }
   if (shedIfPoolSaturated(res, 'GET /state/bulk')) return;
   try {
-    const pool = getPool();
-    const client = await pool.connect();
-    // PERF-A6.5: release connection before JSON serialization.
-    // getBulkAppState completes all DB queries then returns; the connection
-    // is no longer needed during sendSuccess's JSON.stringify + res.write.
-    let payload: Awaited<ReturnType<typeof getBulkAppState>>;
-    try {
-      payload = await getBulkAppState(client, tenantId, req.query.entities, req.role, req.userId);
-    } finally {
-      client.release();
-    }
+    const payload = await getBulkAppState(tenantId, req.query.entities, req.role, req.userId);
     sendSuccess(res, payload);
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /state/bulk' });
@@ -70,34 +60,13 @@ stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
   }
   if (shedIfPoolSaturated(res, 'GET /state/bulk-chunked')) return;
   try {
-    const pool = getPool();
-
-    // PERF-A6.5A: pool pressure probe — emitted to stderr so it appears even
-    // when stdout is buffered or filtered. Shows whether time is spent waiting
-    // for a connection (POOL_WAIT → POOL_ACQUIRED gap) vs inside the handler.
-    console.error(
-      `[POOL_WAIT] before connect offset=${req.query.offset ?? 0} total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`
+    const payload = await getBulkAppStateChunked(
+      tenantId,
+      req.query.limit,
+      req.query.offset,
+      req.role,
+      req.userId
     );
-    const _connectStart = Date.now();
-    const client = await pool.connect();
-    console.error(
-      `[POOL_ACQUIRED] waitMs=${Date.now() - _connectStart} offset=${req.query.offset ?? 0} total=${pool.totalCount} idle=${pool.idleCount} waiting=${pool.waitingCount}`
-    );
-
-    // PERF-A6.5: release connection before JSON serialization.
-    let payload: Awaited<ReturnType<typeof getBulkAppStateChunked>>;
-    try {
-      payload = await getBulkAppStateChunked(
-        client,
-        tenantId,
-        req.query.limit,
-        req.query.offset,
-        req.role,
-        req.userId
-      );
-    } finally {
-      client.release();
-    }
     sendSuccess(res, payload);
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /state/bulk-chunked' });
