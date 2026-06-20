@@ -430,6 +430,14 @@ export async function getBulkAppStateChunked(
   const offset = Math.max(Number(offsetRaw) || 0, 0);
   const handlerStart = Date.now();
 
+  // PERF-A6.5A: stderr probe — confirms function body was entered.
+  // If POOL_ACQUIRED appears in logs but this line does NOT, the function
+  // was called but threw synchronously before reaching this line (impossible
+  // given the code above) — or the deploy did not include the instrumented build.
+  // If neither POOL_ACQUIRED nor this line appears, requests are stalling at
+  // pool.connect() and never reaching the route handler body.
+  console.error(`[PERF_TEST] ENTER getBulkAppStateChunked offset=${offset} limit=${limit} tenant=${tenantId}`);
+
   console.log(`[PERF_BULK] getBulkAppStateChunked START offset=${offset} limit=${limit} tenant=${tenantId}`);
 
   // --- countTenantTransactions ---

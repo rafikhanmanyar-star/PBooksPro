@@ -436,6 +436,178 @@ import { logger } from '../logger';
 import { logPaymentTrace } from '../debug/paymentDisappearanceTrace';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
+// ---------------------------------------------------------------------------
+// Bulk-state load resilience: retry-with-backoff + shared circuit breaker.
+//
+// On a saturated server (HTTP 503 POOL_SATURATED), gateway timeout (→ 408/504),
+// or unreachable network (status 0), naive callers retry immediately and keep the
+// server's DB connection pool permanently exhausted — a retry storm that turns into
+// 524s for everyone. This guard:
+//   (a) retries a single load a bounded number of times with exponential backoff +
+//       jitter, honoring any server Retry-After hint; and
+//   (b) opens a shared circuit breaker after repeated failures so later loads
+//       fast-fail WITHOUT a network request during a cooldown window.
+// All bulk-state loaders share one breaker so once the server is struggling, the
+// whole client stops hammering it.
+// ---------------------------------------------------------------------------
+
+const BULK_LOAD_MAX_ATTEMPTS = 3;
+const BULK_LOAD_BASE_BACKOFF_MS = 1_000;
+const BULK_LOAD_MAX_BACKOFF_MS = 15_000;
+const BULK_BREAKER_FAILURE_THRESHOLD = 3;
+const BULK_BREAKER_BASE_COOLDOWN_MS = 5_000;
+const BULK_BREAKER_MAX_COOLDOWN_MS = 60_000;
+
+const bulkLoadBreaker = {
+  consecutiveFailures: 0,
+  openUntil: 0,
+};
+
+/** Thrown when bulk-state loading is paused (circuit open) or has exhausted retries. */
+export class BulkLoadUnavailableError extends Error {
+  readonly code = 'BULK_LOAD_UNAVAILABLE';
+  readonly retryAfterMs: number;
+  readonly reason?: unknown;
+  constructor(retryAfterMs: number, reason?: unknown) {
+    super(`Server is busy. Bulk load paused; retry in ~${Math.ceil(retryAfterMs / 1000)}s.`);
+    this.name = 'BulkLoadUnavailableError';
+    this.retryAfterMs = retryAfterMs;
+    this.reason = reason;
+  }
+}
+
+function errStatus(error: unknown): number | undefined {
+  if (error && typeof error === 'object' && 'status' in error) {
+    const s = (error as ApiError).status;
+    return typeof s === 'number' ? s : undefined;
+  }
+  return undefined;
+}
+
+function errCode(error: unknown): string | undefined {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const c = (error as { code?: unknown }).code;
+    return typeof c === 'string' ? c : undefined;
+  }
+  return undefined;
+}
+
+/** Transient server-pressure / connectivity errors that warrant backoff + breaker (not 401/404/validation). */
+function isTransientLoadError(error: unknown): boolean {
+  const code = errCode(error);
+  if (code === 'POOL_SATURATED' || code === 'NETWORK_ERROR' || code === 'TIMEOUT') return true;
+  const status = errStatus(error);
+  return (
+    status === 0 ||
+    status === 408 ||
+    status === 429 ||
+    status === 502 ||
+    status === 503 ||
+    status === 504
+  );
+}
+
+/** True for errors that mean "server is busy/unreachable" — callers must not amplify load (e.g. parallel fallback). */
+export function isBulkLoadUnavailable(error: unknown): boolean {
+  return error instanceof BulkLoadUnavailableError || isTransientLoadError(error);
+}
+
+/** Explicit server hint for how long to wait before retrying (ms), if present. */
+function retryAfterHintMs(error: unknown): number | undefined {
+  if (error && typeof error === 'object' && 'retryAfterMs' in error) {
+    const v = (error as { retryAfterMs?: unknown }).retryAfterMs;
+    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return v;
+  }
+  return undefined;
+}
+
+function backoffDelayMs(attempt: number, hintMs?: number): number {
+  const exp = Math.min(BULK_LOAD_BASE_BACKOFF_MS * 2 ** attempt, BULK_LOAD_MAX_BACKOFF_MS);
+  const jitter = Math.floor(Math.random() * BULK_LOAD_BASE_BACKOFF_MS);
+  return Math.max(hintMs ?? 0, exp + jitter);
+}
+
+function bulkLoadDelay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Whether the shared bulk-load breaker is currently open (cooldown in effect). */
+export function isBulkLoadCircuitOpen(): boolean {
+  return bulkLoadBreaker.openUntil > Date.now();
+}
+
+/** Remaining cooldown (ms) for the bulk-load breaker; 0 when closed. */
+export function bulkLoadCircuitRetryAfterMs(): number {
+  return Math.max(0, bulkLoadBreaker.openUntil - Date.now());
+}
+
+function recordBulkLoadSuccess(): void {
+  bulkLoadBreaker.consecutiveFailures = 0;
+  bulkLoadBreaker.openUntil = 0;
+}
+
+/** Records a failed load-call; opens the breaker once the threshold is reached. Returns cooldown ms (0 if not opened). */
+function recordBulkLoadFailure(hintMs?: number): number {
+  bulkLoadBreaker.consecutiveFailures += 1;
+  if (bulkLoadBreaker.consecutiveFailures >= BULK_BREAKER_FAILURE_THRESHOLD) {
+    const over = bulkLoadBreaker.consecutiveFailures - BULK_BREAKER_FAILURE_THRESHOLD;
+    const cooldown = Math.min(BULK_BREAKER_BASE_COOLDOWN_MS * 2 ** over, BULK_BREAKER_MAX_COOLDOWN_MS);
+    bulkLoadBreaker.openUntil = Date.now() + Math.max(cooldown, hintMs ?? 0);
+    return bulkLoadBreaker.openUntil - Date.now();
+  }
+  return 0;
+}
+
+/**
+ * Run a bulk-state loader with retry-backoff + shared circuit breaker.
+ * - Fast-fails (no network) with BulkLoadUnavailableError while the breaker is open.
+ * - Retries only transient pressure/connectivity errors, with exponential backoff + jitter.
+ * - Non-transient errors (401/404/validation) propagate immediately and never trip the breaker.
+ */
+async function withBulkLoadResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  if (isBulkLoadCircuitOpen()) {
+    const remaining = bulkLoadCircuitRetryAfterMs();
+    logger.warnCategory(
+      'sync',
+      `⏸️ ${label} skipped — bulk-load circuit open, retry in ~${Math.ceil(remaining / 1000)}s`
+    );
+    throw new BulkLoadUnavailableError(remaining);
+  }
+
+  let lastError: unknown;
+  for (let attempt = 0; attempt < BULK_LOAD_MAX_ATTEMPTS; attempt++) {
+    try {
+      const result = await fn();
+      recordBulkLoadSuccess();
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (!isTransientLoadError(error)) {
+        // Real error (e.g. 401/404/validation) — don't retry or trip the breaker.
+        throw error;
+      }
+      if (attempt === BULK_LOAD_MAX_ATTEMPTS - 1) break;
+      const wait = backoffDelayMs(attempt, retryAfterHintMs(error));
+      logger.warnCategory(
+        'sync',
+        `🔁 ${label} transient failure (attempt ${attempt + 1}/${BULK_LOAD_MAX_ATTEMPTS}); retrying in ${wait}ms`,
+        error
+      );
+      await bulkLoadDelay(wait);
+    }
+  }
+
+  const cooldown = recordBulkLoadFailure(retryAfterHintMs(lastError));
+  if (cooldown > 0) {
+    logger.errorCategory(
+      'sync',
+      `🛑 ${label} failed ${BULK_BREAKER_FAILURE_THRESHOLD}× — pausing bulk loads for ~${Math.ceil(cooldown / 1000)}s to let the server recover`
+    );
+    throw new BulkLoadUnavailableError(cooldown, lastError);
+  }
+  throw lastError;
+}
+
 /** Response from GET /api/state/changes?since=ISO8601 (incremental sync); apiClient unwraps { success, data } to this. */
 export interface StateChangesResponse {
   since: string;
@@ -778,7 +950,9 @@ export class AppStateApiService {
       logger.logCategory('sync', '📡 Loading state from API (bulk)...');
       const endpoint = entities ? `/state/bulk?entities=${encodeURIComponent(entities)}` : '/state/bulk';
       console.log('[DIAG] loadStateBulk: baseUrl=', apiClient.getBaseUrl(), 'tenantId=', apiClient.getTenantId(), 'hasToken=', !!apiClient.getToken(), 'endpoint=', endpoint);
-      const raw = await apiClient.get<Record<string, any[]>>(endpoint);
+      const raw = await withBulkLoadResilience('loadStateBulk', () =>
+        apiClient.get<Record<string, any[]>>(endpoint)
+      );
       console.log('[DIAG] loadStateBulk: response keys=', Object.keys(raw || {}), 'contacts=', (raw?.contacts || []).length, 'accounts=', (raw?.accounts || []).length, 'transactions=', (raw?.transactions || []).length);
       const state = this.normalizeLoadedState(raw);
       logger.logCategory('sync', '✅ Loaded from API (bulk):', {
@@ -832,12 +1006,14 @@ export class AppStateApiService {
 
       while (hasMore) {
         const endpoint = `/state/bulk-chunked?limit=${CHUNK_SIZE}&offset=${offset}`;
-        const chunk = await apiClient.get<{
-          entities: Record<string, any[]>;
-          totals: Record<string, number>;
-          has_more: boolean;
-          next_offset: number | null;
-        }>(endpoint);
+        const chunk = await withBulkLoadResilience('loadStateBulkChunked', () =>
+          apiClient.get<{
+            entities: Record<string, any[]>;
+            totals: Record<string, number>;
+            has_more: boolean;
+            next_offset: number | null;
+          }>(endpoint)
+        );
 
         // Merge chunk into accumulated state (appSettings is an object, not an array)
         for (const [key, records] of Object.entries(chunk.entities ?? {})) {
@@ -899,6 +1075,13 @@ export class AppStateApiService {
       });
       return partial;
     } catch (chunkErr) {
+      // Server busy / unreachable: do NOT cascade to the single-shot bulk or the
+      // 27-request parallel loadState() — that amplifies load and deepens the pool
+      // queue. Propagate so the caller can back off (breaker is already tracking it).
+      if (isBulkLoadUnavailable(chunkErr)) {
+        logger.warnCategory('sync', 'Chunked state load unavailable (server busy); backing off:', chunkErr);
+        throw chunkErr;
+      }
       logger.warnCategory('sync', 'Chunked state load failed; trying GET /state/bulk:', chunkErr);
       try {
         const partial = await this.loadStateBulk();
@@ -907,6 +1090,10 @@ export class AppStateApiService {
         });
         return partial;
       } catch (bulkErr) {
+        if (isBulkLoadUnavailable(bulkErr)) {
+          logger.warnCategory('sync', 'Bulk state load unavailable (server busy); backing off:', bulkErr);
+          throw bulkErr;
+        }
         logger.warnCategory('sync', 'Bulk state load failed; falling back to parallel loadState():', bulkErr);
         const partial = await this.loadState();
         logPaymentTrace('loadStateForSyncRefresh', 'complete (parallel)', partial.transactions, {
