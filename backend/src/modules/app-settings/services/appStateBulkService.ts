@@ -53,8 +53,15 @@ import { isAdminRole } from '../../../middleware/authMiddleware.js';
 /** Max transactions returned by GET /state/bulk (use /state/bulk-chunked for larger tenants). */
 export const BULK_TRANSACTION_CAP = 50_000;
 
-const BULK_STATIC_ENTITIES =
-  'accounts,contacts,categories,projects,buildings,properties,units,invoices,bills,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,vendors,personalCategories,personalTransactions,appSettings';
+/** Loaded on GET /state/bulk-chunked offset=0 (PERF-A6.1 — keep startup payload small). */
+export const BULK_BOOTSTRAP_STATIC_ENTITIES =
+  'accounts,categories,projects,buildings,properties,units,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,personalCategories,appSettings';
+
+/** Deferred to on-demand GET /state/bulk?entities=… when a page needs them (not startup). */
+export const BULK_DEFERRED_ENTITIES =
+  'invoices,bills,contacts,vendors,personalTransactions';
+
+const BULK_STATIC_ENTITIES = BULK_BOOTSTRAP_STATIC_ENTITIES;
 
 type BulkEntityKey =
   | 'accounts'
