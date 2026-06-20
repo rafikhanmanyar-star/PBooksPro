@@ -29,6 +29,10 @@ const SKIP_PATH_PREFIXES = [
   '/webhooks/',
   '/legal/',
   '/database/backup',
+  // Observability ingest — must keep working even if a subscription lapses, and
+  // is gated by authMiddleware only (mounted without requireActiveSubscription).
+  '/monitoring/telemetry',
+  '/monitoring/client-errors',
 ];
 
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
