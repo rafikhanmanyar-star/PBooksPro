@@ -39,7 +39,7 @@ function requireApprovalMatrixFeature(
 approvalMatrixRouter.use(requireApprovalMatrixFeature);
 
 approvalMatrixRouter.get(
-  '/rbac/approval-matrix',
+  '/',
   requirePermissionV2('administration.approvals.final', 'users.read'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -57,7 +57,7 @@ approvalMatrixRouter.get(
 );
 
 approvalMatrixRouter.get(
-  '/rbac/approval-matrix/users/:userId/capabilities',
+  '/users/:userId/capabilities',
   requirePermissionV2('administration.approvals.final', 'users.read'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -76,7 +76,7 @@ approvalMatrixRouter.get(
 );
 
 approvalMatrixRouter.put(
-  '/rbac/approval-matrix/rules',
+  '/rules',
   requirePermissionV2('administration.approvals.final'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -100,7 +100,7 @@ approvalMatrixRouter.put(
 );
 
 approvalMatrixRouter.post(
-  '/rbac/approval-matrix/assignments',
+  '/assignments',
   requirePermissionV2('administration.approvals.final'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -124,7 +124,7 @@ approvalMatrixRouter.post(
 );
 
 approvalMatrixRouter.delete(
-  '/rbac/approval-matrix/assignments/:assignmentId',
+  '/assignments/:assignmentId',
   requirePermissionV2('administration.approvals.final'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;

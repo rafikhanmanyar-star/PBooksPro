@@ -165,8 +165,18 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), securityRoleRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), breakGlassRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), effectiveContextRouter);
-  app.use(prefix, authMiddleware, requireActiveSubscription(), dataScopeRouter);
-  app.use(prefix, authMiddleware, requireActiveSubscription(), approvalMatrixRouter);
+  app.use(
+    `${prefix}/rbac/scopes`,
+    authMiddleware,
+    requireActiveSubscription(),
+    dataScopeRouter
+  );
+  app.use(
+    `${prefix}/rbac/approval-matrix`,
+    authMiddleware,
+    requireActiveSubscription(),
+    approvalMatrixRouter
+  );
   app.use(prefix, authMiddleware, requireActiveSubscription(), rbacUserRolesRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), auditTrailRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), privacyRouter);

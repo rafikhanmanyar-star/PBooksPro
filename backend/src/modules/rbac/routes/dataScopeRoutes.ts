@@ -29,7 +29,7 @@ function requireDataScopeFeature(_req: AuthedRequest, res: import('express').Res
 dataScopeRouter.use(requireDataScopeFeature);
 
 dataScopeRouter.get(
-  '/rbac/scopes/users/:userId',
+  '/users/:userId',
   requirePermissionV2('administration.scopes.edit', 'users.read'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -48,7 +48,7 @@ dataScopeRouter.get(
 );
 
 dataScopeRouter.put(
-  '/rbac/scopes/users/:userId',
+  '/users/:userId',
   requirePermissionV2('administration.scopes.edit'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
@@ -78,7 +78,7 @@ dataScopeRouter.put(
 );
 
 dataScopeRouter.delete(
-  '/rbac/scopes/:scopeId',
+  '/:scopeId',
   requirePermissionV2('administration.scopes.edit'),
   async (req: AuthedRequest, res) => {
     const tenantId = req.tenantId;
