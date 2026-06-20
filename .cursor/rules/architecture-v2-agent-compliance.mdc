@@ -1,0 +1,84 @@
+---
+description: Architecture v2.1 mandatory compliance for all new development — MUST/MUST NOT, enforcement, checklists
+alwaysApply: true
+---
+
+# Architecture v2.1 — Agent Compliance
+
+**Full rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` · **Deep dive:** `doc/ARCHITECTURE.md`
+
+Launch scope is complete. **Client SQLite removed (Phase 6).** New features use v2.1 patterns only — never extend legacy flat routes/services.
+
+**Progress:** `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
+
+**Database standard:** PostgreSQL only (Desktop + Cloud + staging + production). SQLite is deprecated.
+
+**Real-Time First:** Multi-user ERP — every business mutation must propagate to all connected clients in the same tenant (mandatory).
+
+## Runtime Architecture
+
+**Desktop Edition:** Electron → React → apiClient (`/api/v1`) → Express API → modules → FinancialPostingService → PostgreSQL
+
+**Cloud Edition:** Browser → React → apiClient (`/api/v1`) → Express API → modules → FinancialPostingService → PostgreSQL
+
+Shared logic: `shared/financial-core/`, `shared/report-engines/`, `shared/rbac/`.
+
+## MUST
+
+- Backend: `backend/src/modules/<domain>/` (routes → services → repositories extending `TenantRepository`)
+- GL writes: `FinancialPostingService` only
+- API: `/api/v1` via `mountVersionedApi.ts`
+- Mutations: `withAudit()` or `recordDomainMutation()` + **`emitEntityEvent()`** (mandatory after commit)
+- Real-time: PostgreSQL → audit → emit → Socket.IO `tenant:${tenantId}` → client `invalidateQueries`
+- LWW: `checkEntityLwwConflict()` before save; HTTP 409 + `serverVersion` on conflict
+- Calculations: `shared/financial-core/` or `shared/report-engines/` — not components, routes, or repositories
+- Schema: `database/migrations/NNN_name.sql` (PostgreSQL only); permissions: `shared/rbac/permissions.ts` → `npm run build:backend`
+- Frontend API: `apiClient` base `/api/v1`; state via domain hooks / React Query — not broad `useAppContext()`
+- PostgreSQL only — no SQLite for new features, schemas, migrations, or sync
+
+## MUST NOT
+
+- SQL in routes; direct GL writes; missing `tenant_id`; edit AUTO-GENERATED `backend/src/financial/` or `backend/src/auth/permissions.ts`
+- New report math in `components/`; new handlers in legacy `backend/src/routes/`; `/api` prefix (removed)
+- SQLite code, schemas, or sync; new flat routes/services; duplicate financial/report logic
+- Client-supplied `tenant_id`; new database technologies; APIs outside `/api/v1`
+- Local-only screen updates; manual refresh / refresh-button-as-primary sync; polling-only mutation sync
+- Unscoped socket broadcasts (must use tenant room only)
+- Commit `.env*`, `backend/dist/`, backups
+
+## Enforcement
+
+If a request violates architecture rules: explain the violation, propose the compliant approach, then implement the approved architecture.
+
+**Real-time enforcement:** If a feature lacks sync, add `emitEntityEvent()` + socket subscription + React Query invalidation + LWW handling.
+
+## Core Business Domains
+
+First-class domains under `backend/src/modules/`: Project Construction, Contracts, BOQ, IPC Bills, Retention, Variations, Purchase Orders, Vendor Quotations, Property Sales/Rentals, CRM, Collections, Facility Management.
+
+## New Feature Flow
+
+```
+migration → TenantRepository → service → withAudit/recordDomainMutation → emitEntityEvent → mountVersionedApi → *Api.ts → hook (+ socket invalidate) → UI
+```
+
+## Compliance Checklist
+
+Before completing any task: modules layout, TenantRepository, tenant_id, PostgreSQL only, `/api/v1`, FinancialPostingService, audit helpers, **emitEntityEvent + client invalidation**, shared/ for calculations, migration if schema changed, permissions if needed, no direct SQL in routes, no duplicate logic, no legacy extensions, no secrets committed, no local-only sync.
+
+## Reference Implementations
+
+- GL: `FinancialPostingService` → `JournalRepository` → `emitFinancialPosted()`
+- Domain CRUD + real-time: `modules/vendors/routes/billsRoutes.ts`
+- Real-time gateway: `backend/src/core/realtime.ts`
+- Socket client: `core/socket.ts`; global listener: `context/AppContext.tsx`
+- React Query + socket: `hooks/useUserNotifications.ts`
+- Change log merge: `services/api/changeLogMerge.ts`
+
+## File-Specific Rules
+
+- Backend TS: `architecture-backend.mdc`
+- Frontend: `architecture-frontend.mdc`
+- Data/migrations/shared: `architecture-data.mdc`
+
+Post-launch deferred (RLS, BullMQ, CQRS): `doc/ARCHITECTURE_V2_POST_LAUNCH.md` — do not implement unless requested.

@@ -1,0 +1,72 @@
+---
+description: PBooks Pro Architecture v2.1 — Desktop/Cloud editions, PostgreSQL-only, where new code belongs
+alwaysApply: true
+---
+
+# Architecture Overview (v2.1)
+
+**Agent rules:** `doc/ARCHITECTURE_V2_AGENT_RULES.md` · **Full guide:** `doc/ARCHITECTURE.md`
+
+Monorepo: React/Vite at root, Express/PostgreSQL in `backend/`, Electron in `electron/`, shared packages in `shared/`.
+
+**Single source of truth:** PostgreSQL.
+
+## Runtime Architecture
+
+**Desktop Edition**
+
+```
+Electron → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+**Cloud Edition**
+
+```
+Browser → React → apiClient (/api/v1) → Express API → modules (routes→services→repositories) → FinancialPostingService → PostgreSQL
+```
+
+Shared calculation logic: `shared/financial-core/`, `shared/report-engines/`.
+
+## Editions & Environments
+
+| Edition | Client | API port | Database |
+|---------|--------|----------|----------|
+| Desktop (production) | Electron | 3000 | `pbookspro` |
+| Desktop (staging) | Electron | 3001 | `pBookspro_Staging` |
+| Cloud | Browser | 3000 / 3001 | PostgreSQL |
+| API server | — | 3000 / 3001 | PostgreSQL |
+
+> **Deprecated:** Offline SQLite (`VITE_LOCAL_ONLY`, `sqliteBridge`, `services/database/`). Do not extend.
+
+## Strangler: New Code Uses v2.1
+
+Legacy `backend/src/routes/` + flat `services/` are thin delegates only. **Client SQLite removed (Phase 6).** New features go in `backend/src/modules/<domain>/` with `TenantRepository` subclasses.
+
+**Progress:** `doc/ARCHITECTURE_V2_1_MODERNIZATION_PROGRESS.md`
+
+## Where to Put New Code
+
+| Concern | Location |
+|---------|----------|
+| Domain API | `backend/src/modules/<domain>/` (routes, services, repositories) |
+| GL writes | `FinancialPostingService` only |
+| Migrations | `database/migrations/NNN_name.sql` (PostgreSQL only) |
+| Financial/report logic | `shared/financial-core/`, `shared/report-engines/` |
+| API client | `services/api/` (base `/api/v1`) |
+| UI | `components/<domain>/` or `modules/<feature>/` |
+
+## Reference Features
+
+- Dashboard snapshots: `modules/dashboard/` → `GET /dashboard/snapshots`
+- Financial posting: `FinancialPostingService` → `JournalRepository`
+- Custom reports: `modules/reporting/`
+
+## Anti-Patterns
+
+- SQL in routes; direct GL writes outside FinancialPostingService
+- Missing tenant_id; editing AUTO-GENERATED backend/financial files
+- New calculation logic in components/ (use shared/report-engines/)
+- Broad useAppContext() in new code; new handlers in legacy flat routes
+- SQLite code or schemas for new development
+
+Post-launch deferred: `doc/ARCHITECTURE_V2_POST_LAUNCH.md`. Detailed agent checklists: `doc/ARCHITECTURE_V2_AGENT_RULES.md`.

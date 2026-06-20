@@ -1,4 +1,8 @@
+<<<<<<< Updated upstream
 ﻿import { useDispatchOnly, useMarketingPageState, usePrintSettings, useWhatsAppMode } from '../../hooks/useSelectiveState';
+=======
+﻿import { useDispatchOnly, useMarketingPageState, useWhatsAppMode } from '../../hooks/useSelectiveState';
+>>>>>>> Stashed changes
 import React, { useState, useMemo, useEffect } from 'react';
 import { apiClient } from '../../services/api/client';
 import { 
@@ -367,17 +371,27 @@ const MarketingPage: React.FC = () => {
     useEffect(() => {
         const loadOrgUsers = async () => {
             try {
+<<<<<<< Updated upstream
                 devLogger.log('[ORG USERS] Loading marketing plan approvers from API...');
                 const { InstallmentPlansApiRepository } = await import('../../services/api/repositories/installmentPlansApi');
                 const data = await new InstallmentPlansApiRepository().listApprovers();
                 devLogger.log('[ORG USERS] Loaded approvers:', {
+=======
+                devLogger.log('[ORG USERS] Loading organization users from API...');
+                const data = await apiClient.get<{ id: string; name: string; username: string; role: string }[]>('/users');
+                devLogger.log('[ORG USERS] Loaded users:', {
+>>>>>>> Stashed changes
                     count: data?.length || 0,
                     users: data?.map(u => ({ id: u.id, username: u.username, name: u.name, role: u.role }))
                 });
                 setOrgUsers(data || []);
             } catch (error) {
                 const msg = error instanceof Error ? error.message : String(error);
+<<<<<<< Updated upstream
                 devLogger.error('[ORG USERS] Failed to load marketing plan approvers', msg);
+=======
+                devLogger.error('[ORG USERS] Failed to load organization users', msg);
+>>>>>>> Stashed changes
                 setOrgUsers([]);
             }
         };
@@ -386,11 +400,48 @@ const MarketingPage: React.FC = () => {
 
     const usersForApproval = orgUsers.length > 0 ? orgUsers : users;
     const approvers = useMemo(
+<<<<<<< Updated upstream
         () =>
             usersForApproval
                 .filter(user => user.id !== currentUser?.id)
                 .map(user => ({ id: user.id, name: user.name || user.username })),
         [usersForApproval, currentUser?.id]
+=======
+        () => {
+            devLogger.log('[APPROVERS] Building approvers list...', {
+                currentUserId: currentUser?.id,
+                currentUsername: currentUser?.username,
+                usersForApprovalCount: usersForApproval.length,
+                usingOrgUsers: orgUsers.length > 0
+            });
+            
+            const filtered = usersForApproval
+                .filter(user => {
+                    const hasRole = user.role && user.role.toLowerCase() === 'admin';
+                    const isNotCurrentUser = user.id !== currentUser?.id; // Don't include yourself
+                    devLogger.log('[APPROVERS] Checking user:', {
+                        id: user.id,
+                        username: user.username,
+                        name: user.name,
+                        role: user.role,
+                        hasAdminRole: hasRole,
+                        isNotCurrentUser,
+                        willInclude: hasRole && isNotCurrentUser
+                    });
+                    return hasRole && isNotCurrentUser;
+                })
+                .map(user => ({ id: user.id, name: user.name || user.username }));
+            
+            devLogger.log('[APPROVAL DEBUG] Final approvers list:', {
+                totalUsers: usersForApproval.length,
+                approversCount: filtered.length,
+                approvers: filtered,
+                allUsersWithRoles: usersForApproval.map(u => ({ id: u.id, name: u.name, username: u.username, role: u.role }))
+            });
+            return filtered;
+        },
+        [usersForApproval, currentUser]
+>>>>>>> Stashed changes
     );
     
     // Units for selected project
@@ -413,9 +464,33 @@ const MarketingPage: React.FC = () => {
     const effectiveApprovalRequestedToId = activePlan?.approvalRequestedToId || approvalRequestedToId;
     const effectiveApprovalRequestedById = activePlan?.approvalRequestedById || approvalRequestedById;
     const effectiveApprovalReviewedById = activePlan?.approvalReviewedById || approvalReviewedById;
+<<<<<<< Updated upstream
     const isApproverForSelectedPlan =
         isPendingApproval &&
         (canApproveMarketingPlans || effectiveApprovalRequestedToId === currentUser?.id);
+=======
+    const isMatchingUser = useMemo(() => {
+        if (!currentUser) return () => false;
+        const candidates = [
+            currentUser.id,
+            currentUser.username,
+            currentUser.name
+        ].filter(Boolean).map(value => value.toString().toLowerCase());
+        return (value?: string) => {
+            if (!value) return false;
+            const normalizedValue = value.toString().toLowerCase();
+            const matches = candidates.includes(normalizedValue);
+            devLogger.log('[APPROVAL DEBUG] Matching check:', {
+                value,
+                normalizedValue,
+                candidates,
+                matches
+            });
+            return matches;
+        };
+    }, [currentUser]);
+    const isApproverForSelectedPlan = isPendingApproval && isMatchingUser(effectiveApprovalRequestedToId);
+>>>>>>> Stashed changes
 
     // Debug logging for approval workflow
     useEffect(() => {

@@ -113,6 +113,36 @@ async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<vo
   await invalidateSellingAnalytics(queryClient);
 }
 
+function isSettingsBulkRefresh(payload: RealtimeEntityPayload): boolean {
+  const data = payload.data;
+  return (
+    payload.type === 'settings' &&
+    payload.action === 'updated' &&
+    !!data &&
+    typeof data === 'object' &&
+    data !== null &&
+    'bulkRefresh' in data &&
+    typeof (data as { bulkRefresh: unknown }).bulkRefresh === 'string'
+  );
+}
+
+/** Full tenant cache sweep after clear-transactions / factory-reset (all connected sessions). */
+async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: queryKeys.ledger.all }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.reports.all }),
+    queryClient.invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.invoices.all }),
+    queryClient.invalidateQueries({ queryKey: ['rental'] }),
+    queryClient.invalidateQueries({ queryKey: ['vendors'] }),
+    queryClient.invalidateQueries({ queryKey: ['contacts'] }),
+    queryClient.invalidateQueries({ queryKey: ['contracts'] }),
+    queryClient.invalidateQueries({ queryKey: ['payroll'] }),
+    queryClient.invalidateQueries({ queryKey: ['documents'] }),
+    invalidateSellingAnalytics(queryClient),
+  ]);
+}
+
 async function invalidateSellingAnalytics(queryClient: QueryClient): Promise<void> {
   const start = Date.now();
   try {

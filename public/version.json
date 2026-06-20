@@ -1,5 +1,11 @@
 {
+<<<<<<< Updated upstream
   "version": "2026.06.19.798",
   "buildTime": "2026-06-19T13:18:21.385Z",
   "packageVersion": "1.2.435"
+=======
+  "version": "2026.06.15.302",
+  "buildTime": "2026-06-15T05:02:46.294Z",
+  "packageVersion": "1.2.391"
+>>>>>>> Stashed changes
 }
