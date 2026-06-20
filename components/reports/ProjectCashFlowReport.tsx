@@ -613,7 +613,7 @@ const ProjectCashFlowReport: React.FC = () => {
                                 {entityLabel}
                             </p>
                             <p className="text-xs text-app-muted">
-                                {report.flags.source === 'transactions'
+                                {report?.flags.source === 'transactions'
                                     ? 'Direct method (operational transactions)'
                                     : 'Direct method (journal GL)'}{' '}
                                 — For the period from {formatDate(startDate)} to {formatDate(endDate)}

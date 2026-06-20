@@ -1408,7 +1408,10 @@ export class AppStateApiService {
     const properties = raw.properties || [];
     const units = raw.units || [];
     const invoices = raw.invoices || [];
-    const bills = raw.bills || [];
+    // Keep as undefined when absent so mergePartialStateIntoBaseline knows bills were not fetched
+    // (deferred entities path). Converting undefined→[] causes mergeBillsWithServerBaseline to
+    // drop all existing server-versioned bills until the deferred load restores them (flash).
+    const bills: unknown[] | undefined = Array.isArray(raw.bills) ? raw.bills : (raw.bills != null ? [] : undefined);
     const budgets = raw.budgets || [];
     const planAmenities = raw.planAmenities || [];
     const installmentPlans = raw.installmentPlans || [];
@@ -1585,7 +1588,7 @@ export class AppStateApiService {
       (a: Record<string, unknown>) => normalizeProjectReceivedAssetFromApi(a)
     );
 
-    const normalizedBills = bills.map((b: any) => normalizeBillFromApi(b));
+    const normalizedBills = bills?.map((b: any) => normalizeBillFromApi(b));
 
     // Normalize invoices from API (transform snake_case to camelCase)
     // The server returns snake_case fields, but the client expects camelCase
@@ -1750,7 +1753,7 @@ export class AppStateApiService {
       properties: normalizedProperties,
       units: normalizedUnits,
       invoices: normalizedInvoices,
-      bills: normalizedBills,
+      ...(normalizedBills !== undefined ? { bills: normalizedBills } : {}),
       budgets: normalizedBudgets,
       planAmenities: normalizedPlanAmenities || [],
       installmentPlans: normalizedInstallmentPlans,

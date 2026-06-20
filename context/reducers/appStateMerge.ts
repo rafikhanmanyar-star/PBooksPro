@@ -127,7 +127,9 @@ export function mergePartialStateIntoBaseline(
         ...partial,
         transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
         invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
-        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
+        bills: partial.bills !== undefined
+            ? mergeBillsWithServerBaseline(base.bills || [], partial.bills)
+            : (base.bills || []),
         projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
             base.projectReceivedAssets || [],
             partial.projectReceivedAssets || []
