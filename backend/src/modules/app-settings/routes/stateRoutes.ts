@@ -20,12 +20,16 @@ stateRouter.get('/state/bulk', async (req: AuthedRequest, res) => {
   try {
     const pool = getPool();
     const client = await pool.connect();
+    // PERF-A6.5: release connection before JSON serialization.
+    // getBulkAppState completes all DB queries then returns; the connection
+    // is no longer needed during sendSuccess's JSON.stringify + res.write.
+    let payload: Awaited<ReturnType<typeof getBulkAppState>>;
     try {
-      const payload = await getBulkAppState(client, tenantId, req.query.entities, req.role, req.userId);
-      sendSuccess(res, payload);
+      payload = await getBulkAppState(client, tenantId, req.query.entities, req.role, req.userId);
     } finally {
       client.release();
     }
+    sendSuccess(res, payload);
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /state/bulk' });
   }
@@ -41,8 +45,12 @@ stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
   try {
     const pool = getPool();
     const client = await pool.connect();
+    // PERF-A6.5: release connection before JSON serialization.
+    // All DB work completes inside getBulkAppStateChunked; the connection
+    // is not needed during sendSuccess's JSON.stringify + res.write.
+    let payload: Awaited<ReturnType<typeof getBulkAppStateChunked>>;
     try {
-      const payload = await getBulkAppStateChunked(
+      payload = await getBulkAppStateChunked(
         client,
         tenantId,
         req.query.limit,
@@ -50,10 +58,10 @@ stateRouter.get('/state/bulk-chunked', async (req: AuthedRequest, res) => {
         req.role,
         req.userId
       );
-      sendSuccess(res, payload);
     } finally {
       client.release();
     }
+    sendSuccess(res, payload);
   } catch (e) {
     handleRouteError(res, e, { route: 'GET /state/bulk-chunked' });
   }
