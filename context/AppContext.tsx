@@ -248,6 +248,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         setInitMessage('Loading application data from server...');
                         setInitProgress(60);
                         const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
+                        logger.logCategory('sync', '[STARTUP_SYNC_BEGIN] Starting initial full load via loadStateBulkChunked');
                         const partial = await getAppStateApiService().loadStateBulkChunked(
                             (loaded, total) => {
                                 if (isMounted && total > 0) {
@@ -263,8 +264,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
                                 if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
                             }
+                            // Suppress Executions 2 + 3: init already performed the full startup load.
+                            didPostAuthApiMergeRef.current = true;
+                            sessionRestoreRefreshDoneRef.current = true;
                             markDbLoadCompleteRef.current?.();
-                            logger.logCategory('sync', '✅ Application state loaded from API');
+                            logger.logCategory('sync', '[STARTUP_SYNC_COMPLETE] Initial full load done — duplicate effects suppressed');
                         }
                     } catch (apiErr) {
                         logger.warnCategory(
@@ -1834,7 +1838,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             return;
         }
         if (isInitializing || apiStateLoadFailed) return;
-        if (didPostAuthApiMergeRef.current) return;
+        if (didPostAuthApiMergeRef.current) {
+            logger.logCategory('sync', '[STARTUP_SYNC_SKIPPED] didPostAuthApiMerge: initial load already complete');
+            return;
+        }
         didPostAuthApiMergeRef.current = true;
         void refreshFromApi();
     }, [isAuthenticated, isInitializing, apiStateLoadFailed, refreshFromApi]);
@@ -2225,7 +2232,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             const missingProjects = (state.projects?.length ?? 0) === 0;
             sessionRestoreRefreshDoneRef.current = true;
             if (!hasData || missingProjects) {
+                logger.logCategory('sync', '[STARTUP_SYNC_BEGIN] sessionRestoreRefresh: state empty after init, triggering full load');
                 void refreshFromApiRef.current?.();
+            } else {
+                logger.logCategory('sync', '[STARTUP_SYNC_SKIPPED] sessionRestoreRefresh: state already populated by init load');
             }
         }
         if (!isAuthenticated) {
