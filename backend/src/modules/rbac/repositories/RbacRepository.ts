@@ -163,14 +163,14 @@ export class RbacRepository extends TenantRepository {
     const id = `rbac_${randomUUID().replace(/-/g, '')}`;
     const row = await this.queryOne<RbacRoleRow>(
       `INSERT INTO rbac_roles (
-         id, tenant_id, slug, name, description, status, is_system, is_protected, is_hidden,
+         tenant_id, id, slug, name, description, status, is_system, is_protected, is_hidden,
          role_type, template_id, role_version_hash
        )
        VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, FALSE, $7, $8, $9)
        RETURNING *`,
       [
-        id,
         this.tenantId,
+        id,
         input.slug,
         input.name,
         input.description ?? null,
