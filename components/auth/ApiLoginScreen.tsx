@@ -412,7 +412,9 @@ const ApiLoginScreen: React.FC = () => {
   }, [view, websiteDemoEntry, enterDemoSession, serverUrl]);
 
   useEffect(() => {
-    clearAuthError();
+    if (!websiteDemoEntry) {
+      clearAuthError();
+    }
     const root = getApiRootUrl();
     setServerUrl(root);
     try {
