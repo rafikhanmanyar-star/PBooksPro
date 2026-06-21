@@ -1,41 +1,27 @@
-import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
+import type { CoreCaptureKind } from '../constants/quickCaptureTypes';
 
 export type ParsedVoiceCapture = {
-  transactionType: string;
+  captureTypeId?: string;
+  captureKind: CoreCaptureKind;
   amount: number;
   partyName?: string;
   description?: string;
   projectId?: string;
-  costCenterCode?: string;
   rawTranscript: string;
   confidence: 'high' | 'partial';
 };
 
-const TYPE_KEYWORDS: Array<{ id: string; patterns: RegExp[] }> = [
-  { id: 'fuel_expense', patterns: [/\bfuel\b/i, /\bpetrol\b/i, /\bdiesel\b/i] },
-  { id: 'office_expense', patterns: [/\boffice\b/i] },
-  { id: 'site_expense', patterns: [/\bsite\b/i] },
-  { id: 'travel_expense', patterns: [/\btravel\b/i, /\btaxi\b/i, /\bflight\b/i] },
+const TYPE_KEYWORDS: Array<{ kind: CoreCaptureKind; patterns: RegExp[] }> = [
   {
-    id: 'material_purchase',
-    patterns: [/\bmaterial\b/i, /\bcement\b/i, /\bsteel\b/i, /\bbricks?\b/i],
+    kind: 'suppliers',
+    patterns: [/\bvendor\b/i, /\bsupplier\b/i, /\bpaid\s+to\b/i, /\bpayment\s+to\b/i, /\bmaterial\b/i],
   },
   {
-    id: 'supplier_payment',
-    patterns: [/\bvendor\b/i, /\bsupplier\b/i, /\bpaid\s+to\b/i, /\bpayment\s+to\b/i],
+    kind: 'staff',
+    patterns: [/\bworker\b/i, /\bwages?\b/i, /\blabou?r\b/i, /\bemployee\b/i, /\bstaff\b/i, /\bcontractor\b/i],
   },
-  {
-    id: 'employee_payment',
-    patterns: [/\bworker\b/i, /\bwages?\b/i, /\blabou?r\b/i, /\bemployee\b/i, /\bcontractor\b/i],
-  },
-  { id: 'advance_payment', patterns: [/\badvance\b/i] },
-  { id: 'cash_withdrawal', patterns: [/\bwithdraw/i, /\bcash\s+out\b/i] },
-  {
-    id: 'customer_collection',
-    patterns: [/\bcollection\b/i, /\breceived\s+from\b/i, /\bcustomer\s+paid\b/i],
-  },
-  { id: 'cash_deposit', patterns: [/\bdeposit\b/i, /\bcash\s+in\b/i] },
-  { id: 'other', patterns: [/\bother\b/i, /\bmisc\b/i] },
+  { kind: 'site', patterns: [/\bsite\b/i, /\boffice\b/i, /\bfuel\b/i, /\bpetrol\b/i] },
+  { kind: 'misc', patterns: [/\bother\b/i, /\bmisc\b/i, /\btravel\b/i, /\badvance\b/i] },
 ];
 
 function extractAmount(text: string): number | null {
@@ -62,14 +48,13 @@ function extractAmount(text: string): number | null {
   return null;
 }
 
-function detectTransactionType(text: string): string {
+function detectCaptureKind(text: string): CoreCaptureKind {
   const lower = text.toLowerCase();
   for (const entry of TYPE_KEYWORDS) {
-    if (entry.patterns.some((p) => p.test(lower))) return entry.id;
+    if (entry.patterns.some((p) => p.test(lower))) return entry.kind;
   }
-  if (/\bpaid\b/i.test(text) || /\bpayment\b/i.test(text)) return 'supplier_payment';
-  if (/\breceived\b/i.test(text) || /\bcollect/i.test(text)) return 'customer_collection';
-  return 'other';
+  if (/\bpaid\b/i.test(text) || /\bpayment\b/i.test(text)) return 'suppliers';
+  return 'misc';
 }
 
 function extractParty(text: string): string | undefined {
@@ -94,12 +79,7 @@ function extractProject(text: string): string | undefined {
   return undefined;
 }
 
-function extractCostCenter(text: string): string | undefined {
-  const m = text.match(/\bcost\s*center[:\s]+(\S+)/i);
-  return m?.[1]?.trim();
-}
-
-/** Parse spoken quick-capture phrase into the same fields as the manual wizard. */
+/** Parse spoken quick-capture phrase into wizard fields. */
 export function parseVoiceQuickCapture(transcript: string): ParsedVoiceCapture | null {
   const rawTranscript = transcript.trim();
   if (!rawTranscript) return null;
@@ -107,23 +87,21 @@ export function parseVoiceQuickCapture(transcript: string): ParsedVoiceCapture |
   const amount = extractAmount(rawTranscript);
   if (!amount || amount <= 0) return null;
 
-  const transactionType = detectTransactionType(rawTranscript);
+  const captureKind = detectCaptureKind(rawTranscript);
   const partyName = extractParty(rawTranscript);
   const projectId = extractProject(rawTranscript);
-  const costCenterCode = extractCostCenter(rawTranscript);
 
-  const validType = UNPOSTED_TRANSACTION_TYPES.some((t) => t.id === transactionType);
   const confidence: ParsedVoiceCapture['confidence'] =
-    validType && amount > 0 && (partyName || projectId || /\b(fuel|office|site|vendor|collection)\b/i.test(rawTranscript))
+    amount > 0 && (partyName || projectId || /\b(vendor|staff|site|supplier|worker)\b/i.test(rawTranscript))
       ? 'high'
       : 'partial';
 
   return {
-    transactionType: validType ? transactionType : 'other',
+    captureKind,
+    captureTypeId: captureKind,
     amount,
     partyName,
     projectId,
-    costCenterCode,
     description: rawTranscript,
     rawTranscript,
     confidence,

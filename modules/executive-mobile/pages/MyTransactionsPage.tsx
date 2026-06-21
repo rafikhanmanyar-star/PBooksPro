@@ -1,14 +1,12 @@
 import React from 'react';
 import { useUnpostedTransactions } from '../hooks/useUnpostedTransactions';
-import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
+import { getCaptureDisplayLabel, stripCaptureDescriptionPrefix } from '../utils/captureSubmitMapping';
 import { CURRENCY } from '../../../constants';
-
-const TYPE_LABELS = Object.fromEntries(
-  UNPOSTED_TRANSACTION_TYPES.map((t) => [t.id, t.label])
-);
+import { useProjects } from '../../../hooks/useSelectiveState';
 
 export default function MyTransactionsPage() {
   const { data, isLoading } = useUnpostedTransactions({ mine: true });
+  const projects = useProjects();
 
   return (
     <div className="p-4 pb-24 space-y-3">
@@ -25,12 +23,20 @@ export default function MyTransactionsPage() {
           >
             <div className="flex justify-between items-start gap-2">
               <div>
-                <p className="font-medium text-app-text">
-                  {TYPE_LABELS[tx.transactionType] ?? tx.transactionType}
-                </p>
+                <p className="font-medium text-app-text">{getCaptureDisplayLabel(tx)}</p>
                 <p className="text-xs text-app-muted">{tx.transactionDate}</p>
                 {tx.partyName && (
                   <p className="text-xs text-app-muted mt-1">{tx.partyName}</p>
+                )}
+                {tx.projectId && (
+                  <p className="text-xs text-app-muted mt-0.5">
+                    Project: {projects?.find((p) => p.id === tx.projectId)?.name ?? tx.projectId}
+                  </p>
+                )}
+                {tx.description && (
+                  <p className="text-xs text-app-muted mt-0.5 line-clamp-2">
+                    {stripCaptureDescriptionPrefix(tx.description)}
+                  </p>
                 )}
               </div>
               <div className="text-right">

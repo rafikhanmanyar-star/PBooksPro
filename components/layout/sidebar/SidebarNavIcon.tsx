@@ -12,7 +12,7 @@ export default function SidebarNavIcon({
   page,
   active,
   fallbackIcon,
-  size = 20,
+  size = 17,
 }: SidebarNavIconProps) {
   const visual = SIDEBAR_PAGE_VISUALS[page];
   const accent = visual?.color ?? '#94A3B8';

@@ -5,17 +5,17 @@ import {
   useUnpostedTransactionSubmitters,
   useUpdateUnpostedTransactionStatus,
 } from '../../modules/executive-mobile/hooks/useUnpostedTransactions';
-import { UNPOSTED_TRANSACTION_TYPES } from '../../types/executiveMobile.types';
+import {
+  getCaptureDisplayLabel,
+  stripCaptureDescriptionPrefix,
+} from '../../modules/executive-mobile/utils/captureSubmitMapping';
 import type { UnpostedTransactionStatus } from '../../types/executiveMobile.types';
 import { CURRENCY } from '../../constants';
 import { useNotification } from '../../context/NotificationContext';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useProjects, useVendors } from '../../hooks/useSelectiveState';
 import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import { formatDate, formatDateTime } from '../../utils/dateUtils';
-
-const TYPE_LABELS = Object.fromEntries(
-  UNPOSTED_TRANSACTION_TYPES.map((t) => [t.id, t.label])
-);
 
 const STATUS_TABS: { id: UnpostedTransactionStatus | 'all'; label: string }[] = [
   { id: 'submitted', label: 'New' },
@@ -32,6 +32,8 @@ const STATUS_SUCCESS_MESSAGE: Partial<Record<UnpostedTransactionStatus, string>>
 };
 
 export default function UnpostedTransactionsQueuePage() {
+  const projects = useProjects();
+  const vendors = useVendors();
   const [tab, setTab] = useState<UnpostedTransactionStatus | 'all'>('submitted');
   const [submittedByUserId, setSubmittedByUserId] = useState('');
   const [dateFrom, setDateFrom] = useState('');
@@ -209,7 +211,7 @@ export default function UnpostedTransactionsQueuePage() {
               <div className="flex-1 min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="font-medium text-app-text">
-                    {TYPE_LABELS[tx.transactionType] ?? tx.transactionType}
+                    {getCaptureDisplayLabel(tx)}
                   </p>
                   <span className="text-[11px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
                     Submitted by {submitterName}
@@ -218,12 +220,20 @@ export default function UnpostedTransactionsQueuePage() {
                 <p className="text-xs text-app-muted mt-1">
                   Transaction date: {formatDate(tx.transactionDate)}
                   {tx.partyName ? ` · ${tx.partyName}` : ''}
+                  {tx.projectId
+                    ? ` · Project: ${projects?.find((p) => p.id === tx.projectId)?.name ?? tx.projectId}`
+                    : ''}
+                  {tx.supplierId && !tx.partyName
+                    ? ` · Vendor: ${vendors?.find((v) => v.id === tx.supplierId)?.name ?? tx.supplierId}`
+                    : ''}
                 </p>
                 <p className="text-xs text-app-muted mt-0.5">
                   Captured {formatDateTime(tx.createdAt)}
                 </p>
                 {tx.description && (
-                  <p className="text-xs text-app-muted mt-1 truncate">{tx.description}</p>
+                  <p className="text-xs text-app-muted mt-1 truncate">
+                    {stripCaptureDescriptionPrefix(tx.description)}
+                  </p>
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3 shrink-0">

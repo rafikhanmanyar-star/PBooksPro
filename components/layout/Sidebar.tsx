@@ -400,7 +400,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     <span className="sidebar-nav-item__label">{item.label}</span>
                     {active && (
                         <span className="sidebar-nav-active-indicator" aria-hidden>
-                            <ChevronRight size={16} strokeWidth={2.5} />
+                            <ChevronRight size={14} strokeWidth={2.5} />
                         </span>
                     )}
                 </>
@@ -563,7 +563,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     <React.Fragment key={group.title}>
                         {groupIdx > 0 && (
                             collapsed
-                                ? <div className="border-t border-white/[0.06] my-2 mx-0.5" aria-hidden />
+                                ? <div className="border-t border-white/[0.06] my-1 mx-0.5" aria-hidden />
                                 : <hr className="sidebar-section-divider" />
                         )}
                         <div className={collapsed ? '' : 'sidebar-nav-group'}>

@@ -1,37 +1,42 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import Input from '../../../components/ui/Input';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AmountInput from '../../../components/common/AmountInput';
-import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
 import { useCreateUnpostedTransaction } from '../hooks/useUnpostedTransactions';
 import { uploadUnpostedAttachment } from '../../../services/api/unpostedTransactionsApi';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useAuth } from '../../../context/AuthContext';
 import { CURRENCY, ICONS } from '../../../constants';
 import { todayLocalYyyyMmDd } from '../../../utils/dateUtils';
-import FieldSuggestionChips from './FieldSuggestionChips';
 import QuickCaptureStepper from './QuickCaptureStepper';
 import RecentCapturesList from './RecentCapturesList';
 import VoiceCapturePanel from './VoiceCapturePanel';
+import QuickCaptureDetailsStep, { type DetailsFormState } from './QuickCaptureDetailsStep';
+import CreateCaptureTypeModal from './CreateCaptureTypeModal';
 import {
   getLastQuickCaptureSnapshot,
   getQuickCaptureSuggestions,
   saveQuickCaptureFields,
 } from '../utils/quickCaptureFieldHistory';
 import {
-  isInflowType,
-  OUTFLOW_TYPE_IDS,
-  partyPlaceholder,
+  isEntityPickerKind,
   QUICK_AMOUNT_PRESETS,
-  transactionTypeIcon,
-  transactionTypeLabel,
-  typeShortLabel,
   WIZARD_STEPS,
 } from '../constants/quickTransactionWizard';
-import { UNPOSTED_SOURCE_EXECUTIVE_APP } from '../../../types/executiveMobile.types';
+import {
+  CORE_CAPTURE_TYPES,
+  captureTypeIcon,
+  defaultCaptureType,
+  type CaptureType,
+} from '../constants/quickCaptureTypes';
+import {
+  loadCustomCaptureTypes,
+  saveCustomCaptureType,
+} from '../utils/customCaptureTypesStorage';
+import {
+  buildUnpostedPayload,
+  stripCaptureDescriptionPrefix,
+} from '../utils/captureSubmitMapping';
+import { useQuickCaptureCatalog } from '../hooks/useQuickCaptureCatalog';
 import type { ParsedVoiceCapture } from '../utils/parseVoiceQuickCapture';
-import { voiceDescriptionForFinance } from '../utils/parseVoiceQuickCapture';
-
-type MoneyFilter = 'out' | 'in';
 
 async function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -51,105 +56,107 @@ function formatAmount(value: string): string {
   return `${CURRENCY} ${n.toLocaleString('en-PK', { maximumFractionDigits: 0 })}`;
 }
 
+const EMPTY_DETAILS: DetailsFormState = {
+  partyName: '',
+  supplierId: '',
+  employeeId: '',
+  projectId: '',
+  description: '',
+};
+
 export default function QuickTransactionWizard() {
   const { setView } = useExecutiveMode();
   const { user } = useAuth();
   const tenantId = user?.tenantId;
   const createMutation = useCreateUnpostedTransaction();
   const fileRef = useRef<HTMLInputElement>(null);
+  const { projectItems } = useQuickCaptureCatalog();
 
   const [step, setStep] = useState(1);
-  const [moneyFilter, setMoneyFilter] = useState<MoneyFilter>('out');
-  const [transactionType, setTransactionType] = useState(UNPOSTED_TRANSACTION_TYPES[0].id);
+  const [captureType, setCaptureType] = useState<CaptureType>(defaultCaptureType);
+  const [customTypes, setCustomTypes] = useState<CaptureType[]>(() => loadCustomCaptureTypes(tenantId));
+  const [showCreateType, setShowCreateType] = useState(false);
   const [amount, setAmount] = useState('');
-  const [partyName, setPartyName] = useState('');
-  const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState('');
-  const [costCenterCode, setCostCenterCode] = useState('');
+  const [details, setDetails] = useState<DetailsFormState>(EMPTY_DETAILS);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldSuggestions, setFieldSuggestions] = useState(() =>
-    getQuickCaptureSuggestions(UNPOSTED_TRANSACTION_TYPES[0].id, tenantId)
+    getQuickCaptureSuggestions(defaultCaptureType().id, tenantId)
   );
-  const [lastSnapshot, setLastSnapshot] = useState(() => getLastQuickCaptureSnapshot(tenantId));
 
+  const allTypes = useMemo(() => [...CORE_CAPTURE_TYPES, ...customTypes], [customTypes]);
   const currentStepMeta = WIZARD_STEPS[step - 1];
   const totalSteps = WIZARD_STEPS.length;
 
-  const outflowTypes = useMemo(
-    () => UNPOSTED_TRANSACTION_TYPES.filter((t) => OUTFLOW_TYPE_IDS.has(t.id)),
-    []
-  );
-  const inflowTypes = useMemo(
-    () => UNPOSTED_TRANSACTION_TYPES.filter((t) => isInflowType(t.id)),
-    []
-  );
-  const visibleTypes = moneyFilter === 'in' ? inflowTypes : outflowTypes;
+  const patchDetails = useCallback((patch: Partial<DetailsFormState>) => {
+    setDetails((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  const resetDetails = () => setDetails(EMPTY_DETAILS);
 
   const persistDetailFields = () => {
     saveQuickCaptureFields(
-      transactionType,
-      { partyName, description, projectId, costCenterCode },
+      captureType.id,
+      {
+        partyName: details.partyName,
+        description: details.description,
+        projectId: details.projectId,
+      },
       tenantId
     );
-    setFieldSuggestions(getQuickCaptureSuggestions(transactionType, tenantId));
-    setLastSnapshot(getLastQuickCaptureSnapshot(tenantId));
+    setFieldSuggestions(getQuickCaptureSuggestions(captureType.id, tenantId));
   };
-
-  const applyLastSnapshot = () => {
-    const snap = getLastQuickCaptureSnapshot(tenantId);
-    if (!snap) return;
-    if (snap.partyName) setPartyName(snap.partyName);
-    if (snap.description) setDescription(snap.description);
-    if (snap.projectId) setProjectId(snap.projectId);
-    if (snap.costCenterCode) setCostCenterCode(snap.costCenterCode);
-  };
-
-  const lastSnapshotSummary = useMemo(() => {
-    if (!lastSnapshot) return '';
-    return [lastSnapshot.partyName, lastSnapshot.description, lastSnapshot.projectId, lastSnapshot.costCenterCode]
-      .filter(Boolean)
-      .join(' · ');
-  }, [lastSnapshot]);
 
   useEffect(() => {
     if (step !== 3) return;
-    setFieldSuggestions(getQuickCaptureSuggestions(transactionType, tenantId));
-    setLastSnapshot(getLastQuickCaptureSnapshot(tenantId));
-  }, [step, transactionType, tenantId]);
+    setFieldSuggestions(getQuickCaptureSuggestions(captureType.id, tenantId));
+  }, [step, captureType.id, tenantId]);
 
   const resetWizard = () => {
     setStep(1);
-    setMoneyFilter('out');
-    setTransactionType(UNPOSTED_TRANSACTION_TYPES[0].id);
+    setCaptureType(defaultCaptureType());
     setAmount('');
-    setPartyName('');
-    setDescription('');
-    setProjectId('');
-    setCostCenterCode('');
+    resetDetails();
     setAttachment(null);
     setVoiceTranscript(null);
     setSubmitted(false);
     setError(null);
   };
 
+  const selectCaptureType = (type: CaptureType) => {
+    setError(null);
+    setVoiceTranscript(null);
+    setCaptureType(type);
+    resetDetails();
+    setStep(2);
+  };
+
+  const handleCreateCustomType = (label: string) => {
+    const created = saveCustomCaptureType(label, tenantId);
+    if (!created) return;
+    setCustomTypes(loadCustomCaptureTypes(tenantId));
+    selectCaptureType(created);
+  };
+
   const applyVoiceParsed = (parsed: ParsedVoiceCapture) => {
     setError(null);
     setVoiceTranscript(parsed.rawTranscript);
-    setTransactionType(parsed.transactionType);
     setAmount(String(parsed.amount));
-    if (parsed.partyName) setPartyName(parsed.partyName);
-    if (parsed.projectId) setProjectId(parsed.projectId);
-    if (parsed.costCenterCode) setCostCenterCode(parsed.costCenterCode);
-    setMoneyFilter(isInflowType(parsed.transactionType) ? 'in' : 'out');
+    if (parsed.partyName) patchDetails({ partyName: parsed.partyName });
+    if (parsed.projectId) patchDetails({ projectId: parsed.projectId });
+    const matched =
+      allTypes.find((t) => t.id === parsed.captureTypeId) ??
+      CORE_CAPTURE_TYPES.find((t) => t.kind === parsed.captureKind) ??
+      defaultCaptureType();
+    setCaptureType(matched);
     setStep(parsed.confidence === 'high' ? 5 : 3);
   };
 
   const validateStep = (): boolean => {
     setError(null);
-    if (step === 1 && !transactionType) {
+    if (step === 1 && !captureType) {
       setError('Select a transaction type');
       return false;
     }
@@ -157,6 +164,21 @@ export default function QuickTransactionWizard() {
       const parsed = Number(amount);
       if (!parsed || parsed <= 0) {
         setError('Enter a valid amount greater than zero');
+        return false;
+      }
+    }
+    if (step === 3) {
+      if (isEntityPickerKind(captureType.kind)) {
+        if (captureType.kind === 'suppliers' && !details.supplierId) {
+          setError('Select a vendor');
+          return false;
+        }
+        if (captureType.kind === 'staff' && !details.employeeId) {
+          setError('Select a staff member');
+          return false;
+        }
+      } else if (!details.partyName.trim()) {
+        setError('Enter a name');
         return false;
       }
     }
@@ -174,20 +196,9 @@ export default function QuickTransactionWizard() {
     setStep((s) => Math.max(s - 1, 1));
   };
 
-  const selectTransactionType = (typeId: (typeof UNPOSTED_TRANSACTION_TYPES)[number]['id']) => {
-    setError(null);
-    setVoiceTranscript(null);
-    setTransactionType(typeId);
-    setMoneyFilter(isInflowType(typeId) ? 'in' : 'out');
-  };
-
   const selectQuickAmount = (preset: number) => {
     setError(null);
     setAmount(String(preset));
-    if (!transactionType) {
-      setError('Select a transaction type first');
-      return;
-    }
     setStep(3);
   };
 
@@ -199,22 +210,19 @@ export default function QuickTransactionWizard() {
       setStep(2);
       return;
     }
-    const financeDescription = voiceTranscript
-      ? voiceDescriptionForFinance(voiceTranscript, description.trim() || undefined)
-      : description.trim() || undefined;
 
     try {
-      const created = await createMutation.mutateAsync({
-        transactionDate: todayLocalYyyyMmDd(),
+      const payload = buildUnpostedPayload(captureType, {
         amount: parsedAmount,
-        transactionType,
-        partyName: partyName.trim() || undefined,
-        description: financeDescription,
-        projectId: projectId.trim() || undefined,
-        costCenterCode: costCenterCode.trim() || undefined,
-        source: UNPOSTED_SOURCE_EXECUTIVE_APP,
-        status: 'submitted',
+        partyName: details.partyName,
+        description: details.description,
+        projectId: details.projectId,
+        supplierId: details.supplierId,
+        employeeId: details.employeeId,
+        voiceTranscript,
       });
+
+      const created = await createMutation.mutateAsync(payload);
       if (attachment) {
         const fileData = await fileToBase64(attachment);
         await uploadUnpostedAttachment(created.id, {
@@ -229,6 +237,12 @@ export default function QuickTransactionWizard() {
       setError(err instanceof Error ? err.message : 'Submission failed');
     }
   };
+
+  const projectDisplayName =
+    projectItems.find((p) => p.id === details.projectId)?.name ??
+    (details.projectId.trim() || '—');
+
+  const canShowTopNext = step < totalSteps && (step > 1 || captureType);
 
   if (submitted) {
     return (
@@ -258,9 +272,8 @@ export default function QuickTransactionWizard() {
 
   return (
     <div className="flex flex-col flex-1 min-h-0 h-full executive-v2-page">
-      {/* Header */}
       <div className="px-4 pt-4 pb-3 border-b border-app-border/60 bg-app-card/95 shrink-0">
-        <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex items-start gap-2 min-w-0 flex-1">
             {step > 1 && (
               <button
@@ -282,13 +295,24 @@ export default function QuickTransactionWizard() {
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => setView('myTransactions')}
-            className="shrink-0 text-xs font-semibold text-ds-primary px-3 py-2 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation"
-          >
-            My Submissions
-          </button>
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            {canShowTopNext && (
+              <button
+                type="button"
+                onClick={goNext}
+                className="text-xs font-bold text-white px-4 py-2 rounded-xl bg-ds-primary shadow-sm touch-manipulation"
+              >
+                Next →
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setView('myTransactions')}
+              className="text-xs font-semibold text-ds-primary px-3 py-1.5 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation"
+            >
+              My Submissions
+            </button>
+          </div>
         </div>
         <QuickCaptureStepper currentStep={step} />
       </div>
@@ -301,101 +325,61 @@ export default function QuickTransactionWizard() {
           </div>
         )}
 
-        {/* Step 1 — Type hub (reference layout) */}
         {step === 1 && (
           <div className="space-y-5">
-            <div className="flex items-center justify-between gap-2">
-              <div>
-                <h2 className="text-base font-bold text-app-text">Select Transaction Type</h2>
-                <p className="text-xs text-app-muted">Choose what you want to record</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setMoneyFilter((f) => (f === 'out' ? 'in' : 'out'))}
-                className={`shrink-0 flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-xl border touch-manipulation ${
-                  moneyFilter === 'in'
-                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
-                    : 'border-rose-500/40 bg-rose-500/10 text-rose-700 dark:text-rose-400'
-                }`}
-              >
-                {moneyFilter === 'in' ? '↑ Money In' : '↓ Money Out'}
-              </button>
+            <div>
+              <h2 className="text-base font-bold text-app-text">Select Transaction Type</h2>
+              <p className="text-xs text-app-muted">Tap a type to continue — or create your own</p>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-              {visibleTypes.map((t) => {
-                const selected = transactionType === t.id;
-                const isOut = OUTFLOW_TYPE_IDS.has(t.id);
+            <div className="grid grid-cols-2 gap-2.5">
+              {allTypes.map((t) => {
+                const selected = captureType.id === t.id;
                 return (
                   <button
                     key={t.id}
                     type="button"
-                    onClick={() => selectTransactionType(t.id)}
-                    className={`qc-type-tile touch-manipulation ${
-                      selected
-                        ? isOut
-                          ? 'qc-type-tile--out-selected'
-                          : 'qc-type-tile--in-selected'
-                        : ''
-                    }`}
+                    onClick={() => selectCaptureType(t)}
+                    className={`qc-type-tile touch-manipulation ${selected ? 'qc-type-tile--out-selected' : ''}`}
                   >
                     <span className={`qc-type-tile-icon ${selected ? 'qc-type-tile-icon--selected' : ''}`}>
-                      <span className="w-5 h-5">{transactionTypeIcon(t.id)}</span>
+                      <span className="w-5 h-5">{captureTypeIcon(t)}</span>
                     </span>
-                    <span className="text-[10px] font-medium leading-tight text-center mt-1.5 line-clamp-2">
-                      {typeShortLabel(t.id)}
+                    <span className="text-[11px] font-semibold leading-tight text-center mt-1.5 line-clamp-2">
+                      {t.label}
                     </span>
                   </button>
                 );
               })}
-            </div>
 
-            <section>
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-sm font-bold text-app-text">Quick Amounts (PKR)</h3>
-                <button
-                  type="button"
-                  onClick={() => setStep(2)}
-                  className="text-xs font-semibold text-ds-primary touch-manipulation"
-                >
-                  Enter Custom Amount
-                </button>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {QUICK_AMOUNT_PRESETS.map((preset) => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => selectQuickAmount(preset)}
-                    className={`qc-amount-chip touch-manipulation ${
-                      amount === String(preset) ? 'qc-amount-chip--selected' : ''
-                    }`}
-                  >
-                    {preset.toLocaleString()}
-                  </button>
-                ))}
-              </div>
-            </section>
-
-            <RecentCapturesList limit={4} />
-
-            {transactionType && amount && (
               <button
                 type="button"
-                onClick={() => setStep(3)}
-                className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold text-sm touch-manipulation"
+                onClick={() => setShowCreateType(true)}
+                className="qc-type-tile qc-type-tile--create touch-manipulation col-span-2"
               >
-                Continue to details
+                <span className="qc-type-tile-icon">
+                  <span className="w-5 h-5">{ICONS.plus}</span>
+                </span>
+                <span className="text-[11px] font-semibold leading-tight text-center mt-1.5">
+                  Create New Transaction Type
+                </span>
               </button>
-            )}
+            </div>
+
+            <RecentCapturesList limit={4} />
           </div>
         )}
 
         {step === 2 && (
           <div className="space-y-4">
-            <div className="p-3 rounded-xl bg-app-card border border-app-border text-sm">
-              <span className="text-app-muted">Type: </span>
-              <span className="font-medium">{transactionTypeLabel(transactionType)}</span>
+            <div className="p-3 rounded-xl bg-app-card border border-app-border text-sm flex items-center gap-3">
+              <span className="w-9 h-9 rounded-lg bg-ds-primary/10 text-ds-primary inline-flex items-center justify-center shrink-0">
+                <span className="w-4 h-4">{captureTypeIcon(captureType)}</span>
+              </span>
+              <div>
+                <span className="text-app-muted text-xs block">Type</span>
+                <span className="font-semibold">{captureType.label}</span>
+              </div>
             </div>
             <AmountInput
               label={`Amount (${CURRENCY})`}
@@ -423,84 +407,25 @@ export default function QuickTransactionWizard() {
               onClick={goNext}
               className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
             >
-              Continue
+              Continue to details
             </button>
           </div>
         )}
 
         {step === 3 && (
           <div className="space-y-4">
-            {lastSnapshotSummary && (
-              <button
-                type="button"
-                onClick={applyLastSnapshot}
-                className="w-full text-left p-3 rounded-xl border border-ds-primary/30 bg-ds-primary/5 touch-manipulation"
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-ds-primary mb-1">
-                  Use last capture
-                </p>
-                <p className="text-sm text-app-text line-clamp-2">{lastSnapshotSummary}</p>
-              </button>
-            )}
-            <div>
-              <Input
-                label={partyPlaceholder(transactionType)}
-                value={partyName}
-                onChange={(e) => setPartyName(e.target.value)}
-                placeholder={partyPlaceholder(transactionType)}
-                autoFocus
-              />
-              <FieldSuggestionChips
-                suggestions={fieldSuggestions.partyName}
-                currentValue={partyName}
-                onSelect={setPartyName}
-              />
-            </div>
-            <div>
-              <Input
-                label="Description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="e.g. Cement delivery, site visit fuel…"
-              />
-              <FieldSuggestionChips
-                suggestions={fieldSuggestions.description}
-                currentValue={description}
-                onSelect={setDescription}
-              />
-            </div>
-            <div>
-              <Input
-                label="Project (optional)"
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
-                placeholder="Project name or ID"
-              />
-              <FieldSuggestionChips
-                suggestions={fieldSuggestions.projectId}
-                currentValue={projectId}
-                onSelect={setProjectId}
-              />
-            </div>
-            <div>
-              <Input
-                label="Cost Center (optional)"
-                value={costCenterCode}
-                onChange={(e) => setCostCenterCode(e.target.value)}
-                placeholder="e.g. SITE-01"
-              />
-              <FieldSuggestionChips
-                suggestions={fieldSuggestions.costCenterCode}
-                currentValue={costCenterCode}
-                onSelect={setCostCenterCode}
-              />
-            </div>
+            <QuickCaptureDetailsStep
+              captureType={captureType}
+              value={details}
+              onChange={patchDetails}
+              fieldSuggestions={fieldSuggestions}
+            />
             <button
               type="button"
               onClick={goNext}
               className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
             >
-              Continue
+              Continue to receipt
             </button>
           </div>
         )}
@@ -556,12 +481,14 @@ export default function QuickTransactionWizard() {
               </div>
             )}
             <div className="rounded-xl border border-app-border bg-app-card divide-y divide-app-border">
-              <ReviewRow label="Type" value={transactionTypeLabel(transactionType)} />
+              <ReviewRow label="Type" value={captureType.label} />
               <ReviewRow label="Amount" value={formatAmount(amount)} highlight />
-              <ReviewRow label="Party" value={partyName.trim() || '—'} />
-              <ReviewRow label="Notes" value={description.trim() || '—'} />
-              <ReviewRow label="Project" value={projectId.trim() || '—'} />
-              <ReviewRow label="Cost Center" value={costCenterCode.trim() || '—'} />
+              <ReviewRow label="Party" value={details.partyName.trim() || '—'} />
+              <ReviewRow label="Project" value={projectDisplayName} />
+              <ReviewRow
+                label="Notes"
+                value={stripCaptureDescriptionPrefix(details.description.trim()) || '—'}
+              />
               <ReviewRow label="Receipt" value={attachment ? attachment.name : 'None'} />
               <ReviewRow label="Date" value={todayLocalYyyyMmDd()} />
             </div>
@@ -579,7 +506,6 @@ export default function QuickTransactionWizard() {
         {error && <p className="mt-4 text-sm text-ds-danger">{error}</p>}
       </div>
 
-      {/* Voice panel — pinned above bottom nav on step 1 */}
       {step === 1 && (
         <div className="shrink-0 px-4 pb-4 pt-2 border-t border-app-border/40 bg-app-bg/95 backdrop-blur-sm">
           <VoiceCapturePanel
@@ -589,6 +515,12 @@ export default function QuickTransactionWizard() {
           />
         </div>
       )}
+
+      <CreateCaptureTypeModal
+        open={showCreateType}
+        onClose={() => setShowCreateType(false)}
+        onCreated={handleCreateCustomType}
+      />
     </div>
   );
 }
