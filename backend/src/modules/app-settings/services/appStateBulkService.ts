@@ -287,90 +287,86 @@ export async function getBulkAppState(
   const out: Record<string, unknown> = {};
 
   if (wantEntity('accounts', filter)) {
-    out.accounts = accountRows.map((r) => rowToAccountApi(r));
+    out.accounts = accountRows.map(rowToAccountApi);
   }
   if (wantEntity('contacts', filter)) {
-    out.contacts = contactRows.map((r) => rowToContactApi(r));
+    out.contacts = contactRows.map(rowToContactApi);
   }
   if (wantEntity('transactions', filter)) {
-    out.transactions = transactionRows.map((r) => rowToTransactionApi(r));
+    out.transactions = transactionRows.map(rowToTransactionApi);
   }
   if (wantEntity('categories', filter)) {
-    out.categories = categoryRows.map((r) => rowToCategoryApi(r, plMap.get(r.id)));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    out.categories = categoryRows.map((r: any) => rowToCategoryApi(r, plMap.get(r.id)));
   }
   if (wantEntity('projects', filter)) {
-    out.projects = projectRows.map((r) => rowToProjectApi(r));
+    out.projects = projectRows.map(rowToProjectApi);
   }
   if (wantEntity('buildings', filter)) {
-    out.buildings = buildingRows.map((r) => rowToBuildingApi(r));
+    out.buildings = buildingRows.map(rowToBuildingApi);
   }
   if (wantEntity('properties', filter)) {
-    out.properties = propertyRows.map((r) => rowToPropertyApi(r));
+    out.properties = propertyRows.map(rowToPropertyApi);
   }
   if (wantEntity('units', filter)) {
-    out.units = unitRows.map((r) => rowToUnitApi(r));
+    out.units = unitRows.map(rowToUnitApi);
   }
   if (wantEntity('invoices', filter)) {
-    out.invoices = invoiceRows.map((r) => rowToInvoiceApi(r));
+    out.invoices = invoiceRows.map(rowToInvoiceApi);
   }
   if (wantEntity('bills', filter)) {
-    out.bills = billRows.map((r) => rowToBillApi(r));
+    out.bills = billRows.map(rowToBillApi);
   }
   if (wantEntity('budgets', filter)) {
-    out.budgets = budgetRows.map((r) => rowToBudgetApi(r));
+    out.budgets = budgetRows.map(rowToBudgetApi);
   }
   if (wantEntity('planAmenities', filter)) {
-    out.planAmenities = planAmenityRows.map((r) => rowToPlanAmenityApi(r));
+    out.planAmenities = planAmenityRows.map(rowToPlanAmenityApi);
   }
   if (wantEntity('installmentPlans', filter)) {
-    out.installmentPlans = installmentPlanRows.map((r) => rowToInstallmentPlanApi(r));
+    out.installmentPlans = installmentPlanRows.map(rowToInstallmentPlanApi);
   }
   if (wantEntity('rentalAgreements', filter)) {
-    out.rentalAgreements = rentalAgreementRows.map((r) => rowToRentalAgreementApi(r));
+    out.rentalAgreements = rentalAgreementRows.map(rowToRentalAgreementApi);
   }
   if (wantEntity('projectAgreements', filter)) {
-    out.projectAgreements = projectAgreementPairs.map(({ row, unitIds }) =>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    out.projectAgreements = projectAgreementPairs.map(({ row, unitIds }: any) =>
       rowToProjectAgreementApi(row, unitIds)
     );
   }
   if (wantEntity('projectReceivedAssets', filter)) {
-    out.projectReceivedAssets = projectReceivedAssetRows.map((r) =>
-      rowToProjectReceivedAssetApi(r)
-    );
+    out.projectReceivedAssets = projectReceivedAssetRows.map(rowToProjectReceivedAssetApi);
   }
   if (wantEntity('contracts', filter)) {
-    out.contracts = contractRows.map((r) => rowToContractApi(r));
+    out.contracts = contractRows.map(rowToContractApi);
   }
   if (wantEntity('salesReturns', filter)) {
-    out.salesReturns = salesReturnRows.map((r) => rowToSalesReturnApi(r));
+    out.salesReturns = salesReturnRows.map(rowToSalesReturnApi);
   }
   if (wantEntity('quotations', filter)) {
-    out.quotations = quotationRows.map((r) => rowToQuotationApi(r));
+    out.quotations = quotationRows.map(rowToQuotationApi);
   }
   if (wantEntity('documents', filter)) {
-    out.documents = documentRows.map((r) => rowToDocumentApi(r));
+    out.documents = documentRows.map(rowToDocumentApi);
   }
   if (wantEntity('recurringInvoiceTemplates', filter)) {
-    out.recurringInvoiceTemplates = recurringTemplateRows.map((r) =>
-      rowToRecurringInvoiceTemplateApi(r)
-    );
+    out.recurringInvoiceTemplates = recurringTemplateRows.map(rowToRecurringInvoiceTemplateApi);
   }
   if (wantEntity('pmCycleAllocations', filter)) {
-    out.pmCycleAllocations = pmCycleAllocationRows.map((r) => rowToPmCycleAllocationApi(r));
+    out.pmCycleAllocations = pmCycleAllocationRows.map(rowToPmCycleAllocationApi);
   }
   if (wantEntity('transactionLog', filter)) {
-    out.transactionLog = transactionLogRows.map((r) => rowToTransactionLogApi(r));
+    out.transactionLog = transactionLogRows.map(rowToTransactionLogApi);
   }
   if (wantEntity('vendors', filter)) {
-    out.vendors = vendorRows.map((r) => rowToVendorApi(r));
+    out.vendors = vendorRows.map(rowToVendorApi);
   }
   if (wantEntity('personalCategories', filter) && canAccessPersonalFinance) {
-    out.personalCategories = personalCategoryRows.map((r) => rowToPersonalCategoryApi(r));
+    out.personalCategories = personalCategoryRows.map(rowToPersonalCategoryApi);
   }
   if (wantEntity('personalTransactions', filter) && canAccessPersonalFinance) {
-    out.personalTransactions = personalTransactionRows.map((r) =>
-      rowToPersonalTransactionApi(r)
-    );
+    out.personalTransactions = personalTransactionRows.map(rowToPersonalTransactionApi);
   }
   if (wantEntity('appSettings', filter)) {
     out.appSettings = appSettingsFlat;
