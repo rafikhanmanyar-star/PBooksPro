@@ -16,10 +16,11 @@ export function hasPermission(
   enterpriseRole?: string | null
 ): boolean {
   const granted = effectivePermissionsSet(ctx);
-  for (const required of expandedRequiredKeys(permissionKey, enterpriseRole)) {
-    if (!granted.has(required)) return false;
-  }
-  return true;
+  // v1 bundle alias held directly (e.g. super_admin ALL_PERMISSIONS includes financial.write).
+  if (granted.has(permissionKey)) return true;
+  const expanded = expandedRequiredKeys(permissionKey, enterpriseRole);
+  // v2 expanded grants (unionExpandedPermissions) satisfy bundle checks without the alias key.
+  return expanded.every((required) => granted.has(required));
 }
 
 export function hasAnyPermission(

@@ -260,7 +260,7 @@ const SettingsPage: React.FC = () => {
                     ...(onboarding?.canManage
                       ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
                       : []),
-                    ...(perms.enterpriseRole === 'super_admin'
+                    ...(perms.has('platform.admin')
                       ? [
                           { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
                           { id: 'admin-monitoring', label: 'System Health Center', icon: ICONS.activity || '📡' },
@@ -1365,17 +1365,17 @@ const SettingsPage: React.FC = () => {
                                 </div>
                             </div>
                         )}
-                        {activeCategory === 'admin-subscriptions' && (
+                        {activeCategory === 'admin-subscriptions' && perms.has('platform.admin') && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <AdminSubscriptionDashboard />
                             </div>
                         )}
-                        {activeCategory === 'admin-monitoring' && (
+                        {activeCategory === 'admin-monitoring' && perms.has('platform.admin') && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <SystemHealthCenter />
                             </div>
                         )}
-                        {activeCategory === 'admin-referrals' && (
+                        {activeCategory === 'admin-referrals' && perms.has('platform.admin') && (
                             <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
                                 <AdminReferralDashboard />
                             </div>

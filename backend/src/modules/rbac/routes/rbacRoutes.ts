@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { invalidateAuthUserCache } from '../../../middleware/authMiddleware.js';
-import { requireAnyPermission, requirePermission } from '../../../middleware/rbacMiddleware.js';
+import { requireAnyPermission } from '../../../middleware/rbacMiddleware.js';
 import { sendFailure, sendSuccess, handleRouteError, sendVersionConflict } from '../../../utils/apiResponse.js';
 import { withTransaction } from '../../../db/pool.js';
 import { appendAuditEvent } from '../../organization/services/enterpriseAuditService.js';
@@ -21,6 +21,8 @@ import { isProtectedSystemSlug } from '../services/rbacPermissionResolver.js';
 import { isSystemOwnerSlug } from '../../../auth/permissions.js';
 
 export const rbacRolesRouter = Router();
+
+const requireManageRoles = requireAnyPermission('roles.manage', 'permissions.manage');
 
 const roleBodySchema = z.object({
   name: z.string().min(1).max(120),
@@ -67,7 +69,7 @@ rbacRolesRouter.get('/rbac/roles/:id', requireAnyPermission('roles.view', 'permi
   }
 });
 
-rbacRolesRouter.post('/rbac/roles', requirePermission('roles.manage'), async (req: AuthedRequest, res) => {
+rbacRolesRouter.post('/rbac/roles', requireManageRoles, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -125,7 +127,7 @@ rbacRolesRouter.post('/rbac/roles', requirePermission('roles.manage'), async (re
   }
 });
 
-rbacRolesRouter.put('/rbac/roles/:id', requirePermission('roles.manage'), async (req: AuthedRequest, res) => {
+rbacRolesRouter.put('/rbac/roles/:id', requireManageRoles, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -198,7 +200,7 @@ rbacRolesRouter.put('/rbac/roles/:id', requirePermission('roles.manage'), async 
   }
 });
 
-rbacRolesRouter.post('/rbac/roles/:id/duplicate', requirePermission('roles.manage'), async (req: AuthedRequest, res) => {
+rbacRolesRouter.post('/rbac/roles/:id/duplicate', requireManageRoles, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
@@ -252,7 +254,7 @@ rbacRolesRouter.post('/rbac/roles/:id/duplicate', requirePermission('roles.manag
   }
 });
 
-rbacRolesRouter.delete('/rbac/roles/:id', requirePermission('roles.manage'), async (req: AuthedRequest, res) => {
+rbacRolesRouter.delete('/rbac/roles/:id', requireManageRoles, async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');

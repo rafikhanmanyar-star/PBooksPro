@@ -622,6 +622,16 @@ export class ApiClient {
           ...(data.invoiceId != null && { invoiceId: data.invoiceId }),
           ...(data.invoiceNumber != null && { invoiceNumber: data.invoiceNumber }),
         };
+
+        // RBAC V2: when the server detects a stale access-version hash (STALE_AV),
+        // the user's role or permissions were changed since their last login.
+        // Signal the permission cache to refetch so menus update without a full logout.
+        if (response.status === 403 && fields.code === 'STALE_AV') {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('auth:permissions-stale'));
+          }
+        }
+
         const isVersionConflict = response.status === 409 && fields.code === 'VERSION_CONFLICT';
         if (isVersionConflict) {
           logger.logCategory('sync', `Version conflict for ${endpoint} (server v${data.serverVersion}) - sync will accept server version`);

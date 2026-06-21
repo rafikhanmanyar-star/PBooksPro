@@ -6,7 +6,6 @@ import { formatDate } from '../../utils/dateUtils';
 import Select from '../ui/Select';
 import Button from '../ui/Button';
 import { useContacts, useProperties, useBuildings, useProjects, useUnits, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
-import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useNotification } from '../../context/NotificationContext';
 import { useWhatsApp } from '../../context/WhatsAppContext';
@@ -331,20 +330,6 @@ const ProjectFinancialGrid: React.FC<ProjectFinancialGridProps> = ({
         });
         return sorted;
     }, [filteredRecords, sortConfig, getInvoiceContextNames]);
-
-    useEffect(() => {
-        logPaymentListUiTrace({
-            component: 'ProjectFinancialGrid',
-            sourceTransactionCount: transactions.length,
-            recordsPropCount: records.length,
-            filteredRecordCount: filteredRecords.length,
-            displayedRecordCount: sortedRecords.length,
-            transactions,
-            displayedRecords: sortedRecords,
-            typeFilter,
-            dateFilter,
-        });
-    }, [transactions, records, filteredRecords, sortedRecords, typeFilter, dateFilter]);
 
     const bulkExpandableRecordIds = useMemo(
         () =>

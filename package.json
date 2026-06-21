@@ -1,7 +1,7 @@
 {
   "name": "pbooks-pro",
   "private": true,
-  "version": "1.2.440",
+  "version": "1.2.448",
   "description": "PBooks Pro - Finance and Project Management Application",
   "author": "PBooks Pro",
   "repository": {
@@ -150,6 +150,7 @@
     "@tanstack/react-query": "^5.99.0",
     "@tanstack/react-table": "^8.21.3",
     "dayjs": "^1.11.20",
+    "docx": "^9.7.1",
     "electron-updater": "^6.8.3",
     "framer-motion": "^12.38.0",
     "jspdf": "^4.2.1",

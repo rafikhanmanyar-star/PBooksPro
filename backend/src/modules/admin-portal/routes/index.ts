@@ -11,6 +11,10 @@ import createAdminRoutes from './create-admin.js';
 import systemMetricsRoutes from './system-metrics.js';
 import leadsRoutes from './leads.js';
 import organizationRequestsRoutes from './organizationRequests.js';
+import subscriptionsRoutes from './subscriptions.js';
+import referralsRoutes from './referrals.js';
+import monitoringRoutes from './monitoring.js';
+import emailAutomationRoutes from './emailAutomation.js';
 
 const router = Router();
 
@@ -33,6 +37,13 @@ router.use('/marketplace', marketplaceRoutes);
 router.use('/system-metrics', systemMetricsRoutes);
 router.use('/leads', leadsRoutes);
 router.use('/organization-requests', organizationRequestsRoutes);
+
+// Cross-tenant platform administration — relocated from the tenant API so that only
+// authenticated admin_users (not tenant Super Admins) can reach cross-tenant data.
+router.use('/subscriptions', subscriptionsRoutes);
+router.use('/referrals', referralsRoutes);
+router.use('/monitoring', monitoringRoutes);
+router.use('/email-automation', emailAutomationRoutes);
 
 export default router;
 

@@ -1,7 +1,12 @@
-/**
- * RBAC 2.0 Phase 3 — Authorization Engine feature flag.
- * Default false: legacy authorization path unchanged.
- */
+/// backend/src/auth/rbacAuthorizationFeatureFlag.ts
+
+import { logger } from '../utils/logger.js';
+
 export function isRbacV2AuthorizationEngineEnabled(): boolean {
-  return process.env.RBAC_V2_AUTHORIZATION_ENGINE === 'true';
+  const raw = process.env.RBAC_V2_AUTHORIZATION_ENGINE;
+  logger.info('[RBAC_DEBUG] AUTH_ENGINE_CHECK', {
+    RBAC_V2_AUTHORIZATION_ENGINE: raw ?? null,
+  });
+
+  return raw === 'true';
 }

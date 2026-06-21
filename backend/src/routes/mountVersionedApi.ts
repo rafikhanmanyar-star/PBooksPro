@@ -98,7 +98,6 @@ import {
   requirePermissionWhenPathStartsWith,
   requireProjectSellingCatalogAccess,
   requireFinancialWriteOrProjectSellingCatalogOnMutations,
-  requireRoleWhenPathStartsWith,
   requireWriteOnMutations,
 } from '../middleware/rbacMiddleware.js';
 import { permissionsRouter } from './permissionsRoutes.js';
@@ -110,10 +109,10 @@ import { marketingRouter } from './marketingRoutes.js';
 import { trialSignupRouter } from '../modules/trial/routes/trialSignupRoutes.js';
 import { supportRouter } from './supportRoutes.js';
 import { emailAutomationPublicRouter } from '../modules/email-automation/routes/emailAutomationPublicRoutes.js';
-import { adminSubscriptionRouter } from './adminSubscriptionRoutes.js';
-import { adminReferralRouter } from './adminReferralRoutes.js';
-import { adminEmailAutomationRouter } from './adminEmailAutomationRoutes.js';
-import { adminMonitoringRouter } from '../modules/monitoring/routes/adminMonitoringRoutes.js';
+// NOTE: Cross-tenant platform admin routes (subscriptions, referrals, email-automation,
+// monitoring) were removed from the tenant API and relocated to the admin portal
+// (/api/admin/*, behind adminAuthMiddleware). A tenant token — including a tenant Super
+// Admin — must never reach cross-tenant data. See modules/admin-portal/routes/.
 import { monitoringPublicRouter, monitoringIngestRouter } from '../modules/monitoring/routes/monitoringRoutes.js';
 import { referralRouter } from './referralRoutes.js';
 import { onboardingRouter } from '../modules/onboarding/routes/onboardingRoutes.js';
@@ -129,8 +128,6 @@ import { breakGlassRouter } from '../modules/rbac/routes/breakGlassRoutes.js';
 import { effectiveContextRouter } from '../modules/rbac/routes/effectiveContextRoutes.js';
 import { dataScopeRouter } from '../modules/rbac/routes/dataScopeRoutes.js';
 import { approvalMatrixRouter } from '../modules/rbac/routes/approvalMatrixRoutes.js';
-
-const requireSuperAdminForAdminPaths = requireRoleWhenPathStartsWith('/admin', 'super_admin');
 
 /**
  * Mount tenant API routers at `prefix` (e.g. /api/v1 or deprecated /api).
@@ -462,10 +459,9 @@ export function mountVersionedApi(app: Express, prefix: string): void {
   app.use(prefix, authMiddleware, requireActiveSubscription(), tenantBackupRouter);
   app.use(prefix, authMiddleware, requireActiveSubscription(), disasterRecoveryRouter);
 
-  app.use(prefix, authMiddleware, requireSuperAdminForAdminPaths, adminSubscriptionRouter);
-  app.use(prefix, authMiddleware, requireSuperAdminForAdminPaths, adminReferralRouter);
-  app.use(prefix, authMiddleware, requireSuperAdminForAdminPaths, adminEmailAutomationRouter);
-  app.use(prefix, authMiddleware, requireSuperAdminForAdminPaths, adminMonitoringRouter);
+  // Cross-tenant platform admin routers (subscriptions/referrals/email-automation/monitoring)
+  // are intentionally NOT mounted here — they live in the admin portal (/api/admin/*).
+  // Only tenant-scoped telemetry ingest remains on the tenant API.
   app.use(prefix, authMiddleware, monitoringIngestRouter);
 
   app.use(prefix, authMiddleware, requireActiveSubscription(), onboardingRouter);

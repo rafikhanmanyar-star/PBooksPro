@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { rbacApi, type RbacRoleDetail, type RbacRoleSummary } from '../../services/api/rbacApi';
 import { buildPermissionGroups } from '../../shared/rbac/permissionGroups';
 import { type Permission } from '../../shared/rbac/permissions';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import { useNotification } from '../../context/NotificationContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import Button from '../ui/Button';
@@ -9,6 +10,7 @@ import LoadingButton from '../ui/LoadingButton';
 import Input from '../ui/Input';
 import Modal from '../ui/Modal';
 import Select from '../ui/Select';
+import { devLogger } from '../../utils/devLogger';
 
 const permissionGroups = buildPermissionGroups();
 
@@ -19,6 +21,20 @@ function isImmutableAllPermissionsRole(slug: string): boolean {
 
 function canEditRolePermissions(role: RbacRoleSummary): boolean {
   return !isImmutableAllPermissionsRole(role.slug);
+}
+
+/** True when permission checkboxes / module toggles should be interactive in the editor modal. */
+function canEditPermissionsInModal(canManageRoles: boolean, editing: RbacRoleDetail | null): boolean {
+  if (!canManageRoles) return false;
+  if (!editing) return true;
+  return canEditRolePermissions(editing);
+}
+
+function logRolePermissionEditorDebug(
+  event: string,
+  extra: Record<string, unknown>
+): void {
+  devLogger.log('[RoleManagement][permissions]', event, extra);
 }
 
 function detailToSummary(detail: RbacRoleDetail): RbacRoleSummary {
@@ -81,6 +97,11 @@ const RoleManagementSection: React.FC = () => {
     setSelected(new Set());
     setPermSearch('');
     setEditorOpen(true);
+    logRolePermissionEditorDebug('openCreate', {
+      canManageRoles,
+      editing: null,
+      permissionsEditable: canEditPermissionsInModal(canManageRoles, null),
+    });
   };
 
   const openEdit = async (role: RbacRoleSummary) => {
@@ -93,16 +114,34 @@ const RoleManagementSection: React.FC = () => {
       setSelected(new Set(detail.permissions));
       setPermSearch('');
       setEditorOpen(true);
+      logRolePermissionEditorDebug('openEdit', {
+        canManageRoles,
+        editingRoleId: detail.id,
+        editingSlug: detail.slug,
+        permissionsEditable: canEditPermissionsInModal(canManageRoles, detail),
+        canEditRolePermissions: canEditRolePermissions(detail),
+      });
     } catch (e) {
       void showAlert(e instanceof Error ? e.message : 'Failed to load role', { title: 'Role Management' });
     }
   };
 
   const togglePermission = (key: Permission) => {
+    logRolePermissionEditorDebug('togglePermission', {
+      key,
+      canManageRoles,
+      editing: editing?.id ?? null,
+      permissionsEditable: canEditPermissionsInModal(canManageRoles, editing),
+    });
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
+      logRolePermissionEditorDebug('selectedPermissionsUpdated', {
+        key,
+        checked: next.has(key),
+        selectedCount: next.size,
+      });
       return next;
     });
   };
@@ -153,7 +192,7 @@ const RoleManagementSection: React.FC = () => {
       setEditing(null);
       await load();
     } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to save role';
+      const message = formatApiErrorMessage(e);
       await showAlert(message, { title: 'Could not save role' });
     } finally {
       setSaving(false);
@@ -201,6 +240,8 @@ const RoleManagementSection: React.FC = () => {
   if (loading) {
     return <p className="text-sm text-app-muted">Loading roles…</p>;
   }
+
+  const permissionsEditable = canEditPermissionsInModal(canManageRoles, editing);
 
   return (
     <div className="space-y-4">
@@ -338,7 +379,7 @@ const RoleManagementSection: React.FC = () => {
                 <div key={group.module} className="mb-4 rounded-lg border border-app-border p-3">
                   <div className="flex items-center justify-between mb-2">
                     <h3 className="font-medium text-app-text">{group.label}</h3>
-                    {canManageRoles && editing && canEditRolePermissions(editing) && (
+                    {canManageRoles && permissionsEditable && (
                       <button
                         type="button"
                         className="text-xs text-ds-primary hover:underline"
@@ -355,11 +396,15 @@ const RoleManagementSection: React.FC = () => {
                           type="checkbox"
                           checked={selected.has(p.key)}
                           onChange={() => togglePermission(p.key)}
-                          disabled={
-                            !canManageRoles ||
-                            !editing ||
-                            !canEditRolePermissions(editing)
+                          onClick={() =>
+                            logRolePermissionEditorDebug('checkboxClick', {
+                              key: p.key,
+                              disabled: !permissionsEditable,
+                              canManageRoles,
+                              editing: editing?.id ?? null,
+                            })
                           }
+                          disabled={!permissionsEditable}
                         />
                         <span title={p.key}>{p.label}</span>
                       </label>
@@ -374,7 +419,7 @@ const RoleManagementSection: React.FC = () => {
             <Button type="button" variant="secondary" onClick={() => setEditorOpen(false)}>
               Cancel
             </Button>
-            {canManageRoles && (!editing || canEditRolePermissions(editing)) && (
+            {canManageRoles && permissionsEditable && (
               <LoadingButton type="button" loading={saving} onClick={() => void handleSave()}>
                 {editing ? 'Save Role' : 'Create Role'}
               </LoadingButton>

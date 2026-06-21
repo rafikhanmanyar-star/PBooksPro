@@ -433,7 +433,6 @@ import { getApiRootUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
 import { applyChangeLogToMergedState } from './changeLogMerge';
 import { logger } from '../logger';
-import { logPaymentTrace } from '../debug/paymentDisappearanceTrace';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
 // ---------------------------------------------------------------------------
@@ -753,9 +752,6 @@ export class AppStateApiService {
     since: string,
     baseline: Partial<AppState>
   ): Promise<{ merged: Partial<AppState>; serverCursor: string }> {
-    logPaymentTrace('loadStateViaIncrementalSync', 'start', baseline.transactions as AppState['transactions'], {
-      since,
-    });
     logger.logCategory('sync', `📡 Incremental sync since ${since}...`);
     const response = await this.loadStateChanges(since);
     const serverCursor =
@@ -925,18 +921,6 @@ export class AppStateApiService {
       (response.changeLog?.length ?? 0) +
       (response.appSettings && Object.keys(response.appSettings).length > 0 ? 1 : 0);
     logger.logCategory('sync', `✅ Incremental sync merged ${totalChanges} change(s) (entities + changeLog + app settings when present)`);
-    const deltaTx = (response.entities?.transactions as unknown[] | undefined) ?? [];
-    logPaymentTrace('loadStateViaIncrementalSync', 'complete', merged.transactions as AppState['transactions'], {
-      since,
-      serverCursor,
-      deltaTransactionCount: Array.isArray(deltaTx) ? deltaTx.length : 0,
-      deltaTransactions: Array.isArray(deltaTx)
-        ? deltaTx.map((t: { id?: string; version?: number }) => ({
-            id: t.id,
-            version: typeof t.version === 'number' ? t.version : undefined,
-          }))
-        : [],
-    });
     return { merged, serverCursor };
   }
 
@@ -1067,12 +1051,8 @@ export class AppStateApiService {
   async loadStateForSyncRefresh(
     onProgress?: (loaded: number, total: number) => void
   ): Promise<Partial<AppState>> {
-    logPaymentTrace('loadStateForSyncRefresh', 'start', undefined, {});
     try {
       const partial = await this.loadStateBulkChunked(onProgress);
-      logPaymentTrace('loadStateForSyncRefresh', 'complete (chunked)', partial.transactions, {
-        source: 'loadStateBulkChunked',
-      });
       return partial;
     } catch (chunkErr) {
       // Server busy / unreachable: do NOT cascade to the single-shot bulk or the
@@ -1085,9 +1065,6 @@ export class AppStateApiService {
       logger.warnCategory('sync', 'Chunked state load failed; trying GET /state/bulk:', chunkErr);
       try {
         const partial = await this.loadStateBulk();
-        logPaymentTrace('loadStateForSyncRefresh', 'complete (bulk)', partial.transactions, {
-          source: 'loadStateBulk',
-        });
         return partial;
       } catch (bulkErr) {
         if (isBulkLoadUnavailable(bulkErr)) {
@@ -1096,9 +1073,6 @@ export class AppStateApiService {
         }
         logger.warnCategory('sync', 'Bulk state load failed; falling back to parallel loadState():', bulkErr);
         const partial = await this.loadState();
-        logPaymentTrace('loadStateForSyncRefresh', 'complete (parallel)', partial.transactions, {
-          source: 'loadState',
-        });
         return partial;
       }
     }

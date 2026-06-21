@@ -42,6 +42,7 @@ import { startReportScheduleScheduler } from './modules/reporting/services/repor
 import { auditRequestContextMiddleware } from './middleware/auditRequestContext.js';
 import { sendLivenessResponse } from './routes/healthLiveness.js';
 import { registerGracefulShutdown } from './gracefulShutdown.js';
+import { logRbacDebugStartup } from './auth/rbacDebugStartup.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -176,6 +177,7 @@ app.use((err: unknown, req: express.Request, res: express.Response, _next: expre
 
 async function start() {
   initObservabilityProviders();
+  logRbacDebugStartup();
   if (!process.env.DATABASE_URL) {
     console.warn('Warning: DATABASE_URL not set — API will fail on first DB access');
   } else {

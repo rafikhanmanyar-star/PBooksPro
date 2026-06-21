@@ -122,7 +122,11 @@ export async function resolveEffectivePermissions(input: {
 
   for (const assignment of assignments) {
     if (isSystemOwnerSlug(assignment.slug) || assignment.slug === 'super_admin') {
-      return { permissions: [...ALL_PERMISSIONS], assignments };
+      // allCatalogPermissionKeys() includes both v1 keys (ALL_PERMISSIONS) and v2 bundle keys
+      // (FINANCIAL_WRITE_BUNDLE etc.), so both requirePermission('users.manage') and
+      // requirePermission('financial.write') pass — financial.write expands to v2 bundle
+      // keys at check-time, which must be present in the effective set.
+      return { permissions: allCatalogPermissionKeys(), assignments };
     }
   }
 
