@@ -791,6 +791,10 @@ export class AppStateApiService {
       if (tid && response.changeLog?.length) {
         const { applyPayrollChangeLogToStorage } = await import('./payrollChangeLogMerge');
         await applyPayrollChangeLogToStorage(tid, response.changeLog);
+        const { applyAttendanceChangeLogToStorage } = await import('./attendanceChangeLogMerge');
+        await applyAttendanceChangeLogToStorage(tid, response.changeLog);
+        const { applyLeaveChangeLogToStorage } = await import('./leaveChangeLogMerge');
+        await applyLeaveChangeLogToStorage(tid, response.changeLog);
       }
     } catch (e) {
       logger.warnCategory('sync', 'payroll changeLog merge skipped', e);

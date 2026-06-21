@@ -4,9 +4,20 @@ import { recordDomainMutation } from '../../../../core/recordDomainMutation.js';
 import { PayrollRunRepository } from '../../repositories/PayrollRunRepository.js';
 import { PayslipRepository, type PayslipBatchInsertRow } from '../../repositories/PayslipRepository.js';
 import {
-  computeMonthlyPayslip,
+  computeAttendanceAwarePayslip,
   isPayrollPeriodBeforeJoiningDate,
 } from '../../../../payroll/salaryComputation.js';
+import {
+  assertPayrollRunEditable,
+  assertPayrollRunStatusForPayment,
+  assertPayrollRunStatusForPayslipGeneration,
+  validateAttendanceSummaryForPayroll,
+} from '../../../../payroll-core/payrollValidation.js';
+import type { PayrollAttendanceSummaryInput } from '../../../../payroll-core/payrollTypes.js';
+import {
+  PayrollAttendanceSummaryRepository,
+  num as numSummary,
+} from '../../../payroll-attendance/attendanceSummary.repository.js';
 import { todayUtcYyyyMmDd } from '../../../../utils/dateOnly.js';
 import { payPeriodCalendarBounds } from '../../../../utils/payrollPeriod.js';
 import { ExpenseCashValidationBatchContext } from '../../../../financial/expenseCashValidation.js';
@@ -37,7 +48,8 @@ async function auditPayslipMutation(
   payslipId: string,
   action: 'create' | 'update' | 'delete',
   userId: string | null | undefined,
-  prior?: PayslipRow | null
+  prior?: PayslipRow | null,
+  auditAction?: string
 ): Promise<void> {
   const repo = new PayslipRepository(tenantId);
   const row =
@@ -52,10 +64,33 @@ async function auditPayslipMutation(
     entityType: 'payslip',
     entityId: payslipId,
     action,
-    summary: `Payslip ${payslipId} ${action}`,
+    auditAction,
+    summary: auditAction ?? `Payslip ${payslipId} ${action}`,
     newValue: row && action !== 'delete' ? rowToPayslipApi(row) : undefined,
     oldValue: prior ? rowToPayslipApi(prior) : row && action === 'delete' ? rowToPayslipApi(row) : undefined,
   });
+}
+
+function summaryRowToInput(row: {
+  working_days: string | number;
+  present_days: string | number;
+  leave_days: string | number;
+  paid_leave_days: string | number;
+  unpaid_leave_days: string | number;
+  absent_days: string | number;
+  half_days: string | number;
+  lop_days: string | number;
+}): PayrollAttendanceSummaryInput {
+  return {
+    working_days: numSummary(row.working_days),
+    present_days: numSummary(row.present_days),
+    leave_days: numSummary(row.leave_days),
+    paid_leave_days: numSummary(row.paid_leave_days),
+    unpaid_leave_days: numSummary(row.unpaid_leave_days),
+    absent_days: numSummary(row.absent_days),
+    half_days: numSummary(row.half_days),
+    lop_days: numSummary(row.lop_days),
+  };
 }
 
 export async function listPayrollRuns(
@@ -123,7 +158,22 @@ export async function recalculatePayrollRunAggregates(
   const count = Number(agg.cnt);
   const totalAmt = numStr(agg.total_amt);
   const allPaid = agg.all_paid === true;
-  const newStatus = count === 0 ? 'DRAFT' : allPaid ? 'PAID' : 'DRAFT';
+  let newStatus: string;
+  if (count === 0) {
+    newStatus = run.status === 'GENERATED' || run.status === 'APPROVED' || run.status === 'PROCESSING'
+      ? run.status
+      : 'DRAFT';
+  } else if (allPaid) {
+    newStatus = 'PAID';
+  } else if (
+    run.status === 'GENERATED' ||
+    run.status === 'APPROVED' ||
+    run.status === 'PROCESSING'
+  ) {
+    newStatus = run.status;
+  } else {
+    newStatus = 'DRAFT';
+  }
   const paidAt = count > 0 && allPaid ? agg.max_paid_at : null;
 
   const updated = await new PayrollRunRepository(tenantId).applyAggregatesFromPayslips(client, runId, {
@@ -277,6 +327,7 @@ export async function processPayrollRun(
 }> {
   const run = await getPayrollRun(client, tenantId, runId);
   if (!run) throw new Error('Payroll run not found.');
+  assertPayrollRunStatusForPayslipGeneration(run.status);
   await enforcePayrollRunLock(client, tenantId, runId, actorUserId);
 
   const monthNum = [
@@ -294,6 +345,12 @@ export async function processPayrollRun(
     'December',
   ].indexOf(run.month);
   const month1 = monthNum >= 0 ? monthNum + 1 : 1;
+
+  const summaryMap = await new PayrollAttendanceSummaryRepository(tenantId).mapSummariesForPeriod(
+    client,
+    month1,
+    run.year
+  );
 
   const employees = await listEmployees(client, tenantId);
   const singleId = onlyEmployeeId?.trim() || null;
@@ -333,7 +390,53 @@ export async function processPayrollRun(
       continue;
     }
 
-    const computed = computeMonthlyPayslip(employeeRowToLike(emp), run.year, month1);
+    if (emp.status !== 'ACTIVE') {
+      if (singleId) {
+        throw new Error('Employee is not active.');
+      }
+      continue;
+    }
+
+    const summaryRow = summaryMap.get(emp.id);
+    try {
+      validateAttendanceSummaryForPayroll(
+        summaryRow ? summaryRowToInput(summaryRow) : null,
+        emp.id,
+        true
+      );
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (singleId) throw new Error(msg);
+      continue;
+    }
+
+    const computedFull = computeAttendanceAwarePayslip(
+      employeeRowToLike(emp),
+      run.year,
+      month1,
+      summaryRowToInput(summaryRow!)
+    );
+    const computed = {
+      basic_pay: computedFull.basic_pay,
+      total_allowances: computedFull.total_allowances,
+      total_deductions: computedFull.total_deductions,
+      total_adjustments: computedFull.total_adjustments,
+      gross_pay: computedFull.gross_pay,
+      net_pay: computedFull.net_pay,
+      allowance_details: computedFull.allowance_details,
+      deduction_details: computedFull.deduction_details,
+      working_days: computedFull.working_days,
+      present_days: computedFull.present_days,
+      leave_days: computedFull.leave_days,
+      paid_leave_days: computedFull.paid_leave_days,
+      unpaid_leave_days: computedFull.unpaid_leave_days,
+      absent_days: computedFull.absent_days,
+      half_days: computedFull.half_days,
+      lop_days: computedFull.lop_days,
+      lop_deduction: computedFull.lop_deduction,
+      adjusted_basic: computedFull.adjusted_basic,
+      attendance_summary_snapshot: computedFull.attendance_summary_snapshot,
+    };
     const assignmentSnapshot = JSON.stringify({
       projects: j(emp.projects, []),
       buildings: j(emp.buildings, []),
@@ -346,7 +449,10 @@ export async function processPayrollRun(
       newCount++;
       newAmount += computed.net_pay;
       touchedEmployeeIds.add(emp.id);
-      await auditPayslipMutation(client, tenantId, reviveId, 'create', actorUserId);
+      await auditPayslipMutation(client, tenantId, reviveId, 'create', actorUserId, null, 'payroll.payslip.generated');
+      if (computed.lop_deduction > 0) {
+        await auditPayslipMutation(client, tenantId, reviveId, 'update', actorUserId, null, 'payroll.lop.applied');
+      }
       continue;
     }
 
@@ -368,7 +474,10 @@ export async function processPayrollRun(
 
   await payslipRepo.insertBatch(client, toInsert);
   for (const row of toInsert) {
-    await auditPayslipMutation(client, tenantId, row.id, 'create', actorUserId);
+    await auditPayslipMutation(client, tenantId, row.id, 'create', actorUserId, null, 'payroll.payslip.generated');
+    if ((row.computed.lop_deduction ?? 0) > 0) {
+      await auditPayslipMutation(client, tenantId, row.id, 'update', actorUserId, null, 'payroll.lop.applied');
+    }
   }
 
   const sumQ = await payslipRepo.sumNetPayAndCount(client, runId);
@@ -408,6 +517,73 @@ export async function processPayrollRun(
   };
 }
 
+function payslipHasAttendanceSnapshot(row: PayslipRow): boolean {
+  const snap = row.attendance_summary_snapshot;
+  if (snap == null) return false;
+  if (typeof snap === 'string') {
+    const trimmed = snap.trim();
+    if (!trimmed || trimmed === 'null') return false;
+    try {
+      const parsed = JSON.parse(trimmed);
+      return parsed != null && typeof parsed === 'object';
+    } catch {
+      return false;
+    }
+  }
+  return typeof snap === 'object';
+}
+
+function bodyFieldDiffers(body: Record<string, unknown>, keys: string[], stored: number): boolean {
+  for (const key of keys) {
+    if (!(key in body)) continue;
+    const incoming = Number(body[key]);
+    if (!Number.isFinite(incoming)) continue;
+    if (Math.abs(incoming - stored) > 0.001) return true;
+  }
+  return false;
+}
+
+function assertAttendancePayslipEditAllowed(
+  ps: PayslipRow,
+  body: Record<string, unknown>,
+  adminOverride: boolean
+): void {
+  if (!payslipHasAttendanceSnapshot(ps) || adminOverride) return;
+
+  const storedBasic = Number(numStr(ps.basic_pay));
+  if (bodyFieldDiffers(body, ['basic_pay', 'basicPay'], storedBasic)) {
+    throw new Error(
+      'Cannot edit basic pay on attendance-calculated payslips. Use adminOverride with payroll.write.'
+    );
+  }
+
+  const scalarGuards: Array<{ keys: string[]; stored: number }> = [
+    { keys: ['lop_days', 'lopDays'], stored: Number(numStr(ps.lop_days ?? '0')) },
+    { keys: ['lop_deduction', 'lopDeduction'], stored: Number(numStr(ps.lop_deduction ?? '0')) },
+    { keys: ['adjusted_basic', 'adjustedBasic'], stored: Number(numStr(ps.adjusted_basic ?? ps.basic_pay)) },
+    { keys: ['working_days', 'workingDays'], stored: Number(numStr(ps.working_days ?? '0')) },
+    { keys: ['present_days', 'presentDays'], stored: Number(numStr(ps.present_days ?? '0')) },
+    { keys: ['leave_days', 'leaveDays'], stored: Number(numStr(ps.leave_days ?? '0')) },
+    { keys: ['paid_leave_days', 'paidLeaveDays'], stored: Number(numStr(ps.paid_leave_days ?? '0')) },
+    { keys: ['unpaid_leave_days', 'unpaidLeaveDays'], stored: Number(numStr(ps.unpaid_leave_days ?? '0')) },
+    { keys: ['absent_days', 'absentDays'], stored: Number(numStr(ps.absent_days ?? '0')) },
+    { keys: ['half_days', 'halfDays'], stored: Number(numStr(ps.half_days ?? '0')) },
+  ];
+  for (const { keys, stored } of scalarGuards) {
+    if (bodyFieldDiffers(body, keys, stored)) {
+      throw new Error(
+        'Cannot edit attendance-derived payslip fields. Use adminOverride with payroll.write.'
+      );
+    }
+  }
+
+  if ('attendance_summary_snapshot' in body || 'attendanceSummarySnapshot' in body) {
+    throw new Error(
+      'Cannot edit attendance summary snapshot. Use adminOverride with payroll.write.'
+    );
+  }
+}
+
 export async function updatePayslipAmounts(
   client: pg.PoolClient,
   tenantId: string,
@@ -417,7 +593,13 @@ export async function updatePayslipAmounts(
 ): Promise<PayslipRow | null> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) return null;
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  if (run) assertPayrollRunEditable(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
+
+  const adminOverride = body.adminOverride === true || body.admin_override === true;
+  assertAttendancePayslipEditAllowed(ps, body, adminOverride);
+
   const basic_pay = Number(body.basic_pay ?? body.basicPay ?? numStr(ps.basic_pay));
   const total_allowances = Number(body.total_allowances ?? body.totalAllowances ?? numStr(ps.total_allowances));
   const total_deductions = Number(body.total_deductions ?? body.totalDeductions ?? numStr(ps.total_deductions));
@@ -458,6 +640,8 @@ export async function softDeletePayslip(
 ): Promise<boolean> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) return false;
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  if (run) assertPayrollRunEditable(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
   const runId = ps.payroll_run_id;
   const deleted = await new PayslipRepository(tenantId).markDeleted(client, payslipId);
@@ -482,6 +666,9 @@ export async function payPayslip(
 ): Promise<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> {
   const ps = await getPayslip(client, tenantId, payslipId);
   if (!ps) throw new Error('Payslip not found.');
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  if (!run) throw new Error('Payroll run not found.');
+  assertPayrollRunStatusForPayment(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, userId);
   const payAmt = Number(body.amount) || numStr(ps.net_pay);
   if (!(payAmt > 0) || Number.isNaN(payAmt)) throw new Error('Payment amount must be greater than zero.');
@@ -545,6 +732,8 @@ export async function payBulkPayslips(
   }
   for (const rid of runIds) {
     await enforcePayrollRunLock(client, tenantId, rid, userId);
+    const run = await getPayrollRun(client, tenantId, rid);
+    if (run) assertPayrollRunStatusForPayment(run.status);
   }
   for (const line of lines) {
     const body: Record<string, unknown> = {

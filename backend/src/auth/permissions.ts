@@ -31,6 +31,18 @@ export type Permission =
   | 'reports.cash_flow.read'
   | 'payroll.read'
   | 'payroll.write'
+  | 'payroll.runs.view'
+  | 'payroll.runs.create'
+  | 'payroll.runs.approve'
+  | 'attendance.read'
+  | 'attendance.write'
+  | 'attendance.delete'
+  | 'attendance.manage'
+  | 'leave.read'
+  | 'leave.write'
+  | 'leave.delete'
+  | 'leave.approve'
+  | 'leave.manage'
   | 'users.read'
   | 'users.manage'
   | 'billing.read'
@@ -97,6 +109,18 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.cash_flow.read',
   'payroll.read',
   'payroll.write',
+  'payroll.runs.view',
+  'payroll.runs.create',
+  'payroll.runs.approve',
+  'attendance.read',
+  'attendance.write',
+  'attendance.delete',
+  'attendance.manage',
+  'leave.read',
+  'leave.write',
+  'leave.delete',
+  'leave.approve',
+  'leave.manage',
   'users.read',
   'users.manage',
   'billing.read',
@@ -184,6 +208,18 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'reports.cash_flow.read': 'Cash Flow (read)',
   'payroll.read': 'Payroll (read)',
   'payroll.write': 'Payroll (write)',
+  'payroll.runs.view': 'Payroll runs (view)',
+  'payroll.runs.create': 'Payroll runs (create)',
+  'payroll.runs.approve': 'Payroll runs (approve)',
+  'attendance.read': 'Attendance (read)',
+  'attendance.write': 'Attendance (write)',
+  'attendance.delete': 'Attendance (delete)',
+  'attendance.manage': 'Attendance (manage)',
+  'leave.read': 'Leave (read)',
+  'leave.write': 'Leave (write)',
+  'leave.delete': 'Leave (delete)',
+  'leave.approve': 'Leave (approve)',
+  'leave.manage': 'Leave (manage)',
   'users.read': 'Users (read)',
   'users.manage': 'Users (manage)',
   'billing.read': 'Billing & subscription (read)',
@@ -298,6 +334,18 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...REPORTS_READ,
     'payroll.read',
     'payroll.write',
+    'payroll.runs.view',
+    'payroll.runs.create',
+    'payroll.runs.approve',
+    'attendance.read',
+    'attendance.write',
+    'attendance.delete',
+    'attendance.manage',
+    'leave.read',
+    'leave.write',
+    'leave.delete',
+    'leave.approve',
+    'leave.manage',
     'users.read',
     'users.manage',
     'billing.read',
@@ -324,6 +372,8 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...REPORTS_READ,
     'payroll.read',
     'payroll.write',
+    'attendance.read',
+    'leave.read',
     'billing.read',
     'audit_logs.read',
     'financial.write',

@@ -31,6 +31,7 @@ import ExecutiveConstructionDashboardPage from './pages/ExecutiveConstructionDas
 import ExecutiveNotificationsPage from './pages/ExecutiveNotificationsPage';
 
 import MobileOfflineWarning from '../../components/ui/MobileOfflineWarning';
+import CapturePermissionsBanner from './components/CapturePermissionsBanner';
 
 
 
@@ -138,7 +139,9 @@ export default function ExecutiveMobileShell() {
 
       <MobileOfflineWarning />
 
-
+      <div className="px-4 pt-3 shrink-0">
+        <CapturePermissionsBanner showInstallPrompt />
+      </div>
 
       <main
 

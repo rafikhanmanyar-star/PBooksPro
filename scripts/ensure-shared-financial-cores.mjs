@@ -195,4 +195,19 @@ syncFile(
   'backend/src/procurement/goodsReceiptCore.ts'
 );
 
+const payrollCoreTransform = (s) =>
+  s.replace(/from '\.\/([^']+)';/g, (match, p) =>
+    p.endsWith('.js') ? match : `from './${p}.js';`
+  );
+
+syncFile('shared/payroll-core/payrollTypes.ts', 'backend/src/payroll-core/payrollTypes.ts');
+syncFile('shared/payroll-core/lopCalculator.ts', 'backend/src/payroll-core/lopCalculator.ts', payrollCoreTransform);
+syncFile(
+  'shared/payroll-core/attendanceCalculator.ts',
+  'backend/src/payroll-core/attendanceCalculator.ts',
+  payrollCoreTransform
+);
+syncFile('shared/payroll-core/payrollCalculator.ts', 'backend/src/payroll-core/payrollCalculator.ts', payrollCoreTransform);
+syncFile('shared/payroll-core/payrollValidation.ts', 'backend/src/payroll-core/payrollValidation.ts', payrollCoreTransform);
+
 console.log('[ensure-shared-financial-cores] OK');

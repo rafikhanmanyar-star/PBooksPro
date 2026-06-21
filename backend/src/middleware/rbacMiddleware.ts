@@ -201,11 +201,21 @@ export const requireFinancialWriteOrProjectSellingCatalogOnMutations: RequestHan
   )(req, res, next);
 };
 
-/** Payroll: GET requires payroll.read; mutations require payroll.write. */
+/** Payroll: GET requires payroll.read; approve/unapprove require payroll.runs.approve; wizard/summary mutations require payroll.runs.create. */
 export const requirePayrollAccess: RequestHandler = (req, res, next) => {
   const method = (req.method ?? 'GET').toUpperCase();
+  const path = req.path ?? req.url?.split('?')[0] ?? '';
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    if (/\/attendance-summaries|\/reports\/attendance-impact|\/reports\/lop/.test(path)) {
+      return requireAnyPermission('payroll.runs.view', 'payroll.read')(req, res, next);
+    }
     return requirePermission('payroll.read')(req, res, next);
+  }
+  if (/\/approve$|\/unapprove$/.test(path)) {
+    return requireAnyPermission('payroll.runs.approve')(req, res, next);
+  }
+  if (/\/wizard\/start|\/attendance-summaries\/generate|\/process$/.test(path)) {
+    return requireAnyPermission('payroll.runs.create', 'payroll.write')(req, res, next);
   }
   return requirePermission('payroll.write')(req, res, next);
 };
@@ -258,5 +268,60 @@ export function requirePayrollAccessForPayrollPaths(pathPrefix = '/payroll'): Re
       return;
     }
     return requirePayrollAccess(req, res, next);
+  };
+}
+
+/** Attendance: GET requires attendance.read; DELETE requires attendance.delete or attendance.manage; mutations require attendance.write or attendance.manage. */
+export const requireAttendanceAccess: RequestHandler = (req, res, next) => {
+  const method = (req.method ?? 'GET').toUpperCase();
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return requirePermission('attendance.read')(req, res, next);
+  }
+  if (method === 'DELETE') {
+    return requireAnyPermission('attendance.delete', 'attendance.manage')(req, res, next);
+  }
+  return requireAnyPermission('attendance.write', 'attendance.manage')(req, res, next);
+};
+
+/** Attendance RBAC scoped to `/attendance…` paths only. */
+export function requireAttendanceAccessForAttendancePaths(pathPrefix = '/attendance'): RequestHandler {
+  return (req, res, next) => {
+    const path = req.path ?? req.url?.split('?')[0] ?? '';
+    if (!path.startsWith(pathPrefix)) {
+      next();
+      return;
+    }
+    return requireAttendanceAccess(req, res, next);
+  };
+}
+
+/** Leave: GET requires leave.read; approve/reject require leave.approve or leave.manage; cancel allows write/approve/manage; DELETE requires leave.delete or leave.manage; other mutations require leave.write or leave.manage. */
+export const requireLeaveAccess: RequestHandler = (req, res, next) => {
+  const method = (req.method ?? 'GET').toUpperCase();
+  const path = req.path ?? req.url?.split('?')[0] ?? '';
+  if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
+    return requirePermission('leave.read')(req, res, next);
+  }
+  if (path.includes('/approve') || path.includes('/reject')) {
+    return requireAnyPermission('leave.approve', 'leave.manage')(req, res, next);
+  }
+  if (path.includes('/cancel')) {
+    return requireAnyPermission('leave.write', 'leave.approve', 'leave.manage')(req, res, next);
+  }
+  if (method === 'DELETE') {
+    return requireAnyPermission('leave.delete', 'leave.manage')(req, res, next);
+  }
+  return requireAnyPermission('leave.write', 'leave.manage')(req, res, next);
+};
+
+/** Leave RBAC scoped to `/leaves…` paths only. */
+export function requireLeaveAccessForLeavePaths(pathPrefix = '/leaves'): RequestHandler {
+  return (req, res, next) => {
+    const path = req.path ?? req.url?.split('?')[0] ?? '';
+    if (!path.startsWith(pathPrefix)) {
+      next();
+      return;
+    }
+    return requireLeaveAccess(req, res, next);
   };
 }

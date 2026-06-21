@@ -148,11 +148,11 @@ Get-Content $EnvFile | ForEach-Object {
 Write-Host "  Loaded $EnvFile" -ForegroundColor DarkGray
 
 Write-Host ""
-Write-Host "  [0/8] Freeing staging API port $StagingApiPort..." -ForegroundColor Yellow
+Write-Host "  [0/7] Freeing staging API port $StagingApiPort..." -ForegroundColor Yellow
 Stop-ProcessesOnPort -Port $StagingApiPort
 
 Write-Host ""
-Write-Host "  [1/8] Rebuilding native modules..." -ForegroundColor Yellow
+Write-Host "  [1/7] Rebuilding native modules..." -ForegroundColor Yellow
 & npm run rebuild:native
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Native rebuild failed, continuing anyway..." -ForegroundColor Yellow
@@ -160,7 +160,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not $BackendWatch -and -not ($env:PBooks_BACKEND_WATCH -eq "1")) {
     Write-Host ""
-    Write-Host '  [2/8] Building backend: tsc to dist...' -ForegroundColor Yellow
+    Write-Host '  [2/7] Building backend: tsc to dist...' -ForegroundColor Yellow
     & npm run build:backend
     if ($LASTEXITCODE -ne 0) {
         Write-Host "  Backend build failed!" -ForegroundColor Red
@@ -168,11 +168,11 @@ if (-not $BackendWatch -and -not ($env:PBooks_BACKEND_WATCH -eq "1")) {
     }
 } else {
     Write-Host ""
-    Write-Host '  [2/8] Skipping build:backend (tsx watch)' -ForegroundColor Yellow
+    Write-Host '  [2/7] Skipping build:backend (tsx watch)' -ForegroundColor Yellow
 }
 
 Write-Host ""
-Write-Host "  [3/8] Running staging database migrations (pBookspro_Staging)..." -ForegroundColor Yellow
+Write-Host "  [3/7] Running staging database migrations (pBookspro_Staging)..." -ForegroundColor Yellow
 & npm run db:migrate:staging
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  Migration failed! Check DATABASE_URL in $EnvFile" -ForegroundColor Red
@@ -180,15 +180,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "  [4/8] Seeding staging defaults (test company / Rafi - idempotent)..." -ForegroundColor Yellow
-& npm run db:seed:staging
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "  Staging seed failed! Check $EnvFile and DATABASE_URL." -ForegroundColor Red
-    exit 1
-}
-
-Write-Host ""
-Write-Host "  [5/8] Starting staging backend API (PORT=3001)..." -ForegroundColor Yellow
+Write-Host "  [4/7] Starting staging backend API (PORT=3001)..." -ForegroundColor Yellow
 Stop-ProcessesOnPort -Port $StagingApiPort
 Assert-PortIsFree -Port $StagingApiPort
 
@@ -259,7 +251,7 @@ if (-not $useWatch) {
 Write-Host "  Staging API is up." -ForegroundColor Green
 
 Write-Host ""
-Write-Host '  [6/8] Building Electron staging client (Architecture v2.1 API mode)...' -ForegroundColor Yellow
+Write-Host '  [5/7] Building Electron staging client (Architecture v2.1 API mode)...' -ForegroundColor Yellow
 
 $env:VITE_LOCAL_ONLY = "false"
 $env:VITE_ELECTRON_BUILD = "true"
@@ -275,12 +267,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "  [7/8] Launching Electron client..." -ForegroundColor Green
+Write-Host "  [6/7] Launching Electron client..." -ForegroundColor Green
 Write-Host ""
 & npx electron . --enable-logging
 
 Write-Host ""
-Write-Host "  [8/8] Stopping staging backend..." -ForegroundColor Yellow
+Write-Host "  [7/7] Stopping staging backend..." -ForegroundColor Yellow
 try {
     taskkill /PID $backendJob.Id /T /F 2>$null | Out-Null
 } catch {}

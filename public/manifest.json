@@ -1,7 +1,7 @@
 {
   "name": "PBooks Pro",
   "short_name": "PBooks Pro",
-  "description": "Professional finance management for rentals and projects.",
+  "description": "Professional finance management for rentals and projects. Quick Capture uses microphone (voice) and camera/gallery (receipts) when you enable them.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#001a57",

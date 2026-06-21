@@ -38,6 +38,9 @@ import { appSettingsRouter } from './appSettingsRoutes.js';
 import { stateRouter } from './stateRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './payrollRoutes.js';
+import { payrollAttendanceRouter } from './payrollAttendanceRoutes.js';
+import { attendanceRouter } from './attendanceRoutes.js';
+import { leaveRouter } from './leaveRoutes.js';
 import { contractorRouter } from './contractorRoutes.js';
 import { projectExpenseVoucherRouter } from './projectExpenseVoucherRoutes.js';
 import { personalFinanceRouter } from './personalFinanceRoutes.js';
@@ -95,6 +98,8 @@ import { requireActiveSubscription } from '../middleware/licenseEnforcementMiddl
 import {
   requireFinancialWriteOnMutations,
   requirePayrollAccessForPayrollPaths,
+  requireAttendanceAccessForAttendancePaths,
+  requireLeaveAccessForLeavePaths,
   requirePermissionWhenPathStartsWith,
   requireProjectSellingCatalogAccess,
   requireFinancialWriteOrProjectSellingCatalogOnMutations,
@@ -507,7 +512,28 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     authMiddleware,
     requireActiveSubscription(),
     requirePayrollAccessForPayrollPaths(),
+    payrollAttendanceRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    requirePayrollAccessForPayrollPaths(),
     payrollRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    requireAttendanceAccessForAttendancePaths(),
+    attendanceRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    requireLeaveAccessForLeavePaths(),
+    leaveRouter
   );
   app.use(
     prefix,

@@ -1,14 +1,9 @@
 /**
- * BackDateSalaryModal - Select employee, month/year and run salary creation for that period only.
- * Skips if that employee already has a payslip for the run; creates with prorata for joining month; amounts rounded to nearest 100.
+ * BackDateSalaryModal - Pick a past payroll period and open the Payroll Wizard.
  */
 
-import React, { useState, useMemo, useEffect } from 'react';
-import { X, CalendarClock, Loader2, AlertCircle } from 'lucide-react';
-import { Payslip } from '../types';
-import { runSalaryCreationForPeriodAsync } from '../services/runSalaryCreation';
-import { storageService } from '../services/storageService';
-import { formatApiErrorMessage } from '../../../services/api/client';
+import React, { useState } from 'react';
+import { X, CalendarClock } from 'lucide-react';
 
 const MONTHS = [
   { value: 1, label: 'January' }, { value: 2, label: 'February' }, { value: 3, label: 'March' },
@@ -20,60 +15,18 @@ const MONTHS = [
 interface BackDateSalaryModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** `employeeId` is the worker row just processed (for optional “pay now” flow). */
-  onSuccess: (runId: string, payslips: Payslip[], employeeId: string) => void;
-  tenantId: string;
-  userId: string;
+  onOpenWizard: (month: number, year: number) => void;
 }
 
-const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClose, onSuccess, tenantId, userId }) => {
+const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClose, onOpenWizard }) => {
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 9 }, (_, i) => currentYear - 8 + i);
 
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(currentYear);
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('');
-  const [isRunning, setIsRunning] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const employees = useMemo(() => {
-    if (!tenantId || !isOpen) return [];
-    storageService.init(tenantId);
-    return storageService.getEmployees(tenantId).slice().sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  }, [tenantId, isOpen]);
-
-  useEffect(() => {
-    if (!isOpen || employees.length === 0) return;
-    setSelectedEmployeeId((prev) => (prev && employees.some((e) => e.id === prev) ? prev : employees[0].id));
-  }, [isOpen, employees]);
-
-  const handleRun = async () => {
-    setError(null);
-    if (!selectedEmployeeId) {
-      setError('Select an employee.');
-      return;
-    }
-    setIsRunning(true);
-    try {
-      if (!tenantId) {
-        setError('Tenant not found.');
-        setIsRunning(false);
-        return;
-      }
-      const { runId, payslips } = await runSalaryCreationForPeriodAsync(
-        tenantId,
-        userId,
-        selectedYear,
-        selectedMonth,
-        selectedEmployeeId
-      );
-      onSuccess(runId, payslips, selectedEmployeeId);
-      onClose();
-    } catch (e: unknown) {
-      setError(formatApiErrorMessage(e) || 'Failed to create salary.');
-    } finally {
-      setIsRunning(false);
-    }
+  const handleOpen = () => {
+    onOpenWizard(selectedMonth, selectedYear);
   };
 
   if (!isOpen) return null;
@@ -84,7 +37,7 @@ const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClo
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-2">
             <CalendarClock className="text-blue-600" size={24} />
-            <h2 className="text-lg font-bold text-slate-900">Create salary in back date</h2>
+            <h2 className="text-lg font-bold text-slate-900">Payroll wizard — past period</h2>
           </div>
           <button type="button" onClick={onClose} className="p-2 rounded-lg hover:bg-slate-100 text-slate-500" aria-label="Close">
             <X size={20} />
@@ -92,31 +45,11 @@ const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClo
         </div>
 
         <p className="text-sm text-slate-600 mb-4">
-          Choose one employee and the payroll month. Only that employee gets a payslip for the selected period (if they do not already have one). Joining-month salaries are prorated.
+          Choose the payroll month and year. You will be taken to the Payroll Wizard to generate attendance summaries,
+          process payslips, and approve the run before payment.
         </p>
 
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Employee</label>
-            <select
-              value={selectedEmployeeId}
-              onChange={(e) => setSelectedEmployeeId(e.target.value)}
-              disabled={employees.length === 0}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-slate-100 disabled:text-slate-500"
-              aria-label="Employee"
-            >
-              {employees.length === 0 ? (
-                <option value="">No employees — add in Workforce first</option>
-              ) : (
-                employees.map((emp) => (
-                  <option key={emp.id} value={emp.id}>
-                    {emp.name}
-                    {emp.department ? ` — ${emp.department}` : ''}
-                  </option>
-                ))
-              )}
-            </select>
-          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Month</label>
             <select
@@ -145,25 +78,16 @@ const BackDateSalaryModal: React.FC<BackDateSalaryModalProps> = ({ isOpen, onClo
           </div>
         </div>
 
-        {error && (
-          <div className="mt-4 flex items-center gap-2 text-red-600 text-sm bg-red-50 rounded-xl px-3 py-2">
-            <AlertCircle size={18} />
-            {error}
-          </div>
-        )}
-
         <div className="mt-6 flex justify-end gap-3">
           <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl font-medium text-slate-600 hover:bg-slate-100">
             Cancel
           </button>
           <button
             type="button"
-            onClick={handleRun}
-            disabled={isRunning || employees.length === 0 || !selectedEmployeeId}
-            className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+            onClick={handleOpen}
+            className="bg-blue-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-blue-700"
           >
-            {isRunning ? <Loader2 size={18} className="animate-spin" /> : null}
-            {isRunning ? 'Running...' : 'Run salary creation'}
+            Open payroll wizard
           </button>
         </div>
       </div>

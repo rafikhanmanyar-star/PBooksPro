@@ -53,10 +53,15 @@ export const PAYROLL_ENTITY_TYPES = new Set([
   'payroll_grade',
   'payroll_employee',
   'payroll_run',
+  'payroll_summary',
   'payslip',
   'payroll_settings',
   'payroll_project',
 ]);
+
+export const ATTENDANCE_ENTITY_TYPES = new Set(['attendance_record']);
+
+export const LEAVE_ENTITY_TYPES = new Set(['leave_request', 'leave_type', 'leave_balance']);
 
 function passesTenantScope(payload: RealtimeEntityPayload, ctx: InvalidateEntityEventContext): boolean {
   if (payload.tenantId && ctx.currentTenantId && payload.tenantId !== ctx.currentTenantId) {
@@ -106,6 +111,8 @@ async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<vo
       ['contracts'],
       queryKeys.projects.all,
       ['payroll'],
+      ['attendance'],
+      ['leave'],
       ['documents'],
     ],
     'bulk-tenant-refresh'
@@ -243,7 +250,19 @@ export async function invalidateQueriesForEntityEvent(
   }
 
   if (PAYROLL_ENTITY_TYPES.has(entityType)) {
-    await invalidateAndTrace(queryClient, [['payroll']], 'payroll');
+    await invalidateAndTrace(
+      queryClient,
+      [['payroll'], ['payroll', 'attendance-summaries'], ['payroll', 'wizard']],
+      'payroll'
+    );
+  }
+
+  if (ATTENDANCE_ENTITY_TYPES.has(entityType)) {
+    await invalidateAndTrace(queryClient, [['attendance']], 'attendance');
+  }
+
+  if (LEAVE_ENTITY_TYPES.has(entityType)) {
+    await invalidateAndTrace(queryClient, [['leave']], 'leave');
   }
 
   if (entityType === 'document') {

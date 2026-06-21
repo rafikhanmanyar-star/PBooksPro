@@ -619,7 +619,11 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
       newPayslips: result.processing_summary.new_payslips_generated,
       totalPayslips: result.processing_summary.total_payslips,
     });
-    emitEntityEvent(tenantId, 'updated', 'payroll_run', { data: rowToPayrollRunApi(result.run), sourceUserId: req.userId });
+    emitEntityEvent(tenantId, 'updated', 'payroll_run', { id: result.run.id, sourceUserId: req.userId ?? undefined });
+    emitEntityEvent(tenantId, 'updated', 'payroll_summary', {
+      id: `${result.run.year}-${result.run.month}`,
+      sourceUserId: req.userId ?? undefined,
+    });
     sendSuccess(res, {
         ...rowToPayrollRunApi(result.run),
         processing_summary: result.processing_summary,

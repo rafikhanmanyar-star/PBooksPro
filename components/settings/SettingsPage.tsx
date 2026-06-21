@@ -45,9 +45,9 @@ import { isRbacV2DataScopeUiEnabled } from '../../services/api/securityDataScope
 import EnterpriseAuditViewer from './EnterpriseAuditViewer';
 import { usePermissions } from '../../hooks/usePermissions';
 import CustomerBillingPortal from '../billing/CustomerBillingPortal';
-import AdminSubscriptionDashboard from '../billing/AdminSubscriptionDashboard';
-import SystemHealthCenter from '../monitoring/SystemHealthCenter';
-import AdminReferralDashboard from '../referrals/AdminReferralDashboard';
+// Platform administration (Subscription Admin, System Health Center, Referral Admin) is
+// NOT part of the tenant client. It lives only in the PBooksPro admin portal (admin/ app,
+// /api/admin/* behind admin_users auth). Removed here to enforce tenant isolation.
 import { useOnboardingOptional } from '../../context/OnboardingContext';
 import { Property } from '../../types';
 import ClearTransactionsModal from './ClearTransactionsModal';
@@ -259,13 +259,6 @@ const SettingsPage: React.FC = () => {
                       : []),
                     ...(onboarding?.canManage
                       ? [{ id: 'setup-wizard', label: 'Setup Wizard', icon: ICONS.fileText || '📋' }]
-                      : []),
-                    ...(perms.has('platform.admin')
-                      ? [
-                          { id: 'admin-subscriptions', label: 'Subscription Admin', icon: ICONS.briefcase || '📊' },
-                          { id: 'admin-monitoring', label: 'System Health Center', icon: ICONS.activity || '📡' },
-                          { id: 'admin-referrals', label: 'Referral Admin', icon: ICONS.users || '👥' },
-                        ]
                       : []),
                     ...(showUserManagement ? [
                         { id: 'users', label: 'User Management', icon: ICONS.users },
@@ -1363,21 +1356,6 @@ const SettingsPage: React.FC = () => {
                                     Restart from beginning
                                   </Button>
                                 </div>
-                            </div>
-                        )}
-                        {activeCategory === 'admin-subscriptions' && perms.has('platform.admin') && (
-                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <AdminSubscriptionDashboard />
-                            </div>
-                        )}
-                        {activeCategory === 'admin-monitoring' && perms.has('platform.admin') && (
-                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <SystemHealthCenter />
-                            </div>
-                        )}
-                        {activeCategory === 'admin-referrals' && perms.has('platform.admin') && (
-                            <div className="bg-app-card rounded-2xl shadow-ds-card border border-app-border overflow-hidden p-6">
-                                <AdminReferralDashboard />
                             </div>
                         )}
                         {activeCategory === 'backup' && <BackupRestorePage />}

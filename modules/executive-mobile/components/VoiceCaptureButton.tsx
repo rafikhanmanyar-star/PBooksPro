@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ICONS } from '../../../constants';
+import { ensureMicrophoneForSpeech } from '../utils/microphonePermission';
 
 type Props = {
   onTranscript: (text: string) => void;
   className?: string;
+  onError?: (message: string) => void;
 };
 
-export default function VoiceCaptureButton({ onTranscript, className = '' }: Props) {
+export default function VoiceCaptureButton({ onTranscript, className = '', onError }: Props) {
   const [listening, setListening] = useState(false);
   const [supported, setSupported] = useState(false);
 
@@ -17,11 +19,17 @@ export default function VoiceCaptureButton({ onTranscript, className = '' }: Pro
     );
   }, []);
 
-  const startListening = useCallback(() => {
+  const startListening = useCallback(async () => {
     const SR =
       window.SpeechRecognition ||
       (window as Window & { webkitSpeechRecognition?: typeof SpeechRecognition }).webkitSpeechRecognition;
     if (!SR) return;
+
+    const mic = await ensureMicrophoneForSpeech();
+    if (!mic.ok) {
+      onError?.(mic.reason);
+      return;
+    }
 
     const recognition = new SR();
     recognition.lang = 'en-PK';
@@ -37,14 +45,14 @@ export default function VoiceCaptureButton({ onTranscript, className = '' }: Pro
     };
 
     recognition.start();
-  }, [onTranscript]);
+  }, [onTranscript, onError]);
 
   if (!supported) return null;
 
   return (
     <button
       type="button"
-      onClick={startListening}
+      onClick={() => void startListening()}
       className={`inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-app-border bg-app-card text-sm font-medium touch-manipulation ${className} ${
         listening ? 'border-ds-primary text-ds-primary animate-pulse' : 'text-app-muted'
       }`}

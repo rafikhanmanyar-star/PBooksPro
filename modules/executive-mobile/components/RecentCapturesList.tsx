@@ -1,13 +1,18 @@
 import React from 'react';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useUnpostedTransactions } from '../hooks/useUnpostedTransactions';
-import { UNPOSTED_TRANSACTION_TYPES } from '../../../types/executiveMobile.types';
+import {
+  INFLOW_CAPTURE_TYPES,
+  OUTFLOW_CAPTURE_TYPES,
+  captureTypeDisplayLabel,
+  captureTypeIcon,
+} from '../constants/quickCaptureTypes';
+import type { MoneyFlow } from '../constants/quickCaptureTypes';
+import { getCaptureDisplayLabel, stripCaptureDescriptionPrefix } from '../utils/captureSubmitMapping';
 import type { UnpostedTransactionStatus } from '../../../types/executiveMobile.types';
 import { CURRENCY, ICONS } from '../../../constants';
-import { transactionTypeIcon } from '../constants/quickTransactionWizard';
 import { formatDateTime } from '../../../utils/dateUtils';
-
-const TYPE_LABELS = Object.fromEntries(UNPOSTED_TRANSACTION_TYPES.map((t) => [t.id, t.label]));
+import { useProjects } from '../../../hooks/useSelectiveState';
 
 const STATUS_STYLES: Record<UnpostedTransactionStatus, string> = {
   draft: 'bg-slate-500/15 text-slate-500',
@@ -17,6 +22,24 @@ const STATUS_STYLES: Record<UnpostedTransactionStatus, string> = {
   rejected: 'bg-red-500/15 text-red-600 dark:text-red-400',
 };
 
+function flowForTransaction(tx: { transactionType: string }): MoneyFlow {
+  if (tx.transactionType === 'customer_collection' || tx.transactionType === 'cash_deposit') {
+    return 'in';
+  }
+  return 'out';
+}
+
+function iconForTransaction(tx: { transactionType: string; description?: string }) {
+  const flow = flowForTransaction(tx);
+  const label = getCaptureDisplayLabel(tx);
+  const allCore = [...OUTFLOW_CAPTURE_TYPES, ...INFLOW_CAPTURE_TYPES];
+  const core = allCore.find(
+    (t) => captureTypeDisplayLabel(t, flow) === label || t.label === label
+  );
+  if (core) return captureTypeIcon(core, flow);
+  return ICONS.layers;
+}
+
 function statusLabel(status: UnpostedTransactionStatus): string {
   if (status === 'under_review') return 'Under Review';
   return status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' ');
@@ -25,6 +48,7 @@ function statusLabel(status: UnpostedTransactionStatus): string {
 export default function RecentCapturesList({ limit = 4 }: { limit?: number }) {
   const { setView } = useExecutiveMode();
   const { data, isLoading } = useUnpostedTransactions({ mine: true, limit });
+  const projects = useProjects();
 
   const items = data ?? [];
 
@@ -56,14 +80,17 @@ export default function RecentCapturesList({ limit = 4 }: { limit?: number }) {
             className="flex items-center gap-3 p-3 rounded-xl border border-app-border/60 bg-app-card"
           >
             <span className="w-10 h-10 rounded-xl executive-metric-icon executive-metric-icon--teal shrink-0 inline-flex items-center justify-center">
-              <span className="w-5 h-5">{transactionTypeIcon(tx.transactionType)}</span>
+              <span className="w-5 h-5">{iconForTransaction(tx)}</span>
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-app-text truncate">
-                {TYPE_LABELS[tx.transactionType] ?? tx.transactionType}
+                {getCaptureDisplayLabel(tx)}
               </p>
               <p className="text-xs text-app-muted truncate">
-                {tx.partyName || tx.projectId || tx.description || '—'}
+                {tx.partyName ||
+                  projects?.find((p) => p.id === tx.projectId)?.name ||
+                  stripCaptureDescriptionPrefix(tx.description) ||
+                  '—'}
               </p>
               <p className="text-[10px] text-app-muted mt-0.5">
                 {formatDateTime(tx.createdAt || tx.transactionDate)}

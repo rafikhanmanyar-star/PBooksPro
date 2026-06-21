@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { Router } from 'express';
 import { adminAuthMiddleware } from '../../../adminPortal/middleware/adminAuthMiddleware.js';
+import { isAdminBootstrapEnabled, ADMIN_BOOTSTRAP_WARNING } from '../adminBootstrapGate.js';
 import tenantRoutes from './tenants.js';
 import licenseRoutes from './licenses.js';
 import authRoutes from './auth.js';
@@ -18,10 +19,14 @@ import emailAutomationRoutes from './emailAutomation.js';
 
 const router = Router();
 
-// Temporary endpoint to create admin user (NO AUTH REQUIRED)
-// SECURITY: Remove this after creating admin user
-// MUST be before adminAuthMiddleware() to be accessible without auth
-router.use('/create-admin', createAdminRoutes);
+// Privileged, UNAUTHENTICATED super-admin bootstrap endpoint.
+// Disabled by default. Mounted ONLY in local development with an explicit opt-in
+// (NODE_ENV=development AND ENABLE_ADMIN_BOOTSTRAP=true). Never mounted in
+// staging or production. See modules/admin-portal/adminBootstrapGate.ts.
+if (isAdminBootstrapEnabled()) {
+  console.warn(ADMIN_BOOTSTRAP_WARNING);
+  router.use('/create-admin', createAdminRoutes);
+}
 
 // Auth routes (login) should NOT require authentication
 router.use('/auth', authRoutes);

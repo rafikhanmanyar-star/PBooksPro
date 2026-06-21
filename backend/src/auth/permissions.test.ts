@@ -10,6 +10,7 @@ import {
   roleCanWriteProjectSellingCatalog,
   roleCanViewAllMarketingPlans,
   roleCanApproveMarketingPlans,
+  ALL_PERMISSIONS,
 } from './permissions.js';
 
 describe('permissions matrix', () => {
@@ -83,5 +84,23 @@ describe('permissions matrix', () => {
     const matrix = buildPermissionMatrix();
     assert.equal(matrix.length, 6);
     assert.ok(permissionsForRole('Admin').includes('reports.trial_balance.read'));
+  });
+
+  it('platform.admin is granted to NO tenant role (cross-tenant isolation)', () => {
+    // platform.admin gates cross-tenant platform administration. It must never be
+    // reachable from a tenant token — including a tenant Super Admin. Enforced by
+    // excluding it from ALL_PERMISSIONS (super_admin = new Set(ALL_PERMISSIONS)).
+    assert.equal(
+      (ALL_PERMISSIONS as readonly string[]).includes('platform.admin'),
+      false,
+      'platform.admin must be excluded from ALL_PERMISSIONS'
+    );
+    for (const role of ['SUPER_ADMIN', 'Admin', 'Accountant', 'Project Manager', 'Sales User', 'Read Only User']) {
+      assert.equal(
+        roleHasPermission(role, 'platform.admin'),
+        false,
+        `${role} must not hold platform.admin`
+      );
+    }
   });
 });

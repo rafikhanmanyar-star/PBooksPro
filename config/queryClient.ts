@@ -41,6 +41,8 @@ const OPERATIONAL_QUERY_PREFIXES: readonly (readonly unknown[])[] = [
   ['contracts'],
   ['workflow'],
   ['payroll'],
+  ['attendance'],
+  ['leave'],
   ['procurement-dashboard'],
 ];
 

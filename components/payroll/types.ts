@@ -19,6 +19,7 @@ export enum EmploymentStatus {
 export enum PayrollStatus {
   DRAFT = 'DRAFT',
   PROCESSING = 'PROCESSING',
+  GENERATED = 'GENERATED',
   APPROVED = 'APPROVED',
   PAID = 'PAID',
   CANCELLED = 'CANCELLED'
@@ -257,6 +258,19 @@ export interface Payslip {
   adjustment_details: SalaryAdjustment[];
   /** Captured when the payslip was generated; used for display and payment splits instead of the employee's current assignments. */
   assignment_snapshot?: PayslipAssignmentSnapshot;
+
+  /** Attendance-aware fields (Payroll V3 Sprint 3B). */
+  working_days?: number;
+  present_days?: number;
+  leave_days?: number;
+  paid_leave_days?: number;
+  unpaid_leave_days?: number;
+  absent_days?: number;
+  half_days?: number;
+  lop_days?: number;
+  lop_deduction?: number;
+  adjusted_basic?: number;
+  attendance_summary_snapshot?: Record<string, unknown>;
   
   // Status and partial payment
   is_paid: boolean;

@@ -13,6 +13,10 @@ import {
   CreditCard,
   Calendar,
   CalendarClock,
+  LayoutDashboard,
+  ClipboardList,
+  CalendarRange,
+  FileText,
   Pencil,
   Banknote,
   Loader2,
@@ -36,6 +40,11 @@ import EmployeeForm from './EmployeeForm';
 import PayrollReport from './PayrollReport';
 import PaymentHistory from './PaymentHistory';
 import PayrollSettingsPage from './PayrollSettingsPage';
+import PayrollDashboard from './PayrollDashboard';
+import PayslipsPage from './PayslipsPage';
+import AttendancePage from './attendance/AttendancePage';
+import LeaveManagementPage from './leave/LeaveManagementPage';
+import PayrollWizard from './wizard/PayrollWizard';
 import { PayrollEmployee, PayrollRun, Payslip } from './types';
 import { storageService } from './services/storageService';
 import { hydratePayrollFromDb } from './services/payrollDb';
@@ -49,6 +58,7 @@ import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType, Transaction } from '../../types';
 import { formatCurrency } from './utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from './utils/payslipPaymentState';
+import { canPayPayrollRun } from './utils/payrollWorkflowGuards';
 import { formatPayslipAssignmentDisplay } from './utils/payslipAssignment';
 import {
   buildPayrollLedgerRowsFromSource,
@@ -69,13 +79,13 @@ import BackDateSalaryModal from './modals/BackDateSalaryModal';
 import EditPayslipModal from './modals/EditPayslipModal';
 import PaySalaryModal from './modals/PaySalaryModal';
 import BulkPayPayslipsModal, { BulkPayItem } from './modals/BulkPayPayslipsModal';
-import { runSalaryCreationForPeriodAsync } from './services/runSalaryCreation';
 import { useCollapsibleSubNav } from '../../hooks/useCollapsibleSubNav';
 import SubNavModeToggle from '../layout/SubNavModeToggle';
 import NavSectionLabel from '../layout/NavSectionLabel';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
+import { usePermissions } from '../../hooks/usePermissions';
 import { usePaginatedList, DEFAULT_LIST_PAGE_SIZE, PAGINATION_EXPORT_MAX_ROWS } from '../../hooks/pagination';
 
 const MONTH_LABEL_TO_NUM: Record<string, number> = {
@@ -171,6 +181,7 @@ const PayrollHub: React.FC = () => {
   const {
     activeSubTab,
     setActiveSubTab,
+    setWizardSeed,
     selectedEmployee,
     setSelectedEmployee,
     isAddingEmployee,
@@ -180,6 +191,7 @@ const PayrollHub: React.FC = () => {
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
   const userRole = user?.role || '';
+  const { canReadAttendance, canReadLeave } = usePermissions();
 
   // Check if user is an employee (non-HR role) - for now, we show full access
   const isEmployeeRole = userRole === 'Employee';
@@ -194,7 +206,6 @@ const PayrollHub: React.FC = () => {
   const [editPayslipModalOpen, setEditPayslipModalOpen] = useState(false);
   const [editingPayslip, setEditingPayslip] = useState<Payslip | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<PayrollEmployee | null>(null);
-  const [creatingCurrentMonth, setCreatingCurrentMonth] = useState(false);
   const [payModalPayslip, setPayModalPayslip] = useState<Payslip | null>(null);
   const [payModalEmployee, setPayModalEmployee] = useState<PayrollEmployee | null>(null);
   const [payModalRun, setPayModalRun] = useState<PayrollRun | null>(null);
@@ -842,48 +853,42 @@ const PayrollHub: React.FC = () => {
     printReport({ elementId: 'payroll-cycle-printable-area' });
   }, [printReport]);
 
-  const handleBackDateSuccess = useCallback((runId: string, payslips: Payslip[], employeeId: string) => {
-    storageService.init(tenantId);
-    const eid = employeeId?.trim() || null;
-    if (eid) setSelectedCycleEmployeeId(eid);
-    setSelectedRunId(runId);
-    setCyclePayslips(payslips);
-    setTableRecordFilter('ledger');
-  }, [tenantId]);
-
-  // Create salary for "current month" = last calendar month (first to last day of previous month)
-  const handleCreateCurrentMonth = useCallback(async () => {
-    if (!tenantId || !userId) return;
-    setCreatingCurrentMonth(true);
-    try {
-      const now = new Date();
-      const lastMonth0 = now.getMonth() - 1; // 0-indexed previous month
-      const lastMonthYear = lastMonth0 < 0 ? now.getFullYear() - 1 : now.getFullYear();
-      const lastMonth1Based = lastMonth0 < 0 ? 12 : lastMonth0 + 1; // 1-12
-      storageService.init(tenantId);
-      const { runId, payslips } = await runSalaryCreationForPeriodAsync(tenantId, userId, lastMonthYear, lastMonth1Based);
-      setSelectedRunId(runId);
-      setCyclePayslips(payslips);
-      const unpaid = payslips.filter((p) => !payslipIsFullyPaid(p) && payslipRemainingAmount(p) > 0);
-      if (unpaid.length === 1) {
-        setSelectedCycleEmployeeId(unpaid[0]!.employee_id);
-        setTableRecordFilter('ledger');
-      } else {
-        setSelectedCycleEmployeeId(null);
-        setTableRecordFilter('payslips');
-        if (unpaid.length > 1) {
-          setSelectedPayslipIds(unpaid.map((p) => p.id));
-          setBulkPayModalOpen(true);
-        }
+  const openPayrollWizard = useCallback(
+    (month?: number, year?: number) => {
+      if (month != null && year != null) {
+        setWizardSeed({ month, year });
       }
-    } catch (e) {
-      console.error('Create current month failed:', e);
-      const msg = e instanceof Error ? e.message : 'Could not create payroll for last month.';
-      showToast(msg, 'error');
-    } finally {
-      setCreatingCurrentMonth(false);
+      setActiveSubTab('wizard');
+    },
+    [setActiveSubTab, setWizardSeed]
+  );
+
+  const bulkPayBlockedReason = useMemo(() => {
+    if (bulkPayItems.length === 0) return undefined;
+    const runs = [...new Set(bulkPayItems.map((i) => i.run).filter(Boolean))] as PayrollRun[];
+    for (const run of runs) {
+      const guard = canPayPayrollRun(run);
+      if (!guard.allowed) return guard.reason;
     }
-  }, [tenantId, userId, showToast]);
+    return undefined;
+  }, [bulkPayItems]);
+
+  const employeePayBlockedReason = useMemo(() => {
+    if (!selectedCycleEmployeeId || payableIdsInView.length === 0) return undefined;
+    const runs = [
+      ...new Set(
+        displayPayslipsForBulk
+          .filter((ps) => payableIdsInView.includes(ps.id))
+          .map((ps) => runsMap.get(ps.payroll_run_id))
+          .filter(Boolean)
+      ),
+    ] as PayrollRun[];
+    for (const run of runs) {
+      const guard = canPayPayrollRun(run);
+      if (!guard.allowed) return guard.reason;
+    }
+    return undefined;
+  }, [selectedCycleEmployeeId, payableIdsInView, displayPayslipsForBulk, runsMap]);
 
   const openEditPayslip = (ps: Payslip) => {
     const employees = storageService.getEmployees(tenantId);
@@ -1007,9 +1012,14 @@ const PayrollHub: React.FC = () => {
 
   // Navigation tabs: Workforce, Payroll Cycle, Analytics, Payment History, Settings
   const hrTabs = [
-    { id: 'workforce' as const, label: 'Workforce', icon: Users },
-    { id: 'cycles' as const, label: 'Payroll Cycle', icon: CreditCard },
-    { id: 'report' as const, label: 'Analytics', icon: BarChart3 },
+    { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'workforce' as const, label: 'Employees', icon: Users },
+    ...(canReadAttendance ? [{ id: 'attendance' as const, label: 'Attendance', icon: ClipboardList }] : []),
+    ...(canReadLeave ? [{ id: 'leave' as const, label: 'Leave Management', icon: CalendarRange }] : []),
+    { id: 'wizard' as const, label: 'Payroll Wizard', icon: CalendarClock },
+    { id: 'cycles' as const, label: 'Payroll Processing', icon: CreditCard },
+    { id: 'payslips' as const, label: 'Payslips', icon: FileText },
+    { id: 'report' as const, label: 'Reports', icon: BarChart3 },
     { id: 'history' as const, label: 'Payment History', icon: History },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
@@ -1206,6 +1216,12 @@ const PayrollHub: React.FC = () => {
 
       {/* Tab content - fills viewport; cycles uses fixed layout with independent scrolls, others scroll in this area */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col overflow-hidden bg-app-card rounded-lg md:rounded-l-none md:border-l-0 border border-app-border animate-in fade-in duration-500">
+        {activeSubTab === 'dashboard' && (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <PayrollDashboard />
+          </div>
+        )}
+
         {activeSubTab === 'workforce' && (
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6">
           {selectedEmployee ? (
@@ -1249,16 +1265,21 @@ const PayrollHub: React.FC = () => {
                   className="order-2 sm:order-1 border-2 border-primary text-primary bg-app-card px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-bold hover:bg-primary/5 transition-all flex items-center justify-center gap-2 text-sm shadow-sm"
                 >
                   <CalendarClock size={18} className="shrink-0" />
-                  Create salary in back date
+                  Payroll wizard (past period)
                 </button>
                 <button
                   type="button"
-                  onClick={handleCreateCurrentMonth}
-                  disabled={creatingCurrentMonth}
-                  className="order-1 sm:order-2 bg-primary text-ds-on-primary px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-bold hover:opacity-90 transition-all shadow-ds-card flex items-center justify-center gap-2 text-sm disabled:opacity-70"
+                  onClick={() => {
+                    const now = new Date();
+                    const lastMonth0 = now.getMonth() - 1;
+                    const lastMonthYear = lastMonth0 < 0 ? now.getFullYear() - 1 : now.getFullYear();
+                    const lastMonth1Based = lastMonth0 < 0 ? 12 : lastMonth0 + 1;
+                    openPayrollWizard(lastMonth1Based, lastMonthYear);
+                  }}
+                  className="order-1 sm:order-2 bg-primary text-ds-on-primary px-4 sm:px-5 py-2.5 sm:py-3 rounded-xl font-bold hover:opacity-90 transition-all shadow-ds-card flex items-center justify-center gap-2 text-sm"
                 >
-                  {creatingCurrentMonth ? <Loader2 size={18} className="animate-spin shrink-0" /> : <Calendar size={18} className="shrink-0" />}
-                  {creatingCurrentMonth ? 'Creating...' : 'Create salary for the current month'}
+                  <Calendar size={18} className="shrink-0" />
+                  Open payroll wizard (last month)
                 </button>
               </div>
             </div>
@@ -1421,8 +1442,10 @@ const PayrollHub: React.FC = () => {
                       {tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
                         <button
                           type="button"
+                          disabled={!!bulkPayBlockedReason}
+                          title={bulkPayBlockedReason ?? undefined}
                           onClick={() => setBulkPayModalOpen(true)}
-                          className="bg-ds-success text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2"
+                          className="bg-ds-success text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
                         >
                           <Banknote size={16} /> Pay ({selectedPayslipIds.length})
                         </button>
@@ -1496,9 +1519,10 @@ const PayrollHub: React.FC = () => {
                       {selectedCycleEmployeeId && payableIdsInView.length > 0 ? (
                         <button
                           type="button"
+                          disabled={!!employeePayBlockedReason}
                           onClick={handlePaySelectedEmployeeUnpaid}
-                          className="bg-ds-success text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2"
-                          title="Pay all unpaid payslips for selected employee"
+                          className="bg-ds-success text-white px-3 py-2 rounded-lg font-bold text-xs sm:text-sm hover:opacity-90 flex items-center gap-2 disabled:opacity-50"
+                          title={employeePayBlockedReason ?? 'Pay all unpaid payslips for selected employee'}
                         >
                           <Banknote size={16} /> Pay ({payableIdsInView.length})
                         </button>
@@ -1668,7 +1692,9 @@ const PayrollHub: React.FC = () => {
                           const { ps, emp, run, name, periodLabel, projectInfo, status, isFullyPaid } = row;
                           const paidAmt = row.paid_amount;
                           const remainingAmt = row.remaining;
+                          const payGuard = canPayPayrollRun(run);
                           const isPayable = !isFullyPaid;
+                          const payBlocked = isFullyPaid || !payGuard.allowed;
                           const isSelected = selectedPayslipIds.includes(ps.id);
                           const companyName = tenant?.companyName || tenant?.name || 'Company';
                           const message = run ? `Payslip for ${run.month} ${run.year}: Net Pay PKR ${formatCurrency(ps.net_pay)}. ${companyName}.` : '';
@@ -1737,15 +1763,24 @@ const PayrollHub: React.FC = () => {
                                 <div className="flex justify-end gap-2 flex-wrap">
                                   <button
                                     type="button"
-                                    disabled={isFullyPaid}
-                                    title={isFullyPaid ? 'Already fully paid' : status === 'Partially paid' ? 'Pay remaining amount' : 'Pay salary'}
+                                    disabled={payBlocked}
+                                    title={
+                                      isFullyPaid
+                                        ? 'Already fully paid'
+                                        : payBlocked && payGuard.reason
+                                          ? payGuard.reason
+                                          : status === 'Partially paid'
+                                            ? 'Pay remaining amount'
+                                            : 'Pay salary'
+                                    }
                                     onClick={() => {
+                                      if (payBlocked) return;
                                       setPayModalPayslip(ps);
                                       setPayModalEmployee(emp || null);
                                       setPayModalRun(run || null);
                                     }}
                                     className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg font-medium text-xs ${
-                                      isFullyPaid ? 'text-app-muted cursor-not-allowed bg-app-toolbar' : 'text-ds-success hover:bg-ds-success/10'
+                                      payBlocked ? 'text-app-muted cursor-not-allowed bg-app-toolbar' : 'text-ds-success hover:bg-ds-success/10'
                                     }`}
                                   >
                                     <Banknote size={14} /> Pay
@@ -1961,9 +1996,10 @@ const PayrollHub: React.FC = () => {
             <BackDateSalaryModal
               isOpen={backDateModalOpen}
               onClose={() => setBackDateModalOpen(false)}
-              onSuccess={handleBackDateSuccess}
-              tenantId={tenantId}
-              userId={userId}
+              onOpenWizard={(month, year) => {
+                setBackDateModalOpen(false);
+                openPayrollWizard(month, year);
+              }}
             />
             <PaySalaryModal
               isOpen={!!payModalPayslip}
@@ -2009,6 +2045,30 @@ const PayrollHub: React.FC = () => {
               action={paymentWarningModalState.action ?? 'delete'}
               linkedItemName={getPaymentLinkedItemName(paymentWarningModalState.transaction)}
             />
+          </div>
+        )}
+
+        {activeSubTab === 'attendance' && canReadAttendance && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <AttendancePage />
+          </div>
+        )}
+
+        {activeSubTab === 'leave' && canReadLeave && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <LeaveManagementPage />
+          </div>
+        )}
+
+        {activeSubTab === 'wizard' && (
+          <div className="flex-1 min-h-0 overflow-auto">
+            <PayrollWizard />
+          </div>
+        )}
+
+        {activeSubTab === 'payslips' && (
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <PayslipsPage />
           </div>
         )}
 
