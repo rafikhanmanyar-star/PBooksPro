@@ -63,6 +63,12 @@ type AuthCacheEntry = {
   rejectionReason: string | null;
   resolvedPermissions: Permission[];
   expiresAt: number;
+  /** RBAC V2: cached effective access context. Present only when V2 engine was active at fill time. */
+  effectiveAccess?: EffectiveAccessContext;
+  /** users.access_version at cache-fill time. Used for V2 staleness check. */
+  accessVersion?: number;
+  /** tenants.rbac_global_version at cache-fill time. Used for V2 staleness check. */
+  tenantRbacGlobalVersion?: number;
 };
 
 const authUserCache = new Map<string, AuthCacheEntry>();
@@ -95,6 +101,28 @@ function setCachedAuthUser(entry: Omit<AuthCacheEntry, 'expiresAt'>): void {
     ...entry,
     expiresAt: Date.now() + AUTH_CACHE_TTL_MS,
   });
+}
+
+/**
+ * Single cheap query to detect whether a cached V2 context is stale.
+ * Reads only the two version counters that RBAC management increments on any
+ * role/permission/assignment change. Returns null when the user row is missing.
+ */
+async function peekV2Versions(
+  userId: string,
+  tenantId: string,
+): Promise<{ accessVersion: number; tenantRbacGlobalVersion: number } | null> {
+  const pool = getPool();
+  const r = await pool.query<{ access_version: number; rbac_global_version: number }>(
+    `SELECT u.access_version, t.rbac_global_version
+     FROM users u
+     INNER JOIN tenants t ON t.id = u.tenant_id
+     WHERE u.id = $1 AND u.tenant_id = $2`,
+    [userId, tenantId],
+  );
+  const row = r.rows[0];
+  if (!row) return null;
+  return { accessVersion: row.access_version, tenantRbacGlobalVersion: row.rbac_global_version };
 }
 
 /** Validates JWT and re-checks user is active with current role from the database. */
@@ -195,7 +223,52 @@ export async function authMiddleware(
     }
 
     const v2Engine = isRbacV2AuthorizationEngineEnabled();
-    const cached = v2Engine ? null : getCachedAuthUser(payload.sub, payload.tenantId);
+    let cached = getCachedAuthUser(payload.sub, payload.tenantId);
+
+    // V2: validate the cached context against the two version counters before trusting it.
+    // One cheap SELECT replaces 3-5 full resolution queries on every cache hit. Counters
+    // are incremented by RBAC management on any role/permission/assignment change, so a
+    // mismatch correctly triggers re-resolution and a fresh STALE_AV check.
+    if (v2Engine && cached?.effectiveAccess !== undefined) {
+      const t0 = Date.now();
+      const versions = await peekV2Versions(payload.sub, payload.tenantId);
+      const peekMs = Date.now() - t0;
+      const isStale =
+        !versions ||
+        versions.accessVersion !== cached.accessVersion ||
+        versions.tenantRbacGlobalVersion !== cached.tenantRbacGlobalVersion;
+
+      if (isStale) {
+        invalidateAuthUserCache(payload.sub, payload.tenantId);
+        cached = null;
+        void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
+          captureMonitoringEvent({
+            category: 'authentication',
+            severity: 'info',
+            message: `V2 auth cache invalidated (version changed, peek ${peekMs}ms)`,
+            code: 'AUTH_CACHE_V2_STALE',
+            route: req.originalUrl,
+            method: req.method,
+            statusCode: 0,
+            requestId: (req as { requestId?: string }).requestId,
+          });
+        });
+      } else {
+        void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
+          captureMonitoringEvent({
+            category: 'authentication',
+            severity: 'info',
+            message: `V2 auth cache hit (peek ${peekMs}ms)`,
+            code: 'AUTH_CACHE_V2_HIT',
+            route: req.originalUrl,
+            method: req.method,
+            statusCode: 0,
+            requestId: (req as { requestId?: string }).requestId,
+          });
+        });
+      }
+    }
+
     let user: {
       id: string;
       tenant_id: string;
@@ -205,6 +278,8 @@ export async function authMiddleware(
       is_active: boolean;
       organization_status: string;
       rejection_reason: string | null;
+      access_version?: number;
+      rbac_global_version?: number;
     };
 
     if (cached) {
@@ -219,8 +294,12 @@ export async function authMiddleware(
         rejection_reason: cached.rejectionReason,
       };
       req.resolvedPermissions = cached.resolvedPermissions;
+      if (v2Engine && cached.effectiveAccess) {
+        req.effectiveAccess = cached.effectiveAccess;
+      }
     } else {
       const pool = getPool();
+      const poolWaiting = pool.waitingCount;
       const r = await pool.query<{
         id: string;
         tenant_id: string;
@@ -230,9 +309,12 @@ export async function authMiddleware(
         is_active: boolean;
         organization_status: string;
         rejection_reason: string | null;
+        access_version: number;
+        rbac_global_version: number;
       }>(
         `SELECT u.id, ut.tenant_id, ut.role, u.username, u.name, u.is_active,
-                COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason
+                COALESCE(t.status, 'ACTIVE') AS organization_status, t.rejection_reason,
+                u.access_version, t.rbac_global_version
          FROM user_tenants ut
          INNER JOIN users u ON u.id = ut.user_id
          INNER JOIN tenants t ON t.id = ut.tenant_id
@@ -258,7 +340,9 @@ export async function authMiddleware(
       user = r.rows[0];
 
       if (v2Engine) {
+        const t0 = Date.now();
         const authResult = await authorizeV2ForRequest(req, payload, user.role);
+        const resolveMs = Date.now() - t0;
         if (!authResult.ok && authResult.code === 'STALE_AV') {
           sendFailure(res, 401, 'TOKEN_STALE', 'Session expired. Please sign in again.');
           return;
@@ -267,6 +351,31 @@ export async function authMiddleware(
           sendFailure(res, 401, 'UNAUTHORIZED', 'Invalid or expired token');
           return;
         }
+        setCachedAuthUser({
+          userId: user.id,
+          tenantId: user.tenant_id,
+          role: user.role,
+          username: user.username,
+          name: user.name,
+          organizationStatus: user.organization_status,
+          rejectionReason: user.rejection_reason,
+          resolvedPermissions: req.resolvedPermissions ?? [],
+          effectiveAccess: authResult.context,
+          accessVersion: user.access_version,
+          tenantRbacGlobalVersion: user.rbac_global_version,
+        });
+        void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
+          captureMonitoringEvent({
+            category: 'authentication',
+            severity: 'info',
+            message: `V2 auth cache miss: resolved in ${resolveMs}ms, pool waiting=${poolWaiting}`,
+            code: 'AUTH_CACHE_V2_MISS',
+            route: req.originalUrl,
+            method: req.method,
+            statusCode: 0,
+            requestId: (req as { requestId?: string }).requestId,
+          });
+        });
       } else {
         const resolvedPermissions = await resolveUserPermissions(user.tenant_id, user.id, user.role);
         req.resolvedPermissions = resolvedPermissions;
