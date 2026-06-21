@@ -67,15 +67,16 @@ function applyViewportCSS(size: ViewportSize) {
   root.dataset.viewportCompact = size.isCompactDesktop ? 'true' : 'false';
 }
 
-const SIDEBAR_RAIL_WIDTH = '4rem';
+const SIDEBAR_EXPANDED_WIDTH = '16.25rem'; /* 260px */
+const SIDEBAR_RAIL_WIDTH = '4.5rem'; /* 72px */
 
-function applySidebarWidth(size: ViewportSize, mainNavCollapsed: boolean) {
+function applySidebarWidth(_size: ViewportSize, mainNavCollapsed: boolean) {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   if (mainNavCollapsed) {
     root.style.setProperty('--sidebar-width', SIDEBAR_RAIL_WIDTH);
   } else {
-    root.style.setProperty('--sidebar-width', size.isCompactDesktop ? '15rem' : '17.5rem');
+    root.style.setProperty('--sidebar-width', SIDEBAR_EXPANDED_WIDTH);
   }
   root.dataset.mainNavCollapsed = mainNavCollapsed ? 'true' : 'false';
 }

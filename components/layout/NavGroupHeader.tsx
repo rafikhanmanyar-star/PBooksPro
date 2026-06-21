@@ -1,6 +1,5 @@
 import React from 'react';
-import { ICONS } from '../../constants';
-import NavSectionLabel from './NavSectionLabel';
+import { ChevronDown } from 'lucide-react';
 
 type NavGroupHeaderProps = {
   title: string;
@@ -8,25 +7,23 @@ type NavGroupHeaderProps = {
   onToggle: () => void;
 };
 
-/** Collapsible group header in the main sidebar — label styling, chevron-only hover. */
+/** Collapsible group header in the main sidebar — high-contrast section label + animated chevron. */
 export default function NavGroupHeader({ title, expanded, onToggle }: NavGroupHeaderProps) {
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="w-full flex items-center justify-between px-3 py-1 group/header"
+      className="sidebar-group-header group/header"
     >
-      <NavSectionLabel as="span" variant="header" tone="sidebar">
-        {title}
-      </NavSectionLabel>
+      <span className="sidebar-group-header__label">{title}</span>
       <span
-        className="text-slate-600 group-hover/header:text-slate-500 transition-colors rounded p-0.5 shrink-0"
+        className={`sidebar-group-header__chevron ${
+          expanded ? 'sidebar-group-header__chevron--expanded' : 'sidebar-group-header__chevron--collapsed'
+        }`}
         aria-hidden
       >
-        {expanded
-          ? React.cloneElement(ICONS.chevronDown as React.ReactElement, { width: 14, height: 14 })
-          : React.cloneElement(ICONS.chevronRight as React.ReactElement, { width: 14, height: 14 })}
+        <ChevronDown size={14} strokeWidth={2.5} />
       </span>
     </button>
   );

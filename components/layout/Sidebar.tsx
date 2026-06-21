@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useCallback, memo } from 'react';
+import { ChevronLeft, ChevronRight, LogOut } from 'lucide-react';
 import { Page } from '../../types';
 import { ICONS } from '../../constants';
 import LicenseManagement from '../license/LicenseManagement';
@@ -18,64 +19,12 @@ import { useViewport } from '../../context/ViewportContext';
 import { isAdminRole } from '../../hooks/useRecordLock';
 import { usePermissions } from '../../hooks/usePermissions';
 import NavGroupHeader from './NavGroupHeader';
+import SidebarNavIcon from './sidebar/SidebarNavIcon';
 
 interface SidebarProps {
     currentPage: Page;
     setCurrentPage: (page: Page) => void;
 }
-
-/** Reference layout: nav sections grouped into rounded cards */
-const SIDEBAR_NAV_CARD_BUCKETS: readonly string[][] = [
-    ['Overview'],
-    ['Financials'],
-    ['Selling', 'Construction'],
-    ['Rental'],
-    ['People'],
-    ['System'],
-];
-
-function bucketSidebarNavGroups<T extends { title: string }>(groups: T[]): T[][] {
-    const byTitle = new Map(groups.map((g) => [g.title, g]));
-    const used = new Set<string>();
-    const buckets: T[][] = [];
-
-    for (const bucket of SIDEBAR_NAV_CARD_BUCKETS) {
-        const matched = bucket
-            .map((title) => byTitle.get(title))
-            .filter((g): g is T => g != null);
-        if (matched.length > 0) {
-            buckets.push(matched);
-            matched.forEach((g) => used.add(g.title));
-        }
-    }
-
-    for (const group of groups) {
-        if (!used.has(group.title)) {
-            buckets.push([group]);
-        }
-    }
-
-    return buckets;
-}
-
-const SIDEBAR_NAV_CARD_CLASS = 'rounded-xl bg-[#1F2937] p-2 space-y-1';
-const SIDEBAR_NAV_ITEM_BASE =
-    'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 group touch-manipulation';
-
-function sidebarNavItemClass(active: boolean): string {
-    return `${SIDEBAR_NAV_ITEM_BASE} ${
-        active
-            ? 'bg-indigo-500 text-white shadow-sm'
-            : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-    }`;
-}
-
-function sidebarNavIconClass(active: boolean): string {
-    return `shrink-0 transition-colors ${active ? 'text-white' : 'text-slate-400 group-hover:text-slate-300'}`;
-}
-
-const SIDEBAR_CHAT_BTN_CLASS =
-    'w-full px-3 py-2.5 rounded-xl border border-emerald-500/35 bg-transparent hover:bg-white/[0.04] text-sm font-medium text-white flex items-center justify-center gap-2 relative touch-manipulation transition-colors';
 
 const TOUR_DATA_ATTR: Partial<Record<string, string>> = {
     dashboard: 'nav-dashboard',
@@ -429,6 +378,229 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         return () => document.removeEventListener('toggle-sidebar', handleToggleSidebar);
     }, []);
 
+    const renderNavItemButton = (
+        item: { page: string; label: string; icon: React.ReactElement },
+        active: boolean,
+        onClick: () => void,
+        collapsed = false
+    ) => (
+        <button
+            key={item.page}
+            type="button"
+            onClick={onClick}
+            title={collapsed ? item.label : undefined}
+            aria-label={item.label}
+            aria-current={active ? 'page' : undefined}
+            data-tour={TOUR_DATA_ATTR[item.page]}
+            className={`sidebar-nav-item${active ? ' sidebar-nav-item--active' : ''}${collapsed ? ' sidebar-nav-item--collapsed' : ''}`}
+        >
+            <SidebarNavIcon page={item.page} active={active} fallbackIcon={item.icon} />
+            {!collapsed && (
+                <>
+                    <span className="sidebar-nav-item__label">{item.label}</span>
+                    {active && (
+                        <span className="sidebar-nav-active-indicator" aria-hidden>
+                            <ChevronRight size={16} strokeWidth={2.5} />
+                        </span>
+                    )}
+                </>
+            )}
+        </button>
+    );
+
+    const renderExpandedBrand = (onCollapse?: () => void, showClose?: boolean) => (
+        <div className="sidebar-brand">
+            <div className="flex items-center gap-3 min-w-0">
+                <div className="sidebar-brand__logo">P</div>
+                <div className="min-w-0">
+                    <h1 className="text-sm font-bold tracking-wide truncate">
+                        <span className="text-red-500">P</span>
+                        <span className="text-white">Books</span>
+                        <span className="text-primary">Pro</span>
+                    </h1>
+                    {organizationName && (
+                        <div className="sidebar-brand__org" title={organizationName}>
+                            {organizationName}
+                        </div>
+                    )}
+                    <div className="sidebar-brand__version">v{displayVersion}</div>
+                </div>
+            </div>
+            {showClose ? (
+                <button
+                    type="button"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="sidebar-collapse-btn"
+                    aria-label="Close menu"
+                    title="Close menu"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                </button>
+            ) : onCollapse ? (
+                <button
+                    type="button"
+                    onClick={onCollapse}
+                    className="sidebar-collapse-btn"
+                    title={mainNavToggleTitle}
+                    aria-label={mainNavToggleTitle}
+                >
+                    <ChevronLeft size={18} strokeWidth={2} aria-hidden />
+                </button>
+            ) : null}
+        </div>
+    );
+
+    const renderRenewalCard = (onAfterOpen?: () => void) => {
+        if (!licenseInfo || (!licenseInfo.isExpired && licenseInfo.daysRemaining > 30)) return null;
+        return (
+            <button
+                type="button"
+                onClick={() => {
+                    setIsLicenseModalOpen(true);
+                    onAfterOpen?.();
+                }}
+                className={`sidebar-renewal-card${licenseInfo.isExpired ? ' sidebar-renewal-card--expired' : ''}`}
+            >
+                <div className="flex items-center justify-between gap-2">
+                    <div>
+                        <div className="sidebar-renewal-card__label">
+                            {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
+                        </div>
+                        <div className="sidebar-renewal-card__days">
+                            {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
+                        </div>
+                    </div>
+                    <div className="sidebar-renewal-card__cta">Renew</div>
+                </div>
+            </button>
+        );
+    };
+
+    const renderUserCard = () => (
+        <div className="sidebar-user-card">
+            <button
+                type="button"
+                onClick={handleLogout}
+                className="sidebar-logout-btn"
+                title="Logout"
+                aria-label="Logout"
+            >
+                <LogOut size={14} strokeWidth={2} />
+            </button>
+            <div className="flex items-start gap-3 min-w-0 pr-6">
+                <div className="sidebar-user-card__avatar">
+                    {userName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                    <div className="sidebar-user-card__name truncate" title={userName}>
+                        {userName}
+                    </div>
+                    {effectiveRole && (
+                        <div className="sidebar-user-card__role truncate" title={effectiveRole}>
+                            {effectiveRole}
+                        </div>
+                    )}
+                    <div className="sidebar-user-card__status">
+                        <span className="sidebar-user-card__status-dot" aria-hidden />
+                        Online
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+
+    const renderLoggedInRow = () => {
+        if (!showLoggedInUsersRow) return null;
+        return (
+            <div className="sidebar-logged-in-row" title="Users currently signed in">
+                <span className="flex items-center gap-2 font-medium">
+                    <span className="sidebar-user-card__status-dot" aria-hidden />
+                    Users logged in
+                </span>
+                <span className="font-semibold text-[#d8e1f0] tabular-nums">{loggedInUsersCount}</span>
+            </div>
+        );
+    };
+
+    const renderChatButton = (onAfterOpen?: () => void) => {
+        if (onlineUsers === null || onlineUsers <= 1) return null;
+        return (
+            <button
+                type="button"
+                onClick={() => {
+                    void fetchOnlineUsersList();
+                    setIsChatModalOpen(true);
+                    onAfterOpen?.();
+                }}
+                className={`sidebar-chat-btn${unreadMessageCount > 0 ? ' animate-pulse' : ''}`}
+                title={`Chat (${onlineUsers} online)`}
+                aria-label="Open chat"
+            >
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400" aria-hidden>
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                Chat
+                {unreadMessageCount > 0 && (
+                    <>
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping" />
+                        <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold">
+                            {unreadMessageCount > 9 ? '9+' : unreadMessageCount}
+                        </span>
+                    </>
+                )}
+            </button>
+        );
+    };
+
+    const renderNavGroups = (onNavigate?: () => void, collapsed = false) => (
+        <>
+            {navGroups.map((group, groupIdx) => {
+                const isGroupCollapsed = collapsedGroups[group.title] || false;
+                return (
+                    <React.Fragment key={group.title}>
+                        {groupIdx > 0 && (
+                            collapsed
+                                ? <div className="border-t border-white/[0.06] my-2 mx-0.5" aria-hidden />
+                                : <hr className="sidebar-section-divider" />
+                        )}
+                        <div className={collapsed ? '' : 'sidebar-nav-group'}>
+                            {!collapsed && (
+                                <NavGroupHeader
+                                    title={group.title}
+                                    expanded={!isGroupCollapsed}
+                                    onToggle={() => handleToggleGroup(group.title)}
+                                />
+                            )}
+                            <div
+                                className={
+                                    collapsed
+                                        ? 'sidebar-nav-items sidebar-nav-items--visible'
+                                        : `sidebar-nav-items ${isGroupCollapsed ? 'sidebar-nav-items--hidden' : 'sidebar-nav-items--visible'}`
+                                }
+                            >
+                                {group.items.map((item) => {
+                                    const active = isCurrent(item.page as Page);
+                                    return renderNavItemButton(
+                                        item,
+                                        active,
+                                        () => {
+                                            setCurrentPage(item.page as Page);
+                                            onNavigate?.();
+                                        },
+                                        collapsed
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </React.Fragment>
+                );
+            })}
+        </>
+    );
+
     return (
         <>
             {/* Mobile Sidebar Drawer - Only visible on mobile */}
@@ -441,444 +613,97 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                     />
 
                     {/* Mobile drawer */}
-                    <aside className="fixed left-0 top-0 h-full w-64 bg-[#111827] border-r border-slate-800 z-50 md:hidden flex flex-col text-slate-300 animate-slide-in-left">
+                    <aside className="fixed left-0 top-0 h-full w-[260px] sidebar-shell z-50 md:hidden flex flex-col animate-slide-in-left">
 
-                        {/* Brand Header */}
-                        <div className="h-14 flex items-center justify-between px-4 border-b border-slate-800/80">
-                            <div className="flex items-center gap-3">
-                                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm">
-                                    P
-                                </div>
-                                <div>
-                                    <h1 className="text-sm font-bold tracking-wide">
-                                        <span className="text-red-500">P</span>
-                                        <span className="text-white">Books</span>
-                                        <span className="text-primary">Pro</span>
-                                    </h1>
-                                    <div className="text-[10px] text-slate-500 font-mono">v{displayVersion}</div>
-                                </div>
-                            </div>
-                            {/* Close button */}
-                            <button
-                                type="button"
-                                onClick={() => setIsMobileMenuOpen(false)}
-                                className="p-2 -mr-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
-                                aria-label="Close menu"
-                                title="Close menu"
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                                </svg>
-                            </button>
-                        </div>
+                        {renderExpandedBrand(undefined, true)}
 
-                        {/* Navigation Menu */}
-                        <nav className="flex-1 px-3 py-4 space-y-3 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
-                            {bucketSidebarNavGroups(navGroups).map((cardGroups, cardIdx) => (
-                                <div key={cardIdx} className={SIDEBAR_NAV_CARD_CLASS}>
-                                    {cardGroups.map((group, groupIdx) => {
-                                        const isCollapsed = collapsedGroups[group.title] || false;
-                                        return (
-                                            <div
-                                                key={group.title}
-                                                className={groupIdx > 0 ? 'pt-2 mt-2 border-t border-slate-700/50' : ''}
-                                            >
-                                                <NavGroupHeader
-                                                    title={group.title}
-                                                    expanded={!isCollapsed}
-                                                    onToggle={() => handleToggleGroup(group.title)}
-                                                />
-
-                                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                                                    {group.items.map((item) => {
-                                                        const active = isCurrent(item.page as Page);
-                                                        return (
-                                                            <button
-                                                                key={item.page}
-                                                                onClick={() => {
-                                                                    setCurrentPage(item.page as Page);
-                                                                    setIsMobileMenuOpen(false);
-                                                                }}
-                                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                                className={sidebarNavItemClass(active)}
-                                                            >
-                                                                <div className={sidebarNavIconClass(active)}>
-                                                                    {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
-                                                                </div>
-                                                                <span className="truncate">{item.label}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ))}
+                        <nav className="sidebar-nav-scroll scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {renderNavGroups(() => setIsMobileMenuOpen(false))}
                         </nav>
 
-                        {/* Mobile Footer - Simplified */}
-                        <div className="p-3 border-t border-slate-800/80 shrink-0">
-                            {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
-                                <button
-                                    onClick={() => {
-                                        setIsLicenseModalOpen(true);
-                                        setIsMobileMenuOpen(false);
-                                    }}
-                                    className={`w-full mb-3 text-white p-3 rounded-xl relative overflow-hidden group ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'}`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-left">
-                                            <div className="text-[10px] font-bold uppercase tracking-wide opacity-90">
-                                                {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
-                                            </div>
-                                            <div className="text-lg font-bold leading-tight">
-                                                {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
-                                            </div>
-                                        </div>
-                                        <div className="bg-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
-                                            Renew
-                                        </div>
-                                    </div>
-                                </button>
-                            )}
-
-                            <div className="relative py-2 min-w-0">
-                                <button
-                                    onClick={handleLogout}
-                                    className="absolute top-2 right-0 flex items-center justify-center p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors touch-manipulation"
-                                    title="Logout"
-                                    aria-label="Logout"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                                </button>
-                                <div className="flex items-center gap-3 pr-8 min-w-0">
-                                    <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                                        {userName.charAt(0).toUpperCase()}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <div className="text-sm font-semibold text-white leading-tight truncate" title={userName}>
-                                            {userName}
-                                        </div>
-                                        {organizationName && (
-                                            <div className="text-xs text-slate-400 leading-snug truncate" title={organizationName}>
-                                                {organizationName}
-                                            </div>
-                                        )}
-                                        {effectiveRole && (
-                                            <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">
-                                                {effectiveRole}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            {showLoggedInUsersRow && (
-                                <div className="mt-1 px-1 py-2" title="Users currently signed in">
-                                    <div className="flex items-center justify-between gap-2">
-                                        <span className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
-                                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
-                                            Users logged in
-                                        </span>
-                                        <span className="text-sm font-semibold text-slate-300 tabular-nums">{loggedInUsersCount}</span>
-                                    </div>
-                                </div>
-                            )}
-
-                            {onlineUsers !== null && onlineUsers > 1 && (
-                                <button
-                                    onClick={() => {
-                                        void fetchOnlineUsersList();
-                                        setIsChatModalOpen(true);
-                                        setIsMobileMenuOpen(false);
-                                    }}
-                                    className={`mt-2 ${SIDEBAR_CHAT_BTN_CLASS} ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                    </svg>
-                                    Chat
-                                    {unreadMessageCount > 0 && (
-                                        <>
-                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full animate-ping"></span>
-                                            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-[10px] font-bold">{unreadMessageCount}</span>
-                                        </>
-                                    )}
-                                </button>
-                            )}
+                        <div className="sidebar-footer">
+                            {renderRenewalCard(() => setIsMobileMenuOpen(false))}
+                            {renderUserCard()}
+                            {renderLoggedInRow()}
+                            {renderChatButton(() => setIsMobileMenuOpen(false))}
                         </div>
                     </aside>
                 </>
             )}
 
-            {/* Premium Dark Sidebar — desktop: full width or icon rail (mainNavCollapsed) */}
+            {/* Premium sidebar — desktop: full width or icon rail (mainNavCollapsed) */}
             <aside
-                className="hidden md:flex flex-col sidebar-desktop-width bg-[#111827] border-r border-slate-800 fixed left-0 top-0 h-full z-40 text-slate-300 overflow-x-hidden min-w-0"
+                className="hidden md:flex flex-col sidebar-desktop-width sidebar-shell fixed left-0 top-0 h-full z-40 overflow-x-hidden min-w-0"
                 aria-label={mainNavCollapsed ? 'Main navigation (icons)' : 'Main navigation'}
             >
                 {mainNavCollapsed ? (
                     <>
-                        <div className="shrink-0 flex flex-col items-center gap-2 py-3 px-2 border-b border-slate-800/80">
-                            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm" title="PBooks Pro">
-                                P
-                            </div>
+                        <div className="shrink-0 flex flex-col items-center gap-2 py-3 px-2 border-b border-white/[0.08]">
+                            <div className="sidebar-brand__logo" title="PBooks Pro">P</div>
                             <button
                                 type="button"
                                 onClick={toggleMainNav}
-                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                className="sidebar-collapse-btn"
                                 title={mainNavToggleTitle}
                                 aria-label={mainNavToggleTitle}
                             >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                    <polyline points="9 18 15 12 9 6" />
-                                </svg>
+                                <ChevronRight size={18} strokeWidth={2} aria-hidden />
                             </button>
                         </div>
-                        <nav className="flex-1 px-1.5 py-3 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
-                            {navGroups.map((group, gIdx) => (
-                                <div key={group.title} className="space-y-1">
-                                    {gIdx > 0 && <div className="border-t border-slate-700/60 my-2 mx-0.5" aria-hidden />}
-                                    {group.items.map((item) => {
-                                        const active = isCurrent(item.page as Page);
-                                        return (
-                                            <button
-                                                key={item.page}
-                                                type="button"
-                                                onClick={() => setCurrentPage(item.page as Page)}
-                                                title={item.label}
-                                                aria-label={item.label}
-                                                aria-current={active ? 'page' : undefined}
-                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                className={`w-full flex items-center justify-center p-2.5 rounded-lg transition-colors duration-200 ${
-                                                    active
-                                                        ? 'bg-indigo-500 text-white'
-                                                        : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
-                                                }`}
-                                            >
-                                                <span className={active ? 'text-white' : 'text-slate-400'}>
-                                                    {React.cloneElement(item.icon as any, { width: 20, height: 20 })}
-                                                </span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            ))}
+                        <nav className="sidebar-nav-scroll px-1.5 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {renderNavGroups(undefined, true)}
                         </nav>
-                        <div className="shrink-0 p-2 border-t border-slate-800/80 space-y-2">
+                        <div className="sidebar-footer px-2 space-y-2">
                             {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
                                 <button
                                     type="button"
                                     onClick={() => setIsLicenseModalOpen(true)}
                                     title={licenseInfo.isExpired ? 'License expired — open' : `Renewal in ${licenseInfo.daysRemaining} days`}
                                     aria-label="License and subscription"
-                                    className={`w-full flex items-center justify-center p-2 rounded-xl ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'} text-white`}
+                                    className={`w-full flex items-center justify-center p-2.5 rounded-xl text-white ${licenseInfo.isExpired ? 'sidebar-renewal-card--expired' : ''}`}
+                                    style={{ background: licenseInfo.isExpired ? undefined : 'linear-gradient(135deg, #ff9f1a, #ffb84d)' }}
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+                                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                    </svg>
                                 </button>
                             )}
                             <div className="flex flex-col items-center gap-2 py-2">
-                                <div className="w-9 h-9 rounded-full bg-indigo-500 flex items-center justify-center text-white text-sm font-bold" title={userName}>
+                                <div className="sidebar-user-card__avatar w-9 h-9 text-sm" title={userName}>
                                     {userName.charAt(0).toUpperCase()}
                                 </div>
                                 <button
                                     type="button"
                                     onClick={handleLogout}
-                                    className="p-2 rounded-md text-slate-500 hover:text-white hover:bg-slate-800"
+                                    className="sidebar-collapse-btn p-2"
                                     title="Logout"
                                     aria-label="Logout"
                                 >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+                                    <LogOut size={16} strokeWidth={2} />
                                 </button>
                             </div>
                             {showLoggedInUsersRow && (
-                                <div className="flex justify-center items-center gap-1.5 text-xs font-semibold text-slate-300 tabular-nums" title="Users logged in">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" aria-hidden />
+                                <div className="flex justify-center items-center gap-1.5 text-xs font-semibold text-[#d8e1f0] tabular-nums" title="Users logged in">
+                                    <span className="sidebar-user-card__status-dot w-1.5 h-1.5" aria-hidden />
                                     {loggedInUsersCount}
                                 </div>
                             )}
-                            {onlineUsers !== null && onlineUsers > 1 && (
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        void fetchOnlineUsersList();
-                                        setIsChatModalOpen(true);
-                                    }}
-                                    className={`w-full flex items-center justify-center p-2 rounded-xl border border-emerald-500/35 bg-transparent hover:bg-white/[0.04] text-emerald-400 relative transition-colors ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
-                                    title={`Chat (${onlineUsers} online)`}
-                                    aria-label="Open chat"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>
-                                    {unreadMessageCount > 0 && (
-                                        <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-3.5 px-0.5 bg-red-500 rounded text-[9px] font-bold leading-none flex items-center justify-center text-white">{unreadMessageCount > 9 ? '9+' : unreadMessageCount}</span>
-                                    )}
-                                </button>
-                            )}
+                            {renderChatButton()}
                         </div>
                     </>
                 ) : (
                     <>
-                        <div className="h-14 shrink-0 flex items-center justify-between gap-2 pl-4 pr-2 border-b border-slate-800/80">
-                            <div className="flex items-center gap-3 min-w-0">
-                                <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center text-ds-on-primary font-bold text-sm shrink-0">
-                                    P
-                                </div>
-                                <div className="min-w-0">
-                                    <h1 className="text-sm font-bold tracking-wide truncate">
-                                        <span className="text-red-500">P</span>
-                                        <span className="text-white">Books</span>
-                                        <span className="text-primary">Pro</span>
-                                    </h1>
-                                    <div className="text-[10px] text-slate-500 font-mono">v{displayVersion}</div>
-                                </div>
-                            </div>
-                            <button
-                                type="button"
-                                onClick={toggleMainNav}
-                                className="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
-                                title={mainNavToggleTitle}
-                                aria-label={mainNavToggleTitle}
-                            >
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                                    <polyline points="15 18 9 12 15 6" />
-                                </svg>
-                            </button>
-                        </div>
+                        {renderExpandedBrand(toggleMainNav)}
 
-                        <nav className="flex-1 px-3 py-4 space-y-3 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent min-h-0">
-                            {bucketSidebarNavGroups(navGroups).map((cardGroups, cardIdx) => (
-                                <div key={cardIdx} className={SIDEBAR_NAV_CARD_CLASS}>
-                                    {cardGroups.map((group, groupIdx) => {
-                                        const isCollapsed = collapsedGroups[group.title] || false;
-
-                                        return (
-                                            <div
-                                                key={group.title}
-                                                className={groupIdx > 0 ? 'pt-2 mt-2 border-t border-slate-700/50' : ''}
-                                            >
-                                                <NavGroupHeader
-                                                    title={group.title}
-                                                    expanded={!isCollapsed}
-                                                    onToggle={() => handleToggleGroup(group.title)}
-                                                />
-
-                                                <div className={`space-y-0.5 overflow-hidden transition-all duration-200 ${isCollapsed ? 'max-h-0 opacity-0' : 'max-h-[500px] opacity-100'}`}>
-                                                    {group.items.map((item) => {
-                                                        const active = isCurrent(item.page as Page);
-                                                        return (
-                                                            <button
-                                                                key={item.page}
-                                                                type="button"
-                                                                onClick={() => setCurrentPage(item.page as Page)}
-                                                                data-tour={TOUR_DATA_ATTR[item.page as string]}
-                                                                className={sidebarNavItemClass(active)}
-                                                            >
-                                                                <div className={sidebarNavIconClass(active)}>
-                                                                    {React.cloneElement(item.icon as any, { width: 18, height: 18 })}
-                                                                </div>
-                                                                <span className="truncate">{item.label}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ))}
+                        <nav className="sidebar-nav-scroll scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                            {renderNavGroups()}
                         </nav>
 
-                        <div className="p-3 border-t border-slate-800/80 shrink-0 overflow-x-hidden">
-                            {licenseInfo && (licenseInfo.isExpired || licenseInfo.daysRemaining <= 30) && (
-                                <button
-                                    type="button"
-                                    onClick={() => setIsLicenseModalOpen(true)}
-                                    className={`w-full mb-3 text-white p-3 rounded-xl relative overflow-hidden group ${licenseInfo.isExpired ? 'bg-rose-500' : 'bg-[#F59E0B]'}`}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="text-left">
-                                            <div className="text-[10px] font-bold uppercase tracking-wide opacity-90">
-                                                {licenseInfo.isExpired ? 'License Expired' : 'Renewal Due'}
-                                            </div>
-                                            <div className="text-lg font-bold leading-tight">
-                                                {licenseInfo.isExpired ? 'Expired' : `${licenseInfo.daysRemaining} Days`}
-                                            </div>
-                                        </div>
-                                        <div className="bg-white/20 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide">
-                                            Renew
-                                        </div>
-                                    </div>
-                                </button>
-                            )}
-
-                            <div className="space-y-2">
-                                <div className="relative py-2 min-w-0">
-                                    <button
-                                        type="button"
-                                        onClick={handleLogout}
-                                        className="absolute top-2 right-0 flex items-center justify-center p-1.5 rounded-md text-slate-500 hover:text-white hover:bg-slate-800 transition-colors"
-                                        title="Logout"
-                                        aria-label="Logout"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-                                    </button>
-                                    <div className="flex items-center gap-3 pr-8 min-w-0">
-                                        <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                                            {userName.charAt(0).toUpperCase()}
-                                        </div>
-                                        <div className="flex-1 min-w-0">
-                                            <div className="text-sm font-semibold text-white leading-tight truncate" title={userName}>
-                                                {userName}
-                                            </div>
-                                            {organizationName && (
-                                                <div className="text-xs text-slate-400 leading-snug truncate" title={organizationName}>
-                                                    {organizationName}
-                                                </div>
-                                            )}
-                                            {effectiveRole && (
-                                                <div className="text-[10px] text-slate-500 uppercase tracking-wide font-medium">
-                                                    {effectiveRole}
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {showLoggedInUsersRow && (
-                                    <div className="px-1 py-2" title="Users currently signed in">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="flex items-center gap-2 text-[11px] text-slate-400 font-medium">
-                                                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
-                                                Users logged in
-                                            </span>
-                                            <span className="text-sm font-semibold text-slate-300 tabular-nums">{loggedInUsersCount}</span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {onlineUsers !== null && onlineUsers > 1 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                        void fetchOnlineUsersList();
-                                        setIsChatModalOpen(true);
-                                    }}
-                                        className={`${SIDEBAR_CHAT_BTN_CLASS} ${unreadMessageCount > 0 ? 'animate-pulse' : ''}`}
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400">
-                                            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
-                                        </svg>
-                                        Chat
-                                        {unreadMessageCount > 0 && (
-                                            <>
-                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
-                                                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-                                            </>
-                                        )}
-                                    </button>
-                                )}
-                            </div>
+                        <div className="sidebar-footer">
+                            {renderRenewalCard()}
+                            {renderUserCard()}
+                            {renderLoggedInRow()}
+                            {renderChatButton()}
                         </div>
                     </>
                 )}
