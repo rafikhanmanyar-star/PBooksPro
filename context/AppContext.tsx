@@ -36,17 +36,6 @@ import {
 import { applyEntityReducerPatch } from '../services/realtime/entityReducerPatch';
 import { initRealtimeDispatchHub } from '../services/realtime/RealtimeDispatchHub';
 import { invalidateQueriesForEntityEvent } from '../services/realtime/entityQueryInvalidation';
-import {
-    logPaymentTrace,
-    logPaymentTraceTransition,
-    logPaymentTraceAddTransaction,
-    logPaymentTraceAddTransactionEnter,
-    buildPaymentTraceTxExtra,
-    buildExistsBeforeExtra,
-    buildExistsAfterExtra,
-    installPaymentDebugDevGlobals,
-    syncDevAppStateExposure,
-} from '../services/debug/paymentDisappearanceTrace';
 import { toLocalDateString } from '../utils/dateUtils';
 import { scheduleAfterNextPaint } from '../utils/interactionScheduling';
 import {
@@ -428,34 +417,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 return;
             }
             if ((action as { _isRemote?: boolean })._isRemote) {
-                const remote = action as { type: string; payload?: unknown; _isRemote?: boolean };
-                const remotePrev = latestStateRef.current;
-                if (remote.type === 'ADD_TRANSACTION') {
-                    const tx = remote.payload as Transaction;
-                    logPaymentTraceAddTransactionEnter('dispatch remote before baseDispatch', remotePrev.transactions, tx, {
-                        isRemote: true,
-                    });
-                    baseDispatch(action);
-                    logPaymentTraceAddTransaction(
-                        'dispatch remote after baseDispatch',
-                        remotePrev.transactions,
-                        latestStateRef.current.transactions,
-                        tx,
-                        { isRemote: true }
-                    );
-                    return;
-                } else if (remote.type === 'UPDATE_TRANSACTION') {
-                    const tx = remote.payload as Transaction;
-                    logPaymentTrace('UPDATE_TRANSACTION', 'dispatch remote (_isRemote)', remotePrev.transactions, {
-                        ...buildExistsBeforeExtra(remotePrev.transactions, tx),
-                    });
-                } else if (remote.type === 'SET_STATE') {
-                    const partial = remote.payload as Partial<AppState>;
-                    logPaymentTrace('SET_STATE', 'dispatch remote (_isRemote) before reducer', remotePrev.transactions, {
-                        payloadTransactionCount: partial.transactions?.length,
-                        ...buildExistsAfterExtra(remotePrev.transactions, partial.transactions ?? remotePrev.transactions),
-                    });
-                }
                 baseDispatch(action);
                 return;
             }
@@ -465,7 +426,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'ADD_TRANSACTION') {
                 const tx = a.payload as Transaction;
-                logPaymentTraceAddTransactionEnter('dispatch intercept before baseDispatch', prev.transactions, tx);
                 const invoiceToSave =
                     tx.invoiceId && tx.id
                         ? (() => {
@@ -481,12 +441,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                           })()
                         : undefined;
                 baseDispatch(action);
-                logPaymentTraceAddTransaction(
-                    'dispatch intercept after baseDispatch',
-                    prev.transactions,
-                    latestStateRef.current.transactions,
-                    tx
-                );
                 if (!tx?.id) return;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
@@ -499,16 +453,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     payload: { ...tx, version: v },
                                     _isRemote: true,
                                 } as AppAction);
-                                logPaymentTrace(
-                                    'UPDATE_TRANSACTION',
-                                    'dispatch intercept saveTransaction HTTP ack',
-                                    latestStateRef.current.transactions,
-                                    {
-                                        ...buildPaymentTraceTxExtra({ ...tx, version: v }),
-                                        transactionCountBefore: prev.transactions.length,
-                                        transactionCountAfter: latestStateRef.current.transactions.length,
-                                    }
-                                );
                             }
                             // Server recalculates invoice/bill paid_amount + version in the same txn; do not POST stale rows (409 + spurious modal).
                             if (invoiceToSave && tx.invoiceId) {
@@ -754,15 +698,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'UPDATE_TRANSACTION') {
                 const updatedTx = a.payload as Transaction;
-                logPaymentTrace('UPDATE_TRANSACTION', 'dispatch intercept before baseDispatch', prev.transactions, {
-                    ...buildExistsBeforeExtra(prev.transactions, updatedTx),
-                    isRemote: !!(action as { _isRemote?: boolean })._isRemote,
-                });
                 flushSync(() => {
                     baseDispatch(action);
-                });
-                logPaymentTrace('UPDATE_TRANSACTION', 'dispatch intercept after baseDispatch', latestStateRef.current.transactions, {
-                    ...buildExistsAfterExtra(prev.transactions, latestStateRef.current.transactions, updatedTx),
                 });
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const api = getAppStateApiService();
@@ -1599,12 +1536,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const stateRef = useRef(state);
     useEffect(() => {
         stateRef.current = state;
-        syncDevAppStateExposure(state);
     }, [state]);
-
-    useEffect(() => {
-        installPaymentDebugDevGlobals();
-    }, []);
 
     // Tenant isolation: clear all cached state when the tenant/organization changes.
     // Prevents data from one company leaking into another company's session.
@@ -1642,9 +1574,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // effect flushes, so stateRef may be one render stale and miss a just-added optimistic
             // payment — which then gets dropped by the merge if the server snapshot also lacks it.
             const base = latestStateRef.current;
-            logPaymentTrace('refreshFromApi', 'start', base.transactions, {
-                path: 'enter',
-            });
             const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
             const syncTenant = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
 
@@ -1684,40 +1613,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         latestStateRef.current
                     );
                     const mergeBaseline = latestStateRef.current;
-                    logPaymentTrace('refreshFromApi', 'before merge (incremental)', mergeBaseline.transactions, {
-                        path: 'incremental',
-                        lastSync,
-                    });
                     merged = mergePartialStateIntoBaseline(
                         mergeBaseline,
                         inc,
                         pickTenantSettingsPartial(inc)
                     );
-                    logPaymentTraceTransition(
-                        'refreshFromApi',
-                        'after merge (incremental)',
-                        mergeBaseline.transactions,
-                        merged.transactions,
-                        { path: 'incremental', lastSync, nextSyncCursor: serverCursor }
-                    );
                     nextSyncCursor = serverCursor;
                 } catch {
                     const partial = await getAppStateApiService().loadStateForSyncRefresh();
                     const mergeBaseline = latestStateRef.current;
-                    logPaymentTrace('refreshFromApi', 'before merge (incremental fallback full)', mergeBaseline.transactions, {
-                        path: 'incremental-fallback-full',
-                    });
                     merged = mergePartialStateIntoBaseline(
                         mergeBaseline,
                         partial,
                         pickTenantSettingsPartial(partial)
-                    );
-                    logPaymentTraceTransition(
-                        'refreshFromApi',
-                        'after merge (incremental fallback full)',
-                        mergeBaseline.transactions,
-                        merged.transactions,
-                        { path: 'incremental-fallback-full' }
                     );
                     nextSyncCursor = await getServerTimeIso();
                 }
@@ -1727,22 +1635,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 // When the sync cursor doesn't match the current tenant (or is missing),
                 // use initialState as the baseline to avoid mixing old tenant data.
                 const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
-                logPaymentTrace('refreshFromApi', 'before merge (full)', safeBase.transactions, {
-                    path: 'full',
-                    lastSync,
-                    cursorMatchesTenant,
-                });
                 merged = mergePartialStateIntoBaseline(
                     safeBase,
                     partial,
                     pickTenantSettingsPartial(partial)
-                );
-                logPaymentTraceTransition(
-                    'refreshFromApi',
-                    'after merge (full)',
-                    safeBase.transactions,
-                    merged.transactions,
-                    { path: 'full', lastSync }
                 );
                 nextSyncCursor = await getServerTimeIso();
             }
@@ -1753,10 +1649,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             }
 
             dispatch({ type: 'SET_STATE', payload: merged, _isRemote: true } as any);
-            logPaymentTrace('SET_STATE', 'dispatch from refreshFromApi', merged.transactions, {
-                path: 'refreshFromApi',
-                incremental: !!(lastSync && baselineHasCoreData),
-            });
             setStoredState(prev => ({ ...prev, ...merged } as AppState));
 
             if (currentTenantId && roleHasPermission(auth.user?.role, 'payroll.read')) {

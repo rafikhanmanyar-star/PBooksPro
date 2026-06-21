@@ -11,6 +11,8 @@ import {
   ALL_PERMISSIONS,
 } from '../../../auth/permissions.js';
 import { buildStaticMatrixWithDbRoles } from '../../rbac/services/rbacService.js';
+import { isV2AuthorizationActive } from '../../../auth/authorizationMode.js';
+import { hasPermission } from '../../../auth/permissionEvaluator.js';
 
 export const permissionsRouter = Router();
 
@@ -18,10 +20,20 @@ export const permissionsRouter = Router();
 permissionsRouter.get('/permissions/me', async (req: AuthedRequest, res) => {
   const role = req.role ?? '';
   const enterpriseRole = resolveEnterpriseRole(role);
-  const permissions =
-    req.resolvedPermissions && req.resolvedPermissions.length > 0
-      ? req.resolvedPermissions
-      : permissionsForRole(role);
+
+  let permissions;
+  if (isV2AuthorizationActive() && req.effectiveAccess) {
+    // Derive the v1 permission set by evaluating each known v1 key against the V2 effective
+    // access context. This handles V2 roles that use only granular keys (e.g.
+    // 'accounting.access') — toLegacyPermissionArray would return [] for those, causing a
+    // wrong fallback to the legacy role matrix.
+    permissions = ALL_PERMISSIONS.filter((p) => hasPermission(req.effectiveAccess!, p, enterpriseRole));
+  } else if (req.resolvedPermissions && req.resolvedPermissions.length > 0) {
+    permissions = req.resolvedPermissions;
+  } else {
+    permissions = permissionsForRole(role);
+  }
+
   sendSuccess(res, {
     role,
     enterpriseRole,

@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '../context/AuthContext';
 
@@ -28,6 +28,8 @@ import {
 
   ENTERPRISE_ROLE_LABELS,
 
+  isLegacyOrStaticRole,
+
 } from '../shared/rbac/permissions';
 
 import { permissionsApi } from '../services/api/permissionsApi';
@@ -38,7 +40,7 @@ export function usePermissions() {
 
   const { user, isAuthenticated } = useAuth();
 
-
+  const queryClient = useQueryClient();
 
   const role = useMemo(() => {
 
@@ -58,9 +60,20 @@ export function usePermissions() {
 
     enabled: isAuthenticated && !!user?.id,
 
-    staleTime: 60_000,
+    // Keep short so role changes applied by an admin are reflected quickly.
+    staleTime: 15_000,
 
   });
+
+  // When the backend signals STALE_AV (permissions changed since last login),
+  // immediately invalidate the cache so the next render reflects the new grants.
+  useEffect(() => {
+    const handleStale = () => {
+      queryClient.invalidateQueries({ queryKey: ['permissions', 'me'] });
+    };
+    window.addEventListener('auth:permissions-stale', handleStale);
+    return () => window.removeEventListener('auth:permissions-stale', handleStale);
+  }, [queryClient]);
 
 
 
@@ -78,19 +91,33 @@ export function usePermissions() {
 
     const staticPermissions = permissionsForRole(role);
 
-    const permissions =
+    const apiHasResponded = resolvedQuery.data !== undefined;
 
-      resolvedPermissions && resolvedPermissions.length > 0
+    const hasResolvedPerms = !!(resolvedPermissions && resolvedPermissions.length > 0);
 
-        ? resolvedPermissions
+    const isCustomV2Role = !isLegacyOrStaticRole(role);
 
-        : staticPermissions;
+    const permissions = hasResolvedPerms ? resolvedPermissions! : staticPermissions;
 
-    const has = (permission: Permission) => {
+    /**
+     * Permission check with safe fallback logic:
+     * - API returned permissions → use them exclusively.
+     * - API responded but returned nothing AND role is a custom V2 role → deny (don't
+     *   grant legacy-role defaults to a role the static map doesn't recognise).
+     * - API still loading OR known legacy role → fall back to static role permissions.
+     */
+    const has = (permission: Permission): boolean => {
 
-      if (resolvedPermissions && resolvedPermissions.length > 0) {
+      if (hasResolvedPerms) {
 
-        return permissionSetHas(resolvedPermissions, permission);
+        return permissionSetHas(resolvedPermissions!, permission);
+
+      }
+
+      // API responded with empty permissions for a custom V2 role — deny by default.
+      if (apiHasResponded && isCustomV2Role) {
+
+        return false;
 
       }
 
@@ -111,6 +138,54 @@ export function usePermissions() {
       has,
 
       permissionsLoading: resolvedQuery.isLoading,
+
+      // ── Module access gates (registry-aligned; see shared/rbac/modulePermissions.ts) ─
+
+      /** Can the user access the Accounting / General Ledger / Budgets modules? */
+      canAccessFinancials:
+        has('accounting.read') ||
+        has('financial.write') ||    // legacy broad permission — backward compat
+        has('payroll.read') ||
+        has('reports.financial.read'),
+
+      /** Can the user access the Procurement / Vendor Directory module? */
+      canReadProcurement:
+        has('procurement.read') ||
+        has('financial.write'),
+
+      /** Can the user access the Construction / Project Management module? */
+      canAccessConstruction:
+        has('construction.read') ||
+        has('financial.write'),
+
+      /** Can the user access the Rental module? */
+      canAccessRental:
+        has('rental.read'),
+
+      /** Can the user access financial reports? */
+      canReadFinancialReports:
+        has('reports.financial.read') ||
+        has('reports.trial_balance.read') ||
+        has('reports.balance_sheet.read') ||
+        has('financial.write'),
+
+      /** Can the user see platform administration menus (cross-tenant)? */
+      canAccessPlatformAdmin:
+        has('platform.admin'),
+
+      /** Can the user access the Settings module? */
+      canAccessSettings:
+        has('users.read') ||
+        has('users.manage') ||
+        has('roles.view') ||
+        has('roles.manage') ||
+        has('billing.read') ||
+        has('audit_logs.read') ||
+        has('permissions.read') ||
+        has('permissions.manage') ||
+        has('backups.read'),
+
+      // ── Existing flags ─────────────────────────────────────────────────────
 
       canReadTrialBalance: has('reports.trial_balance.read'),
 
@@ -243,8 +318,6 @@ export function usePermissions() {
 
     };
 
-  }, [role, resolvedPermissions, resolvedQuery.data?.enterpriseRole, resolvedQuery.isLoading]);
+  }, [role, resolvedPermissions, resolvedQuery.data, resolvedQuery.isLoading]);
 
 }
-
-

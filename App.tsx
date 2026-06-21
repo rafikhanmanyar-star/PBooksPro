@@ -46,6 +46,7 @@ import { useProgress } from './context/ProgressContext';
 import { usePagePreloader } from './hooks/usePagePreloader';
 import { PageActiveProvider, PageActiveScope } from './context/PageActiveContext';
 import Loading from './components/ui/Loading';
+import AccessDenied from './components/ui/AccessDenied';
 import LoadingShell from './components/ui/LoadingShell';
 import PageRouteSkeleton from './components/ui/PageRouteSkeleton';
 import PageDataLoadingOverlay from './components/ui/PageDataLoadingOverlay';
@@ -72,10 +73,8 @@ import { isAutoDemoUrl, isWebsiteDemoEntry, readStoredDemoAuth } from './utils/d
 import { usePageGroupDeferredBootstrap } from './hooks/usePageGroupDeferredBootstrap';
 import { isAdminRole } from './hooks/useRecordLock';
 import { resolveEnterpriseRole } from './shared/rbac/permissions';
+import { usePermissions } from './hooks/usePermissions';
 import { useExecutiveModeOptional } from './context/ExecutiveModeContext';
-import PaymentDisappearTracePanel from './components/debug/PaymentDisappearTracePanel';
-
-
 // Lazy Load Components
 const DashboardPage = lazyWithRetry(() => import('./components/dashboard/DashboardPage'));
 const EnhancedLedgerPage = lazyWithRetry(() => import('./components/transactions/EnhancedLedgerPage'));
@@ -147,6 +146,17 @@ const App: React.FC = () => {
   } = useAuth();
   const executiveMode = useExecutiveModeOptional();
   const companyCtx = useCompanyOptional();
+  const {
+    enterpriseRole: v2EnterpriseRole,
+    has: hasPermission,
+    permissionsLoading,
+    canAccessFinancials,
+    canReadProcurement,
+    canAccessSettings,
+    canReadPayroll,
+    canWriteFinancial,
+    canReadProjectSelling,
+  } = usePermissions();
 
   // Ref tracks currentPage without causing callback identity changes on navigation
   const currentPageRef = React.useRef(currentPage);
@@ -164,18 +174,23 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (currentPage !== 'personalTransactions') return;
+    // Use V2 enterprise role when available; legacy isAdminRole as fallback for pre-V2 sessions
+    const isAdminByV2 = v2EnterpriseRole === 'super_admin' || v2EnterpriseRole === 'company_admin';
     const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
-    if (!isAdminRole(effectiveRole)) {
+    if (!isAdminByV2 && !isAdminRole(effectiveRole)) {
       dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
     }
-  }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
+  }, [currentPage, v2EnterpriseRole, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
 
   useEffect(() => {
+    // Use V2 enterprise role for sales-user redirect; fall back to legacy resolveEnterpriseRole
+    const isSalesUserV2 = v2EnterpriseRole === 'sales_user';
     const effectiveRole = user?.role || currentUserRole || companyCtx?.authenticatedUser?.role;
-    if (resolveEnterpriseRole(effectiveRole) !== 'sales_user') return;
+    const isSalesUserLegacy = resolveEnterpriseRole(effectiveRole) === 'sales_user';
+    if (!isSalesUserV2 && !isSalesUserLegacy) return;
     if (SALES_USER_ALLOWED_PAGES.includes(currentPage)) return;
     dispatch({ type: 'SET_PAGE', payload: 'projectSelling' });
-  }, [currentPage, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
+  }, [currentPage, v2EnterpriseRole, user?.role, currentUserRole, companyCtx?.authenticatedUser?.role, dispatch]);
 
   useEffect(() => {
     if (!isLanBackendApi()) return;
@@ -666,6 +681,46 @@ const App: React.FC = () => {
     return 'bg-app-bg';
   };
 
+  /**
+   * Permission gate per page group.
+   * Each group entry lists the page name shown in Access Denied and required permission hint.
+   * `allowed: true` means always accessible (gated elsewhere, e.g. license check).
+   */
+  const pageGroupAccess = useMemo(() => {
+    const financial = canAccessFinancials;
+    const procurement = canReadProcurement;
+    const settings = canAccessSettings;
+    const payroll = canReadPayroll || canWriteFinancial;
+    const projectSelling = canReadProjectSelling;
+
+    return {
+      DASHBOARD: { allowed: true },
+      TRANSACTIONS: { allowed: financial, moduleName: 'General Ledger', requiredPermission: 'financial.write' },
+      PAYMENTS: { allowed: financial, moduleName: 'Payments', requiredPermission: 'financial.write' },
+      LOANS: { allowed: financial, moduleName: 'Loan Manager', requiredPermission: 'financial.write' },
+      VENDORS: { allowed: procurement, moduleName: 'Procurement', requiredPermission: 'procurement.read' },
+      CONTACTS: { allowed: true },
+      BUDGETS: { allowed: financial, moduleName: 'Budget Planner', requiredPermission: 'financial.write' },
+      RENTAL: { allowed: true }, // gated by license module
+      PROJECT: { allowed: canWriteFinancial, moduleName: 'Project Construction', requiredPermission: 'financial.write' },
+      PROJECT_SELLING: { allowed: projectSelling, moduleName: 'Project Selling', requiredPermission: 'project_selling.read' },
+      INVESTMENT: { allowed: canWriteFinancial, moduleName: 'Investment Management', requiredPermission: 'financial.write' },
+      PM_CONFIG: { allowed: canWriteFinancial, moduleName: 'PM Cycle Config', requiredPermission: 'financial.write' },
+      PAYROLL: { allowed: payroll, moduleName: 'Payroll', requiredPermission: 'payroll.read' },
+      PERSONAL_TRANSACTIONS: { allowed: canWriteFinancial, moduleName: 'Personal Transactions', requiredPermission: 'financial.write' },
+      ACCOUNTING: { allowed: financial, moduleName: 'Accounting', requiredPermission: 'financial.write' },
+      SETTINGS: { allowed: settings, moduleName: 'Settings', requiredPermission: 'users.read' },
+      IMPORT: { allowed: canWriteFinancial, moduleName: 'Import Data', requiredPermission: 'financial.write' },
+    } as Record<string, { allowed: boolean; moduleName?: string; requiredPermission?: string }>;
+  }, [
+    canAccessFinancials,
+    canReadProcurement,
+    canAccessSettings,
+    canReadPayroll,
+    canWriteFinancial,
+    canReadProjectSelling,
+  ]);
+
   // Optimized page renderer - preserves page state by keeping pages mounted but hidden
   // Memoized with minimal dependencies to prevent unnecessary re-renders
   const renderPersistentPage = useCallback((groupKey: string, content: React.ReactNode) => {
@@ -673,6 +728,26 @@ const App: React.FC = () => {
     if (!visitedGroups.has(groupKey)) return null;
 
     const isActive = activeGroup === groupKey;
+
+    // Route-level permission gate: show Access Denied instead of the real page content
+    // when the user lacks the required permission. Skip the check while permissions are
+    // still loading (avoids a flicker of "Access Denied" on first render).
+    const access = pageGroupAccess[groupKey];
+    if (!permissionsLoading && access && !access.allowed) {
+      return (
+        <div
+          key={groupKey}
+          className={`absolute inset-0 layout-content-area overflow-y-auto bg-app-bg ${isActive ? 'opacity-100 pointer-events-auto z-10 visible' : 'opacity-0 pointer-events-none z-0 invisible'}`}
+          style={{ transition: 'opacity 0.15s ease-in-out, visibility 0.15s ease-in-out' }}
+        >
+          <AccessDenied
+            moduleName={access.moduleName}
+            requiredPermission={access.requiredPermission}
+            onGoHome={() => dispatch({ type: 'SET_PAGE', payload: 'dashboard' })}
+          />
+        </div>
+      );
+    }
 
     // PERFORMANCE: Keep pages mounted but hidden to preserve state and avoid reloading
     // Use CSS to hide inactive pages instead of unmounting them
@@ -714,7 +789,7 @@ const App: React.FC = () => {
         {!isFixedLayout && isActive && <ScrollToTop containerId={pageId} />}
       </div>
     );
-  }, [visitedGroups, activeGroup, isCustomKeyboardOpen, isNativeKeyboardOpen]);
+  }, [visitedGroups, activeGroup, isCustomKeyboardOpen, isNativeKeyboardOpen, pageGroupAccess, permissionsLoading, dispatch]);
 
   const shouldShowFooter = !isCustomKeyboardOpen && !isNativeKeyboardOpen;
 
@@ -911,7 +986,6 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
-      <PaymentDisappearTracePanel />
     </OfflineProvider>
   );
 };

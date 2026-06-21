@@ -113,6 +113,18 @@ export function requireCompanyAdmin(): RequestHandler {
   };
 }
 
+/**
+ * Cross-tenant / platform administration guard.
+ *
+ * `platform.admin` is granted to NO tenant enterprise role (and is excluded from
+ * ALL_PERMISSIONS), so on the tenant API this guard always denies — including tenant
+ * Super Admins. Any route returning data for more than one tenant must NOT be mounted on
+ * the tenant API; platform administration lives behind the admin portal's separate
+ * `adminAuthMiddleware` (admin_users). This guard exists as defense-in-depth so that any
+ * cross-tenant route accidentally mounted on the tenant API fails closed.
+ */
+export const requirePlatformAdmin: RequestHandler = requirePermission('platform.admin');
+
 /** Billing portal: company admins (legacy users.read) and roles with billing.read. */
 export function requireBillingRead(): RequestHandler {
   return requireAnyPermission('billing.read', 'users.read');

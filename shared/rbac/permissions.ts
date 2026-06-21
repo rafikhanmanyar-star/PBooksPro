@@ -12,6 +12,14 @@ export type EnterpriseRole =
   | 'read_only';
 
 export type Permission =
+  // ── Module-level access gates (used by modulePermissions.ts registry) ──────
+  | 'dashboard.read'
+  | 'accounting.read'
+  | 'construction.read'
+  | 'rental.read'
+  | 'reports.financial.read'
+  | 'platform.admin'
+  // ── Functional permissions ──────────────────────────────────────────────────
   | 'reports.trial_balance.read'
   | 'reports.balance_sheet.read'
   | 'reports.profit_loss.read'
@@ -46,6 +54,7 @@ export type Permission =
   | 'project_selling.agreements.write'
   | 'project_selling.invoices.write'
   | 'project_selling.payments.receive'
+  | 'procurement.read'
   | 'procurement.quotations.create'
   | 'procurement.quotations.edit'
   | 'procurement.quotations.approve'
@@ -69,6 +78,14 @@ export type Permission =
   | 'goods_receipt.close';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
+  // Module-level read gates
+  'dashboard.read',
+  'accounting.read',
+  'construction.read',
+  'rental.read',
+  'reports.financial.read',
+  // platform.admin is intentionally NOT included — no tenant role may hold it
+  // Functional permissions
   'reports.trial_balance.read',
   'reports.balance_sheet.read',
   'reports.profit_loss.read',
@@ -103,6 +120,7 @@ export const ALL_PERMISSIONS: readonly Permission[] = [
   'project_selling.agreements.write',
   'project_selling.invoices.write',
   'project_selling.payments.receive',
+  'procurement.read',
   'procurement.quotations.create',
   'procurement.quotations.edit',
   'procurement.quotations.approve',
@@ -189,6 +207,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'project_selling.agreements.write': 'Project agreements (create & convert)',
   'project_selling.invoices.write': 'Project selling invoices (create)',
   'project_selling.payments.receive': 'Project selling payments (receive)',
+  'procurement.read': 'Procurement (read access)',
   'procurement.quotations.create': 'Create vendor quotation',
   'procurement.quotations.edit': 'Edit vendor quotation',
   'procurement.quotations.approve': 'Approve vendor quotation',
@@ -210,6 +229,12 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'goods_receipt.edit': 'Edit goods receipts',
   'goods_receipt.post': 'Post goods receipts',
   'goods_receipt.close': 'Close goods receipts',
+  'platform.admin': 'Platform administration (cross-tenant — admin portal only)',
+  'dashboard.read': 'Dashboard (access)',
+  'accounting.read': 'Accounting module (access)',
+  'construction.read': 'Construction / project management module (access)',
+  'rental.read': 'Rental module (access)',
+  'reports.financial.read': 'Financial reports (access)',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];
@@ -227,6 +252,7 @@ const REPORTS_READ: Permission[] = [
 ];
 
 const PROCUREMENT_ALL: Permission[] = [
+  'procurement.read',
   'procurement.quotations.create',
   'procurement.quotations.edit',
   'procurement.quotations.approve',
@@ -259,6 +285,11 @@ const GOODS_RECEIPT_ALL: Permission[] = [
 const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
   super_admin: new Set(ALL_PERMISSIONS),
   company_admin: new Set([
+    'dashboard.read',
+    'accounting.read',
+    'construction.read',
+    'rental.read',
+    'reports.financial.read',
     ...REPORTS_READ,
     'payroll.read',
     'payroll.write',
@@ -281,6 +312,10 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...GOODS_RECEIPT_ALL,
   ]),
   accountant: new Set([
+    'dashboard.read',
+    'accounting.read',
+    'rental.read',
+    'reports.financial.read',
     ...REPORTS_READ,
     'payroll.read',
     'payroll.write',
@@ -298,6 +333,9 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...GOODS_RECEIPT_ALL,
   ]),
   project_manager: new Set([
+    'dashboard.read',
+    'accounting.read',
+    'construction.read',
     'reports.profit_loss.read',
     'reports.cash_flow.read',
     'project_selling.read',
@@ -306,6 +344,7 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     ...RETENTION_VIEW,
     ...RETENTION_EDIT,
     ...RETENTION_RELEASE,
+    'procurement.read',
     'procurement.quotations.create',
     'procurement.quotations.edit',
     'procurement.quotations.compare',
@@ -319,13 +358,21 @@ const ROLE_PERMISSIONS: Record<EnterpriseRole, ReadonlySet<Permission>> = {
     'goods_receipt.create',
     'goods_receipt.edit',
   ]),
-  sales_user: new Set([...PROJECT_SELLING_SALES_USER_PERMISSIONS]),
+  sales_user: new Set([
+    'dashboard.read',
+    ...PROJECT_SELLING_SALES_USER_PERMISSIONS,
+  ]),
   read_only: new Set([
+    'dashboard.read',
+    'accounting.read',
+    'rental.read',
+    'reports.financial.read',
     ...REPORTS_READ,
     'payroll.read',
     'audit_logs.read',
     'pev.read',
     ...RETENTION_VIEW,
+    'procurement.read',
     'procurement.price_history.read',
     'purchase_order.view',
     'workflow.view',
@@ -425,6 +472,16 @@ export function roleHasPermission(role: string | undefined | null, permission: P
   const perms = ROLE_PERMISSIONS[enterprise];
   if (!perms) return false;
   return permissionSetHas(perms, permission);
+}
+
+/**
+ * Returns true when the role name resolves via the static legacy or enterprise map.
+ * Custom RBAC V2 roles (created at runtime) won't match — use this to decide whether
+ * the static fallback is safe to apply when the API hasn't returned permissions yet.
+ */
+export function isLegacyOrStaticRole(role: string | undefined | null): boolean {
+  const key = normalizeRoleKey(role ?? '');
+  return key in LEGACY_ROLE_TO_ENTERPRISE || key in ROLE_PERMISSIONS;
 }
 
 export function permissionsForRole(role: string | undefined | null): Permission[] {

@@ -238,16 +238,20 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         }
     }, [isChatModalOpen, currentUserId, checkUnreadMessages]);
 
-    const roleLc = effectiveRole.toLowerCase();
-    const isAccountsOnly = roleLc === 'accounts';
-    const isAdmin = isAdminRole(effectiveRole);
     const {
         enterpriseRole,
         canReadProjectSelling,
         canWriteFinancial,
         canReadPayroll,
+        canAccessFinancials,
+        canReadProcurement,
+        canAccessSettings,
     } = usePermissions();
     const isSalesFocusedUser = enterpriseRole === 'sales_user';
+    // Use V2 enterprise role for menu guards — legacy effectiveRole bypasses RBAC V2 role assignments
+    const isAdmin = enterpriseRole === 'super_admin' || enterpriseRole === 'company_admin';
+    // Legacy role string kept only for display badge — NOT for any menu-visibility decisions
+    void effectiveRole;
     const canAccessProjectSellingNav = canReadProjectSelling;
 
     const showLoggedInUsersRow = onlineUsers !== null;
@@ -311,8 +315,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             },
         ];
 
-        // Add Settings for non-Accounts users
-        if (!isAccountsOnly) {
+        // Add Settings only for users who have relevant management capabilities
+        if (canAccessSettings) {
             groups.push({
                 title: 'System',
                 items: [
@@ -346,12 +350,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             }
             if (group.title === 'Financials') {
                 if (isSalesFocusedUser) return false;
+                if (!canAccessFinancials) return false;
                 return true;
             }
             if (group.title === 'Construction') {
                 group.items = group.items.filter(item => {
-                    if (item.page === 'projectManagement' || item.page === 'pmConfig') return hasRealEstate;
-                    return true; // Vendor Directory is widely available
+                    if (item.page === 'projectManagement' || item.page === 'pmConfig') return hasRealEstate && canWriteFinancial;
+                    if (item.page === 'vendorDirectory') return canReadProcurement;
+                    return true;
                 });
                 return group.items.length > 0;
             }
@@ -368,13 +374,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
             return true; // Always show Overview, System (when added)
         });
     }, [
-        isAccountsOnly,
-        hasModule,
         isAdmin,
+        canAccessFinancials,
+        canReadProcurement,
+        canAccessSettings,
+        hasModule,
         isSalesFocusedUser,
         canAccessProjectSellingNav,
         canWriteFinancial,
         canReadPayroll,
+        enterpriseRole,
     ]);
 
     const isCurrent = (itemPage: Page) => {

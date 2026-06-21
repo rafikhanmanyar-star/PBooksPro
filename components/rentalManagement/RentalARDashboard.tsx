@@ -20,7 +20,6 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import { useDebounce } from '../../hooks/useDebounce';
 import { resolveOwnerForPropertyOnDate } from '../../services/propertyOwnershipService';
 import { isSecurityInvoice } from '../../utils/rentalInvoiceClassification';
-import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 
 const RENTAL_INVOICE_TYPES = [InvoiceType.RENTAL, InvoiceType.SECURITY_DEPOSIT];
 
@@ -685,20 +684,6 @@ const RentalARDashboard: React.FC<RentalARDashboardProps> = ({
     if (recordTypeFilter === 'Invoices') return financialRecords.filter(r => r.type === 'Invoice');
     return financialRecords.filter(r => r.type.includes('Payment'));
   }, [financialRecords, recordTypeFilter]);
-
-  useEffect(() => {
-    if (!listMode) return;
-    logPaymentListUiTrace({
-      component: 'RentalARDashboard',
-      sourceTransactionCount: transactions.length,
-      recordsPropCount: financialRecords.length,
-      filteredRecordCount: financialRecordsFiltered.length,
-      displayedRecordCount: financialRecordsFiltered.length,
-      transactions,
-      displayedRecords: financialRecordsFiltered,
-      recordTypeFilter,
-    });
-  }, [listMode, transactions, financialRecords, financialRecordsFiltered, recordTypeFilter]);
 
   // Sorted invoices for the list (summary mode table)
   const sortedInvoices = useMemo(() => {

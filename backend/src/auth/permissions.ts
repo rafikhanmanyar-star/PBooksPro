@@ -71,7 +71,14 @@ export type Permission =
   | 'goods_receipt.create'
   | 'goods_receipt.edit'
   | 'goods_receipt.post'
-  | 'goods_receipt.close';
+  | 'goods_receipt.close'
+  /**
+   * Platform / cross-tenant administration (subscription admin, platform health,
+   * referral program, cross-tenant reporting). Granted to NO tenant enterprise role —
+   * deliberately excluded from ALL_PERMISSIONS and every role set so a tenant token can
+   * never hold it. Real enforcement lives in the admin portal (admin_users + adminAuthMiddleware).
+   */
+  | 'platform.admin';
 
 export const ALL_PERMISSIONS: readonly Permission[] = [
   'reports.trial_balance.read',
@@ -215,6 +222,7 @@ export const PERMISSION_LABELS: Record<Permission, string> = {
   'goods_receipt.edit': 'Edit goods receipts',
   'goods_receipt.post': 'Post goods receipts',
   'goods_receipt.close': 'Close goods receipts',
+  'platform.admin': 'Platform administration (cross-tenant — admin portal only)',
 };
 
 const PEV_ALL: Permission[] = ['pev.read', 'pev.create', 'pev.approve', 'pev.post'];

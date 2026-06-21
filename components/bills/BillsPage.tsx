@@ -1,6 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useDispatchOnly, useStateSelector, useTransactions } from '../../hooks/useSelectiveState';
-import { logPaymentListUiTrace } from '../../services/debug/paymentDisappearanceTrace';
 import InvoiceBillForm from '../invoices/InvoiceBillForm';
 import Button from '../ui/Button';
 import Input from '../ui/Input';
@@ -801,25 +800,6 @@ const BillsPage: React.FC<BillsPageProps> = ({ projectContext = false }) => {
         vendorMap,
         projectFilter,
     ]);
-
-    useEffect(() => {
-        const paymentRows = filteredRows.filter((row) => row.type === 'payment' && row.payment);
-        logPaymentListUiTrace({
-            component: 'BillsPage',
-            sourceTransactionCount: transactions.length,
-            recordsPropCount: tableRows.length,
-            filteredRecordCount: filteredRows.length,
-            displayedRecordCount: filteredRows.length,
-            transactions,
-            displayedRecords: paymentRows.map((row) => ({
-                id: row.id,
-                type: 'payment',
-                raw: row.payment as Transaction,
-            })),
-            typeFilter,
-            dateFilter: dateRange,
-        });
-    }, [transactions, tableRows, filteredRows, typeFilter, dateRange]);
 
     // --- Sidebar Resize: container-relative width to prevent jumping ---
     const handleMouseMoveSidebar = useCallback((e: MouseEvent) => {

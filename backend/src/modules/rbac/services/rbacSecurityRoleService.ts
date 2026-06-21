@@ -254,6 +254,15 @@ export async function securityUpdateRole(
   if (!row) return undefined;
 
   await persistRolePermissions(tenantId, repo, row, permissions);
+
+  // Bump access_version for every user who holds this role so STALE_AV is detected
+  // immediately on their next request. The role.version increment already changes the
+  // rolePermissionsHash, but an explicit bump ensures the AV check fires even in edge
+  // cases where the hash comparison is bypassed or the user had no prior V2 token.
+  for (const userId of holderIds) {
+    await repo.incrementUserAccessVersion(userId);
+  }
+
   await appendRbacAuditLog(client, withAuditMeta({
     tenantId,
     actorUserId: actorId,
