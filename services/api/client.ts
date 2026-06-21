@@ -309,7 +309,11 @@ export class ApiClient {
                              endpoint.includes('/health') ||
                              endpoint.includes('/schema/version') ||
                              endpoint.includes('/app-info/version') ||
-                             endpoint.includes('/discover');
+                             endpoint.includes('/discover') ||
+                             endpoint.includes('/demo/info') ||
+                             endpoint.includes('/demo/enter') ||
+                             endpoint.includes('/demo/analytics') ||
+                             endpoint.includes('/trial/exchange');
     if (!this.token && !isPublicEndpoint) {
       throw {
         error: 'No authentication token',

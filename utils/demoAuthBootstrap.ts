@@ -1,4 +1,5 @@
 import { getDefaultApiBaseUrl } from '../config/apiUrl';
+import { apiClient } from '../services/api/client';
 import { resetDemoTourSession } from '../services/tours/demoTourSession';
 
 export const DEMO_AUTH_STORAGE_KEY = 'pbooks_demo_auth';
@@ -99,22 +100,30 @@ export function clearDemoTourQueryParams(): void {
 
 export async function fetchDemoSessionFromApi(): Promise<DemoAuthPayload | null> {
   try {
-    const res = await fetch(`${getDefaultApiBaseUrl()}/demo/enter`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}',
-    });
-    const json = (await res.json()) as {
-      success?: boolean;
-      data?: DemoAuthPayload;
-    };
-    const data = json.data;
-    if (!res.ok || !data?.token || !data.user || !data.tenant) {
+    const data = await apiClient.post<DemoAuthPayload>('/demo/enter', {});
+    if (!data?.token || !data.user || !data.tenant) {
       return null;
     }
     return data;
   } catch {
-    return null;
+    try {
+      const res = await fetch(`${getDefaultApiBaseUrl()}/demo/enter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      const json = (await res.json()) as {
+        success?: boolean;
+        data?: DemoAuthPayload;
+      };
+      const payload = json.data;
+      if (!res.ok || !payload?.token || !payload.user || !payload.tenant) {
+        return null;
+      }
+      return payload;
+    } catch {
+      return null;
+    }
   }
 }
 

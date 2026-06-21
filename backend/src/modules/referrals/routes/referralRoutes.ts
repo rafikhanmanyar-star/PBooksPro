@@ -138,13 +138,7 @@ const inviteSchema = z.object({
 
 
 
-referralRouter.use(authMiddleware);
-
-referralRouter.use(requirePermission('users.read'));
-
-
-
-referralRouter.get('/referrals/dashboard', async (req: AuthedRequest, res) => {
+referralRouter.get('/referrals/dashboard', authMiddleware, requirePermission('users.read'), async (req: AuthedRequest, res) => {
 
   const pool = getPool();
 
@@ -170,7 +164,7 @@ referralRouter.get('/referrals/dashboard', async (req: AuthedRequest, res) => {
 
 
 
-referralRouter.post('/referrals/invitations', async (req: AuthedRequest, res) => {
+referralRouter.post('/referrals/invitations', authMiddleware, requirePermission('users.read'), async (req: AuthedRequest, res) => {
 
   const parsed = inviteSchema.safeParse(req.body);
 

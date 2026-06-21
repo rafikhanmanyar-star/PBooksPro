@@ -16,6 +16,7 @@ import {
   clearWebsiteDemoEntry,
   isAutoDemoUrl,
   isWebsiteDemoEntry,
+  markWebsiteDemoEntry,
   resolveDemoAuthHandoff,
 } from '../utils/demoAuthBootstrap';
 import { trackEvent } from '../services/analytics/trackEvent';
@@ -434,6 +435,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAutoDemoUrl() ||
           (typeof window !== 'undefined' && sessionStorage.getItem('pbooks_demo_auth'))
         ) {
+          markWebsiteDemoEntry();
           const demoPayload = await resolveDemoAuthHandoff();
           if (demoPayload && isMounted) {
             const { token, loginEventId, user, tenant } = demoPayload;
@@ -447,18 +449,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setSessionDataSource('postgres_api');
             sessionStorage.removeItem('pbooks_api_last_sync_at');
             sessionStorage.removeItem('pbooks_api_sync_tenant_id');
-            syncDisplayTimezoneFromUser(user);
+            syncDisplayTimezoneFromUser({
+              id: user.id,
+              username: user.username,
+              name: user.name,
+              role: user.role,
+              tenantId: user.tenantId,
+              displayTimezone: user.displayTimezone ?? null,
+              interfaceMode: user.interfaceMode ?? 'auto',
+            });
             markDemoSessionActive();
             resetDemoTourSession();
             clearWebsiteDemoEntry();
             trackEvent('demo_session_started', { source: 'bootstrap' });
             setState({
               isAuthenticated: true,
-              user,
+              user: {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                role: user.role,
+                tenantId: user.tenantId,
+                displayTimezone: user.displayTimezone ?? null,
+                interfaceMode: user.interfaceMode ?? 'auto',
+              },
               tenant,
               isLoading: false,
               isInitializing: false,
               error: null,
+              pendingCompanySelection: null,
+              companySwitchRequest: null,
             });
             window.dispatchEvent(new CustomEvent('auth:login-success'));
             return;
