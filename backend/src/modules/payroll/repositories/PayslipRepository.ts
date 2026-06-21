@@ -9,7 +9,9 @@ import {
 
 const PAYSLIP_COLUMNS = `id, tenant_id, payroll_run_id, employee_id, basic_pay::text, total_allowances::text, total_deductions::text,
   total_adjustments::text, gross_pay::text, net_pay::text, allowance_details, deduction_details, adjustment_details,
-  assignment_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at`;
+  assignment_snapshot, working_days::text, present_days::text, leave_days::text, paid_leave_days::text,
+  unpaid_leave_days::text, absent_days::text, half_days::text, lop_days::text, lop_deduction::text,
+  adjusted_basic::text, attendance_summary_snapshot, is_paid, paid_amount::text, paid_at, transaction_id, deleted_at, created_at, updated_at`;
 
 export type PayslipComputedInsert = {
   basic_pay: number;
@@ -20,6 +22,17 @@ export type PayslipComputedInsert = {
   net_pay: number;
   allowance_details: unknown;
   deduction_details: unknown;
+  working_days?: number;
+  present_days?: number;
+  leave_days?: number;
+  paid_leave_days?: number;
+  unpaid_leave_days?: number;
+  absent_days?: number;
+  half_days?: number;
+  lop_days?: number;
+  lop_deduction?: number;
+  adjusted_basic?: number;
+  attendance_summary_snapshot?: unknown;
 };
 
 export type PayslipBatchInsertRow = {
@@ -76,7 +89,10 @@ export class PayslipRepository extends TenantRepository {
     const r = await client.query<PayslipRow>(
       `SELECT ps.id, ps.tenant_id, ps.payroll_run_id, ps.employee_id, ps.basic_pay::text, ps.total_allowances::text, ps.total_deductions::text,
         ps.total_adjustments::text, ps.gross_pay::text, ps.net_pay::text, ps.allowance_details, ps.deduction_details, ps.adjustment_details,
-        ps.assignment_snapshot, ps.is_paid, ps.paid_amount::text, ps.paid_at, ps.transaction_id, ps.deleted_at, ps.created_at, ps.updated_at
+        ps.assignment_snapshot, ps.working_days::text, ps.present_days::text, ps.leave_days::text, ps.paid_leave_days::text,
+        ps.unpaid_leave_days::text, ps.absent_days::text, ps.half_days::text, ps.lop_days::text, ps.lop_deduction::text,
+        ps.adjusted_basic::text, ps.attendance_summary_snapshot,
+        ps.is_paid, ps.paid_amount::text, ps.paid_at, ps.transaction_id, ps.deleted_at, ps.created_at, ps.updated_at
        FROM payslips ps${joinEmployee}
        WHERE ${conditions.join(' AND ')} ORDER BY ps.id ASC`,
       params
@@ -125,9 +141,12 @@ export class PayslipRepository extends TenantRepository {
           gross_pay = $5, net_pay = $6,
           allowance_details = $7::jsonb, deduction_details = $8::jsonb, adjustment_details = $9::jsonb,
           assignment_snapshot = $10::jsonb,
+          working_days = $11, present_days = $12, leave_days = $13, paid_leave_days = $14,
+          unpaid_leave_days = $15, absent_days = $16, half_days = $17, lop_days = $18,
+          lop_deduction = $19, adjusted_basic = $20, attendance_summary_snapshot = $21::jsonb,
           is_paid = false, paid_amount = 0, paid_at = NULL, transaction_id = NULL,
           deleted_at = NULL, updated_at = NOW()
-        WHERE id = $11 AND tenant_id = $12`,
+        WHERE id = $22 AND tenant_id = $23`,
       [
         computed.basic_pay,
         computed.total_allowances,
@@ -139,6 +158,19 @@ export class PayslipRepository extends TenantRepository {
         JSON.stringify(computed.deduction_details),
         adjustmentJson,
         assignmentSnapshot,
+        computed.working_days ?? null,
+        computed.present_days ?? null,
+        computed.leave_days ?? null,
+        computed.paid_leave_days ?? null,
+        computed.unpaid_leave_days ?? null,
+        computed.absent_days ?? null,
+        computed.half_days ?? null,
+        computed.lop_days ?? null,
+        computed.lop_deduction ?? 0,
+        computed.adjusted_basic ?? computed.basic_pay,
+        computed.attendance_summary_snapshot != null
+          ? JSON.stringify(computed.attendance_summary_snapshot)
+          : null,
         payslipId,
         this.tenantId,
       ]
@@ -153,7 +185,7 @@ export class PayslipRepository extends TenantRepository {
       let i = 1;
       for (const r of slice) {
         parts.push(
-          `($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6},$${i + 7},$${i + 8},$${i + 9},$${i + 10}::jsonb,$${i + 11}::jsonb,$${i + 12}::jsonb,$${i + 13}::jsonb,false,0,NULL,NOW(),NOW())`
+          `($${i},$${i + 1},$${i + 2},$${i + 3},$${i + 4},$${i + 5},$${i + 6},$${i + 7},$${i + 8},$${i + 9},$${i + 10}::jsonb,$${i + 11}::jsonb,$${i + 12}::jsonb,$${i + 13}::jsonb,$${i + 14},$${i + 15},$${i + 16},$${i + 17},$${i + 18},$${i + 19},$${i + 20},$${i + 21},$${i + 22},$${i + 23},$${i + 24}::jsonb,false,0,NULL,NOW(),NOW())`
         );
         params.push(
           r.id,
@@ -169,14 +201,30 @@ export class PayslipRepository extends TenantRepository {
           JSON.stringify(r.computed.allowance_details),
           JSON.stringify(r.computed.deduction_details),
           r.adjustmentJson,
-          r.assignmentSnapshot
+          r.assignmentSnapshot,
+          r.computed.working_days ?? null,
+          r.computed.present_days ?? null,
+          r.computed.leave_days ?? null,
+          r.computed.paid_leave_days ?? null,
+          r.computed.unpaid_leave_days ?? null,
+          r.computed.absent_days ?? null,
+          r.computed.half_days ?? null,
+          r.computed.lop_days ?? null,
+          r.computed.lop_deduction ?? 0,
+          r.computed.adjusted_basic ?? r.computed.basic_pay,
+          r.computed.attendance_summary_snapshot != null
+            ? JSON.stringify(r.computed.attendance_summary_snapshot)
+            : null
         );
-        i += 14;
+        i += 25;
       }
       await client.query(
         `INSERT INTO payslips (
            id, tenant_id, payroll_run_id, employee_id, basic_pay, total_allowances, total_deductions, total_adjustments,
-           gross_pay, net_pay, allowance_details, deduction_details, adjustment_details, assignment_snapshot, is_paid, paid_amount, deleted_at, created_at, updated_at
+           gross_pay, net_pay, allowance_details, deduction_details, adjustment_details, assignment_snapshot,
+           working_days, present_days, leave_days, paid_leave_days, unpaid_leave_days, absent_days, half_days,
+           lop_days, lop_deduction, adjusted_basic, attendance_summary_snapshot,
+           is_paid, paid_amount, deleted_at, created_at, updated_at
          ) VALUES ${parts.join(',')}`,
         params
       );

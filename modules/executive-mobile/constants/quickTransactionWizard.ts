@@ -8,9 +8,12 @@ export const WIZARD_STEPS = [
 
 export const QUICK_AMOUNT_PRESETS = [5_000, 10_000, 25_000, 50_000, 100_000] as const;
 
-export { isEntityPickerKind, isNameInputKind } from './quickCaptureTypes';
+export { isCustomerPickerKind, isEntityPickerKind, isNameInputKind, isVendorPickerKind } from './quickCaptureTypes';
 export {
   CORE_CAPTURE_TYPES,
+  INFLOW_CAPTURE_TYPES,
+  OUTFLOW_CAPTURE_TYPES,
+  captureTypesForFlow,
   captureTypeIcon,
   defaultCaptureType,
   type CaptureType,

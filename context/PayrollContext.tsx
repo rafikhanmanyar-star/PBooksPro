@@ -10,12 +10,16 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { PayrollEmployee, PayrollRun } from '../components/payroll/types';
 
 // Sub-tab types for payroll navigation
-export type PayrollSubTab = 'workforce' | 'cycles' | 'report' | 'structure' | 'history' | 'settings';
+export type PayrollSubTab = 'dashboard' | 'workforce' | 'attendance' | 'leave' | 'wizard' | 'cycles' | 'payslips' | 'report' | 'history' | 'settings';
+
+export type PayrollWizardSeed = { month: number; year: number };
 
 // State interface for PayrollContext
 interface PayrollState {
   // Navigation
   activeSubTab: PayrollSubTab;
+  /** Pre-fill Payroll Wizard period when opened from Payroll Cycle shortcuts. */
+  wizardSeed: PayrollWizardSeed | null;
   
   // Workforce tab state
   selectedEmployee: PayrollEmployee | null;
@@ -36,6 +40,7 @@ interface PayrollState {
 interface PayrollContextValue extends PayrollState {
   // Navigation
   setActiveSubTab: (tab: PayrollSubTab) => void;
+  setWizardSeed: (seed: PayrollWizardSeed | null) => void;
   
   // Workforce actions
   setSelectedEmployee: (employee: PayrollEmployee | null) => void;
@@ -59,7 +64,8 @@ interface PayrollContextValue extends PayrollState {
 
 // Initial state values
 const initialState: PayrollState = {
-  activeSubTab: 'workforce',
+  activeSubTab: 'dashboard',
+  wizardSeed: null,
   selectedEmployee: null,
   isAddingEmployee: false,
   workforceSearchTerm: '',
@@ -81,6 +87,7 @@ interface PayrollProviderProps {
 export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) => {
   // Navigation state
   const [activeSubTab, setActiveSubTab] = useState<PayrollSubTab>(initialState.activeSubTab);
+  const [wizardSeed, setWizardSeed] = useState<PayrollWizardSeed | null>(initialState.wizardSeed);
   
   // Workforce tab state
   const [selectedEmployee, setSelectedEmployee] = useState<PayrollEmployee | null>(initialState.selectedEmployee);
@@ -120,6 +127,7 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
   const value: PayrollContextValue = {
     // State
     activeSubTab,
+    wizardSeed,
     selectedEmployee,
     isAddingEmployee,
     workforceSearchTerm,
@@ -131,6 +139,7 @@ export const PayrollProvider: React.FC<PayrollProviderProps> = ({ children }) =>
     
     // Actions
     setActiveSubTab,
+    setWizardSeed,
     setSelectedEmployee,
     setIsAddingEmployee,
     setWorkforceSearchTerm,

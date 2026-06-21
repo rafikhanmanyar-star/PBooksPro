@@ -1,7 +1,7 @@
 import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAdminAuth } from '../../context/AdminAuthContext';
-import { Users, LayoutDashboard, LogOut, UserCog, Activity, UserPlus, Building2 } from 'lucide-react';
+import { Users, LayoutDashboard, LogOut, UserCog, Activity, UserPlus, Building2, CreditCard, Gift, HeartPulse } from 'lucide-react';
 
 const Layout: React.FC = () => {
   const { user, logout } = useAdminAuth();
@@ -18,6 +18,9 @@ const Layout: React.FC = () => {
     { path: '/leads', label: 'Leads', icon: UserPlus },
     { path: '/organization-requests', label: 'Organization Requests', icon: Building2 },
     { path: '/monitoring', label: 'System Monitoring', icon: Activity },
+    { path: '/system-health', label: 'System Health Center', icon: HeartPulse },
+    { path: '/subscriptions', label: 'Subscriptions', icon: CreditCard },
+    { path: '/referrals', label: 'Referrals', icon: Gift },
     { path: '/tenants', label: 'Tenants', icon: Users },
     { path: '/users', label: 'Admin Users', icon: UserCog },
   ];

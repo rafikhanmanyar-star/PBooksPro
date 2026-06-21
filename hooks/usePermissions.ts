@@ -199,6 +199,30 @@ export function usePermissions() {
 
       canWritePayroll: has('payroll.write'),
 
+      canApprovePayrollRun: has('payroll.runs.approve'),
+
+      canCreatePayrollRun: has('payroll.runs.create') || has('payroll.write'),
+
+      canReadAttendance: has('attendance.read'),
+
+      canWriteAttendance: has('attendance.write') || has('attendance.manage'),
+
+      canDeleteAttendance: has('attendance.delete') || has('attendance.manage'),
+
+      canManageAttendance: has('attendance.manage'),
+
+      canReadLeave: has('leave.read'),
+
+      canWriteLeave: has('leave.write') || has('leave.manage'),
+
+      canDeleteLeave: has('leave.delete') || has('leave.manage'),
+
+      canApproveLeave: has('leave.approve') || has('leave.manage'),
+
+      canCancelLeave: has('leave.write') || has('leave.approve') || has('leave.manage'),
+
+      canManageLeave: has('leave.manage'),
+
       canReadUsers: has('users.read'),
 
       canManageUsers: has('users.manage'),

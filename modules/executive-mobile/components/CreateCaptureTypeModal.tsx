@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
 import { ICONS } from '../../../constants';
 
+import type { MoneyFlow } from '../constants/quickCaptureTypes';
+import { moneyFlowDirectionLabel } from '../constants/quickCaptureTypes';
+
 type Props = {
   open: boolean;
+  moneyFlow: MoneyFlow;
   onClose: () => void;
   onCreated: (label: string) => void;
 };
 
-export default function CreateCaptureTypeModal({ open, onClose, onCreated }: Props) {
+export default function CreateCaptureTypeModal({ open, moneyFlow, onClose, onCreated }: Props) {
   const [label, setLabel] = useState('');
   const [error, setError] = useState<string | null>(null);
 
@@ -44,7 +48,8 @@ export default function CreateCaptureTypeModal({ open, onClose, onCreated }: Pro
               New transaction type
             </h2>
             <p className="text-xs text-app-muted mt-0.5">
-              Saved on this device for quick access. Works like Misc — enter a name, project, and notes.
+              Saved on this device for {moneyFlowDirectionLabel(moneyFlow).toLowerCase()} captures. It
+              will appear in the list — tap it next time like Suppliers or Staff.
             </p>
           </div>
           <button

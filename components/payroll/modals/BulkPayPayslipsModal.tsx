@@ -17,6 +17,7 @@ import { resolveSystemCategoryId } from '../../../services/systemEntityIds';
 import { payslipDisplayPaidAmount, payslipRemainingAmount } from '../utils/payslipPaymentState';
 import { resolvePayslipAssignment } from '../utils/payslipAssignment';
 import { todayLocalYyyyMmDd, toLocalDateString } from '../../../utils/dateUtils';
+import { canPayPayrollRun } from '../utils/payrollWorkflowGuards';
 import DatePicker from '../../ui/DatePicker';
 import AmountInput from '../../common/AmountInput';
 
@@ -109,6 +110,15 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
     return items.filter(({ payslip }) => payAmountByPayslipId[payslip.id] > 0);
   }, [items, payAmountByPayslipId]);
 
+  const paymentBlockedReason = useMemo(() => {
+    const runs = [...new Set(items.map((i) => i.run).filter(Boolean))] as PayrollRun[];
+    for (const run of runs) {
+      const guard = canPayPayrollRun(run);
+      if (!guard.allowed) return guard.reason;
+    }
+    return undefined;
+  }, [items]);
+
   const setAmountForPayslip = (payslipId: string, value: string) => {
     setAmountByPayslipId((prev) => ({ ...prev, [payslipId]: value }));
   };
@@ -125,6 +135,10 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (items.length === 0) return;
+    if (paymentBlockedReason) {
+      setError(paymentBlockedReason);
+      return;
+    }
     if (!accountId) {
       setError('Please select a bank account.');
       return;
@@ -471,7 +485,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !accountId || totalToPay <= 0 || itemsWithPositivePay.length === 0}
+              disabled={isSubmitting || !!paymentBlockedReason || !accountId || totalToPay <= 0 || itemsWithPositivePay.length === 0}
               className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Banknote size={18} />}

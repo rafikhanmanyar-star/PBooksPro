@@ -1,16 +1,19 @@
 import type { CreateUnpostedTransactionPayload } from '../../../services/api/unpostedTransactionsApi';
 import type { UnpostedTransaction } from '../../../types/executiveMobile.types';
 import { UNPOSTED_SOURCE_EXECUTIVE_APP } from '../../../types/executiveMobile.types';
-import type { CaptureType } from '../constants/quickCaptureTypes';
+import type { CaptureType, MoneyFlow } from '../constants/quickCaptureTypes';
+import { captureTypeDisplayLabel, moneyFlowDirectionLabel } from '../constants/quickCaptureTypes';
 import { voiceDescriptionForFinance } from './parseVoiceQuickCapture';
 
 export type CaptureFormFields = {
   amount: number;
+  moneyFlow: MoneyFlow;
   partyName?: string;
   description?: string;
   projectId?: string;
   supplierId?: string;
   employeeId?: string;
+  customerId?: string;
   voiceTranscript?: string | null;
 };
 
@@ -24,25 +27,42 @@ export function buildUnpostedPayload(
   let description = notes;
   let transactionType: string;
 
-  switch (captureType.kind) {
-    case 'suppliers':
-      transactionType = 'supplier_payment';
-      break;
-    case 'staff':
-      transactionType = 'employee_payment';
-      break;
-    case 'site':
-      transactionType = 'site_expense';
-      break;
-    case 'misc':
-      transactionType = 'other';
-      break;
-    case 'custom':
-      transactionType = 'other';
-      description = notes ? `[${captureType.label}] ${notes}` : `[${captureType.label}]`;
-      break;
-    default:
-      transactionType = 'other';
+  if (fields.moneyFlow === 'in') {
+    switch (captureType.kind) {
+      case 'customer_collection':
+        transactionType = 'customer_collection';
+        break;
+      case 'cash_deposit':
+        transactionType = 'cash_deposit';
+        break;
+      case 'custom':
+        transactionType = 'other';
+        description = notes ? `[${captureType.label}] ${notes}` : `[${captureType.label}]`;
+        break;
+      default:
+        transactionType = 'cash_deposit';
+    }
+  } else {
+    switch (captureType.kind) {
+      case 'suppliers':
+        transactionType = 'supplier_payment';
+        break;
+      case 'staff':
+        transactionType = 'employee_payment';
+        break;
+      case 'site':
+        transactionType = 'site_expense';
+        break;
+      case 'misc':
+        transactionType = 'other';
+        break;
+      case 'custom':
+        transactionType = 'other';
+        description = notes ? `[${captureType.label}] ${notes}` : `[${captureType.label}]`;
+        break;
+      default:
+        transactionType = 'other';
+    }
   }
 
   if (fields.voiceTranscript) {
@@ -57,6 +77,7 @@ export function buildUnpostedPayload(
     description,
     supplierId: fields.supplierId || undefined,
     employeeId: fields.employeeId || undefined,
+    customerId: fields.customerId || undefined,
     projectId: fields.projectId?.trim() || undefined,
     source: UNPOSTED_SOURCE_EXECUTIVE_APP,
     status: 'submitted',
@@ -75,14 +96,29 @@ export function getCaptureDisplayLabel(tx: UnpostedTransaction): string {
       return 'Staff';
     case 'site_expense':
       return 'Site';
+    case 'customer_collection':
+      return 'Customer Collection';
+    case 'cash_deposit':
+      return 'Cash Deposit';
     case 'other':
-      return 'Misc';
+      return tx.customerId ? 'Customer' : 'Misc';
     default:
       return tx.transactionType.replace(/_/g, ' ');
   }
 }
 
+export function getCaptureFlowLabel(tx: UnpostedTransaction): string {
+  if (tx.transactionType === 'customer_collection' || tx.transactionType === 'cash_deposit') {
+    return moneyFlowDirectionLabel('in');
+  }
+  return moneyFlowDirectionLabel('out');
+}
+
 export function stripCaptureDescriptionPrefix(description?: string): string {
   if (!description) return '';
   return description.replace(CUSTOM_DESC_PREFIX, '').trim();
+}
+
+export function reviewCaptureTypeLabel(type: CaptureType, moneyFlow: MoneyFlow): string {
+  return captureTypeDisplayLabel(type, moneyFlow);
 }

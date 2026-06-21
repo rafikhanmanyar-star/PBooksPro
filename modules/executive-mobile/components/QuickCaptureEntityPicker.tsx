@@ -11,6 +11,7 @@ type Props = {
   autoFocus?: boolean;
   loading?: boolean;
   emptyMessage?: string;
+  onRetry?: () => void;
 };
 
 export default function QuickCaptureEntityPicker({
@@ -22,6 +23,7 @@ export default function QuickCaptureEntityPicker({
   autoFocus = false,
   loading = false,
   emptyMessage = 'No matches found',
+  onRetry,
 }: Props) {
   const [search, setSearch] = useState('');
 
@@ -56,7 +58,18 @@ export default function QuickCaptureEntityPicker({
       </div>
       {loading && <p className="text-xs text-app-muted px-1">Loading…</p>}
       {!loading && filtered.length === 0 && (
-        <p className="text-xs text-app-muted px-1 py-2">{emptyMessage}</p>
+        <div className="px-1 py-2 space-y-2">
+          <p className="text-xs text-app-muted">{emptyMessage}</p>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="text-xs font-semibold text-ds-primary touch-manipulation"
+            >
+              Retry
+            </button>
+          )}
+        </div>
       )}
       <ul className="qc-entity-list max-h-48 overflow-y-auto overscroll-contain space-y-1">
         {filtered.map((item) => {

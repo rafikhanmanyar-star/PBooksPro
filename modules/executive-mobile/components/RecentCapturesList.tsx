@@ -1,8 +1,14 @@
 import React from 'react';
 import { useExecutiveMode } from '../../../context/ExecutiveModeContext';
 import { useUnpostedTransactions } from '../hooks/useUnpostedTransactions';
+import {
+  INFLOW_CAPTURE_TYPES,
+  OUTFLOW_CAPTURE_TYPES,
+  captureTypeDisplayLabel,
+  captureTypeIcon,
+} from '../constants/quickCaptureTypes';
+import type { MoneyFlow } from '../constants/quickCaptureTypes';
 import { getCaptureDisplayLabel, stripCaptureDescriptionPrefix } from '../utils/captureSubmitMapping';
-import { CORE_CAPTURE_TYPES, captureTypeIcon } from '../constants/quickCaptureTypes';
 import type { UnpostedTransactionStatus } from '../../../types/executiveMobile.types';
 import { CURRENCY, ICONS } from '../../../constants';
 import { formatDateTime } from '../../../utils/dateUtils';
@@ -16,10 +22,21 @@ const STATUS_STYLES: Record<UnpostedTransactionStatus, string> = {
   rejected: 'bg-red-500/15 text-red-600 dark:text-red-400',
 };
 
+function flowForTransaction(tx: { transactionType: string }): MoneyFlow {
+  if (tx.transactionType === 'customer_collection' || tx.transactionType === 'cash_deposit') {
+    return 'in';
+  }
+  return 'out';
+}
+
 function iconForTransaction(tx: { transactionType: string; description?: string }) {
+  const flow = flowForTransaction(tx);
   const label = getCaptureDisplayLabel(tx);
-  const core = CORE_CAPTURE_TYPES.find((t) => t.label === label);
-  if (core) return captureTypeIcon(core);
+  const allCore = [...OUTFLOW_CAPTURE_TYPES, ...INFLOW_CAPTURE_TYPES];
+  const core = allCore.find(
+    (t) => captureTypeDisplayLabel(t, flow) === label || t.label === label
+  );
+  if (core) return captureTypeIcon(core, flow);
   return ICONS.layers;
 }
 

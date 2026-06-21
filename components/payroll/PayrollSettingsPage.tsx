@@ -11,6 +11,8 @@ import { Department, GradeLevel, PayrollEmployee, EmploymentStatus } from './typ
 import DepartmentConfigModal from './modals/DepartmentConfigModal';
 import GradeConfigModal from './modals/GradeConfigModal';
 import { formatCurrency } from './utils/formatters';
+import LeaveTypeSettings from './leave/LeaveTypeSettings';
+import WorkWeekSettings from './settings/WorkWeekSettings';
 
 const DEPT_ICONS = [PenLine, PenTool, Megaphone, Building2, PenLine];
 
@@ -278,6 +280,14 @@ const PayrollSettingsPage: React.FC = () => {
             </div>
           </section>
         </div>
+
+        <section className={`${sectionCardClass} mt-6 p-4 sm:p-5`}>
+          <LeaveTypeSettings />
+        </section>
+
+        <section className={`${sectionCardClass} mt-6 p-4 sm:p-5`}>
+          <WorkWeekSettings />
+        </section>
       </div>
 
       <DepartmentConfigModal

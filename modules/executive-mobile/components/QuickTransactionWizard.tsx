@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AmountInput from '../../../components/common/AmountInput';
 import { useCreateUnpostedTransaction } from '../hooks/useUnpostedTransactions';
 import { uploadUnpostedAttachment } from '../../../services/api/unpostedTransactionsApi';
@@ -10,7 +10,9 @@ import QuickCaptureStepper from './QuickCaptureStepper';
 import RecentCapturesList from './RecentCapturesList';
 import VoiceCapturePanel from './VoiceCapturePanel';
 import QuickCaptureDetailsStep, { type DetailsFormState } from './QuickCaptureDetailsStep';
+import QuickCaptureReceiptStep from './QuickCaptureReceiptStep';
 import CreateCaptureTypeModal from './CreateCaptureTypeModal';
+import MoneyFlowToggle from './MoneyFlowToggle';
 import {
   getLastQuickCaptureSnapshot,
   getQuickCaptureSuggestions,
@@ -18,14 +20,19 @@ import {
 } from '../utils/quickCaptureFieldHistory';
 import {
   isEntityPickerKind,
+  isVendorPickerKind,
   QUICK_AMOUNT_PRESETS,
   WIZARD_STEPS,
 } from '../constants/quickTransactionWizard';
 import {
-  CORE_CAPTURE_TYPES,
+  captureTypesForFlow,
+  captureTypeDisplayLabel,
   captureTypeIcon,
   defaultCaptureType,
+  moneyFlowDirectionLabel,
+  moneyFlowLabel,
   type CaptureType,
+  type MoneyFlow,
 } from '../constants/quickCaptureTypes';
 import {
   loadCustomCaptureTypes,
@@ -33,6 +40,7 @@ import {
 } from '../utils/customCaptureTypesStorage';
 import {
   buildUnpostedPayload,
+  reviewCaptureTypeLabel,
   stripCaptureDescriptionPrefix,
 } from '../utils/captureSubmitMapping';
 import { useQuickCaptureCatalog } from '../hooks/useQuickCaptureCatalog';
@@ -60,6 +68,7 @@ const EMPTY_DETAILS: DetailsFormState = {
   partyName: '',
   supplierId: '',
   employeeId: '',
+  customerId: '',
   projectId: '',
   description: '',
 };
@@ -69,11 +78,11 @@ export default function QuickTransactionWizard() {
   const { user } = useAuth();
   const tenantId = user?.tenantId;
   const createMutation = useCreateUnpostedTransaction();
-  const fileRef = useRef<HTMLInputElement>(null);
   const { projectItems } = useQuickCaptureCatalog();
 
   const [step, setStep] = useState(1);
-  const [captureType, setCaptureType] = useState<CaptureType>(defaultCaptureType);
+  const [moneyFilter, setMoneyFilter] = useState<MoneyFlow>('out');
+  const [captureType, setCaptureType] = useState<CaptureType>(defaultCaptureType('out'));
   const [customTypes, setCustomTypes] = useState<CaptureType[]>(() => loadCustomCaptureTypes(tenantId));
   const [showCreateType, setShowCreateType] = useState(false);
   const [amount, setAmount] = useState('');
@@ -82,11 +91,30 @@ export default function QuickTransactionWizard() {
   const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [fieldSuggestions, setFieldSuggestions] = useState(() =>
     getQuickCaptureSuggestions(defaultCaptureType().id, tenantId)
   );
 
-  const allTypes = useMemo(() => [...CORE_CAPTURE_TYPES, ...customTypes], [customTypes]);
+  const savedCustomTypes = useMemo(
+    () => customTypes.filter((t) => (t.flow ?? 'out') === moneyFilter),
+    [customTypes, moneyFilter]
+  );
+
+  const flowCaptureTypes = useMemo(
+    () => captureTypesForFlow(moneyFilter),
+    [moneyFilter]
+  );
+
+  useEffect(() => {
+    setCustomTypes(loadCustomCaptureTypes(tenantId));
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (step === 1) {
+      setCustomTypes(loadCustomCaptureTypes(tenantId));
+    }
+  }, [step, tenantId]);
   const currentStepMeta = WIZARD_STEPS[step - 1];
   const totalSteps = WIZARD_STEPS.length;
 
@@ -116,13 +144,48 @@ export default function QuickTransactionWizard() {
 
   const resetWizard = () => {
     setStep(1);
-    setCaptureType(defaultCaptureType());
+    setMoneyFilter('out');
+    setCaptureType(defaultCaptureType('out'));
+    setCustomTypes(loadCustomCaptureTypes(tenantId));
     setAmount('');
     resetDetails();
     setAttachment(null);
     setVoiceTranscript(null);
     setSubmitted(false);
     setError(null);
+    setShowCancelConfirm(false);
+  };
+
+  const hasWizardProgress =
+    step > 1 ||
+    Boolean(amount.trim()) ||
+    Boolean(details.partyName.trim()) ||
+    Boolean(details.supplierId) ||
+    Boolean(details.employeeId) ||
+    Boolean(details.projectId.trim()) ||
+    Boolean(details.description.trim()) ||
+    Boolean(attachment) ||
+    Boolean(voiceTranscript);
+
+  const completeCancel = () => {
+    resetWizard();
+    setView('home');
+  };
+
+  const requestCancel = () => {
+    if (hasWizardProgress) {
+      setShowCancelConfirm(true);
+      return;
+    }
+    completeCancel();
+  };
+
+  const selectMoneyFlow = (flow: MoneyFlow) => {
+    setMoneyFilter(flow);
+    setCaptureType(defaultCaptureType(flow));
+    setError(null);
+    resetDetails();
+    setVoiceTranscript(null);
   };
 
   const selectCaptureType = (type: CaptureType) => {
@@ -134,22 +197,29 @@ export default function QuickTransactionWizard() {
   };
 
   const handleCreateCustomType = (label: string) => {
-    const created = saveCustomCaptureType(label, tenantId);
+    const created = saveCustomCaptureType(label, moneyFilter, tenantId);
     if (!created) return;
     setCustomTypes(loadCustomCaptureTypes(tenantId));
-    selectCaptureType(created);
+    setCaptureType(created);
+    setError(null);
+    resetDetails();
   };
 
   const applyVoiceParsed = (parsed: ParsedVoiceCapture) => {
     setError(null);
     setVoiceTranscript(parsed.rawTranscript);
     setAmount(String(parsed.amount));
+    setMoneyFilter(parsed.moneyFlow);
     if (parsed.partyName) patchDetails({ partyName: parsed.partyName });
     if (parsed.projectId) patchDetails({ projectId: parsed.projectId });
+    const flowTypes = [
+      ...captureTypesForFlow(parsed.moneyFlow),
+      ...customTypes.filter((t) => (t.flow ?? 'out') === parsed.moneyFlow),
+    ];
     const matched =
-      allTypes.find((t) => t.id === parsed.captureTypeId) ??
-      CORE_CAPTURE_TYPES.find((t) => t.kind === parsed.captureKind) ??
-      defaultCaptureType();
+      flowTypes.find((t) => t.id === parsed.captureTypeId) ??
+      flowTypes.find((t) => t.kind === parsed.captureKind) ??
+      defaultCaptureType(parsed.moneyFlow);
     setCaptureType(matched);
     setStep(parsed.confidence === 'high' ? 5 : 3);
   };
@@ -168,9 +238,13 @@ export default function QuickTransactionWizard() {
       }
     }
     if (step === 3) {
-      if (isEntityPickerKind(captureType.kind)) {
-        if (captureType.kind === 'suppliers' && !details.supplierId) {
+      if (isEntityPickerKind(captureType.kind, moneyFilter)) {
+        if (isVendorPickerKind(captureType.kind, moneyFilter) && !details.supplierId) {
           setError('Select a vendor');
+          return false;
+        }
+        if (captureType.kind === 'customer_collection' && !details.customerId) {
+          setError('Select a customer');
           return false;
         }
         if (captureType.kind === 'staff' && !details.employeeId) {
@@ -214,11 +288,13 @@ export default function QuickTransactionWizard() {
     try {
       const payload = buildUnpostedPayload(captureType, {
         amount: parsedAmount,
+        moneyFlow: moneyFilter,
         partyName: details.partyName,
         description: details.description,
         projectId: details.projectId,
         supplierId: details.supplierId,
         employeeId: details.employeeId,
+        customerId: details.customerId,
         voiceTranscript,
       });
 
@@ -242,7 +318,8 @@ export default function QuickTransactionWizard() {
     projectItems.find((p) => p.id === details.projectId)?.name ??
     (details.projectId.trim() || '—');
 
-  const canShowTopNext = step < totalSteps && (step > 1 || captureType);
+  const canShowHeaderNext = step < totalSteps && (step > 1 || captureType);
+  const canShowHeaderSubmit = step === totalSteps;
 
   if (submitted) {
     return (
@@ -279,10 +356,11 @@ export default function QuickTransactionWizard() {
               <button
                 type="button"
                 onClick={goBack}
-                className="flex items-center justify-center w-10 h-10 -ml-1 text-ds-primary touch-manipulation shrink-0 rounded-xl"
-                aria-label="Back"
+                className="flex items-center gap-0.5 h-10 -ml-1 px-2 text-ds-primary touch-manipulation shrink-0 rounded-xl"
+                aria-label="Back to previous step"
               >
                 <span className="w-5 h-5">{ICONS.chevronLeft}</span>
+                <span className="text-sm font-semibold">Back</span>
               </button>
             )}
             <div className="min-w-0">
@@ -296,15 +374,34 @@ export default function QuickTransactionWizard() {
             </div>
           </div>
           <div className="flex flex-col items-end gap-2 shrink-0">
-            {canShowTopNext && (
+            <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={goNext}
-                className="text-xs font-bold text-white px-4 py-2 rounded-xl bg-ds-primary shadow-sm touch-manipulation"
+                onClick={requestCancel}
+                className="text-xs font-semibold text-app-muted hover:text-ds-danger px-2 py-2 touch-manipulation"
               >
-                Next →
+                Cancel
               </button>
-            )}
+              {canShowHeaderNext && (
+                <button
+                  type="button"
+                  onClick={goNext}
+                  className="text-xs font-bold text-white px-4 py-2 rounded-xl bg-ds-primary shadow-sm touch-manipulation"
+                >
+                  Next →
+                </button>
+              )}
+              {canShowHeaderSubmit && (
+                <button
+                  type="button"
+                  onClick={() => void handleSubmit()}
+                  disabled={createMutation.isPending}
+                  className="text-xs font-bold text-white px-4 py-2 rounded-xl bg-ds-primary shadow-sm touch-manipulation disabled:opacity-60"
+                >
+                  {createMutation.isPending ? 'Submitting…' : 'Submit'}
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => setView('myTransactions')}
@@ -317,7 +414,7 @@ export default function QuickTransactionWizard() {
         <QuickCaptureStepper currentStep={step} />
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-36">
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-4 pb-4">
         {step !== 1 && (
           <div className="mb-4">
             <h2 className="text-base font-semibold text-app-text">{currentStepMeta.title}</h2>
@@ -327,23 +424,63 @@ export default function QuickTransactionWizard() {
 
         {step === 1 && (
           <div className="space-y-5">
-            <div>
-              <h2 className="text-base font-bold text-app-text">Select Transaction Type</h2>
-              <p className="text-xs text-app-muted">Tap a type to continue — or create your own</p>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-bold text-app-text">Select Transaction Type</h2>
+                <p className="text-xs text-app-muted mt-0.5">
+                  {moneyFilter === 'out'
+                    ? 'Choose an expense type, then tap to continue'
+                    : 'Choose an income type, then tap to continue'}
+                </p>
+              </div>
+              <MoneyFlowToggle value={moneyFilter} onChange={selectMoneyFlow} align="end" />
             </div>
 
             <div className="grid grid-cols-2 gap-2.5">
-              {allTypes.map((t) => {
+              {flowCaptureTypes.map((t) => {
                 const selected = captureType.id === t.id;
+                const isIn = moneyFilter === 'in';
                 return (
                   <button
                     key={t.id}
                     type="button"
                     onClick={() => selectCaptureType(t)}
-                    className={`qc-type-tile touch-manipulation ${selected ? 'qc-type-tile--out-selected' : ''}`}
+                    className={`qc-type-tile touch-manipulation ${
+                      selected
+                        ? isIn
+                          ? 'qc-type-tile--in-selected'
+                          : 'qc-type-tile--out-selected'
+                        : ''
+                    }`}
                   >
                     <span className={`qc-type-tile-icon ${selected ? 'qc-type-tile-icon--selected' : ''}`}>
-                      <span className="w-5 h-5">{captureTypeIcon(t)}</span>
+                      <span className="w-5 h-5">{captureTypeIcon(t, moneyFilter)}</span>
+                    </span>
+                    <span className="text-[11px] font-semibold leading-tight text-center mt-1.5 line-clamp-2">
+                      {captureTypeDisplayLabel(t, moneyFilter)}
+                    </span>
+                  </button>
+                );
+              })}
+
+              {savedCustomTypes.map((t) => {
+                const selected = captureType.id === t.id;
+                const isIn = moneyFilter === 'in';
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => selectCaptureType(t)}
+                    className={`qc-type-tile qc-type-tile--custom touch-manipulation ${
+                      selected
+                        ? isIn
+                          ? 'qc-type-tile--in-selected'
+                          : 'qc-type-tile--out-selected'
+                        : ''
+                    }`}
+                  >
+                    <span className={`qc-type-tile-icon ${selected ? 'qc-type-tile-icon--selected' : ''}`}>
+                      <span className="w-5 h-5">{captureTypeIcon(t, moneyFilter)}</span>
                     </span>
                     <span className="text-[11px] font-semibold leading-tight text-center mt-1.5 line-clamp-2">
                       {t.label}
@@ -355,13 +492,14 @@ export default function QuickTransactionWizard() {
               <button
                 type="button"
                 onClick={() => setShowCreateType(true)}
-                className="qc-type-tile qc-type-tile--create touch-manipulation col-span-2"
+                className="qc-type-tile qc-type-tile--create touch-manipulation"
+                aria-label="Add new transaction type"
               >
-                <span className="qc-type-tile-icon">
+                <span className="qc-type-tile-icon qc-type-tile-icon--create">
                   <span className="w-5 h-5">{ICONS.plus}</span>
                 </span>
-                <span className="text-[11px] font-semibold leading-tight text-center mt-1.5">
-                  Create New Transaction Type
+                <span className="text-[11px] font-semibold leading-tight text-center mt-1.5 line-clamp-2">
+                  Add type
                 </span>
               </button>
             </div>
@@ -374,11 +512,13 @@ export default function QuickTransactionWizard() {
           <div className="space-y-4">
             <div className="p-3 rounded-xl bg-app-card border border-app-border text-sm flex items-center gap-3">
               <span className="w-9 h-9 rounded-lg bg-ds-primary/10 text-ds-primary inline-flex items-center justify-center shrink-0">
-                <span className="w-4 h-4">{captureTypeIcon(captureType)}</span>
+                <span className="w-4 h-4">{captureTypeIcon(captureType, moneyFilter)}</span>
               </span>
-              <div>
-                <span className="text-app-muted text-xs block">Type</span>
-                <span className="font-semibold">{captureType.label}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-app-muted text-xs block">
+                  {moneyFlowLabel(moneyFilter)} · {moneyFlowDirectionLabel(moneyFilter)}
+                </span>
+                <span className="font-semibold">{reviewCaptureTypeLabel(captureType, moneyFilter)}</span>
               </div>
             </div>
             <AmountInput
@@ -402,13 +542,6 @@ export default function QuickTransactionWizard() {
                 </button>
               ))}
             </div>
-            <button
-              type="button"
-              onClick={goNext}
-              className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
-            >
-              Continue to details
-            </button>
           </div>
         )}
 
@@ -416,59 +549,21 @@ export default function QuickTransactionWizard() {
           <div className="space-y-4">
             <QuickCaptureDetailsStep
               captureType={captureType}
+              moneyFlow={moneyFilter}
               value={details}
               onChange={patchDetails}
               fieldSuggestions={fieldSuggestions}
             />
-            <button
-              type="button"
-              onClick={goNext}
-              className="w-full py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
-            >
-              Continue to receipt
-            </button>
           </div>
         )}
 
         {step === 4 && (
           <div className="space-y-4">
-            <p className="text-xs text-app-muted rounded-lg bg-app-card border border-app-border px-3 py-2">
-              Snap a receipt photo (optional). Finance can extract details during review.
-            </p>
-            <input
-              ref={fileRef}
-              type="file"
-              accept="image/*,application/pdf"
-              capture="environment"
-              className="hidden"
-              onChange={(e) => setAttachment(e.target.files?.[0] ?? null)}
+            <QuickCaptureReceiptStep
+              attachment={attachment}
+              onAttachmentChange={setAttachment}
+              onError={(msg) => setError(msg)}
             />
-            <button
-              type="button"
-              onClick={() => fileRef.current?.click()}
-              className="w-full flex flex-col items-center justify-center gap-3 py-10 rounded-xl border-2 border-dashed border-app-border bg-app-card touch-manipulation"
-            >
-              <span className="w-12 h-12 text-app-muted">{ICONS.camera}</span>
-              <span className="text-sm font-medium">
-                {attachment ? attachment.name : 'Tap to scan receipt or upload'}
-              </span>
-            </button>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={goNext}
-                className="flex-1 py-3 rounded-xl border border-app-border font-semibold touch-manipulation"
-              >
-                Skip receipt
-              </button>
-              <button
-                type="button"
-                onClick={goNext}
-                className="flex-1 py-3 rounded-xl bg-ds-primary text-white font-semibold touch-manipulation"
-              >
-                Continue
-              </button>
-            </div>
           </div>
         )}
 
@@ -481,7 +576,8 @@ export default function QuickTransactionWizard() {
               </div>
             )}
             <div className="rounded-xl border border-app-border bg-app-card divide-y divide-app-border">
-              <ReviewRow label="Type" value={captureType.label} />
+              <ReviewRow label="Direction" value={moneyFlowDirectionLabel(moneyFilter)} />
+              <ReviewRow label="Type" value={reviewCaptureTypeLabel(captureType, moneyFilter)} />
               <ReviewRow label="Amount" value={formatAmount(amount)} highlight />
               <ReviewRow label="Party" value={details.partyName.trim() || '—'} />
               <ReviewRow label="Project" value={projectDisplayName} />
@@ -492,14 +588,6 @@ export default function QuickTransactionWizard() {
               <ReviewRow label="Receipt" value={attachment ? attachment.name : 'None'} />
               <ReviewRow label="Date" value={todayLocalYyyyMmDd()} />
             </div>
-            <button
-              type="button"
-              onClick={() => void handleSubmit()}
-              disabled={createMutation.isPending}
-              className="w-full py-3.5 rounded-xl bg-ds-primary text-white font-bold touch-manipulation disabled:opacity-60"
-            >
-              {createMutation.isPending ? 'Submitting…' : 'Submit for finance review'}
-            </button>
           </div>
         )}
 
@@ -518,9 +606,46 @@ export default function QuickTransactionWizard() {
 
       <CreateCaptureTypeModal
         open={showCreateType}
+        moneyFlow={moneyFilter}
         onClose={() => setShowCreateType(false)}
         onCreated={handleCreateCustomType}
       />
+
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/40">
+          <div
+            className="w-full max-w-sm rounded-2xl bg-app-card border border-app-border shadow-xl p-5 space-y-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-capture-cancel-title"
+          >
+            <div>
+              <h2 id="quick-capture-cancel-title" className="text-base font-bold text-app-text">
+                Discard this capture?
+              </h2>
+              <p className="text-sm text-app-muted mt-1">
+                Your entries will not be saved. You can start a new capture anytime.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-app-border text-sm font-semibold touch-manipulation"
+              >
+                Keep editing
+              </button>
+              <button
+                type="button"
+                onClick={completeCancel}
+                className="flex-1 py-2.5 rounded-xl bg-ds-danger text-white text-sm font-semibold touch-manipulation"
+              >
+                Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

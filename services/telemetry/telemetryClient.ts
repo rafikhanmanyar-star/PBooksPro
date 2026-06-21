@@ -1,5 +1,5 @@
 import type { FrontendTelemetryMetric } from '../../shared/reliability/observabilityTypes';
-import { monitoringIngestApi } from '../api/adminMonitoringApi';
+import { monitoringIngestApi } from '../api/monitoringIngestApi';
 
 const FLUSH_INTERVAL_MS = 60_000;
 const MAX_BUFFER = 40;

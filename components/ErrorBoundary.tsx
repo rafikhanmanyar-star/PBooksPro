@@ -48,7 +48,7 @@ class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
       errorType: 'react_error_boundary'
     });
 
-    void import('../services/api/adminMonitoringApi').then(({ monitoringIngestApi }) =>
+    void import('../services/api/monitoringIngestApi').then(({ monitoringIngestApi }) =>
       monitoringIngestApi.reportClientError({
         message: error.message,
         stack: error.stack,

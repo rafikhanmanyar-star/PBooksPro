@@ -6,6 +6,9 @@ import AdminDashboard from './components/dashboard/AdminDashboard';
 import TenantManagement from './components/tenants/TenantManagement';
 import UserManagement from './components/users/UserManagement';
 import SystemMonitoring from './components/monitoring/SystemMonitoring';
+import SystemHealthCenter from './components/monitoring/SystemHealthCenter';
+import SubscriptionDashboard from './components/subscriptions/SubscriptionDashboard';
+import ReferralDashboard from './components/referrals/ReferralDashboard';
 import LeadManagement from './components/leads/LeadManagement';
 import OrganizationRequestManagement from './components/organizationRequests/OrganizationRequestManagement';
 import Layout from './components/layout/Layout';
@@ -27,6 +30,9 @@ const AppRoutes: React.FC = () => {
         <Route path="tenants" element={<TenantManagement />} />
         <Route path="users" element={<UserManagement />} />
         <Route path="monitoring" element={<SystemMonitoring />} />
+        <Route path="system-health" element={<SystemHealthCenter />} />
+        <Route path="subscriptions" element={<SubscriptionDashboard />} />
+        <Route path="referrals" element={<ReferralDashboard />} />
         <Route path="leads" element={<LeadManagement />} />
         <Route path="organization-requests" element={<OrganizationRequestManagement />} />
       </Route>

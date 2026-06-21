@@ -1,5 +1,5 @@
 import type { ObservabilityErrorRecord, ObservabilitySeverity } from '../../shared/reliability/observabilityTypes';
-import { monitoringIngestApi } from '../api/adminMonitoringApi';
+import { monitoringIngestApi } from '../api/monitoringIngestApi';
 import { getErrorLogger } from '../errorLogger';
 
 function newId(): string {

@@ -17,6 +17,7 @@ import { payslipDisplayPaidAmount, payslipRemainingAmount } from '../utils/paysl
 import { resolvePayslipAssignment } from '../utils/payslipAssignment';
 import { employeePayrollNetBalanceFromTotals } from '../utils/payrollLedgerCore';
 import { todayLocalYyyyMmDd, toLocalDateString } from '../../../utils/dateUtils';
+import { canPayPayrollRun } from '../utils/payrollWorkflowGuards';
 import DatePicker from '../../ui/DatePicker';
 import AmountInput from '../../common/AmountInput';
 import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
@@ -106,6 +107,9 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const payGuard = useMemo(() => canPayPayrollRun(run), [run]);
+  const paymentBlocked = !payGuard.allowed;
+
   const bankAccounts = useMemo(
     () =>
       (accounts || []).filter(
@@ -158,6 +162,10 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
     e.preventDefault();
     if (!payslip || !employee || !tenantId) return;
     if (recordLock.viewOnly) return;
+    if (paymentBlocked) {
+      setError(payGuard.reason ?? 'Payroll run must be approved before payment.');
+      return;
+    }
     if (!salaryCategory) {
       setError('Salary expense category not found. Please contact support.');
       return;
@@ -487,6 +495,13 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
           <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
         )}
 
+        {paymentBlocked && payGuard.reason && (
+          <div className="mx-6 mb-0 flex items-center gap-2 text-amber-800 text-sm bg-amber-50 rounded-xl px-3 py-2 border border-amber-200">
+            <AlertCircle size={18} />
+            {payGuard.reason}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className={`p-6 space-y-5 ${recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''}`}>
           <div className="grid grid-cols-1 gap-4">
             <div>
@@ -648,7 +663,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting || !submitOk || !salaryCategory}
+              disabled={isSubmitting || !submitOk || !salaryCategory || paymentBlocked}
               className="bg-emerald-600 text-white px-4 py-2.5 rounded-xl font-bold hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
             >
               {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Banknote size={18} />}

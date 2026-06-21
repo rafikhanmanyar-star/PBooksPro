@@ -30,6 +30,8 @@ import type {
 const FEATURE_LABELS: Record<string, string> = {
   reports: 'Reports',
   payroll: 'Payroll',
+  attendance: 'Attendance',
+  leave: 'Leave Management',
   users: 'Users',
   billing: 'Billing',
   audit_logs: 'Audit logs',

@@ -93,6 +93,17 @@ export type PayslipRow = {
   deduction_details: unknown;
   adjustment_details: unknown;
   assignment_snapshot: unknown;
+  working_days: string | null;
+  present_days: string | null;
+  leave_days: string | null;
+  paid_leave_days: string | null;
+  unpaid_leave_days: string | null;
+  absent_days: string | null;
+  half_days: string | null;
+  lop_days: string | null;
+  lop_deduction: string;
+  adjusted_basic: string | null;
+  attendance_summary_snapshot: unknown;
   is_paid: boolean;
   paid_amount: string;
   paid_at: Date | null;

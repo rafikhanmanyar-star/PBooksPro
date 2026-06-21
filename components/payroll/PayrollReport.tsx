@@ -31,6 +31,8 @@ import ReportFooter from '../reports/ReportFooter';
 import { formatCurrency } from './utils/formatters';
 import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from './utils/payslipPaymentState';
 import { toLocalDateString } from '../../utils/dateUtils';
+import AttendanceImpactReport from './reports/AttendanceImpactReport';
+import LOPReport from './reports/LOPReport';
 
 const PayrollReport: React.FC = () => {
   const { tenant } = useAuth();
@@ -584,6 +586,12 @@ const PayrollReport: React.FC = () => {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="mt-8 space-y-6 border-t border-app-border pt-6">
+          <h2 className="text-lg font-black text-app-text">Sprint 3A — Attendance &amp; LOP (informational)</h2>
+          <AttendanceImpactReport />
+          <LOPReport />
         </div>
       <ReportFooter />
       </div>

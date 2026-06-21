@@ -143,6 +143,9 @@ export class PayrollRunRepository extends TenantRepository {
       employee_count?: number | null;
       touchPaidAt?: boolean;
       paid_at?: Date | null;
+      approved_by?: string | null;
+      approved_at?: Date | null;
+      touchApproved?: boolean;
     }
   ): Promise<PayrollRunRow | null> {
     const r = await client.query<PayrollRunRow>(
@@ -151,6 +154,8 @@ export class PayrollRunRepository extends TenantRepository {
          total_amount = COALESCE($4::numeric, total_amount),
          employee_count = COALESCE($5::int, employee_count),
          paid_at = CASE WHEN $6::boolean THEN $7::timestamptz ELSE paid_at END,
+         approved_by = CASE WHEN $8::boolean THEN $9::text ELSE approved_by END,
+         approved_at = CASE WHEN $8::boolean THEN $10::timestamptz ELSE approved_at END,
          updated_at = NOW()
        WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
        RETURNING ${RUN_RETURNING_COLUMNS}`,
@@ -162,6 +167,9 @@ export class PayrollRunRepository extends TenantRepository {
         fields.employee_count ?? null,
         fields.touchPaidAt === true,
         fields.paid_at ?? null,
+        fields.touchApproved === true,
+        fields.approved_by ?? null,
+        fields.approved_at ?? null,
       ]
     );
     return r.rows[0] ?? null;

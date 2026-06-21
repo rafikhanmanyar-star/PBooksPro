@@ -13,6 +13,8 @@ import { useRecordLock, isAdminRole } from '../../../hooks/useRecordLock';
 import RecordLockBanner from '../../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../../recordLock/RecordLockConflictModal';
 import AmountInput from '../../common/AmountInput';
+import { usePermissions } from '../../../hooks/usePermissions';
+import { payslipHasAttendanceSnapshot } from '../utils/payrollWorkflowGuards';
 
 interface EditPayslipModalProps {
   isOpen: boolean;
@@ -53,6 +55,11 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [adminOverride, setAdminOverride] = useState(false);
+  const { canWritePayroll } = usePermissions();
+
+  const hasAttendanceSnapshot = payslip ? payslipHasAttendanceSnapshot(payslip) : false;
+  const lockAttendanceFields = hasAttendanceSnapshot && !adminOverride;
 
   useEffect(() => {
     if (payslip) {
@@ -61,6 +68,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
       setTotalDeductions(payslip.total_deductions);
       setTotalAdjustments(payslip.total_adjustments);
       setNetPay(payslip.net_pay);
+      setAdminOverride(false);
     }
   }, [payslip]);
 
@@ -92,6 +100,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           allowance_details: updated.allowance_details,
           deduction_details: updated.deduction_details,
           adjustment_details: updated.adjustment_details,
+          adminOverride: adminOverride || undefined,
         });
         if (row) {
           const norm = normalizePayslip(row);
@@ -156,6 +165,24 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           <RecordLockBanner mode="other" otherEditorName={recordLock.lockedByName} />
         )}
 
+        {hasAttendanceSnapshot && (
+          <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            This payslip includes attendance-calculated basic pay and LOP. Basic pay is locked unless you use admin
+            override.
+            {canWritePayroll && (
+              <label className="mt-2 flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={adminOverride}
+                  onChange={(e) => setAdminOverride(e.target.checked)}
+                  className="mt-0.5"
+                />
+                Admin override (payroll.write)
+              </label>
+            )}
+          </div>
+        )}
+
         <div className={`space-y-3 ${recordLock.viewOnly ? 'pointer-events-none opacity-[0.88]' : ''}`}>
           <div>
             <label htmlFor="edit-payslip-basic-pay" className="block text-sm font-medium text-slate-700 mb-1">Basic pay</label>
@@ -163,7 +190,8 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
               id="edit-payslip-basic-pay"
               value={basicPay}
               onChange={(e) => setBasicPay(Number(e.target.value) || 0)}
-              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900"
+              disabled={lockAttendanceFields}
+              className="w-full border border-slate-300 rounded-xl px-3 py-2 text-slate-900 disabled:bg-slate-100"
               aria-label="Basic pay"
             />
           </div>

@@ -1,7 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Input from '../../../components/ui/Input';
-import type { CaptureType } from '../constants/quickCaptureTypes';
-import { isEntityPickerKind, isNameInputKind } from '../constants/quickCaptureTypes';
+import type { CaptureType, MoneyFlow } from '../constants/quickCaptureTypes';
+import {
+  isCustomerPickerKind,
+  isEntityPickerKind,
+  isNameInputKind,
+  isVendorPickerKind,
+} from '../constants/quickCaptureTypes';
 import { useQuickCaptureCatalog } from '../hooks/useQuickCaptureCatalog';
 import QuickCaptureEntityPicker from './QuickCaptureEntityPicker';
 import FieldSuggestionChips from './FieldSuggestionChips';
@@ -13,47 +18,67 @@ export type DetailsFormState = {
   partyName: string;
   supplierId: string;
   employeeId: string;
+  customerId: string;
   projectId: string;
   description: string;
 };
 
 type Props = {
   captureType: CaptureType;
+  moneyFlow: MoneyFlow;
   value: DetailsFormState;
   onChange: (patch: Partial<DetailsFormState>) => void;
   fieldSuggestions: Record<QuickCaptureFieldKey, string[]>;
   onPhaseChange?: (phase: DetailsPhase) => void;
 };
 
-function entitySectionTitle(kind: CaptureType['kind']): string {
-  if (kind === 'suppliers') return 'Select vendor';
+function entitySectionTitle(kind: CaptureType['kind'], moneyFlow: MoneyFlow): string {
+  if (isVendorPickerKind(kind, moneyFlow)) return 'Select vendor';
+  if (kind === 'customer_collection') return 'Select customer';
   if (kind === 'staff') return 'Select staff member';
   if (kind === 'site') return 'Site name';
+  if (kind === 'cash_deposit') return 'Deposit reference';
   if (kind === 'misc') return 'Name / reference';
   return 'Name';
 }
 
-function entityPlaceholder(kind: CaptureType['kind'], customLabel?: string): string {
+function entityPlaceholder(kind: CaptureType['kind'], moneyFlow: MoneyFlow, customLabel?: string): string {
   if (kind === 'site') return 'e.g. Site Office, Block A';
-  if (kind === 'misc') return 'e.g. Petty cash, Parking';
+  if (kind === 'cash_deposit') return 'e.g. Bank deposit, Petty cash return';
+  if (kind === 'misc') return moneyFlow === 'in' ? 'e.g. Other income' : 'e.g. Petty cash, Parking';
   if (kind === 'custom') return customLabel ? `e.g. ${customLabel} details` : 'Enter a name';
+  if (kind === 'customer_collection') return 'Search customers…';
   return 'Search by name';
 }
 
 export default function QuickCaptureDetailsStep({
   captureType,
+  moneyFlow,
   value,
   onChange,
   fieldSuggestions,
   onPhaseChange,
 }: Props) {
-  const { vendorItems, staffItems, projectItems, isLoadingEmployees } = useQuickCaptureCatalog();
+  const {
+    vendorItems,
+    staffItems,
+    customerItems,
+    projectItems,
+    isLoadingEmployees,
+    isLoadingVendors,
+    vendorsError,
+    employeesError,
+    refetchVendors,
+    refetchEmployees,
+  } = useQuickCaptureCatalog();
   const descriptionRef = useRef<HTMLTextAreaElement>(null);
 
-  const entityComplete = isEntityPickerKind(captureType.kind)
-    ? captureType.kind === 'suppliers'
+  const entityComplete = isEntityPickerKind(captureType.kind, moneyFlow)
+    ? isVendorPickerKind(captureType.kind, moneyFlow)
       ? Boolean(value.supplierId)
-      : Boolean(value.employeeId)
+      : isCustomerPickerKind(captureType.kind, moneyFlow)
+        ? Boolean(value.customerId)
+        : Boolean(value.employeeId)
     : Boolean(value.partyName.trim());
 
   const projectComplete = Boolean(value.projectId);
@@ -62,7 +87,7 @@ export default function QuickCaptureDetailsStep({
 
   useEffect(() => {
     setPhase('entity');
-  }, [captureType.id]);
+  }, [captureType.id, moneyFlow]);
 
   useEffect(() => {
     onPhaseChange?.(phase);
@@ -78,12 +103,17 @@ export default function QuickCaptureDetailsStep({
   const advanceToDescription = () => setPhase('description');
 
   const handleVendorSelect = (item: { id: string; name: string }) => {
-    onChange({ supplierId: item.id, partyName: item.name, employeeId: '' });
+    onChange({ supplierId: item.id, partyName: item.name, employeeId: '', customerId: '' });
+    advanceToProject();
+  };
+
+  const handleCustomerSelect = (item: { id: string; name: string }) => {
+    onChange({ customerId: item.id, partyName: item.name, employeeId: '', supplierId: '' });
     advanceToProject();
   };
 
   const handleStaffSelect = (item: { id: string; name: string }) => {
-    onChange({ employeeId: item.id, partyName: item.name, supplierId: '' });
+    onChange({ employeeId: item.id, partyName: item.name, supplierId: '', customerId: '' });
     advanceToProject();
   };
 
@@ -103,7 +133,6 @@ export default function QuickCaptureDetailsStep({
 
   return (
     <div className="space-y-3">
-      {/* Entity / name section */}
       <section
         className={`qc-detail-card ${entityComplete && !entityExpanded ? 'qc-detail-card--done' : ''} ${
           phase === 'entity' ? 'qc-detail-card--active' : ''
@@ -111,20 +140,40 @@ export default function QuickCaptureDetailsStep({
       >
         <header className="qc-detail-card-header">
           <span className="qc-detail-step-badge">{entityComplete ? '✓' : '1'}</span>
-          <h3 className="text-sm font-semibold text-app-text">{entitySectionTitle(captureType.kind)}</h3>
+          <h3 className="text-sm font-semibold text-app-text">
+            {entitySectionTitle(captureType.kind, moneyFlow)}
+          </h3>
         </header>
 
         {(entityExpanded || phase === 'entity') && (
           <div className="qc-detail-card-body">
-            {captureType.kind === 'suppliers' && (
+            {isVendorPickerKind(captureType.kind, moneyFlow) && (
               <QuickCaptureEntityPicker
                 label=""
                 items={vendorItems}
                 selectedId={value.supplierId}
                 onSelect={handleVendorSelect}
                 autoFocus={phase === 'entity'}
-                placeholder={entityPlaceholder(captureType.kind)}
-                emptyMessage="No vendors found. Add vendors in ERP or type a name below."
+                loading={isLoadingVendors}
+                placeholder={entityPlaceholder(captureType.kind, moneyFlow)}
+                emptyMessage={
+                  vendorsError
+                    ? 'Could not load vendors. Check connection and tap Retry below.'
+                    : 'No vendors found. Add vendors in Procurement → Vendor Directory.'
+                }
+                onRetry={vendorsError ? () => void refetchVendors() : undefined}
+              />
+            )}
+
+            {captureType.kind === 'customer_collection' && (
+              <QuickCaptureEntityPicker
+                label=""
+                items={customerItems}
+                selectedId={value.customerId}
+                onSelect={handleCustomerSelect}
+                autoFocus={phase === 'entity'}
+                placeholder={entityPlaceholder(captureType.kind, moneyFlow)}
+                emptyMessage="No customers found. Add contacts in ERP or use a custom income type."
               />
             )}
 
@@ -136,8 +185,13 @@ export default function QuickCaptureDetailsStep({
                 onSelect={handleStaffSelect}
                 autoFocus={phase === 'entity'}
                 loading={isLoadingEmployees}
-                placeholder={entityPlaceholder(captureType.kind)}
-                emptyMessage="No staff found in payroll."
+                placeholder={entityPlaceholder(captureType.kind, moneyFlow)}
+                emptyMessage={
+                  employeesError
+                    ? 'Could not load staff. Check connection and tap Retry below.'
+                    : 'No staff found. Add employees in Payroll.'
+                }
+                onRetry={employeesError ? () => void refetchEmployees() : undefined}
               />
             )}
 
@@ -146,8 +200,15 @@ export default function QuickCaptureDetailsStep({
                 <Input
                   label=""
                   value={value.partyName}
-                  onChange={(e) => onChange({ partyName: e.target.value, supplierId: '', employeeId: '' })}
-                  placeholder={entityPlaceholder(captureType.kind, captureType.label)}
+                  onChange={(e) =>
+                    onChange({
+                      partyName: e.target.value,
+                      supplierId: '',
+                      employeeId: '',
+                      customerId: '',
+                    })
+                  }
+                  placeholder={entityPlaceholder(captureType.kind, moneyFlow, captureType.label)}
                   autoFocus={phase === 'entity'}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') {
@@ -175,7 +236,6 @@ export default function QuickCaptureDetailsStep({
                 )}
               </div>
             )}
-
           </div>
         )}
 
@@ -190,7 +250,6 @@ export default function QuickCaptureDetailsStep({
         )}
       </section>
 
-      {/* Project section */}
       {(entityComplete || phase !== 'entity') && (
         <section
           className={`qc-detail-card ${projectComplete && phase !== 'project' ? 'qc-detail-card--done' : ''} ${
@@ -237,7 +296,6 @@ export default function QuickCaptureDetailsStep({
         </section>
       )}
 
-      {/* Description section */}
       {(entityComplete && (projectComplete || phase === 'description')) && (
         <section
           className={`qc-detail-card ${phase === 'description' ? 'qc-detail-card--active' : ''}`}
@@ -251,7 +309,7 @@ export default function QuickCaptureDetailsStep({
               ref={descriptionRef}
               value={value.description}
               onChange={(e) => onChange({ description: e.target.value })}
-              placeholder="What was this for? e.g. Cement delivery, fuel for generator…"
+              placeholder="What was this for? e.g. Cement delivery, customer installment…"
               rows={3}
               className="w-full rounded-xl border border-app-border bg-app-input text-app-text text-sm px-3 py-2.5 resize-none"
             />

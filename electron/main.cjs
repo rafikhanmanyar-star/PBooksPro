@@ -213,6 +213,23 @@ function setupSpellChecker(mainWindow) {
   });
 }
 
+function setupMediaPermissions() {
+  const { session } = require('electron');
+  const allowMedia = (permission) =>
+    permission === 'media' ||
+    permission === 'audioCapture' ||
+    permission === 'microphone' ||
+    permission === 'audio' ||
+    permission === 'videoCapture' ||
+    permission === 'camera';
+
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback) => {
+    callback(allowMedia(permission));
+  });
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission) => allowMedia(permission));
+}
+
 function setupCSP() {
   const { session } = require('electron');
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
@@ -524,6 +541,7 @@ function setupUpdaterIPC() {
 }
 
 app.whenReady().then(() => {
+  setupMediaPermissions();
   setupCSP();
   createWindow();
   stability.startWatchdog();

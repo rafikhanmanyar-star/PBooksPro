@@ -1,8 +1,9 @@
-import type { CoreCaptureKind } from '../constants/quickCaptureTypes';
+import type { CoreCaptureKind, MoneyFlow } from '../constants/quickCaptureTypes';
 
 export type ParsedVoiceCapture = {
   captureTypeId?: string;
   captureKind: CoreCaptureKind;
+  moneyFlow: MoneyFlow;
   amount: number;
   partyName?: string;
   description?: string;
@@ -11,7 +12,7 @@ export type ParsedVoiceCapture = {
   confidence: 'high' | 'partial';
 };
 
-const TYPE_KEYWORDS: Array<{ kind: CoreCaptureKind; patterns: RegExp[] }> = [
+const OUTFLOW_KEYWORDS: Array<{ kind: CoreCaptureKind; patterns: RegExp[] }> = [
   {
     kind: 'suppliers',
     patterns: [/\bvendor\b/i, /\bsupplier\b/i, /\bpaid\s+to\b/i, /\bpayment\s+to\b/i, /\bmaterial\b/i],
@@ -22,6 +23,14 @@ const TYPE_KEYWORDS: Array<{ kind: CoreCaptureKind; patterns: RegExp[] }> = [
   },
   { kind: 'site', patterns: [/\bsite\b/i, /\boffice\b/i, /\bfuel\b/i, /\bpetrol\b/i] },
   { kind: 'misc', patterns: [/\bother\b/i, /\bmisc\b/i, /\btravel\b/i, /\badvance\b/i] },
+];
+
+const INFLOW_KEYWORDS: Array<{ kind: CoreCaptureKind; patterns: RegExp[] }> = [
+  {
+    kind: 'customer_collection',
+    patterns: [/\bcustomer\b/i, /\bcollection\b/i, /\breceived\s+from\b/i, /\binstallment\b/i],
+  },
+  { kind: 'cash_deposit', patterns: [/\bdeposit\b/i, /\bcash\s+in\b/i, /\bbank\s+deposit\b/i] },
 ];
 
 function extractAmount(text: string): number | null {
@@ -48,11 +57,22 @@ function extractAmount(text: string): number | null {
   return null;
 }
 
-function detectCaptureKind(text: string): CoreCaptureKind {
+function detectMoneyFlow(text: string): MoneyFlow {
   const lower = text.toLowerCase();
-  for (const entry of TYPE_KEYWORDS) {
+  if (/\b(received|collection|collected|deposit|cash\s+in|customer\s+paid)\b/i.test(lower)) {
+    return 'in';
+  }
+  if (/\b(paid|payment|spent|expense|withdraw)\b/i.test(lower)) return 'out';
+  return 'out';
+}
+
+function detectCaptureKind(text: string, moneyFlow: MoneyFlow): CoreCaptureKind {
+  const keywords = moneyFlow === 'in' ? INFLOW_KEYWORDS : OUTFLOW_KEYWORDS;
+  const lower = text.toLowerCase();
+  for (const entry of keywords) {
     if (entry.patterns.some((p) => p.test(lower))) return entry.kind;
   }
+  if (moneyFlow === 'in') return 'cash_deposit';
   if (/\bpaid\b/i.test(text) || /\bpayment\b/i.test(text)) return 'suppliers';
   return 'misc';
 }
@@ -87,16 +107,18 @@ export function parseVoiceQuickCapture(transcript: string): ParsedVoiceCapture |
   const amount = extractAmount(rawTranscript);
   if (!amount || amount <= 0) return null;
 
-  const captureKind = detectCaptureKind(rawTranscript);
+  const moneyFlow = detectMoneyFlow(rawTranscript);
+  const captureKind = detectCaptureKind(rawTranscript, moneyFlow);
   const partyName = extractParty(rawTranscript);
   const projectId = extractProject(rawTranscript);
 
   const confidence: ParsedVoiceCapture['confidence'] =
-    amount > 0 && (partyName || projectId || /\b(vendor|staff|site|supplier|worker)\b/i.test(rawTranscript))
+    amount > 0 && (partyName || projectId || /\b(vendor|staff|site|supplier|customer|collection)\b/i.test(rawTranscript))
       ? 'high'
       : 'partial';
 
   return {
+    moneyFlow,
     captureKind,
     captureTypeId: captureKind,
     amount,
