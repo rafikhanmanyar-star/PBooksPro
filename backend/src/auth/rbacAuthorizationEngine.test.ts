@@ -20,6 +20,7 @@ import {
   hasPermission,
 } from './permissionEvaluator.js';
 import { validateJwtAccessVersion } from './authorizeV2.js';
+import { ALL_PERMISSIONS } from './permissions.js';
 import { isRbacV2AuthorizationEngineEnabled } from './rbacAuthorizationFeatureFlag.js';
 import {
   assertExclusiveAuthorizationGuard,
@@ -186,6 +187,23 @@ describe('permissionEvaluator', () => {
     assert.equal(hasPermission(ctx, 'roles.view'), true);
     assert.equal(hasPermission(ctx, 'accounting.journals.create', 'accountant'), true);
     assert.equal(hasPermission(ctx, 'roles.manage'), false);
+  });
+
+  it('hasPermission treats financial.write alias as granted when key is held directly', () => {
+    assert.equal(hasPermission(ctx, 'financial.write', 'super_admin'), true);
+  });
+
+  it('super_admin ALL_PERMISSIONS set satisfies financial.write bundle check', () => {
+    const superCtx = buildEffectiveAccessContext({
+      userId: 'u1',
+      tenantId: 't1',
+      permissions: [...ALL_PERMISSIONS],
+      assignments: [{ roleId: 'r1', slug: 'super_admin', roleVersion: 1, permissionKeys: [...ALL_PERMISSIONS], status: 'active' }],
+      accessVersion: 1,
+      roleVersionHash: 'abc',
+    });
+    assert.equal(hasPermission(superCtx, 'financial.write', 'super_admin'), true);
+    assert.equal(hasPermission(superCtx, 'users.manage'), true);
   });
 
   it('hasAnyPermission and hasAllPermissions', () => {
