@@ -54,6 +54,16 @@ import { isAdminRole } from '../../../middleware/authMiddleware.js';
 /** Max transactions returned by GET /state/bulk (use /state/bulk-chunked for larger tenants). */
 export const BULK_TRANSACTION_CAP = 50_000;
 
+/**
+ * Max concurrent pool connections held by a single bulk-bootstrap entity load.
+ * Limits peak pool usage from N_ENTITIES (18–27) to this value so concurrent users
+ * do not exhaust the 20-connection pool. Tunable via BULK_BOOTSTRAP_CONCURRENCY env var.
+ */
+const BOOTSTRAP_CONCURRENCY = Math.min(
+  Math.max(parseInt(process.env.BULK_BOOTSTRAP_CONCURRENCY || '6', 10) || 6, 1),
+  27
+);
+
 /** Loaded on GET /state/bulk-chunked offset=0 (PERF-A6.1 — keep startup payload small). */
 export const BULK_BOOTSTRAP_STATIC_ENTITIES =
   'accounts,categories,projects,buildings,properties,units,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,personalCategories,appSettings';
@@ -126,6 +136,25 @@ function byteSize(value: unknown): number {
   }
 }
 
+/**
+ * Runs `tasks` in sequential batches of at most `batchSize`, each batch in parallel.
+ * The next batch starts only after every task in the current batch has completed.
+ * This caps the number of concurrent `withPoolClient` calls — and therefore pool
+ * connections — held by a single bulk-bootstrap request at any one moment.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function runBatched<T = any>(tasks: Array<() => Promise<T>>, batchSize: number): Promise<T[]> {
+  const results: T[] = [];
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    const batchStart = Date.now();
+    const batchResults = await Promise.all(batch.map((fn) => fn()));
+    console.log(`[PERF_BULK] bootstrapBatch duration=${Date.now() - batchStart}ms count=${batch.length}`);
+    results.push(...batchResults);
+  }
+  return results;
+}
+
 // PERF-A6.6: give each loader its own connection so Promise.all is truly parallel.
 // A shared pg.PoolClient serialises concurrent .query() calls on one TCP connection;
 // withPoolClient acquires and releases a connection around a single loader, letting
@@ -175,9 +204,46 @@ export async function getBulkAppState(
   const canAccessPersonalFinance = isAdminRole(userRole);
 
   const t0 = Date.now();
-  console.log(`[PERF_BULK] getBulkAppState START tenant=${tenantId} filter=${entitiesQuery ?? 'all'}`);
+  console.log(`[PERF_BULK] getBulkAppState START tenant=${tenantId} filter=${entitiesQuery ?? 'all'} bootstrapConcurrency=${BOOTSTRAP_CONCURRENCY}`);
 
-  // Run all entity loaders in parallel with individual timing
+  // Build loaders as thunks so each acquires its pool connection only when its
+  // batch executes — not all at once. runBatched fires BOOTSTRAP_CONCURRENCY
+  // thunks in parallel, then waits for all to complete before starting the next
+  // batch, keeping peak pool usage at BOOTSTRAP_CONCURRENCY connections.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loaderThunks: Array<() => Promise<{ result: any; durationMs: number }>> = [
+    () => timed('accounts',               () => wantEntity('accounts', filter) ? withPoolClient(c => listAccounts(c, tenantId)) : Promise.resolve([])),
+    () => timed('contacts',               () => wantEntity('contacts', filter) ? withPoolClient(c => listContacts(c, tenantId)) : Promise.resolve([])),
+    () => timed('transactions_inner',     () => wantEntity('transactions', filter) ? withPoolClient(c => listTransactions(c, tenantId, { limit: BULK_TRANSACTION_CAP })) : Promise.resolve([])),
+    () => timed('categories',             () => wantEntity('categories', filter) ? withPoolClient(c => listCategories(c, tenantId)) : Promise.resolve([])),
+    () => timed('projects',               () => wantEntity('projects', filter) ? withPoolClient(c => listProjects(c, tenantId)) : Promise.resolve([])),
+    () => timed('buildings',              () => wantEntity('buildings', filter) ? withPoolClient(c => listBuildings(c, tenantId)) : Promise.resolve([])),
+    () => timed('properties',             () => wantEntity('properties', filter) ? withPoolClient(c => listProperties(c, tenantId)) : Promise.resolve([])),
+    () => timed('units',                  () => wantEntity('units', filter) ? withPoolClient(c => listUnits(c, tenantId)) : Promise.resolve([])),
+    () => timed('invoices',               () => wantEntity('invoices', filter) ? withPoolClient(c => listInvoices(c, tenantId)) : Promise.resolve([])),
+    () => timed('bills',                  () => wantEntity('bills', filter) ? withPoolClient(c => listBills(c, tenantId)) : Promise.resolve([])),
+    () => timed('budgets',                () => wantEntity('budgets', filter) ? withPoolClient(c => listBudgets(c, tenantId)) : Promise.resolve([])),
+    () => timed('planAmenities',          () => wantEntity('planAmenities', filter) ? withPoolClient(c => listPlanAmenities(c, tenantId)) : Promise.resolve([])),
+    () => timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? withPoolClient(c => listInstallmentPlans(c, tenantId, undefined, { userId, role: userRole })) : Promise.resolve([])),
+    () => timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? withPoolClient(c => listRentalAgreements(c, tenantId)) : Promise.resolve([])),
+    () => timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? withPoolClient(c => listProjectAgreementsWithUnits(c, tenantId)) : Promise.resolve([])),
+    () => timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? withPoolClient(c => listProjectReceivedAssets(c, tenantId)) : Promise.resolve([])),
+    () => timed('contracts',              () => wantEntity('contracts', filter) ? withPoolClient(c => listContracts(c, tenantId)) : Promise.resolve([])),
+    () => timed('salesReturns',           () => wantEntity('salesReturns', filter) ? withPoolClient(c => listSalesReturns(c, tenantId)) : Promise.resolve([])),
+    () => timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? withPoolClient(c => listRecurringInvoiceTemplates(c, tenantId)) : Promise.resolve([])),
+    () => timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? withPoolClient(c => listPmCycleAllocations(c, tenantId)) : Promise.resolve([])),
+    () => timed('vendors',                () => wantEntity('vendors', filter) ? withPoolClient(c => listVendors(c, tenantId)) : Promise.resolve([])),
+    () => timed('quotations',             () => wantEntity('quotations', filter) ? withPoolClient(c => listQuotations(c, tenantId)) : Promise.resolve([])),
+    () => timed('documents',              () => wantEntity('documents', filter) ? withPoolClient(c => listDocuments(c, tenantId)) : Promise.resolve([])),
+    () => timed('transactionLog',         () => wantEntity('transactionLog', filter) ? withPoolClient(c => listTransactionLogs(c, tenantId, { limit: 500 })) : Promise.resolve([])),
+    () => timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalCategories(c, tenantId)) : Promise.resolve([])),
+    () => timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalTransactions(c, tenantId)) : Promise.resolve([])),
+    () => timed('appSettings',            () => wantEntity('appSettings', filter) ? withPoolClient(c => listAllSettings(c, tenantId)) : Promise.resolve({})),
+  ];
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const loaderResults = await runBatched(loaderThunks, BOOTSTRAP_CONCURRENCY) as any[];
+
   const [
     { result: accountRows,               durationMs: d_accounts },
     { result: contactRows,               durationMs: d_contacts },
@@ -206,38 +272,10 @@ export async function getBulkAppState(
     { result: personalCategoryRows,      durationMs: d_personalCategories },
     { result: personalTransactionRows,   durationMs: d_personalTransactions },
     { result: appSettingsFlat,           durationMs: d_appSettings },
-  ] = await Promise.all([
-    timed('accounts',               () => wantEntity('accounts', filter) ? withPoolClient(c => listAccounts(c, tenantId)) : Promise.resolve([])),
-    timed('contacts',               () => wantEntity('contacts', filter) ? withPoolClient(c => listContacts(c, tenantId)) : Promise.resolve([])),
-    timed('transactions_inner',     () => wantEntity('transactions', filter) ? withPoolClient(c => listTransactions(c, tenantId, { limit: BULK_TRANSACTION_CAP })) : Promise.resolve([])),
-    timed('categories',             () => wantEntity('categories', filter) ? withPoolClient(c => listCategories(c, tenantId)) : Promise.resolve([])),
-    timed('projects',               () => wantEntity('projects', filter) ? withPoolClient(c => listProjects(c, tenantId)) : Promise.resolve([])),
-    timed('buildings',              () => wantEntity('buildings', filter) ? withPoolClient(c => listBuildings(c, tenantId)) : Promise.resolve([])),
-    timed('properties',             () => wantEntity('properties', filter) ? withPoolClient(c => listProperties(c, tenantId)) : Promise.resolve([])),
-    timed('units',                  () => wantEntity('units', filter) ? withPoolClient(c => listUnits(c, tenantId)) : Promise.resolve([])),
-    timed('invoices',               () => wantEntity('invoices', filter) ? withPoolClient(c => listInvoices(c, tenantId)) : Promise.resolve([])),
-    timed('bills',                  () => wantEntity('bills', filter) ? withPoolClient(c => listBills(c, tenantId)) : Promise.resolve([])),
-    timed('budgets',                () => wantEntity('budgets', filter) ? withPoolClient(c => listBudgets(c, tenantId)) : Promise.resolve([])),
-    timed('planAmenities',          () => wantEntity('planAmenities', filter) ? withPoolClient(c => listPlanAmenities(c, tenantId)) : Promise.resolve([])),
-    timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? withPoolClient(c => listInstallmentPlans(c, tenantId, undefined, { userId, role: userRole })) : Promise.resolve([])),
-    timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? withPoolClient(c => listRentalAgreements(c, tenantId)) : Promise.resolve([])),
-    timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? withPoolClient(c => listProjectAgreementsWithUnits(c, tenantId)) : Promise.resolve([])),
-    timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? withPoolClient(c => listProjectReceivedAssets(c, tenantId)) : Promise.resolve([])),
-    timed('contracts',              () => wantEntity('contracts', filter) ? withPoolClient(c => listContracts(c, tenantId)) : Promise.resolve([])),
-    timed('salesReturns',           () => wantEntity('salesReturns', filter) ? withPoolClient(c => listSalesReturns(c, tenantId)) : Promise.resolve([])),
-    timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? withPoolClient(c => listRecurringInvoiceTemplates(c, tenantId)) : Promise.resolve([])),
-    timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? withPoolClient(c => listPmCycleAllocations(c, tenantId)) : Promise.resolve([])),
-    timed('vendors',                () => wantEntity('vendors', filter) ? withPoolClient(c => listVendors(c, tenantId)) : Promise.resolve([])),
-    timed('quotations',             () => wantEntity('quotations', filter) ? withPoolClient(c => listQuotations(c, tenantId)) : Promise.resolve([])),
-    timed('documents',              () => wantEntity('documents', filter) ? withPoolClient(c => listDocuments(c, tenantId)) : Promise.resolve([])),
-    timed('transactionLog',         () => wantEntity('transactionLog', filter) ? withPoolClient(c => listTransactionLogs(c, tenantId, { limit: 500 })) : Promise.resolve([])),
-    timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalCategories(c, tenantId)) : Promise.resolve([])),
-    timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalTransactions(c, tenantId)) : Promise.resolve([])),
-    timed('appSettings',            () => wantEntity('appSettings', filter) ? withPoolClient(c => listAllSettings(c, tenantId)) : Promise.resolve({})),
-  ]);
+  ] = loaderResults;
 
-  const parallelDone = Date.now() - t0;
-  console.log(`[PERF_BULK] Promise.all completed duration=${parallelDone}ms`);
+  const batchedDone = Date.now() - t0;
+  console.log(`[PERF_BULK] batched loaders completed duration=${batchedDone}ms`);
 
   const t1 = Date.now();
   const plMap = categoryRows.length
@@ -403,7 +441,7 @@ export async function getBulkAppState(
   const totalPayloadBytes = byteSize(out);
   const totalDurationMs = Date.now() - t0;
   console.log(
-    `[PERF_BULK] getBulkAppState COMPLETE duration=${totalDurationMs}ms parallelMs=${parallelDone}ms totalPayload=${totalPayloadBytes}b (${(totalPayloadBytes / 1024).toFixed(1)}KB)`
+    `[PERF_BULK] getBulkAppState COMPLETE duration=${totalDurationMs}ms batchedMs=${batchedDone}ms totalPayload=${totalPayloadBytes}b (${(totalPayloadBytes / 1024).toFixed(1)}KB)`
   );
 
   return out;
