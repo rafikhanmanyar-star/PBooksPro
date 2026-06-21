@@ -8,6 +8,7 @@ import { expandBundleAlias } from './permissionBundles.js';
 import {
   ALL_PERMISSIONS,
   isKnownPermission,
+  isLegacyOrStaticRole,
   isSystemOwnerSlug,
   permissionsForRole,
   resolveEnterpriseRole,
@@ -70,7 +71,14 @@ export async function resolveActiveRoleAssignments(
 
       let permissionKeys: string[];
       const dbPerms = await repo.listRolePermissionKeys(row.role_id);
-      if (dbPerms.length > 0) {
+      if (role.is_system && isLegacyOrStaticRole(row.slug)) {
+        // System roles with a defined static matrix: DB permissions augment rather
+        // than replace the static set. Prevents feature migrations that seed only
+        // partial permissions (e.g. attendance/leave) from silently stripping the
+        // role's full base permission set.
+        const staticPerms = permissionsForRole(row.slug);
+        permissionKeys = [...new Set([...staticPerms, ...dbPerms])];
+      } else if (dbPerms.length > 0) {
         permissionKeys = dbPerms;
       } else if (role.is_system) {
         permissionKeys = [...permissionsForRole(row.slug)];
