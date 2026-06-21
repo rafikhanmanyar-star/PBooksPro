@@ -64,6 +64,35 @@ const BOOTSTRAP_CONCURRENCY = Math.min(
   27
 );
 
+/**
+ * Process-level semaphore: caps total concurrent bootstrap pool-client acquisitions
+ * across ALL simultaneous /state/bulk-chunked offset=0 requests.
+ * With N users × BOOTSTRAP_CONCURRENCY per-request slots, total demand can be
+ * N×6 = 120 for 20 users — far above pool.max=20. This semaphore limits the
+ * aggregate to BOOTSTRAP_GLOBAL_POOL_SLOTS regardless of concurrent user count,
+ * leaving the remaining connections free for auth, transaction chunks, and other
+ * API endpoints.
+ * Default: 8 (leaves ≥ 12 connections for non-bootstrap requests).
+ * Tunable via BULK_BOOTSTRAP_GLOBAL_SLOTS env var.
+ */
+const BOOTSTRAP_GLOBAL_POOL_SLOTS = Math.min(
+  Math.max(parseInt(process.env.BULK_BOOTSTRAP_GLOBAL_SLOTS || '8', 10) || 8, 1),
+  50
+);
+
+let _bsgCount = BOOTSTRAP_GLOBAL_POOL_SLOTS;
+const _bsgQueue: Array<() => void> = [];
+
+function _bsgAcquire(): Promise<void> {
+  if (_bsgCount > 0) { _bsgCount--; return Promise.resolve(); }
+  return new Promise<void>((resolve) => _bsgQueue.push(resolve));
+}
+
+function _bsgRelease(): void {
+  const next = _bsgQueue.shift();
+  if (next) { next(); } else { _bsgCount++; }
+}
+
 /** Loaded on GET /state/bulk-chunked offset=0 (PERF-A6.1 — keep startup payload small). */
 export const BULK_BOOTSTRAP_STATIC_ENTITIES =
   'accounts,categories,projects,buildings,properties,units,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,personalCategories,appSettings';
@@ -168,6 +197,25 @@ async function withPoolClient<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<
   }
 }
 
+/**
+ * Like withPoolClient but first acquires a slot from the process-level bootstrap
+ * semaphore. Used exclusively for entity loaders inside getBulkAppState so that
+ * concurrent logins cannot collectively exhaust the connection pool.
+ * Non-bootstrap callers (transaction chunks, fetchPlSubTypes) use withPoolClient
+ * directly so they are never blocked by the semaphore queue.
+ */
+async function withPoolClientGuarded<T>(fn: (c: pg.PoolClient) => Promise<T>): Promise<T> {
+  const t0 = Date.now();
+  await _bsgAcquire();
+  const waitMs = Date.now() - t0;
+  if (waitMs >= 100) console.log(`[PERF_BULK] bootstrapSemaphoreWait=${waitMs}ms`);
+  try {
+    return await withPoolClient(fn);
+  } finally {
+    _bsgRelease();
+  }
+}
+
 // ---------------------------------------------------------------------------
 
 function parseEntityFilter(entitiesQuery: unknown): Set<string> | null {
@@ -204,7 +252,7 @@ export async function getBulkAppState(
   const canAccessPersonalFinance = isAdminRole(userRole);
 
   const t0 = Date.now();
-  console.log(`[PERF_BULK] getBulkAppState START tenant=${tenantId} filter=${entitiesQuery ?? 'all'} bootstrapConcurrency=${BOOTSTRAP_CONCURRENCY}`);
+  console.log(`[PERF_BULK] getBulkAppState START tenant=${tenantId} filter=${entitiesQuery ?? 'all'} bootstrapConcurrency=${BOOTSTRAP_CONCURRENCY} globalSlots=${BOOTSTRAP_GLOBAL_POOL_SLOTS}`);
 
   // Build loaders as thunks so each acquires its pool connection only when its
   // batch executes — not all at once. runBatched fires BOOTSTRAP_CONCURRENCY
@@ -212,33 +260,33 @@ export async function getBulkAppState(
   // batch, keeping peak pool usage at BOOTSTRAP_CONCURRENCY connections.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const loaderThunks: Array<() => Promise<{ result: any; durationMs: number }>> = [
-    () => timed('accounts',               () => wantEntity('accounts', filter) ? withPoolClient(c => listAccounts(c, tenantId)) : Promise.resolve([])),
-    () => timed('contacts',               () => wantEntity('contacts', filter) ? withPoolClient(c => listContacts(c, tenantId)) : Promise.resolve([])),
-    () => timed('transactions_inner',     () => wantEntity('transactions', filter) ? withPoolClient(c => listTransactions(c, tenantId, { limit: BULK_TRANSACTION_CAP })) : Promise.resolve([])),
-    () => timed('categories',             () => wantEntity('categories', filter) ? withPoolClient(c => listCategories(c, tenantId)) : Promise.resolve([])),
-    () => timed('projects',               () => wantEntity('projects', filter) ? withPoolClient(c => listProjects(c, tenantId)) : Promise.resolve([])),
-    () => timed('buildings',              () => wantEntity('buildings', filter) ? withPoolClient(c => listBuildings(c, tenantId)) : Promise.resolve([])),
-    () => timed('properties',             () => wantEntity('properties', filter) ? withPoolClient(c => listProperties(c, tenantId)) : Promise.resolve([])),
-    () => timed('units',                  () => wantEntity('units', filter) ? withPoolClient(c => listUnits(c, tenantId)) : Promise.resolve([])),
-    () => timed('invoices',               () => wantEntity('invoices', filter) ? withPoolClient(c => listInvoices(c, tenantId)) : Promise.resolve([])),
-    () => timed('bills',                  () => wantEntity('bills', filter) ? withPoolClient(c => listBills(c, tenantId)) : Promise.resolve([])),
-    () => timed('budgets',                () => wantEntity('budgets', filter) ? withPoolClient(c => listBudgets(c, tenantId)) : Promise.resolve([])),
-    () => timed('planAmenities',          () => wantEntity('planAmenities', filter) ? withPoolClient(c => listPlanAmenities(c, tenantId)) : Promise.resolve([])),
-    () => timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? withPoolClient(c => listInstallmentPlans(c, tenantId, undefined, { userId, role: userRole })) : Promise.resolve([])),
-    () => timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? withPoolClient(c => listRentalAgreements(c, tenantId)) : Promise.resolve([])),
-    () => timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? withPoolClient(c => listProjectAgreementsWithUnits(c, tenantId)) : Promise.resolve([])),
-    () => timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? withPoolClient(c => listProjectReceivedAssets(c, tenantId)) : Promise.resolve([])),
-    () => timed('contracts',              () => wantEntity('contracts', filter) ? withPoolClient(c => listContracts(c, tenantId)) : Promise.resolve([])),
-    () => timed('salesReturns',           () => wantEntity('salesReturns', filter) ? withPoolClient(c => listSalesReturns(c, tenantId)) : Promise.resolve([])),
-    () => timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? withPoolClient(c => listRecurringInvoiceTemplates(c, tenantId)) : Promise.resolve([])),
-    () => timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? withPoolClient(c => listPmCycleAllocations(c, tenantId)) : Promise.resolve([])),
-    () => timed('vendors',                () => wantEntity('vendors', filter) ? withPoolClient(c => listVendors(c, tenantId)) : Promise.resolve([])),
-    () => timed('quotations',             () => wantEntity('quotations', filter) ? withPoolClient(c => listQuotations(c, tenantId)) : Promise.resolve([])),
-    () => timed('documents',              () => wantEntity('documents', filter) ? withPoolClient(c => listDocuments(c, tenantId)) : Promise.resolve([])),
-    () => timed('transactionLog',         () => wantEntity('transactionLog', filter) ? withPoolClient(c => listTransactionLogs(c, tenantId, { limit: 500 })) : Promise.resolve([])),
-    () => timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalCategories(c, tenantId)) : Promise.resolve([])),
-    () => timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? withPoolClient(c => listPersonalTransactions(c, tenantId)) : Promise.resolve([])),
-    () => timed('appSettings',            () => wantEntity('appSettings', filter) ? withPoolClient(c => listAllSettings(c, tenantId)) : Promise.resolve({})),
+    () => timed('accounts',               () => wantEntity('accounts', filter) ? withPoolClientGuarded(c => listAccounts(c, tenantId)) : Promise.resolve([])),
+    () => timed('contacts',               () => wantEntity('contacts', filter) ? withPoolClientGuarded(c => listContacts(c, tenantId)) : Promise.resolve([])),
+    () => timed('transactions_inner',     () => wantEntity('transactions', filter) ? withPoolClientGuarded(c => listTransactions(c, tenantId, { limit: BULK_TRANSACTION_CAP })) : Promise.resolve([])),
+    () => timed('categories',             () => wantEntity('categories', filter) ? withPoolClientGuarded(c => listCategories(c, tenantId)) : Promise.resolve([])),
+    () => timed('projects',               () => wantEntity('projects', filter) ? withPoolClientGuarded(c => listProjects(c, tenantId)) : Promise.resolve([])),
+    () => timed('buildings',              () => wantEntity('buildings', filter) ? withPoolClientGuarded(c => listBuildings(c, tenantId)) : Promise.resolve([])),
+    () => timed('properties',             () => wantEntity('properties', filter) ? withPoolClientGuarded(c => listProperties(c, tenantId)) : Promise.resolve([])),
+    () => timed('units',                  () => wantEntity('units', filter) ? withPoolClientGuarded(c => listUnits(c, tenantId)) : Promise.resolve([])),
+    () => timed('invoices',               () => wantEntity('invoices', filter) ? withPoolClientGuarded(c => listInvoices(c, tenantId)) : Promise.resolve([])),
+    () => timed('bills',                  () => wantEntity('bills', filter) ? withPoolClientGuarded(c => listBills(c, tenantId)) : Promise.resolve([])),
+    () => timed('budgets',                () => wantEntity('budgets', filter) ? withPoolClientGuarded(c => listBudgets(c, tenantId)) : Promise.resolve([])),
+    () => timed('planAmenities',          () => wantEntity('planAmenities', filter) ? withPoolClientGuarded(c => listPlanAmenities(c, tenantId)) : Promise.resolve([])),
+    () => timed('installmentPlans',       () => wantEntity('installmentPlans', filter) ? withPoolClientGuarded(c => listInstallmentPlans(c, tenantId, undefined, { userId, role: userRole })) : Promise.resolve([])),
+    () => timed('rentalAgreements',       () => wantEntity('rentalAgreements', filter) ? withPoolClientGuarded(c => listRentalAgreements(c, tenantId)) : Promise.resolve([])),
+    () => timed('projectAgreements',      () => wantEntity('projectAgreements', filter) ? withPoolClientGuarded(c => listProjectAgreementsWithUnits(c, tenantId)) : Promise.resolve([])),
+    () => timed('projectReceivedAssets',  () => wantEntity('projectReceivedAssets', filter) ? withPoolClientGuarded(c => listProjectReceivedAssets(c, tenantId)) : Promise.resolve([])),
+    () => timed('contracts',              () => wantEntity('contracts', filter) ? withPoolClientGuarded(c => listContracts(c, tenantId)) : Promise.resolve([])),
+    () => timed('salesReturns',           () => wantEntity('salesReturns', filter) ? withPoolClientGuarded(c => listSalesReturns(c, tenantId)) : Promise.resolve([])),
+    () => timed('recurringInvoiceTemplates', () => wantEntity('recurringInvoiceTemplates', filter) ? withPoolClientGuarded(c => listRecurringInvoiceTemplates(c, tenantId)) : Promise.resolve([])),
+    () => timed('pmCycleAllocations',     () => wantEntity('pmCycleAllocations', filter) ? withPoolClientGuarded(c => listPmCycleAllocations(c, tenantId)) : Promise.resolve([])),
+    () => timed('vendors',                () => wantEntity('vendors', filter) ? withPoolClientGuarded(c => listVendors(c, tenantId)) : Promise.resolve([])),
+    () => timed('quotations',             () => wantEntity('quotations', filter) ? withPoolClientGuarded(c => listQuotations(c, tenantId)) : Promise.resolve([])),
+    () => timed('documents',              () => wantEntity('documents', filter) ? withPoolClientGuarded(c => listDocuments(c, tenantId)) : Promise.resolve([])),
+    () => timed('transactionLog',         () => wantEntity('transactionLog', filter) ? withPoolClientGuarded(c => listTransactionLogs(c, tenantId, { limit: 500 })) : Promise.resolve([])),
+    () => timed('personalCategories',     () => wantEntity('personalCategories', filter) && canAccessPersonalFinance ? withPoolClientGuarded(c => listPersonalCategories(c, tenantId)) : Promise.resolve([])),
+    () => timed('personalTransactions',   () => wantEntity('personalTransactions', filter) && canAccessPersonalFinance ? withPoolClientGuarded(c => listPersonalTransactions(c, tenantId)) : Promise.resolve([])),
+    () => timed('appSettings',            () => wantEntity('appSettings', filter) ? withPoolClientGuarded(c => listAllSettings(c, tenantId)) : Promise.resolve({})),
   ];
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
