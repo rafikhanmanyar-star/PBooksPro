@@ -1,6 +1,8 @@
 import type pg from 'pg';
 import { randomUUID } from 'crypto';
 import { recordDomainMutation } from '../../../../core/recordDomainMutation.js';
+import { PAYROLL_AUDIT_ACTIONS } from './payrollAuditCatalog.js';
+import { recordPayrollAudit } from './payrollAuditService.js';
 import { PayrollRunRepository } from '../../repositories/PayrollRunRepository.js';
 import { PayslipRepository, type PayslipBatchInsertRow } from '../../repositories/PayslipRepository.js';
 import {
@@ -57,15 +59,20 @@ async function auditPayslipMutation(
       ? prior ?? (await repo.getByIdIncludingDeleted(client, payslipId))
       : await repo.getById(client, payslipId);
   if (!row && action !== 'delete') return;
-  await recordDomainMutation(client, {
+  const resolvedAction =
+    auditAction ??
+    (action === 'create'
+      ? PAYROLL_AUDIT_ACTIONS.PAYSLIP_CREATED
+      : action === 'delete'
+        ? PAYROLL_AUDIT_ACTIONS.PAYSLIP_DELETED
+        : PAYROLL_AUDIT_ACTIONS.PAYSLIP_UPDATED);
+  await recordPayrollAudit(client, {
     tenantId,
-    userId: userId ?? null,
-    module: 'payroll',
+    userId,
     entityType: 'payslip',
     entityId: payslipId,
     action,
-    auditAction,
-    summary: auditAction ?? `Payslip ${payslipId} ${action}`,
+    auditAction: resolvedAction,
     newValue: row && action !== 'delete' ? rowToPayslipApi(row) : undefined,
     oldValue: prior ? rowToPayslipApi(prior) : row && action === 'delete' ? rowToPayslipApi(row) : undefined,
   });
@@ -129,14 +136,13 @@ export async function createPayrollRun(
   const priorRow = await runRepo.getByMonthYear(client, month, year);
 
   const row = await runRepo.upsertByPeriod(client, id, month, year, period_start, period_end, userId);
-  await recordDomainMutation(client, {
+  await recordPayrollAudit(client, {
     tenantId,
     userId,
-    module: 'payroll',
     entityType: 'payroll_run',
     entityId: row.id,
     action: priorRow ? 'update' : 'create',
-    summary: `Payroll run ${row.month} ${row.year} ${priorRow ? 'updated' : 'created'}`,
+    auditAction: PAYROLL_AUDIT_ACTIONS.RUN_CREATED,
     newValue: rowToPayrollRunApi(row),
     oldValue: priorRow ? rowToPayrollRunApi(priorRow) : undefined,
   });
@@ -494,16 +500,24 @@ export async function processPayrollRun(
   const updated = await new PayrollRunRepository(tenantId).setTotals(client, runId, totalAmt, totalPayslips);
   if (!updated) throw new Error('Failed to update payroll run.');
 
-  await recordDomainMutation(client, {
+  await recordPayrollAudit(client, {
     tenantId,
     userId: actorUserId ?? updated.updated_by ?? updated.created_by,
-    module: 'payroll',
     entityType: 'payroll_run',
     entityId: updated.id,
-    action: 'update',
-    summary: `Payroll run ${updated.month} ${updated.year} processed (${newCount} new payslip(s))`,
-    newValue: rowToPayrollRunApi(updated),
+    auditAction: PAYROLL_AUDIT_ACTIONS.RUN_PROCESSED,
     oldValue: rowToPayrollRunApi(run),
+    newValue: {
+      ...rowToPayrollRunApi(updated),
+      processing_summary: {
+        new_payslips_generated: newCount,
+        existing_payslips_skipped: skipCount,
+        total_payslips: totalPayslips,
+        new_amount_added: newAmount,
+        previous_amount: previousTotal,
+        total_amount: totalAmt,
+      },
+    },
   });
 
   const { syncPayrollLedgerForEmployee } = await import('../payrollLedgerService.js');
@@ -645,21 +659,11 @@ export async function softDeletePayslip(
   tenantId: string,
   payslipId: string,
   actorUserId?: string | null,
-  scopeCtx?: DataScopeEnforcementContext
+  scopeCtx?: DataScopeEnforcementContext,
+  reason?: string | null
 ): Promise<boolean> {
-  const ps = await getPayslip(client, tenantId, payslipId, scopeCtx);
-  if (!ps) return false;
-  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id, scopeCtx);
-  if (run) assertPayrollRunEditable(run.status);
-  await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
-  const runId = ps.payroll_run_id;
-  const deleted = await new PayslipRepository(tenantId).markDeleted(client, payslipId);
-  if (!deleted) return false;
-  await auditPayslipMutation(client, tenantId, payslipId, 'delete', actorUserId, ps);
-  await recalculatePayrollRunAggregates(client, tenantId, runId);
-  const { syncPayrollLedgerForEmployee } = await import('../payrollLedgerService.js');
-  await syncPayrollLedgerForEmployee(client, tenantId, ps.employee_id);
-  return true;
+  const { voidPayslip } = await import('./payrollVoidService.js');
+  return voidPayslip(client, tenantId, payslipId, reason, actorUserId, scopeCtx);
 }
 
 export async function payPayslip(
@@ -717,7 +721,26 @@ export async function payPayslip(
 
   const row = await getPayslip(client, tenantId, payslipId);
   if (!row) throw new Error('Failed to load payslip after payment.');
-  await auditPayslipMutation(client, tenantId, payslipId, 'update', userId, ps);
+  const priorApi = rowToPayslipApi(ps);
+  const afterApi = rowToPayslipApi(row);
+  await recordPayrollAudit(client, {
+    tenantId,
+    userId,
+    entityType: 'payslip',
+    entityId: payslipId,
+    auditAction: PAYROLL_AUDIT_ACTIONS.PAYSLIP_PAID,
+    oldValue: priorApi,
+    newValue: afterApi,
+  });
+  await recordPayrollAudit(client, {
+    tenantId,
+    userId,
+    entityType: 'payroll_payment',
+    entityId: tx.id,
+    action: 'create',
+    auditAction: PAYROLL_AUDIT_ACTIONS.PAYMENT_CREATED,
+    newValue: { transactionId: tx.id, payslipId, amount: payAmt, accountId },
+  });
   if (!options?.skipRecalculate) {
     await recalculatePayrollRunAggregates(client, tenantId, ps.payroll_run_id);
   }

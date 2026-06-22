@@ -1,7 +1,7 @@
 // Service Worker for PBooks Pro Cloud (PWA)
 // CACHE_NAME is injected at build time from version.json.
 
-const CACHE_NAME = 'pbookspro-2026.06.21.535';
+const CACHE_NAME = 'pbookspro-2026.06.22.691';
 const IMMUTABLE_ASSET_PATTERN = /\/assets\/[^/]+-[a-f0-9]{8,}\.(js|css|woff2?|png|jpg|jpeg|gif|svg|webp|wasm)$/i;
 
 const NEVER_CACHE_PATHS = new Set([

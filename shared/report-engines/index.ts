@@ -1,6 +1,7 @@
 export * from './profitLossEngine';
 export * from './balanceSheetEngine';
 export * from './cashFlowEngine';
+export * from './payrollReportsCore';
 export * from './tenantLedgerReportEngine';
 export * from './clientLedgerReportEngine';
 export * from './vendorLedgerReportEngine';

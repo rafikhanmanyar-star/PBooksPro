@@ -111,6 +111,7 @@
     "rbac:data-scope:staging:enable": "node scripts/enable-rbac-data-scope-staging-env.mjs",
     "rbac:data-scope:staging:pilot": "node --import tsx scripts/rbac-data-scope-staging-pilot.mjs --all",
     "rbac:data-scope:staging:atp": "node --import tsx scripts/rbac-data-scope-staging-pilot.mjs --atp",
+    "rbac:data-scope:uat:docx": "node scripts/generate-rbac-data-scope-uat-docx.mjs",
     "test:balance-sheet": "tsx tests/balanceSheetEngine.test.ts",
     "test:cash-flow": "tsx tests/cashFlowJournalCore.test.ts",
     "test:trial-balance": "tsx tests/trialBalanceCore.test.ts",

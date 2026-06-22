@@ -66,7 +66,9 @@ const GLDefaultsSettings: React.FC = () => {
   return (
     <div className="space-y-4">
       <p className="text-sm text-app-muted">
-        These defaults pre-fill the account, category, and project selectors when paying payslips. They can be overridden per payment.
+        Defaults for payroll GL posting: category/project dimensions on accrual journals, and pre-filled selectors when paying payslips.
+        Accrual uses system accounts <span className="font-mono text-xs">Expense Summary</span> (debit) and{' '}
+        <span className="font-mono text-xs">Accounts Payable</span> (credit) on approval; payments settle AP to the bank account you choose.
       </p>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>

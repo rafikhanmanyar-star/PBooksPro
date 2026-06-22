@@ -32,6 +32,10 @@ import {
   shouldSkipPeVJournalMirror,
 } from './pevJournalPostingService.js';
 import type { ProjectExpenseVoucherRow } from '../../project-expense/services/projectExpenseVoucherService.js';
+import {
+  PAYROLL_RUN_JOURNAL_SOURCE_MODULE,
+  reversePayrollRunAccrualJournal,
+} from '../../payroll/services/payroll/payrollJournalPostingService.js';
 
 export type PostingOptions = {
   allowClosedPeriod?: boolean;
@@ -271,6 +275,19 @@ export class FinancialPostingService {
     );
     if (!existingId) return;
     await this.reverseJournal(client, existingId, 'Project expense voucher reversed', actorUserId);
+  }
+
+  async reversePayrollRunAccrualMirror(
+    client: pg.PoolClient,
+    runId: string,
+    actorUserId: string | null,
+    reason?: string
+  ): Promise<void> {
+    await reversePayrollRunAccrualJournal(client, this.tenantId, runId, actorUserId, reason);
+  }
+
+  async findActivePayrollRunAccrualJournalId(client: pg.PoolClient, runId: string): Promise<string | null> {
+    return this.journalRepo().findActiveBySource(client, PAYROLL_RUN_JOURNAL_SOURCE_MODULE, runId);
   }
 }
 

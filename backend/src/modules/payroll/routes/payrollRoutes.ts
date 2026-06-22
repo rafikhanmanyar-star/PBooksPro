@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
@@ -50,7 +51,11 @@ import {
   upsertEmployee,
   upsertGrade,
   upsertPayrollProject,
+  voidPayslip,
+  voidPayrollRun,
+  reversePayrollPayment,
 } from '../services/payrollService.js';
+import { PayrollValidationError } from '../../../payroll-core/payrollValidation.js';
 import {
   fetchEmployeeLedgerPage,
   getEmployeePayrollBalanceFromDb,
@@ -58,6 +63,23 @@ import {
 } from '../services/payrollLedgerService.js';
 
 export const payrollRouter = Router();
+
+const voidReasonBodySchema = z.object({
+  reason: z.string().trim().min(3, 'Reason must be at least 3 characters'),
+});
+
+function handlePayrollMutationError(res: import('express').Response, e: unknown): void {
+  if (e instanceof PayrollValidationError) {
+    sendFailure(res, 400, e.code, e.message);
+    return;
+  }
+  if (e instanceof LockGuardError) {
+    sendFailure(res, 409, 'LOCK_HELD', e.message);
+    return;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+}
 
 // ── Departments ───────────────────────────────────────────────────────────────
 
@@ -695,6 +717,33 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
   }
 });
 
+payrollRouter.post('/payroll/runs/:id/void', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) =>
+      voidPayrollRun(c, tenantId, req.params.id, parsed.data.reason, req.userId ?? null, scopeCtx)
+    );
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'payroll_run', { id: req.params.id, sourceUserId: req.userId });
+    sendSuccess(res, { message: 'Payroll run voided' });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
+  }
+});
+
 payrollRouter.delete('/payroll/runs/:id', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
@@ -790,6 +839,65 @@ payrollRouter.put('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
     }
     const msg = e instanceof Error ? e.message : String(e);
     sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+  }
+});
+
+payrollRouter.post('/payroll/payslips/:id/void', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) =>
+      voidPayslip(c, tenantId, req.params.id, parsed.data.reason, req.userId ?? null, scopeCtx)
+    );
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'payslip', { id: req.params.id, sourceUserId: req.userId });
+    sendSuccess(res, { message: 'Payslip voided' });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
+  }
+});
+
+payrollRouter.post('/payroll/payments/:transactionId/reverse', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const result = await withTransaction((c) =>
+      reversePayrollPayment(c, tenantId, req.params.transactionId, parsed.data.reason, req.userId ?? null)
+    );
+    if (!result.ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Payment not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'transaction', {
+      id: req.params.transactionId,
+      sourceUserId: req.userId,
+    });
+    if (result.payslipId) {
+      emitEntityEvent(tenantId, 'updated', 'payslip', { id: result.payslipId, sourceUserId: req.userId });
+    }
+    sendSuccess(res, { message: 'Payroll payment reversed', payslipId: result.payslipId ?? null });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
   }
 });
 

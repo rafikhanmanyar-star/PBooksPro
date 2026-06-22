@@ -1,28 +1,61 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../../context/AuthContext';
+import { isAccountingBackedByRemoteApi } from '../../../config/apiUrl';
 import { payrollAttendanceApi } from '../../../services/api/payrollAttendanceApi';
+import PayrollReportShell, { PeriodFilters } from './PayrollReportShell';
+import {
+  downloadCsv,
+  payrollReportFileName,
+  rowsToCsv,
+} from '../utils/payrollReportExport';
 
 const LOPReport: React.FC = () => {
+  const { tenant } = useAuth();
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
+  const isApi = isAccountingBackedByRemoteApi();
+
   const q = useQuery({
     queryKey: ['payroll', 'reports', 'lop', month, year],
+    enabled: isApi,
     queryFn: () => payrollAttendanceApi.getLopReport(month, year),
   });
 
   const rows = q.data?.rows ?? [];
 
+  const exportCsv = () => {
+    downloadCsv(
+      payrollReportFileName('lop', { month, year }),
+      rowsToCsv(
+        [
+          { header: 'Employee', value: (r) => r.employee_name ?? r.employee_id },
+          { header: 'Department', value: (r) => r.department ?? '' },
+          { header: 'Absent', value: (r) => r.absent_days },
+          { header: 'Unpaid Leave', value: (r) => r.unpaid_leave_days },
+          { header: 'Half Days', value: (r) => r.half_days },
+          { header: 'LOP Days', value: (r) => r.lop_days },
+        ],
+        rows
+      )
+    );
+  };
+
+  if (!isApi) {
+    return <p className="text-sm text-app-muted p-4">LOP report requires API mode.</p>;
+  }
+
   return (
-    <div className="space-y-4 p-4">
-      <h3 className="text-lg font-bold">LOP report</h3>
-      <p className="text-sm text-app-muted">
-        Loss-of-pay days by employee. Total LOP: <strong>{q.data?.total_lop_days ?? 0}</strong>
-      </p>
-      <div className="flex gap-2">
-        <input type="number" min={1} max={12} value={month} onChange={(e) => setMonth(Number(e.target.value))} className="w-20 rounded border px-2 py-1 text-sm" />
-        <input type="number" value={year} onChange={(e) => setYear(Number(e.target.value))} className="w-24 rounded border px-2 py-1 text-sm" />
-      </div>
+    <PayrollReportShell
+      title="LOP Report"
+      subtitle={`Loss-of-pay days by employee. Total LOP: ${q.data?.total_lop_days ?? 0}`}
+      loading={q.isLoading}
+      error={q.error ? (q.error as Error).message : null}
+      companyName={tenant?.companyName ?? tenant?.name}
+      onExportCsv={exportCsv}
+      filters={<PeriodFilters month={month} year={year} onMonthChange={setMonth} onYearChange={setYear} />}
+    >
       <div className="overflow-x-auto rounded-xl border border-app-border">
         <table className="min-w-full text-sm">
           <thead className="bg-app-muted/10 text-xs uppercase text-app-muted">
@@ -52,7 +85,7 @@ const LOPReport: React.FC = () => {
           </tbody>
         </table>
       </div>
-    </div>
+    </PayrollReportShell>
   );
 };
 

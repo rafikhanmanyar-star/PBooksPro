@@ -8,6 +8,7 @@ import {
 } from '../utils/payrollApprovalSod';
 import { canApprovePayrollRunWorkflow } from '../utils/payrollWorkflowGuards';
 import { payrollApprovalStatusLabel, payrollRunStatusLabel } from '../utils/payrollStatusLabels';
+import PayrollCorrectionGuide from './PayrollCorrectionGuide';
 
 type UserLike = { id: string; name?: string; username?: string };
 
@@ -111,6 +112,12 @@ const PayrollRunApprovalPanel: React.FC<Props> = ({
               Revert to generated
             </button>
           )}
+          <PayrollCorrectionGuide
+            run={run}
+            canUnapprove={Boolean(canApprove && onUnapprove)}
+            onUnapprove={onUnapprove}
+            busy={busy}
+          />
         </div>
       ) : (
         <>

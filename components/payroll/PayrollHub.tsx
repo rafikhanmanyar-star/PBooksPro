@@ -37,13 +37,14 @@ import EmployeeList from './EmployeeList';
 import VirtualizedPayrollEmployeeLedgerTable from './VirtualizedPayrollEmployeeLedgerTable';
 import EmployeeProfile from './EmployeeProfile';
 import EmployeeForm from './EmployeeForm';
-import PayrollReport from './PayrollReport';
+import PayrollReportsHub from './reports/PayrollReportsHub';
 import PaymentHistory from './PaymentHistory';
 import PayrollSettingsPage from './PayrollSettingsPage';
 import PayrollDashboard from './PayrollDashboard';
 import PayslipsPage from './PayslipsPage';
 import PayrollAuditLog from './PayrollAuditLog';
 import VoidPayslipModal from './modals/VoidPayslipModal';
+import ReversePayrollPaymentModal from './modals/ReversePayrollPaymentModal';
 import AttendancePage from './attendance/AttendancePage';
 import LeaveManagementPage from './leave/LeaveManagementPage';
 import PayrollWizard from './wizard/PayrollWizard';
@@ -52,6 +53,7 @@ import { storageService } from './services/storageService';
 import { hydratePayrollFromDb } from './services/payrollDb';
 import { syncPayrollFromServer } from './services/payrollSync';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { formatApiErrorMessage } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { useDispatchOnly, usePayrollHubState } from '../../hooks/useSelectiveState';
@@ -217,6 +219,7 @@ const PayrollHub: React.FC = () => {
   const [payModalRun, setPayModalRun] = useState<PayrollRun | null>(null);
   const [voidModalPayslip, setVoidModalPayslip] = useState<Payslip | null>(null);
   const [voidModalEmployee, setVoidModalEmployee] = useState<PayrollEmployee | null>(null);
+  const [reversePaymentTx, setReversePaymentTx] = useState<Transaction | null>(null);
   const [payslipsRefreshKey, setPayslipsRefreshKey] = useState(0);
   /** Bumped after SQLite hydrate or API payroll sync so UI re-reads payslips from storage. */
   const [payrollStorageRevision, setPayrollStorageRevision] = useState(0);
@@ -952,6 +955,10 @@ const PayrollHub: React.FC = () => {
   };
   const handlePaymentShowDeleteWarning = (tx: Transaction) => {
     setPaymentTransactionToEdit(null);
+    if (isAccountingBackedByRemoteApi() && tx.payslipId) {
+      setReversePaymentTx(tx);
+      return;
+    }
     setPaymentWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
   };
   const handlePaymentCloseWarning = () => {
@@ -2174,7 +2181,7 @@ const PayrollHub: React.FC = () => {
 
         {activeSubTab === 'report' && (
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6">
-            <PayrollReport />
+            <PayrollReportsHub />
           </div>
         )}
 
@@ -2201,18 +2208,35 @@ const PayrollHub: React.FC = () => {
         onClose={() => { setVoidModalPayslip(null); setVoidModalEmployee(null); }}
         payslip={voidModalPayslip}
         employee={voidModalEmployee}
-        onConfirm={async (_reason) => {
+        onConfirm={async (reason) => {
           if (!voidModalPayslip) return;
           const ps = voidModalPayslip;
           try {
             const deleted = isAccountingBackedByRemoteApi()
-              ? await payrollApi.deletePayslip(ps.id, tenantId, userId)
+              ? await payrollApi.voidPayslip(ps.id, reason, tenantId, userId)
               : storageService.deletePayslip(tenantId, ps.id, userId);
             if (!deleted) throw new Error('Could not void payslip.');
             refreshCyclePayslips();
-            showToast('Payslip voided. Remember to reverse any payment in Accounting.', 'success');
+            showToast('Payslip voided.', 'success');
           } catch (e) {
-            throw e instanceof Error ? e : new Error('Void failed.');
+            throw new Error(formatApiErrorMessage(e) || 'Void failed.');
+          }
+        }}
+      />
+      <ReversePayrollPaymentModal
+        isOpen={!!reversePaymentTx}
+        onClose={() => setReversePaymentTx(null)}
+        transaction={reversePaymentTx}
+        onConfirm={async (reason) => {
+          if (!reversePaymentTx) return;
+          try {
+            const result = await payrollApi.reversePayrollPayment(reversePaymentTx.id, reason);
+            if (!result.success) throw new Error(result.error || 'Reverse failed.');
+            await syncPayrollFromServer(tenantId);
+            refreshCyclePayslips();
+            showToast('Payroll payment reversed.', 'success');
+          } catch (e) {
+            throw new Error(formatApiErrorMessage(e) || 'Reverse failed.');
           }
         }}
       />

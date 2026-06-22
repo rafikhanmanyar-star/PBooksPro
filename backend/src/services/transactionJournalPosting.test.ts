@@ -87,6 +87,17 @@ describe('transactionJournalPostingService', () => {
     assert.equal(lines![1].accountId, 'acc-cash');
   });
 
+  it('builds expense lines with AP debit when payslip linked (payroll settlement)', () => {
+    const lines = buildJournalLinesFromTransaction(
+      baseRow({ type: 'Expense', payslip_id: 'ps-1', amount: '45000' })
+    );
+    assert.ok(lines);
+    assert.equal(lines![0].accountId, 'sys-acc-ap');
+    assert.equal(lines![0].debitAmount, 45000);
+    assert.equal(lines![1].accountId, 'acc-cash');
+    assert.equal(lines![1].creditAmount, 45000);
+  });
+
   it('builds transfer lines from from/to accounts', () => {
     const lines = buildJournalLinesFromTransaction(
       baseRow({

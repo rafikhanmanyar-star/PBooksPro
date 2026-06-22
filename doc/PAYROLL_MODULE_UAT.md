@@ -204,7 +204,56 @@ Desktop Full ERP navigation
 | /api/v1/payroll/runs | GET | 200 | Processing | |
 | /api/v1/payroll/runs/:id/approve | POST | 200 or 403 SoD | Approval (Approver only) | |
 | /api/v1/payroll/runs/:id/unapprove | POST | 200 or 400 if paid | Revert approval | |
+| /api/v1/payroll/payslips/:id/void | POST | 200 + reason body | Void payslip (Sprint 3) | |
+| /api/v1/payroll/runs/:id/void | POST | 200 + reason body | Void run (Sprint 3) | |
+| /api/v1/payroll/payments/:transactionId/reverse | POST | 200 + reason body | Reverse payroll payment | |
+| /api/v1/payroll/reports/register | GET | 200 rows[] | Register tab |
+| /api/v1/payroll/reports/payment-history | GET | 200 rows[] | Payment History tab |
+| /api/v1/payroll/reports/liability | GET | 200 rows + totals | Liability tab |
+| /api/v1/payroll/reports/journal | GET | 200 rows[] | Journal tab |
+| /api/v1/payroll/reports/summary | GET | 200 summary KPIs | Summary tab |
+| /api/v1/payroll/reports/leave-impact | GET | 200 rows[] | Leave Impact tab |
+| /api/v1/payroll/reports/attendance-impact-v2 | GET | 200 rows[] | Attendance Impact tab |
 | /api/v1/audit/events?module=payroll | GET | 200 items[] | Audit Log tab | |
+
+---
+
+## 12. Sprint 3 — Audit, void & reversal (ATP)
+
+See `doc/PAYROLL_SPRINT3_CONTROLS.md` for full design.
+
+| ID | Test case | Persona | UI guide | Expected | Result | Tester | Date | Notes |
+|----|-----------|---------|----------|----------|--------|--------|------|-------|
+| AUD-01 | Audit on lifecycle | Payroll Admin | Wizard: create → process → User B approves → Audit Log. | Events: `run.created`, `run.processed`, `run.approved`, `accrual_posted` with user + timestamp. | | | | |
+| AUD-02 | Reason on void | Payroll Admin | Processing → void payslip with reason → Audit Log. | `payslip.voided` row; **Reason** column shows submitted text. | | | | |
+| VOID-01 | Void unpaid payslip | Payroll Admin | GENERATED run → void payslip (reason required). | Payslip removed; audit event; no GL change. | | | | |
+| VOID-02 | Void approved run | Payroll Admin | APPROVED run, no payments → void run with reason. | Accrual reversed; run removed; `run.reversed` + `run.voided`. | | | | |
+| REV-01 | Unapprove | Approver | Approved run → Revert to generated. | GENERATED; accrual journal reversed. | | | | |
+| REV-02 | Correction path | Approver | Unapprove → edit payslip → reprocess → User B re-approves. | Correction guide visible; new accrual on re-approve. | | | | |
+| REV-03 | Payment reversal | Payroll Admin | Pay payslip → reverse via API/UI with reason. | Bank/AP journal reversed; payslip unpaid; `payment.reversed` audit. | | | | |
+| NEG-01 | Unauthorized void | Employee / no write | POST void without permission. | 403. | | | | |
+| NEG-02 | Unauthorized reversal | User without payroll access | POST payment reverse. | 403. | | | | |
+| NEG-03 | Void paid run | Payroll Admin | Attempt void on PAID run. | 400 clear message. | | | | |
+| NEG-04 | Void payslip with payment | Payroll Admin | Paid payslip → void without reversing payment. | 400 `PAYSLIP_HAS_PAYMENTS`. | | | | |
+
+---
+
+## 13. Sprint 4 — Reports & exports (ATP)
+
+See `doc/PAYROLL_SPRINT4_REPORTS.md`.
+
+| ID | Test case | Persona | UI guide | Expected | Result | Tester | Date | Notes |
+|----|-----------|---------|----------|----------|--------|--------|------|-------|
+| REP-01 | Payroll Register | Finance | Reports → Register → set month/year. | All payslips for period; net/paid/remaining reconcile. | | | | |
+| REP-02 | Payment History | Finance | Reports → Payment History. | Each payroll payment transaction listed with reference. | | | | |
+| REP-03 | Liability | Finance | Reports → Liability. | Outstanding = Approved − Paid per run. | | | | |
+| REP-04 | Journal | Finance | Reports → Journal. | Accrual journal ID + expense/AP amounts match GL. | | | | |
+| REP-05 | Attendance Impact | HR | Reports → Attendance Impact. | Present/leave/LOP match wizard summaries. | | | | |
+| REP-06 | Leave Impact | HR | Reports → Leave Impact. | LOP impact matches payslip deductions. | | | | |
+| REP-07 | CSV Export | Finance | Any report → CSV. | File downloads; headers + row count match grid. | | | | |
+| REP-08 | Print | Finance | Any report → Print. | Header, table, footer in print preview. | | | | |
+| REP-09 | Filters | Finance | Change month/year on Register. | Row set updates; empty period shows message. | | | | |
+| REP-10 | Large dataset | Finance | Tenant with 100+ payslips in period. | Report loads without timeout (< 30s). | | | | |
 
 ---
 
@@ -214,7 +263,8 @@ Desktop Full ERP navigation
 - [ ] Audit Log shows run approve, pay, void events
 - [ ] Dashboard KPIs match Processing data
 - [ ] Void vs Delete payslip rules verified
-- [ ] Real-time sync on pay/approve
+- [ ] REP-01–10 reports ATP pass on staging
+- [ ] Finance reporting review sign-off (`doc/PAYROLL_SPRINT4_REPORTS.md` §10)
 
 ---
 

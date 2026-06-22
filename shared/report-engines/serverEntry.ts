@@ -18,3 +18,11 @@ export { computeRentalReceivableReport } from './rentalReceivableReportEngine.js
 export { computeServiceChargesDeductionReport } from './serviceChargesDeductionReportEngine.js';
 export { computeRentalBillsDashboard } from './rentalBillsDashboardEngine.js';
 export { buildCashFlowReportFromTransactions } from './cashFlowTransactionEngine.js';
+export {
+  buildLiabilityRow,
+  buildPayrollSummaryReport,
+  buildRegisterRow,
+  num as payrollReportNum,
+  payslipStatusLabel,
+  roundMoney as payrollRoundMoney,
+} from './payrollReportsCore.js';

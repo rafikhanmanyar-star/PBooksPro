@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Loader2, RefreshCw, ShieldCheck, Clock, User, ChevronDown, ChevronUp } from 'lucide-react';
 import { apiClient } from '../../services/api/client';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { PAYROLL_AUDIT_LABELS, extractAuditReason } from './utils/payrollAuditCatalog';
 
 type AuditRow = {
   id: string;
@@ -18,28 +19,20 @@ type AuditRow = {
   new_value?: unknown;
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  'payroll.run.approved': 'Run Approved',
-  'payroll.run.unapproved': 'Run Unapproved',
-  'payroll.summary.generated': 'Summaries Generated',
-  'payroll.run.created': 'Run Created',
-  'payroll.run.processed': 'Run Processed',
-  'payroll.work_week.updated': 'Work Week Updated',
-  'payroll.payslip.paid': 'Payslip Paid',
-  'payroll.payslip.edited': 'Payslip Edited',
-  'payroll.payslip.voided': 'Payslip Voided',
-  'payroll.payslip.deleted': 'Payslip Deleted',
-  'payroll.payslip.bulk_paid': 'Bulk Payment',
-};
-
 const ACTION_COLORS: Record<string, string> = {
   'payroll.run.approved': 'bg-ds-success/15 text-ds-success',
   'payroll.run.unapproved': 'bg-ds-warning/15 text-ds-warning',
+  'payroll.run.accrual_posted': 'bg-emerald-100 text-emerald-800',
+  'payroll.run.reversed': 'bg-orange-100 text-orange-700',
+  'payroll.run.voided': 'bg-red-100 text-red-600',
   'payroll.summary.generated': 'bg-primary/15 text-primary',
+  'payroll.run.generated': 'bg-primary/15 text-primary',
   'payroll.run.processed': 'bg-violet-100 text-violet-700',
   'payroll.payslip.paid': 'bg-ds-success/15 text-ds-success',
   'payroll.payslip.voided': 'bg-red-100 text-red-600',
   'payroll.payslip.deleted': 'bg-red-100 text-red-600',
+  'payroll.payment.reversed': 'bg-orange-100 text-orange-700',
+  'payroll.payment.voided': 'bg-red-100 text-red-600',
 };
 
 function formatDateTime(iso: string): string {
@@ -123,7 +116,7 @@ const PayrollAuditLog: React.FC = () => {
           >
             <option value="">All events</option>
             {uniqueActions.map(a => (
-              <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>
+              <option key={a} value={a}>{PAYROLL_AUDIT_LABELS[a] ?? a}</option>
             ))}
           </select>
           <button
@@ -158,14 +151,16 @@ const PayrollAuditLog: React.FC = () => {
                 <th className="px-4 py-3 text-left">Who</th>
                 <th className="px-4 py-3 text-left">Entity</th>
                 <th className="px-4 py-3 text-left">Summary</th>
+                <th className="px-4 py-3 text-left">Reason</th>
                 <th className="px-4 py-3 text-left">Diff</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-app-border">
               {rows.map(r => {
                 const actionKey = r.audit_action ?? r.action;
-                const label = ACTION_LABELS[actionKey] ?? actionKey;
+                const label = PAYROLL_AUDIT_LABELS[actionKey] ?? actionKey;
                 const colorCls = ACTION_COLORS[actionKey] ?? 'bg-app-toolbar text-app-muted';
+                const reason = extractAuditReason(r.new_value) ?? extractAuditReason(r.old_value);
                 return (
                   <tr key={r.id} className="hover:bg-app-toolbar/30 transition-colors align-top">
                     <td className="px-4 py-3 text-xs text-app-muted whitespace-nowrap">
@@ -188,6 +183,9 @@ const PayrollAuditLog: React.FC = () => {
                     </td>
                     <td className="px-4 py-3 text-xs text-app-text max-w-[200px] truncate">
                       {r.summary ?? '—'}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-app-muted max-w-[160px]">
+                      {reason ?? '—'}
                     </td>
                     <td className="px-4 py-3 space-y-1">
                       <DiffViewer label="Before" value={r.old_value} />

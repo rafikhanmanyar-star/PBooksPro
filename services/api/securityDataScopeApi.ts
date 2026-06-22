@@ -20,8 +20,7 @@ export function isRbacV2DataScopeUiEnabled(): boolean {
 
 export const dataScopeApi = {
   async getUserScopes(userId: string): Promise<UserScopeSummary> {
-    const res = await apiClient.get<UserScopeSummary>(`/rbac/scopes/users/${encodeURIComponent(userId)}`);
-    return res.data;
+    return apiClient.get<UserScopeSummary>(`/rbac/scopes/users/${encodeURIComponent(userId)}`);
   },
 
   async assignUserScope(input: {
@@ -31,17 +30,15 @@ export const dataScopeApi = {
     entityIds?: string[];
     reason?: string;
   }): Promise<UserScopeSummary> {
-    const res = await apiClient.put<UserScopeSummary>(
+    return apiClient.put<UserScopeSummary>(
       `/rbac/scopes/users/${encodeURIComponent(input.userId)}`,
       input
     );
-    return res.data;
   },
 
   async removeScope(scopeId: string, reason?: string): Promise<UserScopeSummary> {
-    const res = await apiClient.delete<UserScopeSummary>(`/rbac/scopes/${encodeURIComponent(scopeId)}`, {
+    return apiClient.delete<UserScopeSummary>(`/rbac/scopes/${encodeURIComponent(scopeId)}`, {
       data: reason ? { reason } : undefined,
     });
-    return res.data;
   },
 };

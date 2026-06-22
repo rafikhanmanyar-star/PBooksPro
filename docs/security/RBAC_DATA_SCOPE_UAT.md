@@ -5,6 +5,7 @@
 **Document version:** 1.0  
 **Date:** 2026-06-22  
 **Environment:** Staging (`pBookspro_Staging`, API port **3001**)  
+**Word document:** Regenerate with `npm run rbac:data-scope:uat:docx` → `RBAC_DATA_SCOPE_UAT.docx`  
 **Related:** [`RBAC_DATA_SCOPE_STAGING_ACTIVATION_REPORT.md`](./RBAC_DATA_SCOPE_STAGING_ACTIVATION_REPORT.md) · [`RBAC_V2_VISUAL_TESTING_GUIDE.md`](./RBAC_V2_VISUAL_TESTING_GUIDE.md) · [`RBAC_V2_STAGING_CUTOVER_PLAN.md`](./RBAC_V2_STAGING_CUTOVER_PLAN.md)
 
 ---
@@ -123,16 +124,99 @@ Expected: **20/20 PASS**. Evidence: `docs/security/staging-evidence/data-scope-p
 
 ---
 
+## 4.5 UI guide — Assign department scope (ADM-04)
+
+Use this walkthrough for **ADM-04** (*Assign Department A to ScopePayroll → Save*) and similar scope assignments (ADM-03, ADM-06).
+
+### Before you start
+
+| Item | Staging pilot value | How to find it in the UI |
+|------|---------------------|-------------------------|
+| **ScopePayroll user ID** | `user_scope_pilot_payroll` | See **Lookup user ID** below |
+| **Department A entity ID** | `scope-pilot-dept-a` | See **Lookup department ID** below |
+| **Login as** | `scope-admin@pbookspro.com` / `ScopePilot2026!` | Can **view** scopes (`users.read`); **cannot assign** (read-only) |
+| **Assign scopes (ADM-04)** | `rafi@company.local` / `Rafi1234` (or tenant **super_admin**) | Requires `administration.scopes.edit` (restricted — not granted to `company_admin`) |
+
+> The Data Scopes screen assigns scope by **user UUID** and **entity ID**, not by display name or email.
+
+### Lookup user ID (ScopePayroll)
+
+**Option A — Staging pilot (fastest)**  
+Use `user_scope_pilot_payroll` from the pilot setup (`npm run rbac:data-scope:staging:pilot --setup`).
+
+**Option B — User Management + browser devtools**
+
+1. **Settings** (gear, top navigation) → **General** → **User Management**.
+2. Find the row **ScopePayroll** / `scope-payroll@pbookspro.com`.
+3. Open browser **Developer Tools** → **Network** tab.
+4. Refresh the page or re-open Settings; select the `GET …/users` request.
+5. In the response JSON, copy the `id` field for that user.
+
+**Option C — API (admin token)**
+
+```http
+GET /api/v1/users
+Authorization: Bearer <admin-token>
+```
+
+Copy `id` where `email` = `scope-payroll@pbookspro.com`.
+
+### Lookup department ID (Department A)
+
+**Option A — Staging pilot (fastest)**  
+Use `scope-pilot-dept-a` (department display name **Department A**).
+
+**Option B — Payroll settings**
+
+1. Sidebar → **Payroll** → **Settings** (payroll configuration page).
+2. Under **Departments**, confirm **Department A** exists in the list.
+3. The UI does not show the internal ID on screen; for UAT on staging, use the pilot ID above or copy from `GET /api/v1/payroll/departments` (admin) and match `name` = `Department A`.
+
+### Step-by-step — Assign Department A to ScopePayroll
+
+1. Log in as **super_admin** (e.g. **Rafi** / `rafi@company.local` on staging — not ScopeAdmin; see table above).
+2. Open **Settings** (gear icon).
+3. In the left sidebar, under **Administration**, click **Security — Data Scopes**.  
+   - If missing: confirm `VITE_RBAC_V2_DATA_SCOPE=true` and rebuild the client.
+4. In **Target user ID**, paste `user_scope_pilot_payroll` (or the UUID from lookup).
+5. Click **Load scopes**.  
+   - A gray **summary box** appears under the dimension tabs (if nothing appears, rebuild the client after the data-scope API fix).
+   - ScopePayroll already has **Department A** assigned if you ran `rbac-data-scope-staging-pilot.mjs --setup`.
+6. Click the **Department** dimension tab (not Project — Project shows `all` when only department is scoped).
+7. In the summary box, confirm: `department: assigned — scope-pilot-dept-a`.
+8. To (re)assign manually, in **Assign department scope**:
+   - Select **Assigned** (not **All**).
+   - In **Entity IDs**, enter: `scope-pilot-dept-a`
+   - Optional: **Reason** → e.g. `UAT ADM-04 department scope`
+9. Click **Save scope** (visible only when logged in as super_admin / holder of `administration.scopes.edit`).
+10. **Expected:** green toast **“Data scope updated”**; summary shows `department: assigned — scope-pilot-dept-a`.
+11. Verify audit (optional): **Settings** → **General** → **Audit Trail** → filter for scope / RBAC actions around the save time.
+12. Tell **ScopePayroll** to **log out and log back in** before running payroll UAT cases (PR-01, G-04, etc.).
+
+### Troubleshooting
+
+| Symptom | Check |
+|---------|--------|
+| **Load scopes — no summary box** | Rebuild client (`npm run test:staging` or `npm run dev`); fixed in `securityDataScopeApi.ts` (double `.data` unwrap) |
+| **Project tab shows `all` only** | Normal when user has **department** scope only — switch to **Department** tab |
+| Section not visible | Client flag `VITE_RBAC_V2_DATA_SCOPE=true`; user has `users.read` |
+| **Read-only — cannot Save scope** | Expected for ScopeAdmin (`company_admin`). Use **Rafi / super_admin** for ADM-04 |
+| “Failed to load data scopes” | User ID typo; API running; `RBAC_V2_DATA_SCOPE=true` on server |
+| Save succeeds but payroll user sees all depts | ScopePayroll did not re-login after assignment |
+| Wrong department scoped | Confirm **Department** tab (not Project); entity ID matches payroll department row |
+
+---
+
 ## 5. UAT test cases — Administration
 
-| ID | Sev | Persona | Steps | Expected | Result | Notes |
-|----|-----|---------|-------|----------|--------|-------|
-| ADM-01 | Medium | Company Admin | Settings → **Security — Data Scopes** | Section visible (`VITE_RBAC_V2_DATA_SCOPE=true`) | | |
-| ADM-02 | Medium | Payroll Officer | Open Security — Data Scopes | 🚫 No permission / section hidden | | |
-| ADM-03 | High | Company Admin | Load scopes for ScopePM user | Shows **project** dimension = Assigned, Project Alpha ID | | |
-| ADM-04 | High | Company Admin | Assign Department A to ScopePayroll → Save | ✅ Success toast; audit entry | | |
-| ADM-05 | High | ScopePM | 🔄 Re-login after ADM-03 | New session; effective-context shows project scope | | |
-| ADM-06 | Medium | Company Admin | Remove a scope grant | Grant removed; user 🔄 re-login sees wider/narrower data | | |
+| ID | Sev | Persona | Steps | UI guide | Expected | Result | Notes |
+|----|-----|---------|-------|----------|----------|--------|-------|
+| ADM-01 | Medium | Company Admin | Settings → **Security — Data Scopes** | Settings → Administration → **Security — Data Scopes** | Section visible (`VITE_RBAC_V2_DATA_SCOPE=true`) | | |
+| ADM-02 | Medium | Payroll Officer | Open Security — Data Scopes | Settings → Administration (as ScopePayroll) | 🚫 No permission / section hidden | | |
+| ADM-03 | High | Company Admin | Load scopes for ScopePM user | Target user ID: `user_scope_pilot_pm` → **Load scopes** → **Project** tab | Shows **project** dimension = Assigned, Project Alpha ID | | |
+| ADM-04 | High | super_admin (Rafi) | Assign Department A to ScopePayroll → Save | **§4.5** — log in as Rafi → Department tab → Assigned → `scope-pilot-dept-a` → **Save scope** | ✅ Toast “Data scope updated”; audit entry | | ScopeAdmin is read-only |
+| ADM-05 | High | ScopePM | 🔄 Re-login after ADM-03 | Log out → log in as `scope-pm@pbookspro.com` | New session; effective-context shows project scope | | |
+| ADM-06 | Medium | Company Admin | Remove a scope grant | Loaded user → summary panel → **Remove** on scope row | Grant removed; user 🔄 re-login sees wider/narrower data | | |
 
 ---
 

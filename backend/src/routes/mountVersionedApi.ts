@@ -38,6 +38,7 @@ import { appSettingsRouter } from './appSettingsRoutes.js';
 import { stateRouter } from './stateRoutes.js';
 import { recurringInvoiceTemplatesRouter } from './recurringInvoiceTemplatesRoutes.js';
 import { payrollRouter } from './payrollRoutes.js';
+import { payrollReportingRouter } from '../modules/payroll/routes/payrollReportingRoutes.js';
 import { payrollAttendanceRouter } from './payrollAttendanceRoutes.js';
 import { attendanceRouter } from './attendanceRoutes.js';
 import { leaveRouter } from './leaveRoutes.js';
@@ -520,6 +521,13 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     requireActiveSubscription(),
     requirePayrollAccessForPayrollPaths(),
     payrollRouter
+  );
+  app.use(
+    prefix,
+    authMiddleware,
+    requireActiveSubscription(),
+    requirePayrollAccessForPayrollPaths(),
+    payrollReportingRouter
   );
   app.use(
     prefix,

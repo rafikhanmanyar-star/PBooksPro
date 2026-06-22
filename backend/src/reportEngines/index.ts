@@ -17,4 +17,10 @@ export {
   computeServiceChargesDeductionReport,
   computeRentalBillsDashboard,
   buildCashFlowReportFromTransactions,
+  buildLiabilityRow,
+  buildPayrollSummaryReport,
+  buildRegisterRow,
+  payrollReportNum as num,
+  payslipStatusLabel,
+  payrollRoundMoney as roundMoney,
 } from '../report-engines/reportEngines.compiled.js';

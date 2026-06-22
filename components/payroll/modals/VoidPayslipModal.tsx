@@ -82,11 +82,10 @@ const VoidPayslipModal: React.FC<VoidPayslipModalProps> = ({
             <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3">
               <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
               <div className="text-sm text-amber-800 space-y-1">
-                <p className="font-bold">Payment reversal required</p>
+                <p className="font-bold">Reverse payment first</p>
                 <p className="text-xs">
-                  This payslip has been paid (PKR {formatCurrency(paidAmount)}). Voiding the payslip
-                  removes it from payroll records but does NOT automatically reverse the bank transaction.
-                  You must manually reverse the payment in the Accounting module.
+                  This payslip has been paid (PKR {formatCurrency(paidAmount)}). Reverse the payroll payment
+                  from Payment History before voiding the payslip.
                 </p>
               </div>
             </div>
@@ -123,7 +122,7 @@ const VoidPayslipModal: React.FC<VoidPayslipModalProps> = ({
             <button
               type="button"
               onClick={() => void handleConfirm()}
-              disabled={busy || !reason.trim()}
+              disabled={busy || !reason.trim() || isPaid}
               className="flex-1 py-2.5 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {busy ? <><Loader2 size={15} className="animate-spin" /> Voiding…</> : <><Trash2 size={15} /> Void Payslip</>}
