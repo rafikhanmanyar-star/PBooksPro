@@ -1,6 +1,6 @@
 import type { DashboardComparisonPeriod, DashboardFilters } from './dashboardMetricsTypes.js';
 import type { DataScopeEnforcementContext } from '../../auth/tenantRepositoryScope.js';
-import { mergeReportScopeIntoFilter } from '../../modules/reporting/query-builder/reportScopeSql.js';
+import { buildReportScopeSql } from '../../modules/reporting/query-builder/reportScopeSql.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -12,7 +12,9 @@ export function appendDashboardRbacScopeClauses(
   columns: { project?: string; property?: string; owner?: string; department?: string }
 ): void {
   if (!scopeCtx?.enabled) return;
-  mergeReportScopeIntoFilter(scopeCtx, clauses, params, columns);
+  const scope = buildReportScopeSql(scopeCtx, columns, params.length + 1);
+  clauses.push(...scope.clauses);
+  params.push(...scope.params);
 }
 
 export function dashboardScopeCacheSuffix(scopeCtx?: DataScopeEnforcementContext): string {
@@ -67,10 +69,15 @@ export function invoiceCollectionQuery(
     clauses.push(`i.project_id = $${params.length}`);
   }
   appendBuildingFilter('i', filters.buildingId, params, clauses);
-  appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
-    project: 'i.project_id',
-    property: 'i.property_id',
-  });
+  if (scopeCtx?.enabled) {
+    const scope = buildReportScopeSql(
+      scopeCtx,
+      { project: 'i.project_id', property: 'i.property_id' },
+      params.length + 1
+    );
+    clauses.push(...scope.clauses);
+    params.push(...scope.params);
+  }
   return {
     sql: `SELECT
          COALESCE(SUM(i.amount), 0)::text AS due,
@@ -119,10 +126,16 @@ export function buildDashboardEntityFilter(
       )
     )`);
   }
-  appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
-    project: columnMap.project,
-    property: columnMap.property,
-  });
+  if (scopeCtx?.enabled) {
+    const scopeStart = baseParamIndex + params.length + 1;
+    const scope = buildReportScopeSql(
+      scopeCtx,
+      { project: columnMap.project, property: columnMap.property },
+      scopeStart
+    );
+    clauses.push(...scope.clauses);
+    params.push(...scope.params);
+  }
   return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
 }
 

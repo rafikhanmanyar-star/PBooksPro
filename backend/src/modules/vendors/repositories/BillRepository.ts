@@ -3,7 +3,8 @@ import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { BillRow } from '../services/billsService.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
-import type { DataScopeEnforcementContext, rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
+import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
 import { appendFinancialRbacScopeSql } from '../../accounting/services/financialReportScope.js';
 
 const BILL_COLUMNS = `id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
@@ -189,11 +190,10 @@ export class BillRepository extends TenantRepository {
       ['b.bill_number', 'b.description', 'v.name', 'v.company_name'],
       opts.search,
       params,
-      paramIndex
+      params.length + 1
     );
     if (searchClause.clause) {
       conditions.push(searchClause.clause);
-      paramIndex = searchClause.nextParamIndex;
     }
 
     const whereClause = conditions.join(' AND ');
@@ -222,8 +222,8 @@ export class BillRepository extends TenantRepository {
     const total = parseInt(countR.rows[0]?.count ?? '0', 10);
 
     params.push(opts.limit, opts.offset);
-    const limitIdx = paramIndex;
-    const offsetIdx = paramIndex + 1;
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
     const r = await client.query<BillRow>(
       `SELECT ${BILL_COLUMNS.split(',').map((c) => `b.${c.trim()}`).join(', ')}
        ${fromJoin} WHERE ${whereClause} ${orderClause}
