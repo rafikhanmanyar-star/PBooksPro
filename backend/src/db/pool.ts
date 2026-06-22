@@ -15,6 +15,7 @@ import {
   snapshotFinancialPostedQueue,
 } from '../core/financialPostedEmissions.js';
 import { normalizeDatabaseUrl } from '../utils/databaseUrl.js';
+import { installPoolOwnershipTracker } from './poolOwnership.js';
 
 
 
@@ -108,6 +109,7 @@ export function getPool(): pg.Pool {
     const base: pg.PoolConfig = { connectionString: url, max, idleTimeoutMillis, connectionTimeoutMillis };
 
     pool = new Pool(ssl ? { ...base, ssl } : base);
+    installPoolOwnershipTracker(pool);
 
     console.log(
       `[POOL_INIT] max=${max} idleTimeoutMillis=${idleTimeoutMillis} connectionTimeoutMillis=${connectionTimeoutMillis}`
