@@ -1,18 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { Sparkles, X } from 'lucide-react';
-import {
-  subscriptionBillingApi,
-  type BillingPortalSummary,
-} from '../../services/api/subscriptionBillingApi';
+import { useBillingPortal } from '../../hooks/useBillingPortal';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useDispatchOnly } from '../../hooks/useSelectiveState';
 
 const DISMISS_KEY = 'pbooks_trial_banner_dismissed';
 
 const TrialUpgradeBanner: React.FC = () => {
-  const [portal, setPortal] = useState<BillingPortalSummary | null>(null);
   const [dismissed, setDismissed] = useState(false);
   const { canAccessBillingPortal } = usePermissions();
+  const { portal } = useBillingPortal();
   const dispatch = useDispatchOnly();
 
   useEffect(() => {
@@ -22,11 +19,6 @@ const TrialUpgradeBanner: React.FC = () => {
       /* ignore */
     }
   }, []);
-
-  useEffect(() => {
-    if (!canAccessBillingPortal) return;
-    void subscriptionBillingApi.getPortal().then(setPortal).catch(() => undefined);
-  }, [canAccessBillingPortal]);
 
   if (!canAccessBillingPortal || dismissed || !portal) return null;
   if (portal.paymentStatus !== 'trialing') return null;
