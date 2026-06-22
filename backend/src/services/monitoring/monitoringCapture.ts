@@ -1,3 +1,4 @@
+import type pg from 'pg';
 import { getPool } from '../../db/pool.js';
 import { isMonitoringEnabled } from '../../constants/monitoring.js';
 import { recordMonitoringEvent, type RecordMonitoringEventInput } from './monitoringEventService.js';
@@ -10,8 +11,9 @@ export function captureMonitoringEvent(input: RecordMonitoringEventInput): void 
   if (!isMonitoringEnabled()) return;
 
   void (async () => {
-    const client = await getPool().connect();
+    let client: pg.PoolClient | null = null;
     try {
+      client = await getPool().connect();
       const row = await recordMonitoringEvent(client, input);
       await evaluateAlertRules(client, input.category, input.severity ?? 'info', row.id, input.message);
       forwardToObservability({
@@ -30,7 +32,7 @@ export function captureMonitoringEvent(input: RecordMonitoringEventInput): void 
     } catch (err) {
       logger.warn('[monitoring] capture failed', { err, category: input.category });
     } finally {
-      client.release();
+      client?.release();
     }
   })();
 }

@@ -4,7 +4,7 @@
  */
 
 import type pg from 'pg';
-import { withSavepoint } from '../../../db/pool.js';
+import { getPool, withSavepoint } from '../../../db/pool.js';
 import { bootstrapTenantChart } from './tenantBootstrap.js';
 import { logger } from '../../../utils/logger.js';
 import {
@@ -255,4 +255,84 @@ export async function wipeTenantBusinessData(
   tenantId: string
 ): Promise<void> {
   await wipeTenantOrganizationDataUnchecked(client, tenantId);
+}
+
+const ALL_TENANT_WIPE_TABLES = [...CLEAR_TRANSACTION_TABLES, ...FACTORY_RESET_EXTRA_TABLES] as const;
+
+async function purgeTenantJournalAutocommit(tenantId: string): Promise<void> {
+  const pool = getPool();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    try {
+      await client.query(`SET session_replication_role = replica`);
+      await journalMaintenance.deleteTenantJournalRows(client, tenantId);
+      await client.query(`SET session_replication_role = DEFAULT`);
+      await client.query('COMMIT');
+    } catch (replicaErr) {
+      await client.query('ROLLBACK');
+      await client.query('BEGIN');
+      await journalMaintenance.setJournalImmutabilityTriggers(client, false);
+      try {
+        await journalMaintenance.deleteTenantJournalRows(client, tenantId);
+        await client.query('COMMIT');
+      } catch (triggerErr) {
+        await client.query('ROLLBACK');
+        logger.warn('Tenant journal purge skipped (stale GL rows may remain)', {
+          tenantId,
+          replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
+          triggerErr: triggerErr instanceof Error ? triggerErr.message : String(triggerErr),
+        });
+      } finally {
+        await journalMaintenance.setJournalImmutabilityTriggers(client, true);
+      }
+    }
+  } finally {
+    client.release();
+  }
+}
+
+/**
+ * Wipe tenant business data without one long-lived transaction.
+ * Used by admin portal tenant delete so the connection pool is not starved on large tenants.
+ */
+export async function wipeTenantBusinessDataAutocommit(tenantId: string): Promise<TenantWipeResult> {
+  let tablesCleared = 0;
+  let recordsDeleted = 0;
+
+  await purgeTenantJournalAutocommit(tenantId);
+  tablesCleared += 1;
+  recordsDeleted += 3;
+
+  const pool = getPool();
+  for (const table of ALL_TENANT_WIPE_TABLES) {
+    const client = await pool.connect();
+    try {
+      const n = await wipeRepo.deleteFromTenantTable(client, tenantId, table);
+      if (n > 0) tablesCleared += 1;
+      recordsDeleted += n;
+    } catch {
+      /* table may not exist on older schemas */
+    } finally {
+      client.release();
+    }
+  }
+
+  for (const wipeFn of [
+    (c: pg.PoolClient) => wipeRepo.deleteTenantAccounts(c, tenantId),
+    (c: pg.PoolClient) => wipeRepo.deleteNonPermanentCategories(c, tenantId),
+  ]) {
+    const client = await pool.connect();
+    try {
+      const n = await wipeFn(client);
+      recordsDeleted += n;
+      if (n > 0) tablesCleared += 1;
+    } catch {
+      /* optional */
+    } finally {
+      client.release();
+    }
+  }
+
+  return { tenantId, tablesCleared, recordsDeleted };
 }

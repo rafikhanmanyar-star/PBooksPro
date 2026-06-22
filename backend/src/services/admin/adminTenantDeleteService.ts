@@ -5,7 +5,7 @@
  */
 import type pg from 'pg';
 import { withSavepoint, withTransaction } from '../../db/pool.js';
-import { wipeTenantBusinessData } from '../tenantDataManagementService.js';
+import { wipeTenantBusinessData, wipeTenantBusinessDataAutocommit } from '../tenantDataManagementService.js';
 import {
   DEMO_INTERNAL_TENANT_IDS,
   DEMO_PUBLIC_TENANT_ID,
@@ -15,6 +15,7 @@ import {
 import {
   TenantJournalMaintenanceRepository,
 } from '../../core/repositories/TenantMaintenanceRepository.js';
+import { logger } from '../../utils/logger.js';
 
 const journalMaintenance = new TenantJournalMaintenanceRepository();
 
@@ -64,12 +65,8 @@ async function deleteWithTriggersDisabled(
   }
 }
 
-export async function purgeAndDeleteTenant(client: pg.PoolClient, tenantId: string): Promise<void> {
-  assertAdminMayDeleteTenant(tenantId);
-
+async function purgeAuditAndDeleteTenant(client: pg.PoolClient, tenantId: string): Promise<void> {
   const runDelete = async () => {
-    await wipeTenantBusinessData(client, tenantId);
-
     await client.query('DELETE FROM login_events WHERE tenant_id = $1', [tenantId]);
     await client.query('DELETE FROM audit_events WHERE tenant_id = $1', [tenantId]);
     await client.query('DELETE FROM user_sessions WHERE tenant_id = $1', [tenantId]);
@@ -91,8 +88,51 @@ export async function purgeAndDeleteTenant(client: pg.PoolClient, tenantId: stri
   }
 }
 
+/** @deprecated Prefer deleteTenantCompletely — kept for callers that supply their own client/transaction. */
+export async function purgeAndDeleteTenant(client: pg.PoolClient, tenantId: string): Promise<void> {
+  assertAdminMayDeleteTenant(tenantId);
+  const runDelete = async () => {
+    await wipeTenantBusinessData(client, tenantId);
+    await purgeAuditAndDeleteTenant(client, tenantId);
+  };
+
+  try {
+    await deleteWithReplicaRole(client, runDelete);
+  } catch (replicaErr) {
+    await deleteWithTriggersDisabled(client, runDelete).catch((triggerErr) => {
+      const replicaMsg = replicaErr instanceof Error ? replicaErr.message : String(replicaErr);
+      const triggerMsg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
+      throw new Error(`Failed to delete tenant: ${triggerMsg} (replica mode: ${replicaMsg})`);
+    });
+  }
+}
+
+/**
+ * Permanently delete a tenant. Runs in three phases so large tenants do not hold one
+ * connection and transaction for minutes (which starves the pool on Render).
+ */
 export async function deleteTenantCompletely(tenantId: string): Promise<void> {
+  assertAdminMayDeleteTenant(tenantId);
+  logger.info('[admin] tenant delete started', { tenantId });
+
   await withTransaction(async (client) => {
-    await purgeAndDeleteTenant(client, tenantId);
+    const exists = await client.query(`SELECT id FROM tenants WHERE id = $1`, [tenantId]);
+    if ((exists.rowCount ?? 0) === 0) {
+      throw new Error('Tenant not found');
+    }
+    await client.query(
+      `UPDATE tenants SET license_status = 'cancelled', updated_at = NOW() WHERE id = $1`,
+      [tenantId]
+    );
+    await client.query(`DELETE FROM user_sessions WHERE tenant_id = $1`, [tenantId]);
   });
+
+  const wipeResult = await wipeTenantBusinessDataAutocommit(tenantId);
+  logger.info('[admin] tenant business data wiped', wipeResult);
+
+  await withTransaction(async (client) => {
+    await purgeAuditAndDeleteTenant(client, tenantId);
+  });
+
+  logger.info('[admin] tenant delete completed', { tenantId });
 }
