@@ -18,7 +18,6 @@ import {
   useDashboardActivity,
   useDashboardCharts,
   useDashboardMetrics,
-  useDashboardSessionLoad,
   useDashboardSnapshots,
   refetchDashboardQueries,
 } from '../../hooks/useDashboardMetrics';
@@ -69,19 +68,6 @@ const DashboardPage: React.FC = () => {
   const chartsQuery = useDashboardCharts(chartYear, isAuthenticated && isAdmin && isDashboardActive);
   const activityQuery = useDashboardActivity(5, isAuthenticated && isDashboardActive);
   const hasPendingRefresh = useDashboardRefreshPending();
-
-  useDashboardSessionLoad({
-    isAuthenticated,
-    isDashboardActive,
-    isAdmin,
-    userId: user?.id,
-    queries: {
-      metrics: metricsQuery,
-      snapshots: snapshotsQuery,
-      charts: chartsQuery,
-      activity: activityQuery,
-    },
-  });
 
   const kpiGroupOrder = useDashboardPreferencesStore((s) => s.kpiGroupOrder);
   const setKpiGroupOrder = useDashboardPreferencesStore((s) => s.setKpiGroupOrder);

@@ -1,19 +1,11 @@
-import React, { useEffect, useState } from 'react';
-import {
-  subscriptionBillingApi,
-  type BillingPortalSummary,
-} from '../../services/api/subscriptionBillingApi';
+import React from 'react';
+import { useBillingPortal } from '../../hooks/useBillingPortal';
 import { usePermissions } from '../../hooks/usePermissions';
 import { UsageMeters, paymentStatusStyle } from './portal/BillingPortalShared';
 
 const SubscriptionStatusWidget: React.FC = () => {
-  const [portal, setPortal] = useState<BillingPortalSummary | null>(null);
   const { canAccessBillingPortal } = usePermissions();
-
-  useEffect(() => {
-    if (!canAccessBillingPortal) return;
-    void subscriptionBillingApi.getPortal().then(setPortal).catch(() => undefined);
-  }, [canAccessBillingPortal]);
+  const { portal } = useBillingPortal();
 
   if (!canAccessBillingPortal || !portal) return null;
 
