@@ -1,0 +1,145 @@
+{
+  "timestamp": "2026-06-22T13:04:45.110Z",
+  "environment": "staging",
+  "tenantId": "fresh-rbac-ed57eb06",
+  "email": "fresh-rbac-9de13f2f@pbookspro.test",
+  "password": "FreshRbac2026!",
+  "username": "freshadmin_6764db",
+  "provisioning": {
+    "tenantId": "fresh-rbac-ed57eb06",
+    "rolesCreated": 8,
+    "rolesExisting": 0,
+    "permissionsSeeded": 156,
+    "helperRolesCreated": 4,
+    "creatorAssigned": true,
+    "creatorRoleSlug": "company_admin",
+    "sodViolationsInSeed": [],
+    "roleSlugs": [
+      "SYSTEM_OWNER",
+      "security_administrator",
+      "super_admin",
+      "company_admin",
+      "accountant",
+      "project_manager",
+      "sales_user",
+      "read_only",
+      "payroll_officer",
+      "hr_manager",
+      "procurement_officer",
+      "inventory_controller"
+    ]
+  },
+  "roleSeed": {
+    "systemRoleCount": 8,
+    "totalRoles": 12,
+    "roles": [
+      {
+        "slug": "accountant",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 38
+      },
+      {
+        "slug": "company_admin",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 51
+      },
+      {
+        "slug": "hr_manager",
+        "is_system": false,
+        "is_hidden": false,
+        "perm_count": 8
+      },
+      {
+        "slug": "inventory_controller",
+        "is_system": false,
+        "is_hidden": false,
+        "perm_count": 5
+      },
+      {
+        "slug": "payroll_officer",
+        "is_system": false,
+        "is_hidden": false,
+        "perm_count": 4
+      },
+      {
+        "slug": "procurement_officer",
+        "is_system": false,
+        "is_hidden": false,
+        "perm_count": 19
+      },
+      {
+        "slug": "project_manager",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 39
+      },
+      {
+        "slug": "read_only",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 17
+      },
+      {
+        "slug": "sales_user",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 6
+      },
+      {
+        "slug": "security_administrator",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 5
+      },
+      {
+        "slug": "super_admin",
+        "is_system": true,
+        "is_hidden": false,
+        "perm_count": 0
+      },
+      {
+        "slug": "SYSTEM_OWNER",
+        "is_system": true,
+        "is_hidden": true,
+        "perm_count": 0
+      }
+    ],
+    "creatorAssignment": [
+      "company_admin"
+    ],
+    "displayRoles": {
+      "users_role": "Admin",
+      "tenant_role": "Admin"
+    },
+    "sodViolations": []
+  },
+  "rbacOnly": {
+    "hasRbacAssignments": true,
+    "assignmentSlugs": [
+      "company_admin"
+    ],
+    "permissionCount": 132,
+    "missingFromCompanyAdminSeed": [
+      "financial.write"
+    ],
+    "missingCount": 1,
+    "resolvesWithoutLegacyRole": false,
+    "legacyRoleStrippedToViewer": true
+  },
+  "legacyDependency": {
+    "usersRoleRequiredForAuth": false,
+    "userTenantsRoleRequiredForAuth": false,
+    "note": "JWT still carries role for display/stale check; authorization uses rbac_user_roles when engine on",
+    "remainingLegacyWrites": [
+      "syncPrimaryUserRole still writes users.role for display",
+      "JWT role claim at login"
+    ]
+  },
+  "api": {
+    "skipped": true,
+    "reason": "Pass --api to test against running API"
+  },
+  "passed": false
+}

@@ -129,6 +129,7 @@ async function main() {
 
     await bootstrapNewOrganizationData(client, tenantId, {
       skipTrial: isOrganizationApprovalEnabled(),
+      creatorUserId: userId,
     });
 
     await requireLegalAcceptances(client, {

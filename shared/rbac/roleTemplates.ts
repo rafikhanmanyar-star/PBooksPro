@@ -123,7 +123,8 @@ const COMPANY_ADMIN_TEMPLATE_KEYS: readonly string[] = without(
   'goods_receipt.post',
   'goods_receipt.close',
   'contracts.retention.override',
-  'procurement.price_validation.override'
+  'procurement.price_validation.override',
+  'payroll.runs.approve'
 )(permissionsForRole('company_admin'));
 
 export const ROLE_TEMPLATE_DEFINITIONS: readonly RoleTemplateDefinition[] = [
@@ -216,3 +217,97 @@ export function getRoleTemplateById(id: string): RoleTemplateDefinition | undefi
 export function listRoleTemplates(): readonly RoleTemplateDefinition[] {
   return ROLE_TEMPLATE_DEFINITIONS;
 }
+
+/** Tenant-scoped system roles seeded by migration 131 and seedTenantRbac(). */
+export const SYSTEM_ROLE_DEFINITIONS = [
+  {
+    slug: 'SYSTEM_OWNER',
+    name: 'System Owner',
+    description: 'Bootstrap recovery role with all permissions. Hidden from standard role management.',
+    isHidden: true,
+    usesFullCatalog: true,
+  },
+  {
+    slug: 'security_administrator',
+    name: 'Security Administrator',
+    description:
+      'Manage roles, permissions, and user role assignments without system configuration access.',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+  {
+    slug: 'super_admin',
+    name: 'Super Admin',
+    description: 'Full tenant access including all permissions',
+    isHidden: false,
+    usesFullCatalog: true,
+  },
+  {
+    slug: 'company_admin',
+    name: 'Company Admin',
+    description: 'Tenant administrator',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+  {
+    slug: 'accountant',
+    name: 'Accountant',
+    description: 'Financial operations and reporting',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+  {
+    slug: 'project_manager',
+    name: 'Project Manager',
+    description: 'Project and procurement workflows',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+  {
+    slug: 'sales_user',
+    name: 'Sales User',
+    description: 'Project selling workflows',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+  {
+    slug: 'read_only',
+    name: 'Read Only User',
+    description: 'Read-only access to reports and data',
+    isHidden: false,
+    usesFullCatalog: false,
+  },
+] as const;
+
+export type SystemRoleSlug = (typeof SYSTEM_ROLE_DEFINITIONS)[number]['slug'];
+
+/** SoD-safe permission keys for a seeded system role. Empty when runtime uses full catalog. */
+export function getSystemRoleSeedPermissionKeys(slug: SystemRoleSlug | string): readonly string[] {
+  switch (slug) {
+    case 'SYSTEM_OWNER':
+    case 'super_admin':
+      return [];
+    case 'security_administrator':
+      return SECURITY_ADMINISTRATOR_PERMISSIONS;
+    case 'company_admin':
+      return COMPANY_ADMIN_TEMPLATE_KEYS;
+    case 'accountant':
+      return ACCOUNTANT_TEMPLATE_KEYS;
+    case 'project_manager':
+      return PROJECT_MANAGER_FINANCIAL_BUNDLE;
+    case 'sales_user':
+      return PROJECT_SELLING_SALES_USER_PERMISSIONS;
+    case 'read_only':
+      return permissionsForRole('read_only');
+    default:
+      return [];
+  }
+}
+
+/** Optional SoD-split helper roles instantiated for fresh tenants (template_instance). */
+export const SOD_HELPER_ROLE_TEMPLATES = [
+  'payroll_officer',
+  'hr_manager',
+  'procurement_officer',
+  'inventory_controller',
+] as const;

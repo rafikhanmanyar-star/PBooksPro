@@ -64,6 +64,10 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
       errors.email = 'Invalid email format';
     }
 
+    if (!formData.phone || !formData.phone.trim()) {
+      errors.phone = 'Phone number is required';
+    }
+
     if (!formData.adminUsername || !formData.adminUsername.trim()) {
       errors.adminUsername = 'Admin username is required';
     } else if (formData.adminUsername.trim().length < 3) {
@@ -117,6 +121,8 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
     try {
       const result = await registerTenant({
         ...formData,
+        phone: formData.phone.trim(),
+        address: formData.address.trim() || undefined,
         legalAcceptances,
         referralCode: referralParams.code || undefined,
         inviteToken: referralParams.invite || undefined,
@@ -212,9 +218,12 @@ const TenantRegistration: React.FC<{ onSuccess?: () => void; onCancel?: () => vo
             <Input
               id="phone"
               name="phone"
-              label="Phone"
+              label="Phone *"
+              type="tel"
               value={formData.phone}
               onChange={e => handleChange('phone', e.target.value)}
+              required
+              error={validationErrors.phone}
             />
 
             <div className="md:col-span-2">
