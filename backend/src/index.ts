@@ -5,6 +5,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 import cors from 'cors';
+import { resolveExpressCorsOrigin } from './config/corsOrigins.js';
 import { getConnectedClientsSnapshot, initRealtime } from './core/realtime.js';
 import { getLanIPv4, startDiscoveryUdpBroadcast } from './discoveryUdp.js';
 import { runPendingMigrations } from './migrate.js';
@@ -64,7 +65,7 @@ assertProductionEnv();
 
 app.use(
   cors({
-    origin: '*',
+    origin: resolveExpressCorsOrigin(),
     credentials: false,
   })
 );
