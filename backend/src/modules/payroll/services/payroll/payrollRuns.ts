@@ -209,10 +209,12 @@ export async function updatePayrollRun(
   tenantId: string,
   id: string,
   body: Record<string, unknown>,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayrollRunRow | null> {
   await enforceLockForSave(client, tenantId, 'payroll', id, actorUserId);
-  const prior = await getPayrollRun(client, tenantId, id);
+  const prior = await getPayrollRun(client, tenantId, id, scopeCtx);
+  if (!prior) return null;
   const status = body.status !== undefined ? String(body.status) : undefined;
   const total_amount =
     body.total_amount !== undefined || body.totalAmount !== undefined
@@ -258,11 +260,13 @@ export async function deletePayrollRun(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<boolean> {
   await enforcePayrollRunLock(client, tenantId, id, actorUserId);
-  const prior = await getPayrollRun(client, tenantId, id);
-  const payslipsToDelete = await listPayslipsByRun(client, tenantId, id);
+  const prior = await getPayrollRun(client, tenantId, id, scopeCtx);
+  if (!prior) return false;
+  const payslipsToDelete = await listPayslipsByRun(client, tenantId, id, scopeCtx);
   await new PayslipRepository(tenantId).markDeletedByRun(client, id);
   for (const ps of payslipsToDelete) {
     await auditPayslipMutation(client, tenantId, ps.id, 'delete', actorUserId, ps);
@@ -295,17 +299,19 @@ export async function listPayslipsByRun(
 export async function listPayslipsByEmployee(
   client: pg.PoolClient,
   tenantId: string,
-  employeeId: string
+  employeeId: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayslipRow[]> {
-  return new PayslipRepository(tenantId).listByEmployee(client, employeeId);
+  return new PayslipRepository(tenantId).listByEmployee(client, employeeId, scopeCtx);
 }
 
 export async function getPayslip(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayslipRow | null> {
-  return new PayslipRepository(tenantId).getById(client, id);
+  return new PayslipRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function processPayrollRun(
@@ -313,7 +319,8 @@ export async function processPayrollRun(
   tenantId: string,
   runId: string,
   onlyEmployeeId?: string | null,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{
   run: PayrollRunRow;
   processing_summary: {
@@ -325,7 +332,7 @@ export async function processPayrollRun(
     total_amount: number;
   };
 }> {
-  const run = await getPayrollRun(client, tenantId, runId);
+  const run = await getPayrollRun(client, tenantId, runId, scopeCtx);
   if (!run) throw new Error('Payroll run not found.');
   assertPayrollRunStatusForPayslipGeneration(run.status);
   await enforcePayrollRunLock(client, tenantId, runId, actorUserId);
@@ -352,14 +359,14 @@ export async function processPayrollRun(
     run.year
   );
 
-  const employees = await listEmployees(client, tenantId);
+  const employees = await listEmployees(client, tenantId, scopeCtx);
   const singleId = onlyEmployeeId?.trim() || null;
   if (singleId) {
     const found = employees.find((e) => e.id === singleId);
     if (!found) throw new Error('Employee not found.');
   }
 
-  const existing = await listPayslipsByRun(client, tenantId, runId);
+  const existing = await listPayslipsByRun(client, tenantId, runId, scopeCtx);
   const existingEmp = new Set(existing.map((p) => p.employee_id));
 
   let newCount = 0;
@@ -589,11 +596,12 @@ export async function updatePayslipAmounts(
   tenantId: string,
   payslipId: string,
   body: Record<string, unknown>,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<PayslipRow | null> {
-  const ps = await getPayslip(client, tenantId, payslipId);
+  const ps = await getPayslip(client, tenantId, payslipId, scopeCtx);
   if (!ps) return null;
-  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id, scopeCtx);
   if (run) assertPayrollRunEditable(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
 
@@ -636,11 +644,12 @@ export async function softDeletePayslip(
   client: pg.PoolClient,
   tenantId: string,
   payslipId: string,
-  actorUserId?: string | null
+  actorUserId?: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<boolean> {
-  const ps = await getPayslip(client, tenantId, payslipId);
+  const ps = await getPayslip(client, tenantId, payslipId, scopeCtx);
   if (!ps) return false;
-  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id, scopeCtx);
   if (run) assertPayrollRunEditable(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, actorUserId);
   const runId = ps.payroll_run_id;
@@ -662,11 +671,13 @@ export async function payPayslip(
   options?: {
     skipRecalculate?: boolean;
     expenseCashBatchCtx?: ExpenseCashValidationBatchContext;
+    scopeCtx?: DataScopeEnforcementContext;
   }
 ): Promise<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> {
-  const ps = await getPayslip(client, tenantId, payslipId);
+  const scopeCtx = options?.scopeCtx;
+  const ps = await getPayslip(client, tenantId, payslipId, scopeCtx);
   if (!ps) throw new Error('Payslip not found.');
-  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id);
+  const run = await getPayrollRun(client, tenantId, ps.payroll_run_id, scopeCtx);
   if (!run) throw new Error('Payroll run not found.');
   assertPayrollRunStatusForPayment(run.status);
   await enforcePayrollRunLock(client, tenantId, ps.payroll_run_id, userId);
@@ -718,7 +729,8 @@ export async function payBulkPayslips(
   client: pg.PoolClient,
   tenantId: string,
   lines: BulkPayPayslipLine[],
-  userId: string | null
+  userId: string | null,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{
   results: Array<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }>;
 }> {
@@ -727,12 +739,12 @@ export async function payBulkPayslips(
   const results: Array<{ payslip: PayslipRow; transaction: ReturnType<typeof rowToTransactionApi> }> = [];
   const runIds = new Set<string>();
   for (const line of lines) {
-    const ps = await getPayslip(client, tenantId, line.payslipId);
+    const ps = await getPayslip(client, tenantId, line.payslipId, scopeCtx);
     if (ps) runIds.add(ps.payroll_run_id);
   }
   for (const rid of runIds) {
     await enforcePayrollRunLock(client, tenantId, rid, userId);
-    const run = await getPayrollRun(client, tenantId, rid);
+    const run = await getPayrollRun(client, tenantId, rid, scopeCtx);
     if (run) assertPayrollRunStatusForPayment(run.status);
   }
   for (const line of lines) {
@@ -748,6 +760,7 @@ export async function payBulkPayslips(
     const r = await payPayslip(client, tenantId, line.payslipId, body, userId, {
       skipRecalculate: true,
       expenseCashBatchCtx: expenseCtx,
+      scopeCtx,
     });
     results.push(r);
     runIds.add(r.payslip.payroll_run_id);

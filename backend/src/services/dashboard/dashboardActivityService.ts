@@ -1,4 +1,6 @@
 import type pg from 'pg';
+import type { DataScopeEnforcementContext } from '../../auth/tenantRepositoryScope.js';
+import { appendDashboardRbacScopeClauses } from './dashboardMetricsHelpers.js';
 
 export interface DashboardActivityItem {
   id: string;
@@ -19,9 +21,26 @@ export interface DashboardActivityResponse {
 export async function getDashboardActivityJson(
   client: pg.PoolClient,
   tenantId: string,
-  limit = 5
+  limit = 5,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardActivityResponse> {
   const safeLimit = Math.min(Math.max(1, limit), 20);
+
+  const params: unknown[] = [tenantId];
+  const invoiceClauses = ['i.tenant_id = $1', 'i.deleted_at IS NULL', 'COALESCE(i.issue_date, i.due_date) IS NOT NULL'];
+  appendDashboardRbacScopeClauses(invoiceClauses, params, scopeCtx, {
+    project: 'i.project_id',
+    property: 'i.property_id',
+  });
+
+  const txClauses = ['t.tenant_id = $1', 't.deleted_at IS NULL', "t.type IN ('Income', 'Expense')"];
+  appendDashboardRbacScopeClauses(txClauses, params, scopeCtx, {
+    project: 't.project_id',
+    property: 't.property_id',
+  });
+
+  params.push(safeLimit);
+  const limitIdx = params.length;
 
   const r = await client.query<{
     id: string;
@@ -38,8 +57,7 @@ export async function getDashboardActivityJson(
               i.amount::numeric AS amount,
               COALESCE(i.issue_date, i.due_date)::date AS activity_date
        FROM invoices i
-       WHERE i.tenant_id = $1 AND i.deleted_at IS NULL
-         AND COALESCE(i.issue_date, i.due_date) IS NOT NULL
+       WHERE ${invoiceClauses.join(' AND ')}
 
        UNION ALL
 
@@ -49,12 +67,11 @@ export async function getDashboardActivityJson(
               t.amount::numeric AS amount,
               t.date::date AS activity_date
        FROM transactions t
-       WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
-         AND t.type IN ('Income', 'Expense')
+       WHERE ${txClauses.join(' AND ')}
      ) combined
      ORDER BY activity_date DESC, id DESC
-     LIMIT $2`,
-    [tenantId, safeLimit]
+     LIMIT $${limitIdx}`,
+    params
   );
 
   const items: DashboardActivityItem[] = r.rows.map((row) => ({

@@ -149,6 +149,7 @@ transactionsRouter.get('/transactions/:id', async (req: AuthedRequest, res) => {
     return;
   }
   const { id } = req.params;
+  const scopeCtx = dataScopeContextFromRequest(req);
   if (id === 'journal') {
     sendFailure(res, 404, 'NOT_FOUND', 'Not found');
     return;

@@ -5,12 +5,14 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { memoryCacheGet, memoryCacheSet } from '../../../utils/memoryCache.js';
 import {
   dashboardCacheKey,
+  dashboardScopeCacheSuffix,
   isValidDateOnly,
   parseDashboardFilters,
 } from '../../../services/dashboard/dashboardMetricsHelpers.js';
 import { getDashboardMetricsJson } from '../../../services/dashboard/dashboardMetricsService.js';
 import { getDashboardChartsJson } from '../../../services/dashboard/dashboardChartsService.js';
 import { getDashboardActivityJson } from '../../../services/dashboard/dashboardActivityService.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const dashboardMetricsRouter = Router();
 
@@ -37,7 +39,8 @@ dashboardMetricsRouter.get('/dashboard/metrics', async (req: AuthedRequest, res)
     return;
   }
 
-  const cacheKey = dashboardCacheKey(tenantId, filters);
+  const scopeCtx = dataScopeContextFromRequest(req);
+  const cacheKey = dashboardCacheKey(tenantId, filters, scopeCtx);
   const cached = memoryCacheGet<Awaited<ReturnType<typeof getDashboardMetricsJson>>>(cacheKey);
   if (cached) {
     sendSuccess(res, cached);
@@ -48,7 +51,7 @@ dashboardMetricsRouter.get('/dashboard/metrics', async (req: AuthedRequest, res)
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getDashboardMetricsJson(client, tenantId, filters);
+      const data = await getDashboardMetricsJson(client, tenantId, filters, scopeCtx);
       memoryCacheSet(cacheKey, data, TTL_MS);
       sendSuccess(res, data);
     } finally {
@@ -81,7 +84,8 @@ dashboardMetricsRouter.get('/dashboard/charts', async (req: AuthedRequest, res) 
       ? parseInt(yearRaw.trim(), 10)
       : undefined;
 
-  const cacheKey = `${dashboardCacheKey(tenantId, filters)}:charts:${year ?? 'auto'}`;
+  const scopeCtx = dataScopeContextFromRequest(req);
+  const cacheKey = `${dashboardCacheKey(tenantId, filters, scopeCtx)}:charts:${year ?? 'auto'}`;
   const cached = memoryCacheGet<Awaited<ReturnType<typeof getDashboardChartsJson>>>(cacheKey);
   if (cached) {
     sendSuccess(res, cached);
@@ -92,7 +96,7 @@ dashboardMetricsRouter.get('/dashboard/charts', async (req: AuthedRequest, res) 
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getDashboardChartsJson(client, tenantId, filters, year);
+      const data = await getDashboardChartsJson(client, tenantId, filters, year, scopeCtx);
       memoryCacheSet(cacheKey, data, TTL_MS);
       sendSuccess(res, data);
     } finally {
@@ -119,7 +123,8 @@ dashboardMetricsRouter.get('/dashboard/activity', async (req: AuthedRequest, res
       ? parseInt(limitRaw.trim(), 10)
       : 5;
 
-  const cacheKey = `dashboard_activity:${tenantId}:${limit}`;
+  const scopeCtx = dataScopeContextFromRequest(req);
+  const cacheKey = `dashboard_activity:${tenantId}:${limit}${dashboardScopeCacheSuffix(scopeCtx)}`;
   const cached = memoryCacheGet<Awaited<ReturnType<typeof getDashboardActivityJson>>>(cacheKey);
   if (cached) {
     sendSuccess(res, cached);
@@ -130,7 +135,7 @@ dashboardMetricsRouter.get('/dashboard/activity', async (req: AuthedRequest, res
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const data = await getDashboardActivityJson(client, tenantId, limit);
+      const data = await getDashboardActivityJson(client, tenantId, limit, scopeCtx);
       memoryCacheSet(cacheKey, data, 60_000);
       sendSuccess(res, data);
     } finally {

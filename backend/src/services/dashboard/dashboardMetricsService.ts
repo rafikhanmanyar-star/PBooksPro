@@ -4,12 +4,14 @@ import { listAccounts, type AccountRow } from '../accountsService.js';
 import { getProfitLossReportJson } from '../profitLossReportService.js';
 import {
   appendBuildingFilter,
+  appendDashboardRbacScopeClauses,
   buildDashboardEntityFilter,
   computeTrendPercent,
   invoiceCollectionQuery,
   metricStatusForTrend,
   resolveComparisonRange,
 } from './dashboardMetricsHelpers.js';
+import type { DataScopeEnforcementContext } from '../../auth/tenantRepositoryScope.js';
 import type {
   DashboardFilters,
   DashboardMetricValue,
@@ -68,17 +70,19 @@ function entityFilter(
     vendor?: string;
     customer?: string;
   },
-  baseParamIndex = 1
+  baseParamIndex = 1,
+  scopeCtx?: DataScopeEnforcementContext
 ): FilterClause {
-  return buildDashboardEntityFilter(filters, columnMap, baseParamIndex);
+  return buildDashboardEntityFilter(filters, columnMap, baseParamIndex, scopeCtx);
 }
 
 async function sumAccountsReceivable(
   client: pg.PoolClient,
   tenantId: string,
-  filters: DashboardFilters
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<number> {
-  const ef = entityFilter(filters, { alias: 'i', project: 'i.project_id', property: 'i.property_id' });
+  const ef = entityFilter(filters, { alias: 'i', project: 'i.project_id', property: 'i.property_id' }, 1, scopeCtx);
   const r = await client.query<{ total: string }>(
     `SELECT COALESCE(SUM(i.amount - i.paid_amount), 0)::text AS total
      FROM invoices i
@@ -97,14 +101,20 @@ async function sumAccountsReceivable(
 async function sumAccountsPayable(
   client: pg.PoolClient,
   tenantId: string,
-  filters: DashboardFilters
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<number> {
-  const ef = entityFilter(filters, {
-    alias: 'b',
-    project: 'b.project_id',
-    property: 'b.property_id',
-    vendor: 'b.vendor_id',
-  });
+  const ef = entityFilter(
+    filters,
+    {
+      alias: 'b',
+      project: 'b.project_id',
+      property: 'b.property_id',
+      vendor: 'b.vendor_id',
+    },
+    1,
+    scopeCtx
+  );
   const r = await client.query<{ total: string }>(
     `SELECT COALESCE(SUM(GREATEST(b.amount - COALESCE(b.paid_amount, 0), 0)), 0)::text AS total
      FROM bills b
@@ -122,10 +132,11 @@ async function plTotals(
   tenantId: string,
   from: string,
   to: string,
-  projectId?: string
+  projectId?: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<{ netIncome: number; revenue: number; expenses: number }> {
   const project = projectId ?? 'all';
-  const pl = await getProfitLossReportJson(client, tenantId, from, to, project);
+  const pl = await getProfitLossReportJson(client, tenantId, from, to, project, undefined, scopeCtx);
   const revenue = Number(pl.total_revenue ?? 0);
   const netIncome = Number(pl.net_profit ?? 0);
   const expenseItems = [
@@ -145,7 +156,8 @@ async function operatingCashFlow(
   from: string,
   to: string,
   filters: DashboardFilters,
-  excludedCategoryIds: string[]
+  excludedCategoryIds: string[],
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<number> {
   const clauses = [
     't.tenant_id = $1',
@@ -176,6 +188,10 @@ async function operatingCashFlow(
     params.push(filters.customerId);
     clauses.push(`t.contact_id = $${params.length}`);
   }
+  appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
+    project: 't.project_id',
+    property: 't.property_id',
+  });
 
   const r = await client.query<{ net: string }>(
     `SELECT (
@@ -201,7 +217,8 @@ async function countInPeriod(
 export async function computeSnapshot(
   client: pg.PoolClient,
   tenantId: string,
-  filters: DashboardFilters
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<RawMetricSnapshot> {
   const { from, to, projectId, buildingId } = filters;
   const [accounts, excludedIds] = await Promise.all([
@@ -230,34 +247,58 @@ export async function computeSnapshot(
     newReceipts,
     newPayments,
   ] = await Promise.all([
-    sumAccountsReceivable(client, tenantId, filters),
-    sumAccountsPayable(client, tenantId, filters),
-    plTotals(client, tenantId, from, to, projectId),
-    operatingCashFlow(client, tenantId, from, to, filters, excludedIds),
-    countInPeriod(
-      client,
-      `SELECT COUNT(*)::text AS c FROM projects
-       WHERE tenant_id = $1 AND deleted_at IS NULL
-         AND LOWER(COALESCE(status, 'active')) NOT IN ('completed', 'cancelled', 'closed')
-         ${projectId ? ' AND id = $2' : ''}`,
-      projectId ? [tenantId, projectId] : [tenantId]
-    ),
-    countInPeriod(
-      client,
-      `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'available'
-         ${projectId ? ' AND u.project_id = $2' : ''}`,
-      projectId ? [tenantId, projectId] : [tenantId]
-    ),
-    countInPeriod(
-      client,
-      `SELECT COUNT(*)::text AS c FROM units u
-       WHERE u.tenant_id = $1 AND u.deleted_at IS NULL AND u.status = 'sold'
-         ${projectId ? ' AND u.project_id = $2' : ''}`,
-      projectId ? [tenantId, projectId] : [tenantId]
-    ),
+    sumAccountsReceivable(client, tenantId, filters, scopeCtx),
+    sumAccountsPayable(client, tenantId, filters, scopeCtx),
+    plTotals(client, tenantId, from, to, projectId, scopeCtx),
+    operatingCashFlow(client, tenantId, from, to, filters, excludedIds, scopeCtx),
     (() => {
-      const q = invoiceCollectionQuery(tenantId, from, to, filters);
+      const clauses = [
+        'tenant_id = $1',
+        'deleted_at IS NULL',
+        `LOWER(COALESCE(status, 'active')) NOT IN ('completed', 'cancelled', 'closed')`,
+      ];
+      const params: unknown[] = [tenantId];
+      if (projectId) {
+        params.push(projectId);
+        clauses.push(`id = $${params.length}`);
+      }
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, { project: 'id' });
+      return countInPeriod(
+        client,
+        `SELECT COUNT(*)::text AS c FROM projects WHERE ${clauses.join(' AND ')}`,
+        params
+      );
+    })(),
+    (() => {
+      const clauses = ['u.tenant_id = $1', 'u.deleted_at IS NULL', "u.status = 'available'"];
+      const params: unknown[] = [tenantId];
+      if (projectId) {
+        params.push(projectId);
+        clauses.push(`u.project_id = $${params.length}`);
+      }
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, { project: 'u.project_id' });
+      return countInPeriod(
+        client,
+        `SELECT COUNT(*)::text AS c FROM units u WHERE ${clauses.join(' AND ')}`,
+        params
+      );
+    })(),
+    (() => {
+      const clauses = ['u.tenant_id = $1', 'u.deleted_at IS NULL', "u.status = 'sold'"];
+      const params: unknown[] = [tenantId];
+      if (projectId) {
+        params.push(projectId);
+        clauses.push(`u.project_id = $${params.length}`);
+      }
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, { project: 'u.project_id' });
+      return countInPeriod(
+        client,
+        `SELECT COUNT(*)::text AS c FROM units u WHERE ${clauses.join(' AND ')}`,
+        params
+      );
+    })(),
+    (() => {
+      const q = invoiceCollectionQuery(tenantId, from, to, filters, scopeCtx);
       return client.query<{ due: string; collected: string }>(q.sql, q.params);
     })(),
     countInPeriod(
@@ -332,20 +373,44 @@ export async function computeSnapshot(
          ${projectId ? ' AND project_id = $4' : ''}`,
       projectId ? [tenantId, from, to, projectId] : [tenantId, from, to]
     ),
-    countInPeriod(
-      client,
-      `SELECT COUNT(*)::text AS c FROM transactions
-       WHERE tenant_id = $1 AND deleted_at IS NULL AND type = 'Income'
-         AND date >= $2::date AND date <= $3::date`,
-      [tenantId, from, to]
-    ),
-    countInPeriod(
-      client,
-      `SELECT COUNT(*)::text AS c FROM transactions
-       WHERE tenant_id = $1 AND deleted_at IS NULL AND type = 'Expense'
-         AND date >= $2::date AND date <= $3::date`,
-      [tenantId, from, to]
-    ),
+    (() => {
+      const clauses = [
+        'tenant_id = $1',
+        'deleted_at IS NULL',
+        "type = 'Income'",
+        'date >= $2::date',
+        'date <= $3::date',
+      ];
+      const params: unknown[] = [tenantId, from, to];
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
+        project: 'project_id',
+        property: 'property_id',
+      });
+      return countInPeriod(
+        client,
+        `SELECT COUNT(*)::text AS c FROM transactions WHERE ${clauses.join(' AND ')}`,
+        params
+      );
+    })(),
+    (() => {
+      const clauses = [
+        'tenant_id = $1',
+        'deleted_at IS NULL',
+        "type = 'Expense'",
+        'date >= $2::date',
+        'date <= $3::date',
+      ];
+      const params: unknown[] = [tenantId, from, to];
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
+        project: 'project_id',
+        property: 'property_id',
+      });
+      return countInPeriod(
+        client,
+        `SELECT COUNT(*)::text AS c FROM transactions WHERE ${clauses.join(' AND ')}`,
+        params
+      );
+    })(),
   ]);
 
   const due = Number(collectionStats.rows[0]?.due ?? 0);
@@ -446,13 +511,14 @@ function snapshotToMetrics(
 export async function getDashboardMetricsJson(
   client: pg.PoolClient,
   tenantId: string,
-  filters: DashboardFilters
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardMetricsResponse> {
   const cmpRange = resolveComparisonRange(filters);
   const [current, previous] = await Promise.all([
-    computeSnapshot(client, tenantId, filters),
+    computeSnapshot(client, tenantId, filters, scopeCtx),
     cmpRange
-      ? computeSnapshot(client, tenantId, { ...filters, from: cmpRange.from, to: cmpRange.to })
+      ? computeSnapshot(client, tenantId, { ...filters, from: cmpRange.from, to: cmpRange.to }, scopeCtx)
       : Promise.resolve(undefined as RawMetricSnapshot | undefined),
   ]);
   const groups = snapshotToMetrics(current, previous);

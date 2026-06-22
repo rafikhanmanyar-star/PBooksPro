@@ -1,8 +1,7 @@
 import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
-import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import type { DataScopeEnforcementContext, rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
 import { appendFinancialRbacScopeSql } from '../services/financialReportScope.js';
-import { rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type {

@@ -52,11 +52,31 @@ export class PayslipRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<PayslipRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PayslipRow | null> {
+    const params: unknown[] = [id, this.tenantId];
+    const conditions = ['ps.id = $1', 'ps.tenant_id = $2', 'ps.deleted_at IS NULL'];
+    const joinEmployee =
+      scopeCtx?.enabled
+        ? ' INNER JOIN payroll_employees e ON e.id = ps.employee_id AND e.tenant_id = ps.tenant_id AND e.deleted_at IS NULL'
+        : '';
+    appendScopeFragment(
+      conditions,
+      params,
+      applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'e.department_id', params.length + 1)
+    );
     const r = await client.query<PayslipRow>(
-      `SELECT ${PAYSLIP_COLUMNS}
-       FROM payslips WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
-      [id, this.tenantId]
+      `SELECT ps.id, ps.tenant_id, ps.payroll_run_id, ps.employee_id, ps.basic_pay::text, ps.total_allowances::text, ps.total_deductions::text,
+        ps.total_adjustments::text, ps.gross_pay::text, ps.net_pay::text, ps.allowance_details, ps.deduction_details, ps.adjustment_details,
+        ps.assignment_snapshot, ps.working_days::text, ps.present_days::text, ps.leave_days::text, ps.paid_leave_days::text,
+        ps.unpaid_leave_days::text, ps.absent_days::text, ps.half_days::text, ps.lop_days::text, ps.lop_deduction::text,
+        ps.adjusted_basic::text, ps.attendance_summary_snapshot, ps.is_paid, ps.paid_amount::text, ps.paid_at, ps.transaction_id, ps.deleted_at, ps.created_at, ps.updated_at
+       FROM payslips ps${joinEmployee}
+       WHERE ${conditions.join(' AND ')}`,
+      params
     );
     return r.rows[0] ?? null;
   }
@@ -100,11 +120,31 @@ export class PayslipRepository extends TenantRepository {
     return r.rows;
   }
 
-  async listByEmployee(client: pg.PoolClient, employeeId: string): Promise<PayslipRow[]> {
+  async listByEmployee(
+    client: pg.PoolClient,
+    employeeId: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<PayslipRow[]> {
+    const params: unknown[] = [this.tenantId, employeeId];
+    const conditions = ['ps.tenant_id = $1', 'ps.employee_id = $2', 'ps.deleted_at IS NULL'];
+    const joinEmployee =
+      scopeCtx?.enabled
+        ? ' INNER JOIN payroll_employees e ON e.id = ps.employee_id AND e.tenant_id = ps.tenant_id AND e.deleted_at IS NULL'
+        : '';
+    appendScopeFragment(
+      conditions,
+      params,
+      applyDepartmentScope(scopeCtx ?? { enabled: false, scopes: [] }, 'e.department_id', params.length + 1)
+    );
     const r = await client.query<PayslipRow>(
-      `SELECT ${PAYSLIP_COLUMNS}
-       FROM payslips WHERE tenant_id = $1 AND employee_id = $2 AND deleted_at IS NULL ORDER BY created_at DESC`,
-      [this.tenantId, employeeId]
+      `SELECT ps.id, ps.tenant_id, ps.payroll_run_id, ps.employee_id, ps.basic_pay::text, ps.total_allowances::text, ps.total_deductions::text,
+        ps.total_adjustments::text, ps.gross_pay::text, ps.net_pay::text, ps.allowance_details, ps.deduction_details, ps.adjustment_details,
+        ps.assignment_snapshot, ps.working_days::text, ps.present_days::text, ps.leave_days::text, ps.paid_leave_days::text,
+        ps.unpaid_leave_days::text, ps.absent_days::text, ps.half_days::text, ps.lop_days::text, ps.lop_deduction::text,
+        ps.adjusted_basic::text, ps.attendance_summary_snapshot, ps.is_paid, ps.paid_amount::text, ps.paid_at, ps.transaction_id, ps.deleted_at, ps.created_at, ps.updated_at
+       FROM payslips ps${joinEmployee}
+       WHERE ${conditions.join(' AND ')} ORDER BY ps.created_at DESC`,
+      params
     );
     return r.rows;
   }
