@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
@@ -50,7 +51,11 @@ import {
   upsertEmployee,
   upsertGrade,
   upsertPayrollProject,
+  voidPayslip,
+  voidPayrollRun,
+  reversePayrollPayment,
 } from '../services/payrollService.js';
+import { PayrollValidationError } from '../../../payroll-core/payrollValidation.js';
 import {
   fetchEmployeeLedgerPage,
   getEmployeePayrollBalanceFromDb,
@@ -58,6 +63,23 @@ import {
 } from '../services/payrollLedgerService.js';
 
 export const payrollRouter = Router();
+
+const voidReasonBodySchema = z.object({
+  reason: z.string().trim().min(3, 'Reason must be at least 3 characters'),
+});
+
+function handlePayrollMutationError(res: import('express').Response, e: unknown): void {
+  if (e instanceof PayrollValidationError) {
+    sendFailure(res, 400, e.code, e.message);
+    return;
+  }
+  if (e instanceof LockGuardError) {
+    sendFailure(res, 409, 'LOCK_HELD', e.message);
+    return;
+  }
+  const msg = e instanceof Error ? e.message : String(e);
+  sendFailure(res, 400, 'VALIDATION_ERROR', msg);
+}
 
 // ── Departments ───────────────────────────────────────────────────────────────
 
@@ -386,7 +408,8 @@ payrollRouter.get('/payroll/employees/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const row = await getEmployee(c, tenantId, req.params.id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getEmployee(c, tenantId, req.params.id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Not found');
         return;
@@ -484,7 +507,8 @@ payrollRouter.get('/payroll/employees/:employeeId/ledger', async (req: AuthedReq
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const emp = await getEmployee(c, tenantId, employeeId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const emp = await getEmployee(c, tenantId, employeeId, scopeCtx);
       if (!emp) {
         sendFailure(res, 404, 'NOT_FOUND', 'Not found');
         return;
@@ -534,7 +558,8 @@ payrollRouter.get('/payroll/employees/:employeeId/payslips', async (req: AuthedR
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const rows = await listPayslipsByEmployee(c, tenantId, req.params.employeeId);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const rows = await listPayslipsByEmployee(c, tenantId, req.params.employeeId, scopeCtx);
       sendSuccess(res, rows.map((r) => rowToPayslipApi(r)));
     } finally {
       c.release();
@@ -628,8 +653,9 @@ payrollRouter.put('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     return;
   }
   try {
+    const scopeCtx = dataScopeContextFromRequest(req);
     const row = await withTransaction((c) =>
-      updatePayrollRun(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null)
+      updatePayrollRun(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null, scopeCtx)
     );
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
@@ -661,9 +687,10 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
         : typeof body.employee_id === 'string'
           ? body.employee_id
           : undefined;
+    const scopeCtx = dataScopeContextFromRequest(req);
     const t0 = perfPayrollNow();
     const result = await withTransaction((c) =>
-      processPayrollRun(c, tenantId, req.params.id, onlyEmployeeId, req.userId ?? null)
+      processPayrollRun(c, tenantId, req.params.id, onlyEmployeeId, req.userId ?? null, scopeCtx)
     );
     perfPayrollLog('payroll.processPayrollRun', perfPayrollNow() - t0, {
       tenantId,
@@ -690,6 +717,33 @@ payrollRouter.post('/payroll/runs/:id/process', async (req: AuthedRequest, res) 
   }
 });
 
+payrollRouter.post('/payroll/runs/:id/void', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) =>
+      voidPayrollRun(c, tenantId, req.params.id, parsed.data.reason, req.userId ?? null, scopeCtx)
+    );
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'payroll_run', { id: req.params.id, sourceUserId: req.userId });
+    sendSuccess(res, { message: 'Payroll run voided' });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
+  }
+});
+
 payrollRouter.delete('/payroll/runs/:id', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
@@ -697,7 +751,8 @@ payrollRouter.delete('/payroll/runs/:id', async (req: AuthedRequest, res) => {
     return;
   }
   try {
-    const ok = await withTransaction((c) => deletePayrollRun(c, tenantId, req.params.id, req.userId ?? null));
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) => deletePayrollRun(c, tenantId, req.params.id, req.userId ?? null, scopeCtx));
     if (!ok) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -745,7 +800,8 @@ payrollRouter.get('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const row = await getPayslip(c, tenantId, req.params.id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getPayslip(c, tenantId, req.params.id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Not found');
         return;
@@ -766,8 +822,9 @@ payrollRouter.put('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
     return;
   }
   try {
+    const scopeCtx = dataScopeContextFromRequest(req);
     const row = await withTransaction((c) =>
-      updatePayslipAmounts(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null)
+      updatePayslipAmounts(c, tenantId, req.params.id, req.body as Record<string, unknown>, req.userId ?? null, scopeCtx)
     );
     if (!row) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
@@ -785,6 +842,65 @@ payrollRouter.put('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
   }
 });
 
+payrollRouter.post('/payroll/payslips/:id/void', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) =>
+      voidPayslip(c, tenantId, req.params.id, parsed.data.reason, req.userId ?? null, scopeCtx)
+    );
+    if (!ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'payslip', { id: req.params.id, sourceUserId: req.userId });
+    sendSuccess(res, { message: 'Payslip voided' });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
+  }
+});
+
+payrollRouter.post('/payroll/payments/:transactionId/reverse', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const parsed = voidReasonBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    sendFailure(res, 400, 'VALIDATION_ERROR', parsed.error.issues[0]?.message ?? 'Invalid request');
+    return;
+  }
+  try {
+    const result = await withTransaction((c) =>
+      reversePayrollPayment(c, tenantId, req.params.transactionId, parsed.data.reason, req.userId ?? null)
+    );
+    if (!result.ok) {
+      sendFailure(res, 404, 'NOT_FOUND', 'Payment not found');
+      return;
+    }
+    emitEntityEvent(tenantId, 'deleted', 'transaction', {
+      id: req.params.transactionId,
+      sourceUserId: req.userId,
+    });
+    if (result.payslipId) {
+      emitEntityEvent(tenantId, 'updated', 'payslip', { id: result.payslipId, sourceUserId: req.userId });
+    }
+    sendSuccess(res, { message: 'Payroll payment reversed', payslipId: result.payslipId ?? null });
+  } catch (e) {
+    handlePayrollMutationError(res, e);
+  }
+});
+
 payrollRouter.delete('/payroll/payslips/:id', async (req: AuthedRequest, res) => {
   const tenantId = req.tenantId;
   if (!tenantId) {
@@ -792,7 +908,8 @@ payrollRouter.delete('/payroll/payslips/:id', async (req: AuthedRequest, res) =>
     return;
   }
   try {
-    const ok = await withTransaction((c) => softDeletePayslip(c, tenantId, req.params.id, req.userId ?? null));
+    const scopeCtx = dataScopeContextFromRequest(req);
+    const ok = await withTransaction((c) => softDeletePayslip(c, tenantId, req.params.id, req.userId ?? null, scopeCtx));
     if (!ok) {
       sendFailure(res, 404, 'NOT_FOUND', 'Not found');
       return;
@@ -816,9 +933,12 @@ payrollRouter.post('/payroll/payslips/:payslipId/pay', async (req: AuthedRequest
     return;
   }
   try {
+    const scopeCtx = dataScopeContextFromRequest(req);
     const t0 = perfPayrollNow();
     const result = await withTransaction((c) =>
-      payPayslip(c, tenantId, req.params.payslipId, req.body as Record<string, unknown>, req.userId ?? null)
+      payPayslip(c, tenantId, req.params.payslipId, req.body as Record<string, unknown>, req.userId ?? null, {
+        scopeCtx,
+      })
     );
     perfPayrollLog('payroll.payPayslip', perfPayrollNow() - t0, { tenantId, payslipId: req.params.payslipId });
     emitEntityEvent(tenantId, 'updated', 'payslip', { data: rowToPayslipApi(result.payslip), sourceUserId: req.userId });
@@ -886,8 +1006,9 @@ payrollRouter.post('/payroll/payslips/bulk-pay', async (req: AuthedRequest, res)
       sendFailure(res, 400, 'VALIDATION_ERROR', 'No valid payment lines (need payslipId and accountId)');
       return;
     }
+    const scopeCtx = dataScopeContextFromRequest(req);
     const t0 = perfPayrollNow();
-    const result = await withTransaction((c) => payBulkPayslips(c, tenantId, lines, req.userId ?? null));
+    const result = await withTransaction((c) => payBulkPayslips(c, tenantId, lines, req.userId ?? null, scopeCtx));
     perfPayrollLog('payroll.bulkPay', perfPayrollNow() - t0, { tenantId, lines: lines.length });
     for (const r of result.results) {
       emitEntityEvent(tenantId, 'updated', 'payslip', { data: rowToPayslipApi(r.payslip), sourceUserId: req.userId });

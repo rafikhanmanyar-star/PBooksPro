@@ -5,3 +5,6 @@ export * from './payroll/payrollDepartmentsGrades.js';
 export * from './payroll/payrollEmployees.js';
 export * from './payroll/payrollRuns.js';
 export * from './payroll/payrollConfig.js';
+export * from './payroll/payrollVoidService.js';
+export * from './payroll/payrollAuditCatalog.js';
+export * from './payroll/payrollReportingService.js';

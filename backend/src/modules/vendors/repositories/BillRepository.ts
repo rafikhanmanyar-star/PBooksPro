@@ -4,6 +4,7 @@ import type { BillRow } from '../services/billsService.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
+import { rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
 import { appendFinancialRbacScopeSql } from '../../accounting/services/financialReportScope.js';
 
 const BILL_COLUMNS = `id, tenant_id, bill_number, contact_id, vendor_id, amount, paid_amount, status, issue_date, due_date,
@@ -76,13 +77,21 @@ export class BillRepository extends TenantRepository {
     super(tenantId, client);
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<BillRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<BillRow | null> {
     const r = await client.query<BillRow>(
       `SELECT ${BILL_COLUMNS}
        FROM bills WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx?.enabled) return row;
+    if (!rowMatchesScope(scopeCtx, 'project', row.project_id)) return null;
+    if (!rowMatchesScope(scopeCtx, 'property', row.property_id)) return null;
+    return row;
   }
 
   async getByIdIncludingDeleted(client: pg.PoolClient, id: string): Promise<BillRow | null> {
@@ -153,7 +162,8 @@ export class BillRepository extends TenantRepository {
       search?: string;
       sortBy?: string;
       sortDir?: SortDirection;
-    }
+    },
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<{ rows: BillRow[]; total: number }> {
     const conditions: string[] = ['b.tenant_id = $1', 'b.deleted_at IS NULL'];
     const params: unknown[] = [this.tenantId];
@@ -171,16 +181,19 @@ export class BillRepository extends TenantRepository {
       conditions.push(`b.property_id = $${paramIndex++}`);
       params.push(opts.filters.propertyId);
     }
+    appendFinancialRbacScopeSql(conditions, params, scopeCtx, {
+      project: 'b.project_id',
+      property: 'b.property_id',
+    });
 
     const searchClause = buildIlikeSearchClause(
       ['b.bill_number', 'b.description', 'v.name', 'v.company_name'],
       opts.search,
       params,
-      paramIndex
+      params.length + 1
     );
     if (searchClause.clause) {
       conditions.push(searchClause.clause);
-      paramIndex = searchClause.nextParamIndex;
     }
 
     const whereClause = conditions.join(' AND ');
@@ -209,8 +222,8 @@ export class BillRepository extends TenantRepository {
     const total = parseInt(countR.rows[0]?.count ?? '0', 10);
 
     params.push(opts.limit, opts.offset);
-    const limitIdx = paramIndex;
-    const offsetIdx = paramIndex + 1;
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
     const r = await client.query<BillRow>(
       `SELECT ${BILL_COLUMNS.split(',').map((c) => `b.${c.trim()}`).join(', ')}
        ${fromJoin} WHERE ${whereClause} ${orderClause}

@@ -1,4 +1,5 @@
 import type { PayrollRun } from '../types';
+import { isPayrollRunCreator, PAYROLL_SOD_CREATOR_BLOCKED_MESSAGE } from './payrollApprovalSod';
 
 export type WorkflowGuard = { allowed: boolean; reason?: string };
 
@@ -12,14 +13,18 @@ export function canProcessPayrollRun(run: PayrollRun | null | undefined): Workfl
 
 export function canApprovePayrollRunWorkflow(
   run: PayrollRun | null | undefined,
-  payslipCount: number
+  payslipCount: number,
+  options?: { currentUserId?: string | null }
 ): WorkflowGuard {
   if (!run) return { allowed: false, reason: 'No payroll run linked.' };
   if (run.status !== 'GENERATED') {
-    return { allowed: false, reason: 'Only GENERATED runs can be approved.' };
+    return { allowed: false, reason: 'Only runs ready for approval can be approved.' };
   }
   if (payslipCount <= 0) {
     return { allowed: false, reason: 'Process payslips before approving the run.' };
+  }
+  if (options?.currentUserId && isPayrollRunCreator(run, options.currentUserId)) {
+    return { allowed: false, reason: PAYROLL_SOD_CREATOR_BLOCKED_MESSAGE };
   }
   return { allowed: true };
 }

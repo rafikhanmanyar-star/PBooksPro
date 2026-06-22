@@ -365,6 +365,8 @@ export interface EmployeeProfileProps {
   onUpdate?: (employee: PayrollEmployee) => void;
   /** Increment when payroll data in storage changes (e.g. SQLite hydrate or API sync) so payslip lists recompute. */
   payrollStorageRevision?: number;
+  /** When true the profile is shown to the employee themselves — hides HR-only actions (edit, terminate, etc.) */
+  isSelfView?: boolean;
 }
 
 // ==================== LEGACY COMPATIBILITY ====================

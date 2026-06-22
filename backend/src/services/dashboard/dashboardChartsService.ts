@@ -1,11 +1,12 @@
 import type pg from 'pg';
+import type { DataScopeEnforcementContext } from '../../auth/tenantRepositoryScope.js';
 import { GLOBAL_SYSTEM_TENANT_ID } from '../../constants/globalSystemChart.js';
 import {
   computeProfitLossFromPrepared,
   extractPlRevenueAndExpenses,
   prepareProfitLossState,
 } from '../profitLossReportService.js';
-import { appendBuildingFilter, invoiceCollectionQuery, parseDateOnly, toDateOnlyString } from './dashboardMetricsHelpers.js';
+import { appendBuildingFilter, appendDashboardRbacScopeClauses, invoiceCollectionQuery, parseDateOnly, toDateOnlyString } from './dashboardMetricsHelpers.js';
 import type { DashboardFilters } from './dashboardMetricsTypes.js';
 import type { DashboardChartsResponse } from './dashboardChartsTypes.js';
 
@@ -53,11 +54,12 @@ async function revenueVsExpensesByMonth(
   client: pg.PoolClient,
   tenantId: string,
   year: number,
-  projectId?: string
+  projectId?: string,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardChartsResponse['revenueVsExpenses']> {
   const { months } = monthRangeForYear(year);
   const project = projectId ?? 'all';
-  const prepared = await prepareProfitLossState(client, tenantId, `${year}-12-31`);
+  const prepared = await prepareProfitLossState(client, tenantId, `${year}-12-31`, scopeCtx);
 
   return Promise.all(
     months.map(async (m) => {
@@ -73,7 +75,8 @@ async function cashFlowTrendByMonth(
   tenantId: string,
   year: number,
   excludedIds: string[],
-  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>
+  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardChartsResponse['cashFlowTrend']> {
   const { months } = monthRangeForYear(year);
 
@@ -95,6 +98,10 @@ async function cashFlowTrendByMonth(
         clauses.push(`t.project_id = $${params.length}`);
       }
       appendBuildingFilter('t', filters.buildingId, params, clauses);
+      appendDashboardRbacScopeClauses(clauses, params, scopeCtx, {
+        project: 't.project_id',
+        property: 't.property_id',
+      });
       const r = await client.query<{ inflow: string; outflow: string }>(
         `SELECT
            COALESCE(SUM(CASE WHEN t.type = 'Income' THEN t.amount ELSE 0 END), 0)::text AS inflow,
@@ -112,7 +119,8 @@ async function cashFlowTrendByMonth(
 async function receivablesAging(
   client: pg.PoolClient,
   tenantId: string,
-  filters: DashboardFilters
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardChartsResponse['receivablesAging']> {
   const params: unknown[] = [tenantId];
   const invoiceClauses = [
@@ -127,6 +135,10 @@ async function receivablesAging(
     invoiceClauses.push(`i.project_id = $${params.length}`);
   }
   appendBuildingFilter('i', filters.buildingId, params, invoiceClauses);
+  appendDashboardRbacScopeClauses(invoiceClauses, params, scopeCtx, {
+    project: 'i.project_id',
+    property: 'i.property_id',
+  });
   const r = await client.query<{ bucket: string; total: string }>(
     `SELECT bucket, COALESCE(SUM(balance), 0)::text AS total FROM (
        SELECT
@@ -236,13 +248,14 @@ async function collectionsPerformance(
   client: pg.PoolClient,
   tenantId: string,
   year: number,
-  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>
+  filters: Pick<DashboardFilters, 'projectId' | 'buildingId'>,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardChartsResponse['collectionsPerformance']> {
   const { months } = monthRangeForYear(year);
 
   return Promise.all(
     months.map(async (m) => {
-      const q = invoiceCollectionQuery(tenantId, m.from, m.to, filters);
+      const q = invoiceCollectionQuery(tenantId, m.from, m.to, filters, scopeCtx);
       const r = await client.query<{ due: string; collected: string }>(q.sql, q.params);
       const due = Number(r.rows[0]?.due ?? 0);
       const collected = Number(r.rows[0]?.collected ?? 0);
@@ -261,7 +274,8 @@ export async function getDashboardChartsJson(
   client: pg.PoolClient,
   tenantId: string,
   filters: DashboardFilters,
-  yearOverride?: number
+  yearOverride?: number,
+  scopeCtx?: DataScopeEnforcementContext
 ): Promise<DashboardChartsResponse> {
   const year = yearOverride ?? filterYear(filters);
   const excludedIds = await excludedCategoryIds(client, tenantId);
@@ -275,12 +289,12 @@ export async function getDashboardChartsJson(
     expenseBreakdownSlices,
     collectionsPerformancePoints,
   ] = await Promise.all([
-    revenueVsExpensesByMonth(client, tenantId, year, projectId),
-    cashFlowTrendByMonth(client, tenantId, year, excludedIds, filters),
-    receivablesAging(client, tenantId, filters),
+    revenueVsExpensesByMonth(client, tenantId, year, projectId, scopeCtx),
+    cashFlowTrendByMonth(client, tenantId, year, excludedIds, filters, scopeCtx),
+    receivablesAging(client, tenantId, filters, scopeCtx),
     salesPipeline(client, tenantId, projectId),
     expenseBreakdown(client, tenantId, filters, excludedIds),
-    collectionsPerformance(client, tenantId, year, filters),
+    collectionsPerformance(client, tenantId, year, filters, scopeCtx),
   ]);
 
   return {

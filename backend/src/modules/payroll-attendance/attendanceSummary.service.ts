@@ -11,6 +11,12 @@ import { DEFAULT_WORK_WEEK } from '../../payroll-core/payrollTypes.js';
 import { employeeRowToLike, listEmployees } from '../payroll/services/payroll/payrollEmployees.js';
 import { isPayrollPeriodBeforeJoiningDate } from '../../payroll/salaryComputation.js';
 import { dateStr } from '../payroll/services/payroll/payrollHelpers.js';
+import { getTenantConfig } from '../payroll/services/payroll/payrollConfig.js';
+import {
+  ensurePayrollRunAccrualJournal,
+  resolvePayrollRunAccrualAmount,
+  reversePayrollRunAccrualJournal,
+} from '../payroll/services/payroll/payrollJournalPostingService.js';
 import {
   PayrollAttendanceSummaryRepository,
   newSummaryId,
@@ -329,6 +335,19 @@ export async function generateAttendanceSummaries(
     runId: linkedRunId ?? null,
   });
 
+  if (linkedRunId) {
+    const { recordPayrollAudit } = await import('../payroll/services/payroll/payrollAuditService.js');
+    const { PAYROLL_AUDIT_ACTIONS } = await import('../payroll/services/payroll/payrollAuditCatalog.js');
+    await recordPayrollAudit(client, {
+      tenantId,
+      userId,
+      entityType: 'payroll_run',
+      entityId: linkedRunId,
+      auditAction: PAYROLL_AUDIT_ACTIONS.RUN_GENERATED,
+      newValue: { payrollMonth, payrollYear, summaryCount: toUpsert.length },
+    });
+  }
+
   const { rows } = await repo.listSummaries(
     client,
     { payrollMonth, payrollYear, page: 1, limit: 500 },
@@ -422,6 +441,14 @@ export async function approvePayrollRunLifecycle(
   if (!prior) throw new PayrollAttendanceSummaryError('NOT_FOUND', 'Payroll run not found.');
   assertRunApprovable(prior.status);
 
+  // SoD: payroll run creator cannot approve their own run
+  if (userId && prior.created_by && prior.created_by === userId) {
+    throw new PayrollAttendanceSummaryError(
+      'FORBIDDEN',
+      'Segregation of duties: the user who created this payroll run cannot approve it.'
+    );
+  }
+
   const payrollMonth = monthNumberFromName(prior.month);
   const summaryRepo = new PayrollAttendanceSummaryRepository(tenantId);
   const summaryMap = await summaryRepo.mapSummariesForPeriod(client, payrollMonth, prior.year);
@@ -457,6 +484,22 @@ export async function approvePayrollRunLifecycle(
     }
   }
 
+  const payslips = await new PayslipRepository(tenantId).listByRun(client, runId, scopeCtx);
+  if (payslips.length === 0) {
+    throw new PayrollAttendanceSummaryError(
+      'VALIDATION_ERROR',
+      'Cannot approve: process payslips before approving the payroll run.'
+    );
+  }
+  const payslipNetTotal = payslips.reduce((s, p) => s + numStr(p.net_pay), 0);
+  const accrualAmount = resolvePayrollRunAccrualAmount(prior, payslipNetTotal);
+  if (accrualAmount < 0.005) {
+    throw new PayrollAttendanceSummaryError(
+      'VALIDATION_ERROR',
+      'Cannot approve: payroll accrual amount must be greater than zero.'
+    );
+  }
+
   const row = await runRepo.updateFields(client, runId, {
     status: 'APPROVED' as PayrollRunLifecycleStatus,
     touchApproved: true,
@@ -465,7 +508,40 @@ export async function approvePayrollRunLifecycle(
   });
   if (!row) throw new PayrollAttendanceSummaryError('VALIDATION_ERROR', 'Failed to approve payroll run.');
   const api = rowToPayrollRunApi(row);
+
+  const tenantConfig = await getTenantConfig(client, tenantId);
+  const accrualResult = await ensurePayrollRunAccrualJournal(client, tenantId, {
+    run: row,
+    accrualAmount,
+    approvedBy: userId,
+    categoryId: tenantConfig.default_category_id,
+    projectId: tenantConfig.default_project_id,
+  });
+  if (!accrualResult.journalEntryId && accrualResult.skipped !== 'already_posted') {
+    throw new PayrollAttendanceSummaryError(
+      'VALIDATION_ERROR',
+      'Failed to post payroll accrual to the general ledger.'
+    );
+  }
+
   await auditRunLifecycle(client, tenantId, runId, 'payroll.run.approved', userId, rowToPayrollRunApi(prior), api);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: userId ?? null,
+    module: 'payroll',
+    entityType: 'payroll_run',
+    entityId: runId,
+    action: 'update',
+    auditAction: 'payroll.run.accrual_posted',
+    summary: `Payroll accrual posted for ${row.month} ${row.year}`,
+    newValue: {
+      runId,
+      journalEntryId: accrualResult.journalEntryId,
+      accrualAmount,
+      period: `${row.month} ${row.year}`,
+      approvedBy: userId,
+    },
+  });
   return { run: api };
 }
 
@@ -488,6 +564,8 @@ export async function unapprovePayrollRunLifecycle(
       'Cannot unapprove: one or more payslips have payments recorded.'
     );
   }
+
+  await reversePayrollRunAccrualJournal(client, tenantId, runId, userId, 'Payroll run unapproved');
 
   const row = await runRepo.updateFields(client, runId, {
     status: 'GENERATED',

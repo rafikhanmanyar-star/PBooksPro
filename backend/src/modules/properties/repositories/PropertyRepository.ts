@@ -76,7 +76,8 @@ export class PropertyRepository extends TenantRepository {
       search?: string;
       sortBy?: string;
       sortDir?: SortDirection;
-    }
+    },
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<{ rows: PropertyRow[]; total: number }> {
     const conditions: string[] = ['tenant_id = $1', 'deleted_at IS NULL'];
     const params: unknown[] = [this.tenantId];
@@ -86,6 +87,9 @@ export class PropertyRepository extends TenantRepository {
       conditions.push(`building_id = $${paramIndex++}`);
       params.push(opts.buildingId);
     }
+
+    appendScopeFragment(conditions, params, applyPropertyScope(scopeCtx ?? { enabled: false, scopes: [] }, 'id', params.length + 1));
+    appendScopeFragment(conditions, params, applyOwnerScope(scopeCtx ?? { enabled: false, scopes: [] }, 'owner_id', params.length + 1));
 
     const searchClause = buildIlikeSearchClause(
       ['name', 'description'],

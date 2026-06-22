@@ -13,6 +13,7 @@ import {
 } from '../services/propertiesService.js';
 import { respondEntitySearchList } from '../../../services/search/index.js';
 import { emitEntityEvent } from '../../../core/realtime.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 export const propertiesRouter = Router();
 
@@ -23,6 +24,7 @@ propertiesRouter.get('/properties', async (req: AuthedRequest, res) => {
     return;
   }
   const buildingId = typeof req.query.buildingId === 'string' ? req.query.buildingId : undefined;
+  const scopeCtx = dataScopeContextFromRequest(req);
   try {
     const pool = getPool();
     const client = await pool.connect();
@@ -31,9 +33,10 @@ propertiesRouter.get('/properties', async (req: AuthedRequest, res) => {
         query: req.query as Record<string, unknown>,
         res,
         sendSuccess,
-        listAll: () => listProperties(client, tenantId, buildingId ? { buildingId } : undefined),
+        listAll: () =>
+          listProperties(client, tenantId, buildingId ? { buildingId } : undefined, scopeCtx),
         listPage: (params) =>
-          listPropertiesPage(client, tenantId, { ...params, buildingId }).then(({ rows, total }) => ({
+          listPropertiesPage(client, tenantId, { ...params, buildingId }, scopeCtx).then(({ rows, total }) => ({
             rows,
             total,
           })),
@@ -54,11 +57,12 @@ propertiesRouter.get('/properties/:id', async (req: AuthedRequest, res) => {
     return;
   }
   const { id } = req.params;
+  const scopeCtx = dataScopeContextFromRequest(req);
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getPropertyById(client, tenantId, id);
+      const row = await getPropertyById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Property not found');
         return;

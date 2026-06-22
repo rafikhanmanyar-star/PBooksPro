@@ -1,0 +1,247 @@
+{
+  "timestamp": "2026-06-22T07:16:31.171Z",
+  "tenant": "test-company",
+  "flags": {
+    "RBAC_V2_DATA_SCOPE": "true",
+    "VITE_RBAC_V2_DATA_SCOPE": "true",
+    "RBAC_V2_APPROVAL_MATRIX": "false"
+  },
+  "pilots": {
+    "admin": {
+      "username": "ScopeAdmin",
+      "email": "scope-admin@pbookspro.com",
+      "password": "ScopePilot2026!",
+      "scopes": []
+    },
+    "pm": {
+      "username": "ScopePM",
+      "email": "scope-pm@pbookspro.com",
+      "password": "ScopePilot2026!",
+      "scopes": [
+        {
+          "dimension": "project",
+          "entityId": "scope-pilot-proj-alpha"
+        }
+      ]
+    },
+    "payroll": {
+      "username": "ScopePayroll",
+      "email": "scope-payroll@pbookspro.com",
+      "password": "ScopePilot2026!",
+      "scopes": [
+        {
+          "dimension": "department",
+          "entityId": "scope-pilot-dept-a"
+        }
+      ]
+    }
+  },
+  "fixtures": {
+    "projectAlphaId": "scope-pilot-proj-alpha",
+    "projectBetaId": "scope-pilot-proj-beta",
+    "deptAId": "scope-pilot-dept-a",
+    "deptBId": "scope-pilot-dept-b",
+    "vendorId": "scope-pilot-vendor",
+    "billAlphaId": "scope-pilot-bill-alpha",
+    "billBetaId": "scope-pilot-bill-beta",
+    "txAlphaId": "scope-pilot-tx-alpha",
+    "txBetaId": "scope-pilot-tx-beta",
+    "accountId": "scope-pilot-account",
+    "categoryId": "scope-pilot-category"
+  },
+  "summary": {
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "productionReadinessScore": 100,
+    "modulePass": {
+      "Projects": true,
+      "Properties": true,
+      "Bills": true,
+      "Transactions": true,
+      "Employees": true,
+      "Payroll": true,
+      "Dashboard": true
+    }
+  },
+  "passed": [
+    {
+      "id": "V-01",
+      "category": "Visibility",
+      "name": "Admin lists Project Alpha and Beta",
+      "pass": true,
+      "detail": "admin sees 1 scoped vs 5 total",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.023Z"
+    },
+    {
+      "id": "V-02",
+      "category": "Visibility",
+      "name": "PM lists Project Alpha only (pilot fixtures)",
+      "pass": true,
+      "detail": "pm project ids: scope-pilot-proj-alpha",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.023Z"
+    },
+    {
+      "id": "V-03",
+      "category": "Visibility",
+      "name": "PM bill list excludes Beta project bill",
+      "pass": true,
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.068Z"
+    },
+    {
+      "id": "V-04",
+      "category": "Visibility",
+      "name": "PM transaction list excludes Beta project tx",
+      "pass": true,
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.135Z"
+    },
+    {
+      "id": "V-05",
+      "category": "Visibility",
+      "name": "Payroll officer lists Department A employee only (pilot fixtures)",
+      "pass": true,
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.243Z"
+    },
+    {
+      "id": "S-01",
+      "category": "Search",
+      "name": "PM bill search returns Alpha not Beta",
+      "pass": true,
+      "detail": "status 200",
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:30.305Z"
+    },
+    {
+      "id": "S-02",
+      "category": "Search",
+      "name": "PM project search finds Alpha only",
+      "pass": true,
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:30.360Z"
+    },
+    {
+      "id": "P-01",
+      "category": "Pagination",
+      "name": "PM bills listPage excludes Beta pilot bill",
+      "pass": true,
+      "detail": "total=1",
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:30.397Z"
+    },
+    {
+      "id": "P-02",
+      "category": "Pagination",
+      "name": "PM transactions listPage excludes Beta pilot tx",
+      "pass": true,
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:30.480Z"
+    },
+    {
+      "id": "G-01",
+      "category": "Get-by-id",
+      "name": "PM GET project Beta → 404",
+      "pass": true,
+      "detail": "status 404",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.540Z"
+    },
+    {
+      "id": "G-02",
+      "category": "Get-by-id",
+      "name": "PM GET bill Beta → 404",
+      "pass": true,
+      "detail": "status 404",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.595Z"
+    },
+    {
+      "id": "G-03",
+      "category": "Get-by-id",
+      "name": "PM GET transaction Beta → 404",
+      "pass": true,
+      "detail": "status 404",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.678Z"
+    },
+    {
+      "id": "G-04",
+      "category": "Get-by-id",
+      "name": "Payroll GET employee Dept B → 404",
+      "pass": true,
+      "detail": "status 404",
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:30.755Z"
+    },
+    {
+      "id": "D-01",
+      "category": "Dashboard",
+      "name": "Dashboard metrics returns 200 for scoped PM",
+      "pass": true,
+      "detail": "admin AP=n/a pm AP=n/a",
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:30.954Z"
+    },
+    {
+      "id": "D-02",
+      "category": "Dashboard",
+      "name": "Dashboard charts scoped request succeeds",
+      "pass": true,
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:31.009Z"
+    },
+    {
+      "id": "D-03",
+      "category": "Dashboard",
+      "name": "Dashboard activity feed succeeds for PM",
+      "pass": true,
+      "severity": "High",
+      "timestamp": "2026-06-22T07:16:31.036Z"
+    },
+    {
+      "id": "PR-01",
+      "category": "Payroll",
+      "name": "Payroll officer employee list department scoped",
+      "pass": true,
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:31.036Z"
+    },
+    {
+      "id": "PR-02",
+      "category": "Payroll",
+      "name": "Payroll GET employee Dept A succeeds",
+      "pass": true,
+      "severity": "Critical",
+      "timestamp": "2026-06-22T07:16:31.112Z"
+    },
+    {
+      "id": "R-01",
+      "category": "Reports",
+      "name": "PM profit-loss report accessible",
+      "pass": true,
+      "detail": "status 200",
+      "severity": "Medium",
+      "timestamp": "2026-06-22T07:16:31.144Z"
+    },
+    {
+      "id": "R-02",
+      "category": "Reports",
+      "name": "Effective context exposes PM project scope",
+      "pass": true,
+      "detail": "admin scopes=4 pm project mode=assigned",
+      "severity": "Medium",
+      "timestamp": "2026-06-22T07:16:31.169Z"
+    }
+  ],
+  "failed": [],
+  "failuresBySeverity": {
+    "Critical": [],
+    "High": [],
+    "Medium": [],
+    "Low": []
+  }
+}

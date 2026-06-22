@@ -74,7 +74,8 @@ export function buildJournalLinesFromTransaction(row: TransactionRow): JournalLi
   }
 
   if (type.toLowerCase() === 'expense') {
-    const debitAccount = row.bill_id ? SYS_AP : SYS_EXPENSE_SUMMARY;
+    // Bill / payslip payments settle AP (accrual posted at bill issue or payroll approval).
+    const debitAccount = row.bill_id || row.payslip_id ? SYS_AP : SYS_EXPENSE_SUMMARY;
     return [
       journalLineWithDimensions({ accountId: debitAccount, debitAmount: M, creditAmount: 0 }, dims),
       journalLineWithDimensions({ accountId: row.account_id, debitAmount: 0, creditAmount: M }, dims),

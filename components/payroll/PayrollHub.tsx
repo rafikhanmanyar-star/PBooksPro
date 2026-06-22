@@ -37,11 +37,14 @@ import EmployeeList from './EmployeeList';
 import VirtualizedPayrollEmployeeLedgerTable from './VirtualizedPayrollEmployeeLedgerTable';
 import EmployeeProfile from './EmployeeProfile';
 import EmployeeForm from './EmployeeForm';
-import PayrollReport from './PayrollReport';
+import PayrollReportsHub from './reports/PayrollReportsHub';
 import PaymentHistory from './PaymentHistory';
 import PayrollSettingsPage from './PayrollSettingsPage';
 import PayrollDashboard from './PayrollDashboard';
 import PayslipsPage from './PayslipsPage';
+import PayrollAuditLog from './PayrollAuditLog';
+import VoidPayslipModal from './modals/VoidPayslipModal';
+import ReversePayrollPaymentModal from './modals/ReversePayrollPaymentModal';
 import AttendancePage from './attendance/AttendancePage';
 import LeaveManagementPage from './leave/LeaveManagementPage';
 import PayrollWizard from './wizard/PayrollWizard';
@@ -50,6 +53,7 @@ import { storageService } from './services/storageService';
 import { hydratePayrollFromDb } from './services/payrollDb';
 import { syncPayrollFromServer } from './services/payrollSync';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { formatApiErrorMessage } from '../../services/api/client';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { useDispatchOnly, usePayrollHubState } from '../../hooks/useSelectiveState';
@@ -87,6 +91,9 @@ import ReportHeader from '../reports/ReportHeader';
 import ReportFooter from '../reports/ReportFooter';
 import { usePermissions } from '../../hooks/usePermissions';
 import { usePaginatedList, DEFAULT_LIST_PAGE_SIZE, PAGINATION_EXPORT_MAX_ROWS } from '../../hooks/pagination';
+import PayrollRunApprovalPanel from './components/PayrollRunApprovalPanel';
+import { usePayrollRunApprovalController } from './hooks/usePayrollRunApprovalController';
+import { useUsers } from '../../hooks/useSelectiveState';
 
 const MONTH_LABEL_TO_NUM: Record<string, number> = {
   January: 1, February: 2, March: 3, April: 4, May: 5, June: 6,
@@ -191,7 +198,8 @@ const PayrollHub: React.FC = () => {
   const tenantId = tenant?.id || '';
   const userId = user?.id || '';
   const userRole = user?.role || '';
-  const { canReadAttendance, canReadLeave } = usePermissions();
+  const { canReadAttendance, canReadLeave, canApprovePayrollRun } = usePermissions();
+  const users = useUsers();
 
   // Check if user is an employee (non-HR role) - for now, we show full access
   const isEmployeeRole = userRole === 'Employee';
@@ -209,6 +217,9 @@ const PayrollHub: React.FC = () => {
   const [payModalPayslip, setPayModalPayslip] = useState<Payslip | null>(null);
   const [payModalEmployee, setPayModalEmployee] = useState<PayrollEmployee | null>(null);
   const [payModalRun, setPayModalRun] = useState<PayrollRun | null>(null);
+  const [voidModalPayslip, setVoidModalPayslip] = useState<Payslip | null>(null);
+  const [voidModalEmployee, setVoidModalEmployee] = useState<PayrollEmployee | null>(null);
+  const [reversePaymentTx, setReversePaymentTx] = useState<Transaction | null>(null);
   const [payslipsRefreshKey, setPayslipsRefreshKey] = useState(0);
   /** Bumped after SQLite hydrate or API payroll sync so UI re-reads payslips from storage. */
   const [payrollStorageRevision, setPayrollStorageRevision] = useState(0);
@@ -365,6 +376,46 @@ const PayrollHub: React.FC = () => {
   const [tableRecordFilter, setTableRecordFilter] = useState<TableRecordFilter>('payslips');
   const [filterYear, setFilterYear] = useState<number | ''>('');
   const [filterMonth, setFilterMonth] = useState<number | ''>('');
+
+  const cyclePeriodRun = useMemo(() => {
+    if (!tenantId || filterYear === '' || filterMonth === '') return null;
+    const monthLabel = Object.entries(MONTH_LABEL_TO_NUM).find(([, n]) => n === filterMonth)?.[0];
+    if (!monthLabel) return null;
+    return (
+      storageService
+        .getPayrollRuns(tenantId)
+        .find((r) => r.month === monthLabel && r.year === filterYear) ?? null
+    );
+  }, [tenantId, filterYear, filterMonth, payrollStorageRevision]);
+
+  const cyclePeriodPayslipCount = useMemo(() => {
+    if (!tenantId || !cyclePeriodRun) return 0;
+    return storageService.getPayslipsByRunId(tenantId, cyclePeriodRun.id).length;
+  }, [tenantId, cyclePeriodRun, payrollStorageRevision]);
+
+  const [cycleApprovalRun, setCycleApprovalRun] = useState<PayrollRun | null>(null);
+
+  useEffect(() => {
+    setCycleApprovalRun(cyclePeriodRun);
+  }, [cyclePeriodRun]);
+
+  const cycleApprovalController = usePayrollRunApprovalController({
+    onRunUpdated: (updated) => {
+      if (!tenantId) return;
+      const runs = storageService.getPayrollRuns(tenantId);
+      storageService.setPayrollRuns(
+        tenantId,
+        runs.map((r) => (r.id === updated.id ? { ...r, ...updated } : r))
+      );
+      setCycleApprovalRun(updated);
+      setPayrollStorageRevision((r) => r + 1);
+    },
+    onAfterMutation: async () => {
+      if (tenantId) await syncPayrollFromServer(tenantId);
+      setPayrollStorageRevision((r) => r + 1);
+    },
+  });
+
   const allPayslips = storageService.getPayslips(tenantId);
   const payslipIdsByTenant = useMemo(() => new Set(allPayslips.map((p) => p.id)), [allPayslips]);
   const paymentRecords = useMemo(() => {
@@ -904,6 +955,10 @@ const PayrollHub: React.FC = () => {
   };
   const handlePaymentShowDeleteWarning = (tx: Transaction) => {
     setPaymentTransactionToEdit(null);
+    if (isAccountingBackedByRemoteApi() && tx.payslipId) {
+      setReversePaymentTx(tx);
+      return;
+    }
     setPaymentWarningModalState({ isOpen: true, transaction: tx, action: 'delete' });
   };
   const handlePaymentCloseWarning = () => {
@@ -1021,6 +1076,7 @@ const PayrollHub: React.FC = () => {
     { id: 'payslips' as const, label: 'Payslips', icon: FileText },
     { id: 'report' as const, label: 'Reports', icon: BarChart3 },
     { id: 'history' as const, label: 'Payment History', icon: History },
+    { id: 'audit' as const, label: 'Audit Log', icon: ClipboardList },
     { id: 'settings' as const, label: 'Settings', icon: Settings },
   ];
 
@@ -1126,11 +1182,14 @@ const PayrollHub: React.FC = () => {
 
     if (selfEmployee) {
       return (
-        <EmployeeProfile
-          employee={selfEmployee}
-          onBack={() => { }}
-          payrollStorageRevision={payrollStorageRevision}
-        />
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+          <EmployeeProfile
+            employee={selfEmployee}
+            onBack={() => { }}
+            payrollStorageRevision={payrollStorageRevision}
+            isSelfView
+          />
+        </div>
       );
     }
 
@@ -1366,6 +1425,24 @@ const PayrollHub: React.FC = () => {
               <div className="bg-app-card rounded-2xl border border-app-border shadow-ds-card overflow-hidden flex flex-col md:rounded-l-none flex-1 min-w-0 min-h-0">
                 <div id="payroll-cycle-printable-area" className="printable-area print-report-surface flex flex-col flex-1 min-h-0 min-w-0">
                 <ReportHeader reportTitle="Payroll Cycle" />
+                {cycleApprovalRun &&
+                  (cycleApprovalRun.status === 'GENERATED' || cycleApprovalRun.status === 'APPROVED') && (
+                    <div className="flex-shrink-0 px-4 py-3 border-b border-app-border bg-violet-50/50 dark:bg-violet-950/20">
+                      <PayrollRunApprovalPanel
+                        compact
+                        run={cycleApprovalRun}
+                        payslipCount={cyclePeriodPayslipCount}
+                        canApprove={canApprovePayrollRun}
+                        currentUserId={userId}
+                        currentUser={user}
+                        users={users}
+                        busy={cycleApprovalController.busy}
+                        error={cycleApprovalController.error}
+                        onApprove={() => void cycleApprovalController.approve(cycleApprovalRun, userId)}
+                        onUnapprove={() => void cycleApprovalController.unapprove(cycleApprovalRun)}
+                      />
+                    </div>
+                  )}
                 <div className="flex-shrink-0 px-4 py-3 border-b border-app-border bg-app-toolbar/30 space-y-3">
                   <div className="flex items-start justify-between gap-3 flex-wrap">
                     <div className="min-w-0">
@@ -1439,6 +1516,22 @@ const PayrollHub: React.FC = () => {
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {selectedCycleEmployeeId && (() => {
+                        const emp = storageService.getEmployees(tenantId).find(e => e.id === selectedCycleEmployeeId);
+                        return emp ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedEmployee(emp);
+                              setActiveSubTab('workforce');
+                            }}
+                            className="border border-primary text-primary px-3 py-2 rounded-lg font-bold text-xs hover:bg-primary/5 flex items-center gap-1.5 transition-colors"
+                            title={`Open ${emp.name}'s full employee profile`}
+                          >
+                            <Users size={14} /> Open Profile
+                          </button>
+                        ) : null;
+                      })()}
                       {tableRecordFilter === 'payslips' && selectedPayslipIds.length > 0 && (
                         <button
                           type="button"
@@ -1813,14 +1906,28 @@ const PayrollHub: React.FC = () => {
                                   >
                                     <Pencil size={14} /> Edit
                                   </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleCyclePayslipDelete(ps)}
-                                    className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
-                                    title={isFullyPaid ? 'Remove payslip' : 'Delete payslip'}
-                                  >
-                                    <Trash2 size={14} /> {isFullyPaid ? 'Remove' : 'Delete'}
-                                  </button>
+                                  {isFullyPaid ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setVoidModalPayslip(ps);
+                                        setVoidModalEmployee(emp ?? null);
+                                      }}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
+                                      title="Void this payslip (requires reason + payment reversal)"
+                                    >
+                                      <Trash2 size={14} /> Void
+                                    </button>
+                                  ) : (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleCyclePayslipDelete(ps)}
+                                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-red-600 hover:bg-red-500/10 font-medium text-xs"
+                                      title="Delete payslip"
+                                    >
+                                      <Trash2 size={14} /> Delete
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -2074,7 +2181,7 @@ const PayrollHub: React.FC = () => {
 
         {activeSubTab === 'report' && (
           <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 sm:p-3 md:p-4 lg:p-6 xl:p-8 pb-20 sm:pb-24 md:pb-6">
-            <PayrollReport />
+            <PayrollReportsHub />
           </div>
         )}
 
@@ -2084,10 +2191,55 @@ const PayrollHub: React.FC = () => {
           </div>
         )}
 
+        {activeSubTab === 'audit' && (
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+            <PayrollAuditLog />
+          </div>
+        )}
+
         {activeSubTab === 'settings' && (
           <PayrollSettingsPage />
         )}
       </div>
+
+      {/* Void Payslip Modal */}
+      <VoidPayslipModal
+        isOpen={!!voidModalPayslip}
+        onClose={() => { setVoidModalPayslip(null); setVoidModalEmployee(null); }}
+        payslip={voidModalPayslip}
+        employee={voidModalEmployee}
+        onConfirm={async (reason) => {
+          if (!voidModalPayslip) return;
+          const ps = voidModalPayslip;
+          try {
+            const deleted = isAccountingBackedByRemoteApi()
+              ? await payrollApi.voidPayslip(ps.id, reason, tenantId, userId)
+              : storageService.deletePayslip(tenantId, ps.id, userId);
+            if (!deleted) throw new Error('Could not void payslip.');
+            refreshCyclePayslips();
+            showToast('Payslip voided.', 'success');
+          } catch (e) {
+            throw new Error(formatApiErrorMessage(e) || 'Void failed.');
+          }
+        }}
+      />
+      <ReversePayrollPaymentModal
+        isOpen={!!reversePaymentTx}
+        onClose={() => setReversePaymentTx(null)}
+        transaction={reversePaymentTx}
+        onConfirm={async (reason) => {
+          if (!reversePaymentTx) return;
+          try {
+            const result = await payrollApi.reversePayrollPayment(reversePaymentTx.id, reason);
+            if (!result.success) throw new Error(result.error || 'Reverse failed.');
+            await syncPayrollFromServer(tenantId);
+            refreshCyclePayslips();
+            showToast('Payroll payment reversed.', 'success');
+          } catch (e) {
+            throw new Error(formatApiErrorMessage(e) || 'Reverse failed.');
+          }
+        }}
+      />
     </div>
   );
 };

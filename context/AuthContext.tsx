@@ -428,6 +428,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     const checkAuth = async () => {
+      const { markStartupMilestone } = await import('../utils/startupPerfTracker');
+      markStartupMilestone('auth_check_start');
       try {
         // Website live demo: enter directly — never show the organization login picker.
         if (
@@ -529,6 +531,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           logger.errorCategory('auth', 'Auth check error:', error);
           setState(prev => ({ ...prev, isLoading: false, isInitializing: false }));
         }
+      } finally {
+        markStartupMilestone('auth_check_done');
       }
     };
 
@@ -708,6 +712,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('auth:login-success'));
     }
+    void import('../utils/startupPerfTracker').then(({ markStartupMilestone }) => {
+      markStartupMilestone('login_success');
+    });
     checkLicenseStatus()
       .then((licenseStatus) => {
         if (typeof window !== 'undefined' && licenseStatus && ('licenseType' in licenseStatus || 'licenseStatus' in licenseStatus)) {
@@ -861,6 +868,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     password: string
   ): Promise<LoginResult> => {
     setState(prev => ({ ...prev, isLoading: true, error: null, pendingCompanySelection: null }));
+    void import('../utils/startupPerfTracker').then(({ markStartupMilestone }) => {
+      markStartupMilestone('login_submit');
+    });
 
     try {
       const response = await apiClient.post<{

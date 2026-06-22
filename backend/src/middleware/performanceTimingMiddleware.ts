@@ -4,6 +4,8 @@ import type { AuthedRequest } from './authMiddleware.js';
 import type { RequestWithId } from './requestLogging.js';
 import { API_LATENCY_CRITICAL_MS, API_LATENCY_WARN_MS } from '../reliability/observabilityTypes.js';
 import { recordApiMetric } from '../services/telemetry/apiMetricsStore.js';
+import { getPoolPressure } from '../db/pool.js';
+import { isPoolSamplingEnabled, recordPoolMetricSample } from '../services/telemetry/poolMetricsStore.js';
 
 const WARN_MS = API_LATENCY_WARN_MS;
 const CRITICAL_MS = API_LATENCY_CRITICAL_MS;
@@ -56,6 +58,15 @@ export function performanceTimingMiddleware(req: TimedRequest, res: Response, ne
       statusCode: res.statusCode,
       durationMs,
     });
+
+    if (isPoolSamplingEnabled()) {
+      const pressure = getPoolPressure();
+      recordPoolMetricSample(pressure, {
+        route: path.split('?')[0],
+        method,
+        durationMs,
+      });
+    }
 
     void import('../services/monitoring/monitoringCapture.js').then(({ captureMonitoringEvent }) => {
       if (durationMs < WARN_MS) return;

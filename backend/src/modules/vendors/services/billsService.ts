@@ -261,28 +261,34 @@ export type BillListPageQuery = {
 export async function listBillsPage(
   client: pg.PoolClient,
   tenantId: string,
-  query: BillListPageQuery
+  query: BillListPageQuery,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<{ rows: BillRow[]; total: number }> {
-  return new BillRepository(tenantId).listPage(client, {
-    limit: query.limit,
-    offset: query.offset,
-    filters: {
-      status: query.status,
-      projectId: query.projectId,
-      propertyId: query.propertyId,
+  return new BillRepository(tenantId).listPage(
+    client,
+    {
+      limit: query.limit,
+      offset: query.offset,
+      filters: {
+        status: query.status,
+        projectId: query.projectId,
+        propertyId: query.propertyId,
+      },
+      search: query.search,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
     },
-    search: query.search,
-    sortBy: query.sortBy,
-    sortDir: query.sortDir,
-  });
+    scopeCtx
+  );
 }
 
 export async function getBillById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<BillRow | null> {
-  return new BillRepository(tenantId).getById(client, id);
+  return new BillRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function getBillByIdIncludingDeleted(

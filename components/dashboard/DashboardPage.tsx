@@ -39,6 +39,7 @@ import {
 } from '../../stores/dashboardPreferencesStore';
 
 import DashboardChartsSection from './DashboardChartsSection';
+import { markDashboardReady } from '../../utils/startupPerfTracker';
 
 const KPI_GROUP_LABELS: Record<DashboardKpiGroupId, string> = {
   financial: 'Financial KPIs',
@@ -77,6 +78,23 @@ const DashboardPage: React.FC = () => {
     const h = new Date().getHours();
     setGreeting(h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening');
   }, []);
+
+  useEffect(() => {
+    if (!isAuthenticated || !isDashboardActive) return;
+    const adminReady = !isAdmin || (!metricsQuery.isLoading && !snapshotsQuery.isLoading && !chartsQuery.isLoading);
+    const activityReady = !activityQuery.isLoading;
+    if (adminReady && activityReady) {
+      markDashboardReady();
+    }
+  }, [
+    isAuthenticated,
+    isDashboardActive,
+    isAdmin,
+    metricsQuery.isLoading,
+    snapshotsQuery.isLoading,
+    chartsQuery.isLoading,
+    activityQuery.isLoading,
+  ]);
 
   const projectOptions = useMemo(
     () => projects.map((p) => ({ id: p.id, name: p.name })),

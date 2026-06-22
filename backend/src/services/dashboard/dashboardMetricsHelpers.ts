@@ -1,6 +1,30 @@
 import type { DashboardComparisonPeriod, DashboardFilters } from './dashboardMetricsTypes.js';
+import type { DataScopeEnforcementContext } from '../../auth/tenantRepositoryScope.js';
+import { buildReportScopeSql } from '../../modules/reporting/query-builder/reportScopeSql.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Append mandatory RBAC scope (server-side); independent of client filter params. */
+export function appendDashboardRbacScopeClauses(
+  clauses: string[],
+  params: unknown[],
+  scopeCtx: DataScopeEnforcementContext | undefined,
+  columns: { project?: string; property?: string; owner?: string; department?: string }
+): void {
+  if (!scopeCtx?.enabled) return;
+  const scope = buildReportScopeSql(scopeCtx, columns, params.length + 1);
+  clauses.push(...scope.clauses);
+  params.push(...scope.params);
+}
+
+export function dashboardScopeCacheSuffix(scopeCtx?: DataScopeEnforcementContext): string {
+  if (!scopeCtx?.enabled) return '';
+  if (scopeCtx.failClosed) return ':rbac:deny';
+  const parts = scopeCtx.scopes
+    .map((s) => `${s.dimension}:${s.mode}:${(s.entityIds ?? []).join(',')}`)
+    .sort();
+  return `:rbac:${parts.join('|')}`;
+}
 
 export function isValidDateOnly(s: string): boolean {
   return DATE_RE.test(s);
@@ -30,7 +54,8 @@ export function invoiceCollectionQuery(
   tenantId: string,
   from: string,
   to: string,
-  filters: { projectId?: string; buildingId?: string }
+  filters: { projectId?: string; buildingId?: string },
+  scopeCtx?: DataScopeEnforcementContext
 ): { sql: string; params: unknown[] } {
   const params: unknown[] = [tenantId, from, to];
   const clauses = [
@@ -44,6 +69,15 @@ export function invoiceCollectionQuery(
     clauses.push(`i.project_id = $${params.length}`);
   }
   appendBuildingFilter('i', filters.buildingId, params, clauses);
+  if (scopeCtx?.enabled) {
+    const scope = buildReportScopeSql(
+      scopeCtx,
+      { project: 'i.project_id', property: 'i.property_id' },
+      params.length + 1
+    );
+    clauses.push(...scope.clauses);
+    params.push(...scope.params);
+  }
   return {
     sql: `SELECT
          COALESCE(SUM(i.amount), 0)::text AS due,
@@ -64,7 +98,8 @@ export function buildDashboardEntityFilter(
     vendor?: string;
     customer?: string;
   },
-  baseParamIndex = 1
+  baseParamIndex = 1,
+  scopeCtx?: DataScopeEnforcementContext
 ): { sql: string; params: unknown[] } {
   const clauses: string[] = [];
   const params: unknown[] = [];
@@ -90,6 +125,16 @@ export function buildDashboardEntityFilter(
         WHERE pr.tenant_id = $1 AND pr.building_id = ${p} AND pr.deleted_at IS NULL
       )
     )`);
+  }
+  if (scopeCtx?.enabled) {
+    const scopeStart = baseParamIndex + params.length + 1;
+    const scope = buildReportScopeSql(
+      scopeCtx,
+      { project: columnMap.project, property: columnMap.property },
+      scopeStart
+    );
+    clauses.push(...scope.clauses);
+    params.push(...scope.params);
   }
   return { sql: clauses.length ? ` AND ${clauses.join(' AND ')}` : '', params };
 }
@@ -198,7 +243,11 @@ export function parseDashboardFilters(query: Record<string, unknown>): Dashboard
   };
 }
 
-export function dashboardCacheKey(tenantId: string, filters: DashboardFilters): string {
+export function dashboardCacheKey(
+  tenantId: string,
+  filters: DashboardFilters,
+  scopeCtx?: DataScopeEnforcementContext
+): string {
   const parts = [
     tenantId,
     filters.from,
@@ -212,6 +261,7 @@ export function dashboardCacheKey(tenantId: string, filters: DashboardFilters): 
     filters.branchId ?? '',
     filters.companyId ?? '',
     filters.salesAgentId ?? '',
+    dashboardScopeCacheSuffix(scopeCtx),
   ];
   return `dashboard_metrics:${parts.join(':')}`;
 }

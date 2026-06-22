@@ -828,7 +828,26 @@ export const payrollApi = {
     }
   },
 
-  async deletePayslip(payslipId: string, tenantId: string, userId: string): Promise<boolean> {
+  async voidPayslip(payslipId: string, reason: string, tenantId?: string, userId?: string): Promise<boolean> {
+    if (!isAccountingBackedByRemoteApi()) {
+      const { storageService } = await import('../../components/payroll/services/storageService');
+      storageService.init(tenantId ?? '');
+      return storageService.deletePayslip(tenantId ?? '', payslipId, userId ?? '');
+    }
+    try {
+      await apiClient.post(`/payroll/payslips/${payslipId}/void`, { reason });
+      return true;
+    } catch (error) {
+      console.error('Error voiding payslip:', error);
+      throw error;
+    }
+  },
+
+  /** @deprecated Use voidPayslip with a mandatory reason. */
+  async deletePayslip(payslipId: string, tenantId: string, userId: string, reason?: string): Promise<boolean> {
+    if (reason?.trim()) {
+      return this.voidPayslip(payslipId, reason.trim(), tenantId, userId);
+    }
     if (!isAccountingBackedByRemoteApi()) {
       const { storageService } = await import('../../components/payroll/services/storageService');
       storageService.init(tenantId);
@@ -840,6 +859,38 @@ export const payrollApi = {
     } catch (error) {
       console.error('Error deleting payslip:', error);
       return false;
+    }
+  },
+
+  async voidPayrollRun(runId: string, reason: string): Promise<{ success: boolean; error?: string }> {
+    if (!isAccountingBackedByRemoteApi()) {
+      return { success: false, error: 'Void payroll run requires API mode.' };
+    }
+    try {
+      await apiClient.post(`/payroll/runs/${runId}/void`, { reason });
+      return { success: true };
+    } catch (error: unknown) {
+      const err = error as { error?: string; message?: string };
+      return { success: false, error: err?.error || err?.message || 'Failed to void payroll run' };
+    }
+  },
+
+  async reversePayrollPayment(
+    transactionId: string,
+    reason: string
+  ): Promise<{ success: boolean; payslipId?: string | null; error?: string }> {
+    if (!isAccountingBackedByRemoteApi()) {
+      return { success: false, error: 'Payment reversal requires API mode.' };
+    }
+    try {
+      const resp = await apiClient.post<{ message: string; payslipId?: string | null }>(
+        `/payroll/payments/${transactionId}/reverse`,
+        { reason }
+      );
+      return { success: true, payslipId: resp?.payslipId ?? null };
+    } catch (error: unknown) {
+      const err = error as { error?: string; message?: string };
+      return { success: false, error: err?.error || err?.message || 'Failed to reverse payment' };
     }
   },
 

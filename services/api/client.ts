@@ -11,6 +11,7 @@ import { notifyApiConflictIfUserFacing } from '../dbErrorNotification';
 import { stringifyApiJsonBody } from '../../utils/apiJsonSerialize';
 import { withMutationRequestId } from './mutationRequestId';
 import { notifyDuplicateRecordIfApplicable } from '../dbErrorNotification';
+import { recordStartupApiRequest } from '../../utils/startupPerfTracker';
 
 /** Throttle "server unreachable" UI so a burst of failed requests does not flash repeatedly. */
 let lastServerUnreachableDispatch = 0;
@@ -407,7 +408,14 @@ export class ApiClient {
           getRequestTimeoutMs(endpoint)
         );
       }
+      const requestStartMs = performance.now();
       const response = await fetch(url, fetchInit);
+      recordStartupApiRequest({
+        method: fetchOpts.method || 'GET',
+        path: endpoint,
+        status: response.status,
+        durationMs: performance.now() - requestStartMs,
+      });
 
       // Diagnostic: always log state endpoint responses
       if (endpoint.includes('/state/')) {
