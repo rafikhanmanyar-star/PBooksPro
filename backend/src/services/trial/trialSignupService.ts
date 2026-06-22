@@ -14,6 +14,7 @@ import { validatePassword } from '../../utils/passwordPolicy.js';
 import { getRequiredDocuments } from '../../constants/legalDocuments.js';
 import { isEnvFlagEnabled } from '../../utils/envFlag.js';
 import { ensureUserTenantMembership } from '../auth/userTenantService.js';
+import { seedTenantRbac } from '../../modules/rbac/services/seedTenantRbac.js';
 import { assertOrganizationEmailAvailable } from '../auth/userIdentityService.js';
 import { TrialSignupRepository } from '../../modules/trial/repositories/TrialSignupRepository.js';
 
@@ -177,6 +178,7 @@ export async function createTrialSignup(
 
     await ensureUserTenantMembership(client, userId, tenantId, 'Admin');
 
+    await seedTenantRbac(client, tenantId, { creatorUserId: userId, creatorRoleSlug: 'company_admin' });
     await bootstrapTenantChart(client, tenantId, { legacyIds: false });
     const subscription = await startTrialSubscription(client, tenantId);
     await initializeTrialOnboarding(client, tenantId);

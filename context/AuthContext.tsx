@@ -134,7 +134,7 @@ interface AuthContextType extends AuthState {
 export interface TenantRegistrationData {
   companyName: string;
   email: string;
-  phone?: string;
+  phone: string;
   address?: string;
   adminUsername: string;
   adminPassword: string;

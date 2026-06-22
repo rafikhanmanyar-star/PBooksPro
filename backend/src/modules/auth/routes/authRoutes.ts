@@ -111,8 +111,11 @@ const selectCompanySchema = z.object({
 const registerTenantSchema = z.object({
   companyName: z.string().min(1).max(200),
   email: z.string().email(),
-  phone: z.string().max(80).optional(),
-  address: z.string().max(500).optional(),
+  phone: z.string().trim().min(1, 'Phone number is required.').max(80),
+  address: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? undefined : v),
+    z.string().max(500).optional()
+  ),
   adminUsername: z.string().min(3).max(64),
   adminPassword: z.string().min(8).max(256),
   adminName: z.string().min(1).max(200),
@@ -136,7 +139,10 @@ const registerTenantSchema = z.object({
     .min(1, 'Legal document acceptance is required.'),
   referralCode: z.string().max(32).optional(),
   inviteToken: z.string().max(128).optional(),
-  country: z.string().max(120).optional(),
+  country: z.preprocess(
+    (v) => (v === '' || v === null || v === undefined ? undefined : v),
+    z.string().max(120).optional()
+  ),
   captchaToken: z.string().max(4096).optional(),
 });
 
@@ -883,6 +889,7 @@ authRouter.post('/auth/register-tenant', registerLimiter, async (req, res) => {
 
       await bootstrapNewOrganizationData(client, tenantId, {
         skipTrial: isOrganizationApprovalEnabled(),
+        creatorUserId: userId,
       });
       await requireLegalAcceptances(client, {
         acceptances: legalAcceptances,

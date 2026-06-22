@@ -16,6 +16,7 @@ import {
 } from './organizationApprovalEmailService.js';
 import { captureMonitoringEvent } from '../monitoring/monitoringCapture.js';
 import { OrganizationRepository } from '../../modules/organization/repositories/OrganizationRepository.js';
+import { seedTenantRbac } from '../../modules/rbac/services/seedTenantRbac.js';
 import { withSavepoint } from '../../db/pool.js';
 
 export type OrganizationRequestRow = {
@@ -427,8 +428,13 @@ export async function registerPendingOrganization(
 export async function bootstrapNewOrganizationData(
   client: PoolClient,
   tenantId: string,
-  options?: { skipTrial?: boolean }
+  options?: { skipTrial?: boolean; creatorUserId?: string }
 ): Promise<void> {
+  await seedTenantRbac(client, tenantId, {
+    creatorUserId: options?.creatorUserId,
+    creatorRoleSlug: 'company_admin',
+    assignedBy: options?.creatorUserId ?? null,
+  });
   await bootstrapTenantChart(client, tenantId, { legacyIds: false });
   if (!options?.skipTrial && !isOrganizationApprovalEnabled()) {
     await startTrialSubscription(client, tenantId);

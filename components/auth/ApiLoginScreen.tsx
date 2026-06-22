@@ -626,8 +626,18 @@ const ApiLoginScreen: React.FC = () => {
       setError('Company name is required.');
       return;
     }
-    if (!orgEmail.trim()) {
+    const orgEmailVal = orgEmail.trim();
+    if (!orgEmailVal) {
       setError('Email is required.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(orgEmailVal)) {
+      setError('Enter a valid email address.');
+      return;
+    }
+    const phoneVal = phone.trim();
+    if (!phoneVal) {
+      setError('Phone number is required.');
       return;
     }
     if (!adminName.trim() || !adminUsername.trim() || adminUsername.trim().length < 3) {
@@ -646,8 +656,8 @@ const ApiLoginScreen: React.FC = () => {
       apiClient.setBaseUrl(rootUrl());
       const result = await registerTenant({
         companyName: companyName.trim(),
-        email: orgEmail.trim(),
-        phone: phone.trim() || undefined,
+        email: orgEmailVal,
+        phone: phoneVal,
         address: address.trim() || undefined,
         adminName: adminName.trim(),
         adminUsername: adminUsername.trim(),
@@ -659,19 +669,14 @@ const ApiLoginScreen: React.FC = () => {
       setRegisteredReference(result.registrationReference ?? null);
       setRegistrationPendingApproval(!!result.pendingApproval);
       persistLastTenant(result.tenantId);
-      const registeredEmail = orgEmail.trim();
-      setEmail(registeredEmail);
-      persistLastEmail(registeredEmail);
+      setCompanyEmail(orgEmailVal);
+      persistLastOrgEmail(orgEmailVal);
+      setUsername(adminUsername.trim());
+      persistLastUsername(adminUsername.trim());
       setPassword('');
       setView('registerSuccess');
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'error' in err
-          ? String((err as { error?: string }).error)
-          : err instanceof Error
-            ? err.message
-            : 'Registration failed.';
-      setError(msg);
+      setError(formatApiErrorMessage(err));
     }
   };
 
@@ -1164,17 +1169,19 @@ const ApiLoginScreen: React.FC = () => {
                 </div>
 
                 <div className="min-w-0">
-                  <FieldLabel htmlFor="reg-phone">
-                    Phone <span className="font-normal text-app-muted">(optional)</span>
+                  <FieldLabel htmlFor="reg-phone" required>
+                    Phone
                   </FieldLabel>
                   <IconField icon={User}>
                     <input
                       id="reg-phone"
-                      type="text"
+                      type="tel"
                       value={phone}
                       onChange={e => setPhone(e.target.value)}
                       className={FIELD_INPUT}
                       disabled={isLoading}
+                      required
+                      autoComplete="tel"
                     />
                   </IconField>
                 </div>
