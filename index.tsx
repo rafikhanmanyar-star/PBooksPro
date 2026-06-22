@@ -14,12 +14,15 @@ import {
   markWebsiteDemoEntry,
 } from './utils/demoAuthBootstrap';
 import { resetDemoTourSession } from './services/tours/demoTourSession';
+import { installStartupPerfGlobals, markStartupMilestone } from './utils/startupPerfTracker';
 
 // Get root element
 const rootElement = document.getElementById('root');
 
 initStabilityLayer();
 initClientTelemetry();
+installStartupPerfGlobals();
+markStartupMilestone('app_boot');
 ensureLegacyOfflineApiSessionMarked();
 
 /**

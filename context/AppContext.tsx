@@ -239,6 +239,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         setInitProgress(60);
                         const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
                         logger.logCategory('sync', '[STARTUP_SYNC_BEGIN] Starting initial full load via loadStateBulkChunked');
+                        void import('../utils/startupPerfTracker').then(({ markStartupMilestone }) => {
+                            markStartupMilestone('bootstrap_start');
+                        });
                         const partial = await getAppStateApiService().loadStateBulkChunked(
                             (loaded, total) => {
                                 if (isMounted && total > 0) {
@@ -259,6 +262,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             sessionRestoreRefreshDoneRef.current = true;
                             markDbLoadCompleteRef.current?.();
                             logger.logCategory('sync', '[STARTUP_SYNC_COMPLETE] Initial full load done — duplicate effects suppressed');
+                            void import('../utils/startupPerfTracker').then(({ markStartupMilestone }) => {
+                                markStartupMilestone('bootstrap_complete');
+                            });
                         }
                     } catch (apiErr) {
                         logger.warnCategory(

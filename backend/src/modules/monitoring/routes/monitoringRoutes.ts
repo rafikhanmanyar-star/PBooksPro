@@ -5,6 +5,8 @@ import { publicIntrospectionLimiter } from '../../../middleware/introspectionGua
 import { sendFailure, sendSuccess } from '../../../utils/apiResponse.js';
 import { runReadinessCheck } from '../../../services/monitoring/monitoringHealthService.js';
 import { sendLivenessResponse } from '../../../routes/healthLiveness.js';
+import { getPoolPressure } from '../../../db/pool.js';
+import { getApiMetricsSummary, getPoolMetricsSummary } from '../../../services/telemetry/index.js';
 
 export const monitoringPublicRouter = Router();
 
@@ -110,4 +112,39 @@ monitoringIngestRouter.post('/monitoring/telemetry', async (req, res) => {
   }
 
   sendSuccess(res, { recorded: parsed.data.metrics.length });
+});
+
+/** Cloud Performance Program — read-only pool pressure (tenant-authenticated). */
+monitoringIngestRouter.get('/monitoring/pool-pressure', async (_req, res) => {
+  const pressure = getPoolPressure();
+  sendSuccess(res, {
+    ...pressure,
+    activeCount: Math.max(0, pressure.total - pressure.idle),
+    idleCount: pressure.idle,
+    waitingCount: pressure.waiting,
+    sampled: process.env.PBOOKS_PERF_POOL_SAMPLE === '1',
+    serverTime: new Date().toISOString(),
+  });
+});
+
+/** Cloud Performance Program — API + pool summary (requires PBOOKS_PERF_BASELINE_EXPORT=1). */
+monitoringIngestRouter.get('/monitoring/perf-baseline', async (_req, res) => {
+  if (process.env.PBOOKS_PERF_BASELINE_EXPORT !== '1') {
+    sendFailure(res, 404, 'NOT_FOUND', 'Performance baseline export is disabled.');
+    return;
+  }
+  const windowMinutes = Math.min(Math.max(Number(_req.query.windowMinutes ?? 15), 1), 120);
+  const pressure = getPoolPressure();
+  sendSuccess(res, {
+    generatedAt: new Date().toISOString(),
+    windowMinutes,
+    pool: {
+      ...pressure,
+      activeCount: Math.max(0, pressure.total - pressure.idle),
+      idleCount: pressure.idle,
+      waitingCount: pressure.waiting,
+    },
+    api: getApiMetricsSummary(windowMinutes),
+    poolSamples: getPoolMetricsSummary(windowMinutes),
+  });
 });
