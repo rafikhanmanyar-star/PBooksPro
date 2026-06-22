@@ -27,6 +27,7 @@ import { queueEntityEvent } from '../../../core/entityEventEmissions.js';
 import { emitFinancialPosted } from '../../../core/realtime.js';
 import { respondVersionConflict } from '../../../utils/versionConflict.js';
 import { respondEntitySearchList } from '../../../services/search/index.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 
 const VENDOR_SETTLEMENT_SOURCE_MODULE = 'vendor_bill_advance_clearing';
 
@@ -60,6 +61,7 @@ billsRouter.get('/bills', async (req: AuthedRequest, res) => {
   const status = typeof req.query.status === 'string' ? req.query.status : undefined;
   const projectId = typeof req.query.projectId === 'string' ? req.query.projectId : undefined;
   const propertyId = typeof req.query.propertyId === 'string' ? req.query.propertyId : undefined;
+  const scopeCtx = dataScopeContextFromRequest(req);
   try {
     const pool = getPool();
     const client = await pool.connect();
@@ -68,9 +70,9 @@ billsRouter.get('/bills', async (req: AuthedRequest, res) => {
         query: req.query as Record<string, unknown>,
         res,
         sendSuccess,
-        listAll: () => listBills(client, tenantId, { status, projectId, propertyId }),
+        listAll: () => listBills(client, tenantId, { status, projectId, propertyId }, scopeCtx),
         listPage: (params) =>
-          listBillsPage(client, tenantId, { ...params, status, projectId, propertyId }),
+          listBillsPage(client, tenantId, { ...params, status, projectId, propertyId }, scopeCtx),
         mapRow: rowToBillApi,
       });
     } finally {
@@ -117,11 +119,12 @@ billsRouter.get('/bills/:id', async (req: AuthedRequest, res) => {
     return;
   }
   const { id } = req.params;
+  const scopeCtx = dataScopeContextFromRequest(req);
   try {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getBillById(client, tenantId, id);
+      const row = await getBillById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Bill not found');
         return;

@@ -2,6 +2,7 @@ import type pg from 'pg';
 import { TenantRepository } from '../../../core/TenantRepository.js';
 import type { DataScopeEnforcementContext } from '../../../auth/tenantRepositoryScope.js';
 import { appendFinancialRbacScopeSql } from '../services/financialReportScope.js';
+import { rowMatchesScope } from '../../../auth/tenantRepositoryScope.js';
 import { buildIlikeSearchClause, resolveSortExpression } from '../../../services/search/index.js';
 import type { SortDirection } from '../../../services/search/index.js';
 import type {
@@ -179,7 +180,8 @@ export class TransactionRepository extends TenantRepository {
       search?: string;
       sortBy?: string;
       sortDir?: SortDirection;
-    }
+    },
+    scopeCtx?: DataScopeEnforcementContext
   ): Promise<{ rows: TransactionRow[]; total: number }> {
     const filters = opts.filters ?? {};
     const params: unknown[] = [this.tenantId];
@@ -221,6 +223,15 @@ export class TransactionRepository extends TenantRepository {
     if (filters.propertyId) {
       conditions.push(`t.property_id = $${paramIndex++}`);
       params.push(filters.propertyId);
+    }
+
+    const scopeConditions: string[] = [];
+    appendFinancialRbacScopeSql(scopeConditions, params, scopeCtx, {
+      project: 't.project_id',
+      property: 't.property_id',
+    });
+    if (scopeConditions.length) {
+      conditions.push(...scopeConditions);
     }
 
     const searchClause = buildIlikeSearchClause(
@@ -269,12 +280,20 @@ export class TransactionRepository extends TenantRepository {
     return { rows: r.rows, total };
   }
 
-  async getById(client: pg.PoolClient, id: string): Promise<TransactionRow | null> {
+  async getById(
+    client: pg.PoolClient,
+    id: string,
+    scopeCtx?: DataScopeEnforcementContext
+  ): Promise<TransactionRow | null> {
     const r = await client.query<TransactionRow>(
       `${SELECT_ROW} FROM transactions t WHERE t.id = $1 AND t.tenant_id = $2 AND t.deleted_at IS NULL`,
       [id, this.tenantId]
     );
-    return r.rows[0] ?? null;
+    const row = r.rows[0] ?? null;
+    if (!row || !scopeCtx?.enabled) return row;
+    if (!rowMatchesScope(scopeCtx, 'project', row.project_id)) return null;
+    if (!rowMatchesScope(scopeCtx, 'property', row.property_id)) return null;
+    return row;
   }
 
   async getByIdIncludingDeleted(client: pg.PoolClient, id: string): Promise<TransactionRow | null> {

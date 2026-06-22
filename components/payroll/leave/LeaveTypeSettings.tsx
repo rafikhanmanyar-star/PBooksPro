@@ -9,11 +9,13 @@ const LeaveTypeSettings: React.FC = () => {
   const { data: types = [], isLoading } = useLeaveTypes();
   const mutations = useLeaveMutations();
   const [editing, setEditing] = useState<LeaveType | null>(null);
+  const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', annual_quota: 14, paid_leave: true, carry_forward: false, active: true });
 
   const openNew = () => {
     setEditing(null);
     setForm({ name: '', annual_quota: 14, paid_leave: true, carry_forward: false, active: true });
+    setShowForm(true);
   };
 
   const openEdit = (t: LeaveType) => {
@@ -25,14 +27,20 @@ const LeaveTypeSettings: React.FC = () => {
       carry_forward: t.carry_forward,
       active: t.active,
     });
+    setShowForm(true);
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditing(null);
+    setForm({ name: '', annual_quota: 14, paid_leave: true, carry_forward: false, active: true });
   };
 
   const save = async () => {
     if (!form.name.trim()) return;
     if (editing) await mutations.updateType.mutateAsync({ id: editing.id, body: form });
     else await mutations.createType.mutateAsync(form);
-    setEditing(null);
-    openNew();
+    closeForm();
   };
 
   return (
@@ -64,14 +72,17 @@ const LeaveTypeSettings: React.FC = () => {
           </li>
         ))}
       </ul>
-      {canWriteLeave && (editing !== null || form.name !== '') && (
+      {canWriteLeave && showForm && (
         <div className="rounded-xl border border-app-border p-4 space-y-3 bg-app-muted/5">
           <input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Name" className="w-full rounded-xl border border-app-border px-3 py-2 text-sm" />
           <input type="number" value={form.annual_quota} onChange={(e) => setForm((f) => ({ ...f, annual_quota: Number(e.target.value) }))} className="w-full rounded-xl border border-app-border px-3 py-2 text-sm" placeholder="Annual quota" />
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.paid_leave} onChange={(e) => setForm((f) => ({ ...f, paid_leave: e.target.checked }))} /> Paid leave</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.carry_forward} onChange={(e) => setForm((f) => ({ ...f, carry_forward: e.target.checked }))} /> Carry forward</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.active} onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))} /> Active</label>
-          <button type="button" onClick={() => void save()} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold">Save type</button>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void save()} className="px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold">Save type</button>
+            <button type="button" onClick={closeForm} className="px-4 py-2 rounded-xl border border-app-border text-sm font-semibold text-app-muted hover:text-app-text">Cancel</button>
+          </div>
         </div>
       )}
     </div>

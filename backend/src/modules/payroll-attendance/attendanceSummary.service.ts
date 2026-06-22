@@ -422,6 +422,14 @@ export async function approvePayrollRunLifecycle(
   if (!prior) throw new PayrollAttendanceSummaryError('NOT_FOUND', 'Payroll run not found.');
   assertRunApprovable(prior.status);
 
+  // SoD: payroll run creator cannot approve their own run
+  if (userId && prior.created_by && prior.created_by === userId) {
+    throw new PayrollAttendanceSummaryError(
+      'FORBIDDEN',
+      'Segregation of duties: the user who created this payroll run cannot approve it.'
+    );
+  }
+
   const payrollMonth = monthNumberFromName(prior.month);
   const summaryRepo = new PayrollAttendanceSummaryRepository(tenantId);
   const summaryMap = await summaryRepo.mapSummariesForPeriod(client, payrollMonth, prior.year);

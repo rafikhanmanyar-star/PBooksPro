@@ -13,13 +13,24 @@ import {
 } from './hooks/usePayrollWizardQueries';
 import { usePermissions } from '../../../hooks/usePermissions';
 import { usePayrollContext } from '../../../context/PayrollContext';
+import { useAuth } from '../../../context/AuthContext';
+import { useUsers } from '../../../hooks/useSelectiveState';
+import { formatApiErrorMessage } from '../../../services/api/client';
+import { mapPayrollApprovalErrorMessage } from '../utils/payrollApprovalSod';
+import { usePayrollRunApprovalController } from '../hooks/usePayrollRunApprovalController';
 import type { PayrollRun } from '../types';
 
 const STEPS = ['Period', 'Attendance', 'LOP', 'Preview', 'Generate', 'Process', 'Approval'] as const;
 
+function payrollWizardErrorMessage(e: unknown, fallback: string): string {
+  return mapPayrollApprovalErrorMessage(formatApiErrorMessage(e) || fallback);
+}
+
 const PayrollWizard: React.FC = () => {
   const now = new Date();
   const { wizardSeed, setWizardSeed } = usePayrollContext();
+  const { user } = useAuth();
+  const users = useUsers();
   const [step, setStep] = useState(0);
   const [month, setMonth] = useState(now.getMonth() === 0 ? 12 : now.getMonth());
   const [year, setYear] = useState(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear());
@@ -32,6 +43,10 @@ const PayrollWizard: React.FC = () => {
     existing_payslips_skipped?: number;
     total_payslips?: number;
   } | null>(null);
+
+  const approvalController = usePayrollRunApprovalController({
+    onRunUpdated: setRun,
+  });
 
   useEffect(() => {
     if (!wizardSeed) return;
@@ -70,7 +85,7 @@ const PayrollWizard: React.FC = () => {
       setProcessSummary(null);
       setStep(1);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to start wizard.');
+      setError(payrollWizardErrorMessage(e, 'Failed to start wizard.'));
     } finally {
       setBusy(false);
     }
@@ -93,7 +108,7 @@ const PayrollWizard: React.FC = () => {
       setForceOverride(false);
       setStep(5);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Generate failed.');
+      setError(payrollWizardErrorMessage(e, 'Generate failed.'));
     } finally {
       setBusy(false);
     }
@@ -109,39 +124,26 @@ const PayrollWizard: React.FC = () => {
       void payslipCountQuery.refetch();
       setStep(6);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Process failed.');
+      setError(payrollWizardErrorMessage(e, 'Process failed.'));
     } finally {
       setBusy(false);
     }
   };
 
   const approve = async () => {
-    if (!run?.id) return;
-    setBusy(true);
-    setError('');
-    try {
-      const updated = await mutations.approveRun.mutateAsync(run.id);
-      setRun(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Approval failed.');
-    } finally {
-      setBusy(false);
-    }
+    if (!run) return;
+    approvalController.clearError();
+    await approvalController.approve(run, user?.id);
   };
 
   const unapprove = async () => {
-    if (!run?.id) return;
-    setBusy(true);
-    setError('');
-    try {
-      const updated = await mutations.unapproveRun.mutateAsync(run.id);
-      setRun(updated);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Unapprove failed.');
-    } finally {
-      setBusy(false);
-    }
+    if (!run) return;
+    approvalController.clearError();
+    await approvalController.unapprove(run);
   };
+
+  const stepError = step === 6 ? approvalController.error || error : error;
+  const stepBusy = step === 6 ? approvalController.busy || busy : busy;
 
   return (
     <div className="p-4 sm:p-6 space-y-6">
@@ -161,7 +163,7 @@ const PayrollWizard: React.FC = () => {
           </span>
         ))}
       </div>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {stepError && step !== 6 && <p className="text-sm text-red-600">{stepError}</p>}
       {step === 0 && (
         <PayrollPeriodStep
           month={month}
@@ -194,7 +196,7 @@ const PayrollWizard: React.FC = () => {
         <div className="space-y-3 max-w-lg">
           <h3 className="text-lg font-bold">Generate payroll attendance summaries</h3>
           <p className="text-sm text-app-muted">
-            Persists summaries for {month}/{year} and sets run status to GENERATED.
+            Persists summaries for {month}/{year} and marks the run ready for approval.
           </p>
           {canWritePayroll && (
             <label className="flex items-start gap-2 text-sm text-amber-800">
@@ -231,16 +233,22 @@ const PayrollWizard: React.FC = () => {
           lastSummary={processSummary}
         />
       )}
-      {step === 6 && (
+      {step === 6 && run && (
         <ApprovalStep
           run={run}
           payslipCount={payslipCount}
           canApprove={canApprovePayrollRun}
+          currentUserId={user?.id}
+          currentUser={user}
+          users={users}
           onApprove={() => void approve()}
           onUnapprove={() => void unapprove()}
-          busy={busy}
-          error={error}
+          busy={stepBusy}
+          error={stepError}
         />
+      )}
+      {step === 6 && !run && (
+        <p className="text-sm text-app-muted">Generate summaries and process payslips first.</p>
       )}
     </div>
   );

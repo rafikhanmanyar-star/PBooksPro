@@ -22,14 +22,20 @@ import {
   PieChart,
   Plus,
   Trash2,
-  Loader2
+  Loader2,
+  TrendingUp,
+  TrendingDown,
+  Percent,
 } from 'lucide-react';
-import { 
-  PayrollEmployee, 
-  EmploymentStatus, 
-  ProjectAllocation, 
+import {
+  PayrollEmployee,
+  EmploymentStatus,
+  ProjectAllocation,
   BuildingAllocation,
   PayrollProject,
+  EarningType,
+  DeductionType,
+  EmployeeSalaryComponent,
   EmployeeFormProps } from './types';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
@@ -142,6 +148,21 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
     grade: employee?.grade || '',
     joiningDate: employee?.joining_date || toLocalDateString(new Date()),
     basicSalary: employee?.salary?.basic || 0 });
+
+  const [catalogEarnings, setCatalogEarnings] = useState<EarningType[]>([]);
+  const [catalogDeductions, setCatalogDeductions] = useState<DeductionType[]>([]);
+  const [assignedEarnings, setAssignedEarnings] = useState<EmployeeSalaryComponent[]>(
+    () => (employee?.salary?.allowances ?? []).filter((a: EmployeeSalaryComponent) =>
+      !['basic pay', 'basic salary'].includes((a.name ?? '').toLowerCase()))
+  );
+  const [assignedDeductions, setAssignedDeductions] = useState<EmployeeSalaryComponent[]>(
+    () => employee?.salary?.deductions ?? []
+  );
+
+  useEffect(() => {
+    payrollApi.getEarningTypes().then(setCatalogEarnings).catch(() => {});
+    payrollApi.getDeductionTypes().then(setCatalogDeductions).catch(() => {});
+  }, []);
 
   const [assignedProjects, setAssignedProjects] = useState<ProjectAllocation[]>(
     employee?.projects || []
@@ -272,8 +293,8 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
 
     const salaryData = {
       basic: formData.basicSalary,
-      allowances: [],
-      deductions: []
+      allowances: assignedEarnings,
+      deductions: assignedDeductions,
     };
 
     try {
@@ -412,8 +433,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
   const selectedGradeInfo = availableGrades.find((g: any) => g.name === formData.grade);
   const QUICK_PERCENTAGES = [0, 25, 50, 75, 100];
 
-  // Net salary = basic salary (simplified - no components)
-  const netSalary = formData.basicSalary || 0;
+  const calculateAmount = (basic: number, amount: number, isPercentage: boolean) =>
+    isPercentage ? (basic * amount) / 100 : amount;
+
+  const grossSalary = (formData.basicSalary || 0) + assignedEarnings.reduce(
+    (sum, e) => sum + calculateAmount(formData.basicSalary || 0, e.amount, e.is_percentage), 0
+  );
+  const totalDeductions = assignedDeductions.reduce(
+    (sum, d) => sum + calculateAmount(formData.basicSalary || 0, d.amount, d.is_percentage), 0
+  );
+  const netSalary = Math.max(0, grossSalary - totalDeductions);
 
   if (!tenantId) {
     return (
@@ -820,15 +849,16 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
           </div>
         </div>
 
-        {/* Salary - Simple: Basic salary only */}
+        {/* Salary Structure */}
         <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-8 py-5 bg-slate-50 border-b border-slate-100">
             <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-              <DollarSign size={14} className="text-emerald-600" /> Monthly Salary
+              <DollarSign size={14} className="text-emerald-600" /> Monthly Salary Structure
             </h3>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-1">Basic pay per month. Net pay = basic salary.</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-1">Basic pay + earnings − deductions = net pay.</p>
           </div>
-          <div className="p-8">
+          <div className="p-8 space-y-8">
+            {/* Basic + Net summary */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl">
               <div>
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Basic Salary (Monthly) <span className="text-red-500">*</span></label>
@@ -847,7 +877,7 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Net Payable</label>
                 <div className="relative">
                   <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">PKR</div>
-                  <input 
+                  <input
                     type="text"
                     readOnly
                     value={netSalary.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -856,6 +886,186 @@ const EmployeeForm: React.FC<EmployeeFormProps> = ({ onBack, onSave, employee })
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Earnings */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <TrendingUp size={13} className="text-emerald-600" /> Earnings / Allowances
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const first = catalogEarnings[0];
+                    setAssignedEarnings([
+                      ...assignedEarnings,
+                      { name: first?.name ?? '', amount: first?.amount ?? 0, is_percentage: first?.is_percentage ?? false },
+                    ]);
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-emerald-700 hover:text-emerald-900 transition-colors"
+                >
+                  <Plus size={13} /> Add Earning
+                </button>
+              </div>
+              {assignedEarnings.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 px-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  No earnings added. {catalogEarnings.length === 0 ? 'Configure earning types in Settings first.' : 'Click Add Earning to select from catalog.'}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {assignedEarnings.map((e, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-emerald-50/60 rounded-xl border border-emerald-100">
+                      <select
+                        value={e.name}
+                        onChange={ev => {
+                          const cat = catalogEarnings.find(c => c.name === ev.target.value);
+                          const next = [...assignedEarnings];
+                          next[idx] = cat
+                            ? { name: cat.name, amount: cat.amount, is_percentage: cat.is_percentage }
+                            : { ...next[idx]!, name: ev.target.value };
+                          setAssignedEarnings(next);
+                        }}
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-emerald-200 bg-white text-sm font-bold text-slate-700 outline-none"
+                        aria-label="Earning type"
+                      >
+                        {catalogEarnings.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        {!catalogEarnings.find(c => c.name === e.name) && e.name && (
+                          <option value={e.name}>{e.name} (legacy)</option>
+                        )}
+                        {catalogEarnings.length === 0 && <option value={e.name}>{e.name || 'Allowance'}</option>}
+                      </select>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...assignedEarnings];
+                            next[idx] = { ...next[idx]!, is_percentage: !next[idx]!.is_percentage };
+                            setAssignedEarnings(next);
+                          }}
+                          className={`p-1.5 rounded-lg border text-xs font-bold transition-colors ${e.is_percentage ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-300'}`}
+                          title={e.is_percentage ? 'Switch to fixed' : 'Switch to percentage'}
+                        >
+                          {e.is_percentage ? <Percent size={12} /> : <DollarSign size={12} />}
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step={e.is_percentage ? 0.1 : 1}
+                        value={e.amount}
+                        onWheel={ev => ev.currentTarget.blur()}
+                        onChange={ev => {
+                          const next = [...assignedEarnings];
+                          next[idx] = { ...next[idx]!, amount: parseFloat(ev.target.value) || 0 };
+                          setAssignedEarnings(next);
+                        }}
+                        className="w-28 px-3 py-2 rounded-lg border border-emerald-200 bg-white text-sm font-bold text-slate-700 text-right outline-none"
+                        aria-label={`Earning amount ${e.is_percentage ? '%' : 'PKR'}`}
+                      />
+                      <span className="text-xs text-slate-400 shrink-0 w-6">{e.is_percentage ? '%' : ''}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAssignedEarnings(assignedEarnings.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                        aria-label="Remove earning"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Deductions */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <TrendingDown size={13} className="text-red-500" /> Deductions
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const first = catalogDeductions[0];
+                    setAssignedDeductions([
+                      ...assignedDeductions,
+                      { name: first?.name ?? '', amount: first?.amount ?? 0, is_percentage: first?.is_percentage ?? false },
+                    ]);
+                  }}
+                  className="flex items-center gap-1 text-xs font-bold text-red-600 hover:text-red-800 transition-colors"
+                >
+                  <Plus size={13} /> Add Deduction
+                </button>
+              </div>
+              {assignedDeductions.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 px-4 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                  No deductions added. {catalogDeductions.length === 0 ? 'Configure deduction types in Settings first.' : 'Click Add Deduction to select from catalog.'}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {assignedDeductions.map((d, idx) => (
+                    <div key={idx} className="flex items-center gap-3 p-3 bg-red-50/60 rounded-xl border border-red-100">
+                      <select
+                        value={d.name}
+                        onChange={ev => {
+                          const cat = catalogDeductions.find(c => c.name === ev.target.value);
+                          const next = [...assignedDeductions];
+                          next[idx] = cat
+                            ? { name: cat.name, amount: cat.amount, is_percentage: cat.is_percentage }
+                            : { ...next[idx]!, name: ev.target.value };
+                          setAssignedDeductions(next);
+                        }}
+                        className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-red-200 bg-white text-sm font-bold text-slate-700 outline-none"
+                        aria-label="Deduction type"
+                      >
+                        {catalogDeductions.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                        {!catalogDeductions.find(c => c.name === d.name) && d.name && (
+                          <option value={d.name}>{d.name} (legacy)</option>
+                        )}
+                        {catalogDeductions.length === 0 && <option value={d.name}>{d.name || 'Deduction'}</option>}
+                      </select>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = [...assignedDeductions];
+                            next[idx] = { ...next[idx]!, is_percentage: !next[idx]!.is_percentage };
+                            setAssignedDeductions(next);
+                          }}
+                          className={`p-1.5 rounded-lg border text-xs font-bold transition-colors ${d.is_percentage ? 'bg-red-600 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200 hover:border-red-300'}`}
+                          title={d.is_percentage ? 'Switch to fixed' : 'Switch to percentage'}
+                        >
+                          {d.is_percentage ? <Percent size={12} /> : <DollarSign size={12} />}
+                        </button>
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        step={d.is_percentage ? 0.1 : 1}
+                        value={d.amount}
+                        onWheel={ev => ev.currentTarget.blur()}
+                        onChange={ev => {
+                          const next = [...assignedDeductions];
+                          next[idx] = { ...next[idx]!, amount: parseFloat(ev.target.value) || 0 };
+                          setAssignedDeductions(next);
+                        }}
+                        className="w-28 px-3 py-2 rounded-lg border border-red-200 bg-white text-sm font-bold text-slate-700 text-right outline-none"
+                        aria-label={`Deduction amount ${d.is_percentage ? '%' : 'PKR'}`}
+                      />
+                      <span className="text-xs text-slate-400 shrink-0 w-6">{d.is_percentage ? '%' : ''}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAssignedDeductions(assignedDeductions.filter((_, i) => i !== idx))}
+                        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all shrink-0"
+                        aria-label="Remove deduction"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

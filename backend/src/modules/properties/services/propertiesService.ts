@@ -99,25 +99,31 @@ export type PropertyListPageQuery = {
 export async function listPropertiesPage(
   client: pg.PoolClient,
   tenantId: string,
-  query: PropertyListPageQuery
+  query: PropertyListPageQuery,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<{ rows: PropertyRow[]; total: number; page: number; pageSize: number }> {
-  const { rows, total } = await new PropertyRepository(tenantId).listPage(client, {
-    limit: query.limit,
-    offset: query.offset,
-    buildingId: query.buildingId,
-    search: query.search,
-    sortBy: query.sortBy,
-    sortDir: query.sortDir,
-  });
+  const { rows, total } = await new PropertyRepository(tenantId).listPage(
+    client,
+    {
+      limit: query.limit,
+      offset: query.offset,
+      buildingId: query.buildingId,
+      search: query.search,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+    },
+    scopeCtx
+  );
   return { rows, total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getPropertyById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<PropertyRow | null> {
-  return new PropertyRepository(tenantId).getById(client, id);
+  return new PropertyRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function createProperty(

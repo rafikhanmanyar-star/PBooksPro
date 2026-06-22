@@ -10,7 +10,7 @@ import React, { createContext, useContext, useState, useCallback, ReactNode } fr
 import { PayrollEmployee, PayrollRun } from '../components/payroll/types';
 
 // Sub-tab types for payroll navigation
-export type PayrollSubTab = 'dashboard' | 'workforce' | 'attendance' | 'leave' | 'wizard' | 'cycles' | 'payslips' | 'report' | 'history' | 'settings';
+export type PayrollSubTab = 'dashboard' | 'workforce' | 'attendance' | 'leave' | 'wizard' | 'cycles' | 'payslips' | 'report' | 'history' | 'settings' | 'audit';
 
 export type PayrollWizardSeed = { month: number; year: number };
 

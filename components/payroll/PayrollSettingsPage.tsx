@@ -13,6 +13,8 @@ import GradeConfigModal from './modals/GradeConfigModal';
 import { formatCurrency } from './utils/formatters';
 import LeaveTypeSettings from './leave/LeaveTypeSettings';
 import WorkWeekSettings from './settings/WorkWeekSettings';
+import GLDefaultsSettings from './settings/GLDefaultsSettings';
+import EarningDeductionTypeSettings from './settings/EarningDeductionTypeSettings';
 
 const DEPT_ICONS = [PenLine, PenTool, Megaphone, Building2, PenLine];
 
@@ -287,6 +289,22 @@ const PayrollSettingsPage: React.FC = () => {
 
         <section className={`${sectionCardClass} mt-6 p-4 sm:p-5`}>
           <WorkWeekSettings />
+        </section>
+
+        <section className={`${sectionCardClass} mt-6 p-5 sm:p-6`} aria-label="Salary component types">
+          <div className="mb-5 border-b border-app-border pb-4">
+            <h2 className="text-lg sm:text-xl font-bold text-app-text font-serif">Salary Component Types</h2>
+            <p className="text-sm text-app-muted mt-0.5">Earning and deduction types available for employee salary structures.</p>
+          </div>
+          <EarningDeductionTypeSettings />
+        </section>
+
+        <section className={`${sectionCardClass} mt-6 p-5 sm:p-6`} aria-label="GL defaults">
+          <div className="mb-5 border-b border-app-border pb-4">
+            <h2 className="text-lg sm:text-xl font-bold text-app-text font-serif">Payroll GL Defaults</h2>
+            <p className="text-sm text-app-muted mt-0.5">Default GL account, category, and project for payroll expense transactions.</p>
+          </div>
+          <GLDefaultsSettings />
         </section>
       </div>
 

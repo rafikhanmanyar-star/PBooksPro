@@ -1,6 +1,7 @@
 import React from 'react';
 import type { PayrollRun } from '../types';
 import { canProcessPayrollRun } from '../utils/payrollWorkflowGuards';
+import { payrollRunStatusLabel } from '../utils/payrollStatusLabels';
 
 type Props = {
   run: PayrollRun | null;
@@ -36,11 +37,11 @@ const ProcessStep: React.FC<Props> = ({
     <div className="space-y-4 max-w-lg">
       <h3 className="text-lg font-bold">Process payslips</h3>
       <p className="text-sm text-app-muted">
-        Generate attendance-aware payslips for {run.month} {run.year}. Run status must remain GENERATED until
-        approval.
+        Generate attendance-aware payslips for {run.month} {run.year}. Run must stay ready for approval until
+        an independent approver signs off.
       </p>
       <p className="text-sm text-app-text">
-        Run status: <span className="font-semibold">{run.status}</span>
+        Run status: <span className="font-semibold">{payrollRunStatusLabel(run.status)}</span>
         {payslipCount > 0 && <> · {payslipCount} payslip(s) already in run</>}
       </p>
       {lastSummary && (

@@ -386,7 +386,8 @@ payrollRouter.get('/payroll/employees/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const c = await pool.connect();
     try {
-      const row = await getEmployee(c, tenantId, req.params.id);
+      const scopeCtx = dataScopeContextFromRequest(req);
+      const row = await getEmployee(c, tenantId, req.params.id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Not found');
         return;

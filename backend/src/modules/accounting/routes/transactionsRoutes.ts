@@ -17,6 +17,7 @@ import {
 } from '../services/transactionsService.js';
 import { buildPaginatedResponse } from '../../../utils/pagination/index.js';
 import { parseEntitySearchQuery } from '../../../services/search/index.js';
+import { dataScopeContextFromRequest } from '../../../auth/tenantRepositoryScope.js';
 import { assertDemoCanCreateTransaction, DemoMutationLimitError } from '../../../services/demo/demoLicenseService.js';
 import { getBillById, rowToBillApi } from '../../vendors/services/billsService.js';
 import { getInvoiceById, rowToInvoiceApi } from '../../customers/services/invoicesService.js';
@@ -103,6 +104,7 @@ transactionsRouter.get('/transactions', async (req: AuthedRequest, res) => {
   const query = req.query as Record<string, unknown>;
   const useSearchPage =
     query.page !== undefined || query.pageSize !== undefined || query.search !== undefined;
+  const scopeCtx = dataScopeContextFromRequest(req);
   try {
     const pool = getPool();
     const client = await pool.connect();
@@ -122,7 +124,7 @@ transactionsRouter.get('/transactions', async (req: AuthedRequest, res) => {
           search,
           sortBy,
           sortDir,
-        });
+        }, scopeCtx);
         sendSuccess(
           res,
           buildPaginatedResponse(rows.map((r) => rowToTransactionApi(r)), total, page, pageSize)
@@ -130,7 +132,7 @@ transactionsRouter.get('/transactions', async (req: AuthedRequest, res) => {
         return;
       }
 
-      const rows = await listTransactions(client, tenantId, parseListFilters(req));
+      const rows = await listTransactions(client, tenantId, parseListFilters(req), scopeCtx);
       sendSuccess(res, rows.map((r) => rowToTransactionApi(r)));
     } finally {
       client.release();
@@ -155,7 +157,7 @@ transactionsRouter.get('/transactions/:id', async (req: AuthedRequest, res) => {
     const pool = getPool();
     const client = await pool.connect();
     try {
-      const row = await getTransactionById(client, tenantId, id);
+      const row = await getTransactionById(client, tenantId, id, scopeCtx);
       if (!row) {
         sendFailure(res, 404, 'NOT_FOUND', 'Transaction not found');
         return;

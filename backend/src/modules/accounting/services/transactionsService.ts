@@ -351,25 +351,31 @@ export type TransactionListPageQuery = {
 export async function listTransactionsPage(
   client: pg.PoolClient,
   tenantId: string,
-  query: TransactionListPageQuery
+  query: TransactionListPageQuery,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<{ rows: TransactionRow[]; total: number; page: number; pageSize: number }> {
-  const { rows, total } = await new TransactionRepository(tenantId).listPage(client, {
-    limit: query.limit,
-    offset: query.offset,
-    filters: query.filters,
-    search: query.search,
-    sortBy: query.sortBy,
-    sortDir: query.sortDir,
-  });
+  const { rows, total } = await new TransactionRepository(tenantId).listPage(
+    client,
+    {
+      limit: query.limit,
+      offset: query.offset,
+      filters: query.filters,
+      search: query.search,
+      sortBy: query.sortBy,
+      sortDir: query.sortDir,
+    },
+    scopeCtx
+  );
   return { rows, total, page: query.page, pageSize: query.pageSize };
 }
 
 export async function getTransactionById(
   client: pg.PoolClient,
   tenantId: string,
-  id: string
+  id: string,
+  scopeCtx?: import('../../../auth/tenantRepositoryScope.js').DataScopeEnforcementContext
 ): Promise<TransactionRow | null> {
-  return new TransactionRepository(tenantId).getById(client, id);
+  return new TransactionRepository(tenantId).getById(client, id, scopeCtx);
 }
 
 export async function getTransactionByIdIncludingDeleted(

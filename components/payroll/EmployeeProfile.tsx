@@ -3,10 +3,10 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { 
-  Briefcase, 
-  UserCircle, 
-  DollarSign, 
+import {
+  Briefcase,
+  UserCircle,
+  DollarSign,
   TrendingUp,
   TrendingDown,
   FileText,
@@ -30,19 +30,31 @@ import {
   CheckCircle2,
   Printer,
   Loader2,
-  MessageCircle
+  MessageCircle,
+  LayoutDashboard,
+  BookOpen,
+  CalendarCheck,
+  CalendarOff,
 } from 'lucide-react';
-import { 
-  PayrollEmployee, 
-  EmploymentStatus, 
-  ProjectAllocation, 
+import { attendanceApi } from '../../services/api/attendanceApi';
+import { leaveApi } from '../../services/api/leaveApi';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import VirtualizedPayrollEmployeeLedgerTable from './VirtualizedPayrollEmployeeLedgerTable';
+import type { BuiltPayrollLedgerRow } from './utils/payrollLedgerCore';
+import {
+  PayrollEmployee,
+  EmploymentStatus,
+  ProjectAllocation,
   BuildingAllocation,
-  PayrollStatus, 
-  PayrollRun, 
+  PayrollStatus,
+  PayrollRun,
   Payslip,
-  SalaryAdjustment, 
+  SalaryAdjustment,
   PayrollProject,
-  EmployeeProfileProps
+  EarningType,
+  DeductionType,
+  EmployeeSalaryComponent,
+  EmployeeProfileProps,
 } from './types';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
 import DatePicker from '../ui/DatePicker';
@@ -62,7 +74,34 @@ import { sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { Contact, ContactType } from '../../types';
 import { mapAppProjectsToPayroll } from './utils/projectUtils';
 import { formatDate, formatDateLong, formatCurrency, calculateAmount, roundToTwo } from './utils/formatters';
-import { payslipDisplayPaidAmount, payslipIsFullyPaid } from './utils/payslipPaymentState';
+import { payslipDisplayPaidAmount, payslipIsFullyPaid, payslipRemainingAmount } from './utils/payslipPaymentState';
+
+function mapLedgerApiRow(t: {
+  id: string;
+  transaction_date: string;
+  transaction_type: string;
+  reference_id?: string;
+  payroll_run_id?: string;
+  description: string;
+  debit: number;
+  credit: number;
+  balance_after: number;
+  source_transaction_id?: string;
+}): BuiltPayrollLedgerRow {
+  return {
+    id: String(t.id),
+    payroll_run_id: t.payroll_run_id ?? null,
+    transaction_date: String(t.transaction_date || '').slice(0, 10),
+    transaction_type: t.transaction_type === 'PAYSLIP' ? 'PAYSLIP' : 'PAYMENT',
+    reference_id: String(t.reference_id ?? ''),
+    description: String(t.description ?? ''),
+    debit: Number(t.debit) || 0,
+    credit: Number(t.credit) || 0,
+    balance_after: Number(t.balance_after) || 0,
+    source_transaction_id: t.source_transaction_id ? String(t.source_transaction_id) : null,
+    ledger_sort_ts: 0,
+  };
+}
 import {
   allocationChanged,
   allocationChangeOnlyAffectsFutureAllocations,
@@ -74,7 +113,9 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
   employee: initialEmployee,
   onBack,
   onUpdate,
-  payrollStorageRevision = 0 }) => {
+  payrollStorageRevision = 0,
+  isSelfView = false,
+}) => {
   const { user, tenant } = useAuth()
   const projects = useProjects();
   const buildings = useBuildings();
@@ -95,7 +136,74 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
     if (fromStorage) setEmployee(fromStorage);
   }, [tenantId, initialEmployee?.id]);
   const [isAdjustmentModalOpen, setIsAdjustmentModalOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'details' | 'payslips' | 'history' | 'edit'>('details');
+  const [viewMode, setViewMode] = useState<'details' | 'payslips' | 'history' | 'edit' | 'ledger' | 'attendance' | 'leave'>('details');
+
+  const [catalogEarnings, setCatalogEarnings] = useState<EarningType[]>([]);
+  const [catalogDeductions, setCatalogDeductions] = useState<DeductionType[]>([]);
+  const [editEarnings, setEditEarnings] = useState<EmployeeSalaryComponent[]>([]);
+  const [editDeductions, setEditDeductions] = useState<EmployeeSalaryComponent[]>([]);
+
+  useEffect(() => {
+    payrollApi.getEarningTypes().then(setCatalogEarnings).catch(() => {});
+    payrollApi.getDeductionTypes().then(setCatalogDeductions).catch(() => {});
+  }, []);
+
+  // Ledger data
+  const [ledgerData, setLedgerData] = useState<{ transactions: any[]; summary: any } | null>(null);
+  const [ledgerLoading, setLedgerLoading] = useState(false);
+
+  // Attendance data
+  const [attendanceRecords, setAttendanceRecords] = useState<any[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(false);
+
+  // Leave data
+  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
+  const [leaveLoading, setLeaveLoading] = useState(false);
+  const [leaveBalances, setLeaveBalances] = useState<any[]>([]);
+  const [leaveStatusFilter, setLeaveStatusFilter] = useState<string>('all');
+
+  // Payslip tab filters
+  const [payslipYearFilter, setPayslipYearFilter] = useState<number | ''>('');
+  const [payslipStatusFilter, setPayslipStatusFilter] = useState<string>('all');
+
+  // Ledger filters
+  const [ledgerYear, setLedgerYear] = useState<number | ''>('');
+  const [ledgerMonth, setLedgerMonth] = useState<number | ''>('');
+
+  const isApi = isAccountingBackedByRemoteApi();
+
+  useEffect(() => {
+    if (viewMode !== 'ledger' || !employee.id || !isApi) return;
+    setLedgerLoading(true);
+    payrollApi.getEmployeeLedger(employee.id, { pageSize: 200, year: ledgerYear, month: ledgerMonth })
+      .then(r => setLedgerData(r ? { transactions: r.transactions ?? r.data ?? [], summary: r.summary } : null))
+      .catch(() => setLedgerData(null))
+      .finally(() => setLedgerLoading(false));
+  }, [viewMode, employee.id, isApi, ledgerYear, ledgerMonth]);
+
+  useEffect(() => {
+    if (viewMode !== 'attendance' || !employee.id || !isApi) return;
+    setAttendanceLoading(true);
+    attendanceApi.list({ employeeId: employee.id, limit: 100 })
+      .then(r => setAttendanceRecords(r.data ?? []))
+      .catch(() => setAttendanceRecords([]))
+      .finally(() => setAttendanceLoading(false));
+  }, [viewMode, employee.id, isApi]);
+
+  useEffect(() => {
+    if (viewMode !== 'leave' || !employee.id || !isApi) return;
+    setLeaveLoading(true);
+    Promise.all([
+      leaveApi.listRequests({ employeeId: employee.id, limit: 200 }),
+      leaveApi.listBalances({ employeeId: employee.id }),
+    ])
+      .then(([reqs, bals]) => {
+        setLeaveRequests(reqs?.data ?? []);
+        setLeaveBalances(bals?.data ?? []);
+      })
+      .catch(() => { setLeaveRequests([]); setLeaveBalances([]); })
+      .finally(() => setLeaveLoading(false));
+  }, [viewMode, employee.id, isApi]);
   const [selectedPayslip, setSelectedPayslip] = useState<PayrollRun | null>(null);
   const [selectedPayslipData, setSelectedPayslipData] = useState<Payslip | null>(null);
   const [payslipModalAction, setPayslipModalAction] = useState<'view' | 'print'>('view');
@@ -436,6 +544,12 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
       projects: (employee.projects || []).map(p => ({ ...p })),
       buildings: (employee.buildings || []).map(b => ({ ...b }))
     });
+    setEditEarnings(
+      (employee.salary?.allowances ?? []).filter(
+        (a: EmployeeSalaryComponent) => !['basic pay', 'basic salary'].includes((a.name ?? '').toLowerCase())
+      )
+    );
+    setEditDeductions(employee.salary?.deductions ?? []);
     setViewMode('edit');
   };
 
@@ -472,7 +586,12 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
     const updatedEmployee = {
       ...employee,
       ...editFormData,
-      department_id: departmentId
+      department_id: departmentId,
+      salary: {
+        ...(editFormData.salary ?? employee.salary),
+        allowances: editEarnings,
+        deductions: editDeductions,
+      },
     } as PayrollEmployee;
     handleUpdate(updatedEmployee);
     setViewMode('details');
@@ -625,49 +744,53 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
         <div className="flex flex-wrap gap-2">
           {viewMode === 'details' && (
             <>
-              <button 
+              <button
                 onClick={() => printReport()}
                 className="p-2 sm:px-4 sm:py-2 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-sm flex items-center gap-2"
                 title="Print Profile Summary"
               >
                 <Printer size={16} className="text-app-muted" />
               </button>
-              <button 
-                onClick={startEditing}
-                className="px-3 sm:px-5 py-2 sm:py-2.5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
-              >
-                <Edit3 size={16} className="text-app-muted" /> <span className="hidden sm:inline">Edit Profile</span><span className="sm:hidden">Edit</span>
-              </button>
-              {employee.status === EmploymentStatus.ACTIVE ? (
+              {!isSelfView && (
                 <>
-                  <button 
-                    onClick={() => setIsAdjustmentModalOpen(true)}
-                    className="px-3 sm:px-5 py-2 sm:py-2.5 bg-ds-success text-white rounded-xl shadow-ds-card hover:opacity-90 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
+                  <button
+                    onClick={startEditing}
+                    className="px-3 sm:px-5 py-2 sm:py-2.5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
                   >
-                    <Plus size={16} /> <span className="hidden sm:inline">Add Bonus</span><span className="sm:hidden">Bonus</span>
+                    <Edit3 size={16} className="text-app-muted" /> <span className="hidden sm:inline">Edit Profile</span><span className="sm:hidden">Edit</span>
                   </button>
-                  <button 
-                    onClick={() => setActiveModal('promote')}
-                    className="hidden sm:flex px-5 py-2.5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-sm items-center gap-2"
-                  >
-                    <TrendingUp size={16} className="text-primary" /> Promote
-                  </button>
+                  {employee.status === EmploymentStatus.ACTIVE ? (
+                    <>
+                      <button
+                        onClick={() => setIsAdjustmentModalOpen(true)}
+                        className="px-3 sm:px-5 py-2 sm:py-2.5 bg-ds-success text-white rounded-xl shadow-ds-card hover:opacity-90 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
+                      >
+                        <Plus size={16} /> <span className="hidden sm:inline">Add Bonus</span><span className="sm:hidden">Bonus</span>
+                      </button>
+                      <button
+                        onClick={() => setActiveModal('promote')}
+                        className="hidden sm:flex px-5 py-2.5 bg-app-card border border-app-border rounded-xl shadow-ds-card hover:bg-app-toolbar/30 transition-colors font-bold text-sm items-center gap-2"
+                      >
+                        <TrendingUp size={16} className="text-primary" /> Promote
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setShowDeleteConfirm(true)}
+                      className="px-3 sm:px-5 py-2 sm:py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
+                    >
+                      <Trash2 size={16} /> <span className="hidden sm:inline">Delete Profile</span><span className="sm:hidden">Delete</span>
+                    </button>
+                  )}
+                  {employee.status === EmploymentStatus.ACTIVE && (
+                    <button
+                      onClick={() => setActiveModal('terminate')}
+                      className="hidden sm:block px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
+                    >
+                      Offboard
+                    </button>
+                  )}
                 </>
-              ) : (
-                <button 
-                  onClick={() => setShowDeleteConfirm(true)}
-                  className="px-3 sm:px-5 py-2 sm:py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-xs sm:text-sm flex items-center gap-2"
-                >
-                  <Trash2 size={16} /> <span className="hidden sm:inline">Delete Profile</span><span className="sm:hidden">Delete</span>
-                </button>
-              )}
-              {employee.status === EmploymentStatus.ACTIVE && (
-                <button 
-                  onClick={() => setActiveModal('terminate')}
-                  className="hidden sm:block px-5 py-2.5 bg-red-600 text-white rounded-xl shadow-lg shadow-red-200 hover:bg-red-700 transition-colors font-bold text-sm"
-                >
-                  Offboard
-                </button>
               )}
             </>
           )}
@@ -690,6 +813,36 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
           )}
         </div>
       </div>
+
+      {/* Tab Bar — shown in all non-edit modes */}
+      {viewMode !== 'edit' && (
+        <div className="flex flex-wrap gap-0.5 border-b border-app-border pb-0 no-print">
+          {(
+            [
+              { key: 'details', label: 'Summary', icon: <LayoutDashboard size={14} />, selfView: true },
+              { key: 'payslips', label: 'Payslips', icon: <FileText size={14} />, selfView: true },
+              { key: 'ledger', label: 'Ledger', icon: <BookOpen size={14} />, selfView: true },
+              { key: 'attendance', label: 'Attendance', icon: <CalendarCheck size={14} />, selfView: true },
+              { key: 'leave', label: 'Leave', icon: <CalendarOff size={14} />, selfView: true },
+              { key: 'history', label: 'History', icon: <History size={14} />, selfView: false },
+            ] as { key: typeof viewMode; label: string; icon: React.ReactNode; selfView: boolean }[]
+          ).filter(tab => !isSelfView || tab.selfView).map(tab => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setViewMode(tab.key)}
+              className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-t-lg border-b-2 transition-all ${
+                viewMode === tab.key
+                  ? 'border-primary text-primary bg-primary/5'
+                  : 'border-transparent text-app-muted hover:text-app-text hover:bg-app-toolbar/50'
+              }`}
+            >
+              {tab.icon}
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Profile Details View */}
       {viewMode === 'details' && (
@@ -1188,6 +1341,106 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
                   </div>
                 </div>
 
+                {/* Earnings */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-app-muted uppercase tracking-widest">Earnings / Allowances</h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const first = catalogEarnings[0];
+                        setEditEarnings([...editEarnings, { name: first?.name ?? '', amount: first?.amount ?? 0, is_percentage: first?.is_percentage ?? false }]);
+                      }}
+                      className="text-xs font-bold text-primary hover:text-primary/70 flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+                  {editEarnings.length === 0 ? (
+                    <p className="text-xs text-app-muted py-2 px-3 bg-app-toolbar/40 rounded-xl border border-dashed border-app-border">No earnings configured.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {editEarnings.map((e, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2.5 bg-ds-success/5 rounded-xl border border-ds-success/20">
+                          <select
+                            value={e.name}
+                            onChange={ev => {
+                              const cat = catalogEarnings.find(c => c.name === ev.target.value);
+                              const next = [...editEarnings];
+                              next[idx] = cat ? { name: cat.name, amount: cat.amount, is_percentage: cat.is_percentage } : { ...next[idx]!, name: ev.target.value };
+                              setEditEarnings(next);
+                            }}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-app-border bg-app-card text-sm font-medium text-app-text outline-none"
+                            aria-label="Earning type"
+                          >
+                            {catalogEarnings.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                            {!catalogEarnings.find(c => c.name === e.name) && e.name && <option value={e.name}>{e.name}</option>}
+                          </select>
+                          <input
+                            type="number" min={0} step={e.is_percentage ? 0.1 : 1}
+                            value={e.amount} onWheel={ev => ev.currentTarget.blur()}
+                            onChange={ev => { const n = [...editEarnings]; n[idx] = { ...n[idx]!, amount: parseFloat(ev.target.value) || 0 }; setEditEarnings(n); }}
+                            className="w-24 px-2 py-1.5 rounded-lg border border-app-border bg-app-card text-sm font-bold text-app-text text-right outline-none"
+                            aria-label="Earning amount"
+                          />
+                          <span className="text-xs text-app-muted w-5">{e.is_percentage ? '%' : ''}</span>
+                          <button type="button" onClick={() => setEditEarnings(editEarnings.filter((_, i) => i !== idx))} className="p-1 text-app-muted hover:text-red-500 rounded-lg" aria-label="Remove earning"><Trash2 size={13} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Deductions */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-black text-app-muted uppercase tracking-widest">Deductions</h4>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const first = catalogDeductions[0];
+                        setEditDeductions([...editDeductions, { name: first?.name ?? '', amount: first?.amount ?? 0, is_percentage: first?.is_percentage ?? false }]);
+                      }}
+                      className="text-xs font-bold text-red-500 hover:text-red-700 flex items-center gap-1"
+                    >
+                      <Plus size={12} /> Add
+                    </button>
+                  </div>
+                  {editDeductions.length === 0 ? (
+                    <p className="text-xs text-app-muted py-2 px-3 bg-app-toolbar/40 rounded-xl border border-dashed border-app-border">No deductions configured.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {editDeductions.map((d, idx) => (
+                        <div key={idx} className="flex items-center gap-2 p-2.5 bg-red-50/60 rounded-xl border border-red-100">
+                          <select
+                            value={d.name}
+                            onChange={ev => {
+                              const cat = catalogDeductions.find(c => c.name === ev.target.value);
+                              const next = [...editDeductions];
+                              next[idx] = cat ? { name: cat.name, amount: cat.amount, is_percentage: cat.is_percentage } : { ...next[idx]!, name: ev.target.value };
+                              setEditDeductions(next);
+                            }}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-app-border bg-app-card text-sm font-medium text-app-text outline-none"
+                            aria-label="Deduction type"
+                          >
+                            {catalogDeductions.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}
+                            {!catalogDeductions.find(c => c.name === d.name) && d.name && <option value={d.name}>{d.name}</option>}
+                          </select>
+                          <input
+                            type="number" min={0} step={d.is_percentage ? 0.1 : 1}
+                            value={d.amount} onWheel={ev => ev.currentTarget.blur()}
+                            onChange={ev => { const n = [...editDeductions]; n[idx] = { ...n[idx]!, amount: parseFloat(ev.target.value) || 0 }; setEditDeductions(n); }}
+                            className="w-24 px-2 py-1.5 rounded-lg border border-app-border bg-app-card text-sm font-bold text-app-text text-right outline-none"
+                            aria-label="Deduction amount"
+                          />
+                          <span className="text-xs text-app-muted w-5">{d.is_percentage ? '%' : ''}</span>
+                          <button type="button" onClick={() => setEditDeductions(editDeductions.filter((_, i) => i !== idx))} className="p-1 text-app-muted hover:text-red-500 rounded-lg" aria-label="Remove deduction"><Trash2 size={13} /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {/* Project Allocation (edit) */}
                 <div className="h-px bg-app-toolbar"></div>
                 <div className="space-y-4">
@@ -1351,109 +1604,124 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
       )}
 
       {/* Payslips View */}
-      {viewMode === 'payslips' && (
-        <div className="bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden min-h-[500px]">
-          <div className="p-6 sm:p-8 border-b border-app-border flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-app-toolbar/40">
-            <div>
-              <h3 className="text-xl font-black text-app-text tracking-tight">Past Payslips</h3>
-              <p className="text-sm text-app-muted font-medium mt-1">View, print, or send payslips to {employee.name}.</p>
+      {viewMode === 'payslips' && (() => {
+        const availableYears = [...new Set(employeePayslips.map(({ run }) => run.year))].sort((a, b) => b - a);
+        const filtered = employeePayslips.filter(({ run, payslip }) => {
+          if (payslipYearFilter !== '' && run.year !== payslipYearFilter) return false;
+          if (payslipStatusFilter !== 'all') {
+            const paid = payslipDisplayPaidAmount(payslip);
+            const full = payslipIsFullyPaid(payslip);
+            const partial = paid > 0 && !full;
+            if (payslipStatusFilter === 'paid' && !full) return false;
+            if (payslipStatusFilter === 'partial' && !partial) return false;
+            if (payslipStatusFilter === 'unpaid' && (full || partial)) return false;
+          }
+          return true;
+        });
+        return (
+          <div className="bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden min-h-[500px]">
+            <div className="p-4 sm:p-6 border-b border-app-border flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-app-toolbar/40">
+              <div>
+                <h3 className="text-xl font-black text-app-text tracking-tight">Payslip History</h3>
+                <p className="text-sm text-app-muted mt-0.5">{employeePayslips.length} payslip{employeePayslips.length !== 1 ? 's' : ''} on record.</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <select
+                  value={payslipYearFilter === '' ? '' : String(payslipYearFilter)}
+                  onChange={e => setPayslipYearFilter(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-app-border bg-app-card text-app-text outline-none"
+                  aria-label="Filter by year"
+                >
+                  <option value="">All years</option>
+                  {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+                <select
+                  value={payslipStatusFilter}
+                  onChange={e => setPayslipStatusFilter(e.target.value)}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-app-border bg-app-card text-app-text outline-none"
+                  aria-label="Filter by status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="paid">Paid</option>
+                  <option value="partial">Partially paid</option>
+                  <option value="unpaid">Unpaid</option>
+                </select>
+                <div className="bg-app-card px-3 py-1.5 rounded-lg border border-app-border text-xs font-bold text-app-muted flex items-center gap-1.5">
+                  <ShieldCheck size={13} className="text-ds-success" /> Compliance Verified
+                </div>
+              </div>
             </div>
-            <div className="bg-app-card px-4 py-2 rounded-xl border border-app-border text-xs font-bold text-app-muted flex items-center gap-2 shrink-0">
-              <ShieldCheck size={16} className="text-ds-success" /> Compliance Verified
+            <div className="p-0">
+              {filtered.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-app-muted">
+                  <FileText size={48} className="mb-3 opacity-30" />
+                  <p className="font-bold">{employeePayslips.length === 0 ? 'No payslips yet' : 'No payslips match filters'}</p>
+                  <p className="text-xs mt-1">{employeePayslips.length === 0 ? 'Payslips appear here after Payroll Processing.' : 'Try adjusting the year or status filter.'}</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead>
+                      <tr className="bg-app-toolbar/50 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
+                        <th className="px-4 py-3">Period</th>
+                        <th className="px-4 py-3 text-right">Gross Pay</th>
+                        <th className="px-4 py-3 text-right">Deductions</th>
+                        <th className="px-4 py-3 text-right">Net Pay</th>
+                        <th className="px-4 py-3 text-right">Paid</th>
+                        <th className="px-4 py-3 text-right">Remaining</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-app-border">
+                      {filtered.map(({ run, payslip }) => {
+                        const paidAmt = payslipDisplayPaidAmount(payslip);
+                        const remaining = payslipRemainingAmount(payslip);
+                        const isFullyPaid = payslipIsFullyPaid(payslip);
+                        const isPartiallyPaid = paidAmt > 0 && !isFullyPaid;
+                        const deductions = Math.max(0, (payslip.gross_pay ?? 0) - (payslip.net_pay ?? 0));
+                        const openView = () => { setSelectedPayslip(run); setSelectedPayslipData(payslip); setPayslipModalAction('view'); };
+                        const openPrint = () => { setSelectedPayslip(run); setSelectedPayslipData(payslip); setPayslipModalAction('print'); };
+                        const companyName = tenant?.companyName || tenant?.name || 'Company';
+                        const message = `Payslip for ${run.month} ${run.year}: Net Pay PKR ${formatCurrency(payslip.net_pay)}. ${companyName}.`;
+                        const phone = (employee.phone || '').replace(/\D/g, '');
+                        const waNumber = phone.startsWith('0') ? '92' + phone.slice(1) : phone.length >= 10 ? '92' + phone : '';
+                        const contactLike: Contact = { id: employee.id, name: employee.name, type: ContactType.OWNER, contactNo: waNumber || employee.phone || '' };
+                        const handleWhatsApp = () => {
+                          try { sendOrOpenWhatsApp({ contact: contactLike, message, phoneNumber: contactLike.contactNo || undefined }, () => whatsAppMode, openChat); }
+                          catch { /* noop */ }
+                        };
+                        return (
+                          <tr key={payslip.id} className="hover:bg-app-toolbar/30 transition-colors">
+                            <td className="px-4 py-3 font-bold text-app-text whitespace-nowrap">{run.month} {run.year}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-app-text">PKR {formatCurrency(payslip.gross_pay ?? 0)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-red-500">-PKR {formatCurrency(deductions)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums font-black text-app-text">PKR {formatCurrency(payslip.net_pay)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-ds-success">PKR {formatCurrency(paidAmt)}</td>
+                            <td className="px-4 py-3 text-right tabular-nums text-ds-warning">PKR {formatCurrency(remaining)}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold ${isFullyPaid ? 'bg-ds-success/15 text-ds-success' : isPartiallyPaid ? 'bg-primary/15 text-primary' : 'bg-ds-warning/15 text-ds-warning'}`}>
+                                {isFullyPaid ? <><ShieldCheck size={11} /> Paid</> : isPartiallyPaid ? 'Partial' : 'Unpaid'}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="flex justify-end gap-1.5">
+                                <button onClick={openView} className="inline-flex items-center gap-1 px-2.5 py-1 bg-primary text-ds-on-primary text-xs font-bold rounded-lg hover:opacity-90 transition-all"><Eye size={12} /> View</button>
+                                <button onClick={openPrint} className="inline-flex items-center gap-1 px-2.5 py-1 bg-app-toolbar text-app-text text-xs font-bold rounded-lg hover:bg-app-border transition-all"><Printer size={12} /> Print</button>
+                                <button type="button" onClick={handleWhatsApp} className="inline-flex items-center gap-1 px-2.5 py-1 bg-ds-success/15 text-ds-success text-xs font-bold rounded-lg hover:bg-ds-success/25 transition-all"><MessageCircle size={12} /> WA</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
-          <div className="p-0">
-            {employeePayslips.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-20 text-app-muted">
-                <FileText size={64} className="mb-4 opacity-30" />
-                <p className="font-bold text-app-muted">No payslips yet</p>
-                <p className="text-xs mt-1">Payslips created in Payroll Cycle will appear here.</p>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm">
-                  <thead>
-                    <tr className="bg-app-toolbar/50/80 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
-                      <th className="px-6 sm:px-8 py-4">Period</th>
-                      <th className="px-6 sm:px-8 py-4">Status</th>
-                      <th className="px-6 sm:px-8 py-4">Net Amount</th>
-                      <th className="px-6 sm:px-8 py-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-app-border">
-                    {employeePayslips.map(({ run, payslip }) => {
-                      const paidAmt = payslipDisplayPaidAmount(payslip);
-                      const isFullyPaid = payslipIsFullyPaid(payslip);
-                      const isPartiallyPaid = paidAmt > 0 && !isFullyPaid;
-                      const statusLabel = isFullyPaid ? 'Paid' : isPartiallyPaid ? 'Partially paid' : 'Unpaid';
-                      const openView = () => {
-                        setSelectedPayslip(run);
-                        setSelectedPayslipData(payslip);
-                        setPayslipModalAction('view');
-                      };
-                      const openPrint = () => {
-                        setSelectedPayslip(run);
-                        setSelectedPayslipData(payslip);
-                        setPayslipModalAction('print');
-                      };
-                      const companyName = tenant?.companyName || tenant?.name || 'Company';
-                      const message = `Payslip for ${run.month} ${run.year}: Net Pay PKR ${formatCurrency(payslip.net_pay)}. ${companyName}.`;
-                      const phone = (employee.phone || '').replace(/\D/g, '');
-                      const waNumber = phone.startsWith('0') ? '92' + phone.slice(1) : phone.length >= 10 ? '92' + phone : '';
-                      const contactLike: Contact = { id: employee.id, name: employee.name, type: ContactType.OWNER, contactNo: waNumber || employee.phone || '' };
-                      const handleWhatsApp = () => {
-                        try {
-                          sendOrOpenWhatsApp(
-                            { contact: contactLike, message, phoneNumber: contactLike.contactNo || undefined },
-                            () => whatsAppMode,
-                            openChat
-                          );
-                        } catch (err) {
-                          // no-op or showAlert if available
-                        }
-                      };
-                      return (
-                        <tr key={payslip.id} className="group hover:bg-app-toolbar/50/80 transition-colors">
-                          <td className="px-6 sm:px-8 py-4 font-bold text-app-text">{run.month} {run.year}</td>
-                          <td className="px-6 sm:px-8 py-4">
-                            <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold ${isFullyPaid ? 'bg-ds-success/15 text-ds-success' : isPartiallyPaid ? 'bg-primary/15 text-primary' : 'bg-ds-warning/15 text-ds-warning'}`}>
-                              {isFullyPaid ? <><ShieldCheck size={12} /> Paid</> : isPartiallyPaid ? 'Partially paid' : 'Unpaid'}
-                            </span>
-                          </td>
-                          <td className="px-6 sm:px-8 py-4 font-black text-app-text tabular-nums">PKR {formatCurrency(payslip.net_pay)}</td>
-                          <td className="px-6 sm:px-8 py-4 text-right">
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <button
-                                onClick={openView}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-ds-on-primary text-xs font-bold rounded-xl hover:opacity-90 transition-all"
-                              >
-                                <Eye size={14} /> View
-                              </button>
-                              <button
-                                onClick={openPrint}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-app-toolbar text-app-text text-xs font-bold rounded-xl hover:bg-app-border transition-all"
-                              >
-                                <Printer size={14} /> Print
-                              </button>
-                              <button
-                                type="button"
-                                onClick={handleWhatsApp}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-ds-success/15 text-ds-success text-xs font-bold rounded-xl hover:bg-ds-success/25 transition-all"
-                              >
-                                <MessageCircle size={14} /> WhatsApp
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* History View */}
       {viewMode === 'history' && (
@@ -1492,6 +1760,272 @@ const EmployeeProfile: React.FC<EmployeeProfileProps> = ({
           </div>
         </div>
       )}
+
+      {/* Ledger View */}
+      {viewMode === 'ledger' && (
+        <div className="bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden min-h-[400px]">
+          <div className="p-4 sm:p-6 border-b border-app-border bg-app-toolbar/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-xl font-black text-app-text tracking-tight">Employee Ledger</h3>
+              <p className="text-sm text-app-muted mt-0.5">Running payable/advance balance for {employee.name}.</p>
+            </div>
+            {isApi && (
+              <div className="flex items-center gap-2">
+                <select
+                  value={ledgerYear === '' ? '' : String(ledgerYear)}
+                  onChange={e => setLedgerYear(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-app-border bg-app-card text-app-text outline-none"
+                  aria-label="Filter by year"
+                >
+                  <option value="">All years</option>
+                  {Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select
+                  value={ledgerMonth === '' ? '' : String(ledgerMonth)}
+                  onChange={e => setLedgerMonth(e.target.value === '' ? '' : Number(e.target.value))}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-app-border bg-app-card text-app-text outline-none"
+                  aria-label="Filter by month"
+                >
+                  <option value="">All months</option>
+                  {['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'].map((m, i) => (
+                    <option key={i+1} value={i+1}>{m}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          <div className="p-4 sm:p-6">
+            {!isApi ? (
+              <p className="text-sm text-app-muted py-8 text-center">Ledger is available in server mode only.</p>
+            ) : ledgerLoading ? (
+              <div className="flex items-center justify-center py-16"><Loader2 size={24} className="animate-spin text-app-muted" /></div>
+            ) : (
+              <div className="space-y-4">
+                {/* Balance summary */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {[
+                    { label: 'Total Earned', value: ledgerData?.summary?.totalDebit ?? 0, color: 'text-app-text' },
+                    { label: 'Total Paid', value: ledgerData?.summary?.totalCredit ?? 0, color: 'text-ds-success' },
+                    { label: 'Payable', value: ledgerData?.summary?.payableAmount ?? 0, color: 'text-ds-warning' },
+                    { label: 'Advance', value: ledgerData?.summary?.advanceAmount ?? 0, color: 'text-red-500' },
+                  ].map(c => (
+                    <div key={c.label} className="bg-app-toolbar/40 rounded-xl p-3 border border-app-border">
+                      <p className="text-[10px] font-bold text-app-muted uppercase tracking-wider mb-1">{c.label}</p>
+                      <p className={`text-sm font-black tabular-nums ${c.color}`}>
+                        PKR {Number(c.value).toLocaleString('en-PK', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {/* Virtualized ledger table */}
+                <VirtualizedPayrollEmployeeLedgerTable
+                  rows={(ledgerData?.transactions ?? []).map(mapLedgerApiRow)}
+                  loading={ledgerLoading}
+                  emptyMessage="No ledger transactions found for the selected period."
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Attendance View */}
+      {viewMode === 'attendance' && (() => {
+        const now = new Date();
+        const curMonth = now.getMonth() + 1;
+        const curYear = now.getFullYear();
+        const thisMonthRecords = attendanceRecords.filter((r: any) => {
+          const d = r.attendance_date?.slice(0, 7);
+          return d === `${curYear}-${String(curMonth).padStart(2, '0')}`;
+        });
+        const attCounts = { PRESENT: 0, ABSENT: 0, LEAVE: 0, HALF_DAY: 0, LATE: 0 };
+        thisMonthRecords.forEach((r: any) => { if (r.status in attCounts) (attCounts as any)[r.status]++; });
+
+        return (
+          <div className="bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden min-h-[400px]">
+            <div className="p-4 sm:p-6 border-b border-app-border bg-app-toolbar/40">
+              <h3 className="text-xl font-black text-app-text tracking-tight">Attendance</h3>
+              <p className="text-sm text-app-muted mt-0.5">{employee.name} — attendance history.</p>
+            </div>
+            <div className="p-4 sm:p-6 space-y-5">
+              {!isApi ? (
+                <p className="text-sm text-app-muted py-8 text-center">Attendance is available in server mode only.</p>
+              ) : attendanceLoading ? (
+                <div className="flex items-center justify-center py-16"><Loader2 size={24} className="animate-spin text-app-muted" /></div>
+              ) : (
+                <>
+                  {/* Current month summary */}
+                  <div>
+                    <p className="text-xs font-black text-app-muted uppercase tracking-widest mb-2">
+                      {now.toLocaleString('default', { month: 'long' })} {curYear} Summary
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {([
+                        { label: 'Present', count: attCounts.PRESENT, color: 'bg-ds-success/15 text-ds-success' },
+                        { label: 'Absent', count: attCounts.ABSENT, color: 'bg-red-100 text-red-600' },
+                        { label: 'Leave', count: attCounts.LEAVE, color: 'bg-primary/15 text-primary' },
+                        { label: 'Half Day', count: attCounts.HALF_DAY, color: 'bg-ds-warning/15 text-ds-warning' },
+                        { label: 'Late', count: attCounts.LATE, color: 'bg-amber-100 text-amber-700' },
+                      ]).map(s => (
+                        <div key={s.label} className={`rounded-xl p-3 border border-app-border text-center ${s.color}`}>
+                          <p className="text-2xl font-black tabular-nums">{s.count}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-widest mt-0.5">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* History table */}
+                  {attendanceRecords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-app-muted">
+                      <CalendarCheck size={40} className="mb-3 opacity-30" />
+                      <p className="font-bold">No attendance records found.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-app-border">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-app-toolbar/50 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
+                            <th className="px-4 py-3 text-left">Date</th>
+                            <th className="px-4 py-3 text-left">Status</th>
+                            <th className="px-4 py-3 text-left">Check In</th>
+                            <th className="px-4 py-3 text-left">Check Out</th>
+                            <th className="px-4 py-3 text-left">Remarks</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-app-border">
+                          {attendanceRecords.map((r: any) => {
+                            const statusColors: Record<string, string> = {
+                              PRESENT: 'bg-ds-success/15 text-ds-success', ABSENT: 'bg-red-100 text-red-600',
+                              LEAVE: 'bg-primary/15 text-primary', HALF_DAY: 'bg-ds-warning/15 text-ds-warning',
+                              LATE: 'bg-amber-100 text-amber-600',
+                            };
+                            return (
+                              <tr key={r.id} className="hover:bg-app-toolbar/30 transition-colors">
+                                <td className="px-4 py-2.5 text-app-text font-medium text-sm">{r.attendance_date}</td>
+                                <td className="px-4 py-2.5">
+                                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColors[r.status] ?? 'bg-app-toolbar text-app-muted'}`}>{r.status}</span>
+                                </td>
+                                <td className="px-4 py-2.5 text-app-muted text-xs">{r.check_in ?? '—'}</td>
+                                <td className="px-4 py-2.5 text-app-muted text-xs">{r.check_out ?? '—'}</td>
+                                <td className="px-4 py-2.5 text-app-muted text-xs">{r.remarks ?? '—'}</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Leave View */}
+      {viewMode === 'leave' && (() => {
+        const filteredLeave = leaveStatusFilter === 'all'
+          ? leaveRequests
+          : leaveRequests.filter((r: any) => r.status === leaveStatusFilter);
+        const statusColors: Record<string, string> = {
+          PENDING: 'bg-ds-warning/15 text-ds-warning',
+          APPROVED: 'bg-ds-success/15 text-ds-success',
+          REJECTED: 'bg-red-100 text-red-600',
+          CANCELLED: 'bg-app-toolbar text-app-muted',
+        };
+        return (
+          <div className="bg-app-card rounded-3xl shadow-ds-card border border-app-border overflow-hidden min-h-[400px]">
+            <div className="p-4 sm:p-6 border-b border-app-border bg-app-toolbar/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xl font-black text-app-text tracking-tight">Leave</h3>
+                <p className="text-sm text-app-muted mt-0.5">Balances and history for {employee.name}.</p>
+              </div>
+              {isApi && (
+                <select
+                  value={leaveStatusFilter}
+                  onChange={e => setLeaveStatusFilter(e.target.value)}
+                  className="text-xs font-bold px-3 py-1.5 rounded-lg border border-app-border bg-app-card text-app-text outline-none"
+                  aria-label="Filter by leave status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="CANCELLED">Cancelled</option>
+                </select>
+              )}
+            </div>
+            <div className="p-4 sm:p-6 space-y-5">
+              {!isApi ? (
+                <p className="text-sm text-app-muted py-8 text-center">Leave history is available in server mode only.</p>
+              ) : leaveLoading ? (
+                <div className="flex items-center justify-center py-16"><Loader2 size={24} className="animate-spin text-app-muted" /></div>
+              ) : (
+                <>
+                  {/* Leave balances */}
+                  {leaveBalances.length > 0 && (
+                    <div>
+                      <p className="text-xs font-black text-app-muted uppercase tracking-widest mb-2">Leave Balances ({new Date().getFullYear()})</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {leaveBalances.map((b: any) => (
+                          <div key={b.id} className="bg-app-toolbar/40 rounded-xl p-3 border border-app-border">
+                            <p className="text-xs font-bold text-app-text truncate">{b.leave_type_name ?? 'Leave'}</p>
+                            <div className="flex items-end gap-1 mt-1">
+                              <span className="text-xl font-black text-primary tabular-nums">{b.balance_days ?? 0}</span>
+                              <span className="text-xs text-app-muted mb-0.5">/ {b.allocated_days ?? 0} days</span>
+                            </div>
+                            <p className="text-[10px] text-app-muted mt-0.5">{b.used_days ?? 0} used</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Leave history */}
+                  {filteredLeave.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-app-muted">
+                      <CalendarOff size={40} className="mb-3 opacity-30" />
+                      <p className="font-bold">{leaveRequests.length === 0 ? 'No leave requests found.' : 'No requests match filter.'}</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto rounded-xl border border-app-border">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-app-toolbar/50 border-b border-app-border text-[10px] font-black text-app-muted uppercase tracking-widest">
+                            <th className="px-4 py-3 text-left">From</th>
+                            <th className="px-4 py-3 text-left">To</th>
+                            <th className="px-4 py-3 text-right">Days</th>
+                            <th className="px-4 py-3 text-left">Type</th>
+                            <th className="px-4 py-3 text-left">Status</th>
+                            <th className="px-4 py-3 text-left">Reason</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-app-border">
+                          {filteredLeave.map((r: any) => (
+                            <tr key={r.id} className="hover:bg-app-toolbar/30 transition-colors">
+                              <td className="px-4 py-2.5 text-app-text font-medium text-sm whitespace-nowrap">{r.from_date}</td>
+                              <td className="px-4 py-2.5 text-app-text text-sm whitespace-nowrap">{r.to_date}</td>
+                              <td className="px-4 py-2.5 text-right font-black text-app-text">{r.days}</td>
+                              <td className="px-4 py-2.5 text-app-muted text-xs">{r.leave_type_name ?? r.leave_type_id}</td>
+                              <td className="px-4 py-2.5">
+                                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${statusColors[r.status] ?? 'bg-app-toolbar text-app-muted'}`}>
+                                  {r.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-2.5 text-app-muted text-xs max-w-[180px] truncate">{r.reason ?? '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modals */}
       <ActionModal 
