@@ -104,9 +104,12 @@ _None — staging pilot ATP clean._
 
 ---
 
-## Evidence
+## References
 
-- JSON: `docs/security/staging-evidence/data-scope-pilot-atp.json`
+| Resource | Path |
+|----------|------|
+| **UAT test plan (manual)** | [`RBAC_DATA_SCOPE_UAT.md`](./RBAC_DATA_SCOPE_UAT.md) |
+| JSON evidence | `docs/security/staging-evidence/data-scope-pilot-atp.json` |
 - Enable flags: `node scripts/enable-rbac-data-scope-staging-env.mjs`
 - Re-run pilot: `node --import tsx scripts/rbac-data-scope-staging-pilot.mjs --all`
 
