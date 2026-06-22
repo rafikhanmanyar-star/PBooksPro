@@ -43,6 +43,7 @@ import { auditRequestContextMiddleware } from './middleware/auditRequestContext.
 import { sendLivenessResponse } from './routes/healthLiveness.js';
 import { registerGracefulShutdown } from './gracefulShutdown.js';
 import { logRbacDebugStartup } from './auth/rbacDebugStartup.js';
+import { poolOwnershipMiddleware, getPoolOwnershipReport } from './db/poolOwnership.js';
 
 function getMonorepoPackageVersion(): string {
   try {
@@ -73,6 +74,8 @@ app.use('/api/whatsapp/webhook', express.json({ limit: '2mb' }), whatsappWebhook
 
 app.use(express.json({ limit: '2mb' }));
 app.use(requestLoggingMiddleware);
+// Pool ownership tracker must come after requestLoggingMiddleware so requestId is set
+app.use(poolOwnershipMiddleware());
 app.use(performanceTimingMiddleware);
 app.use(idempotencyBodyMiddleware);
 app.use(idempotencyMiddleware);
@@ -159,6 +162,12 @@ app.get(
     }
   }
 );
+
+/** Pool ownership report — investigation only, gated by PBOOKS_PERF_POOL_OWNERSHIP=1. */
+app.get('/api/v1/pool-ownership/report', authMiddleware, (req, res) => {
+  const report = getPoolOwnershipReport(20);
+  res.json({ success: true, data: report });
+});
 
 /** Standalone admin portal — not tenant-scoped, not versioned. */
 app.use('/api/admin', adminPortalRouter);

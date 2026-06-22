@@ -30,8 +30,10 @@ import {
   recordRbacStaleAv,
 } from './rbacV2Metrics.js';
 import { validateBreakGlassSession } from '../modules/rbac/services/rbacBreakGlassService.js';
-import { resolveDataScopeMaterial } from './dataScopeResolver.js';
-import { resolveApprovalMaterial } from './approvalCapabilityResolver.js';
+import { hashStoredDataScopeRows, resolveDataScopeMaterial } from './dataScopeResolver.js';
+import { hashStoredApprovalRows, resolveApprovalMaterial } from './approvalCapabilityResolver.js';
+import { isRbacV2DataScopeEnabled } from './rbacDataScopeFeatureFlag.js';
+import { isRbacV2ApprovalMatrixEnabled } from './rbacApprovalFeatureFlag.js';
 
 export type AuthorizationEngineResult =
   | { ok: true; context: EffectiveAccessContext }
@@ -63,21 +65,25 @@ export async function resolveAuthorizationContext(input: {
     breakGlassSessionId: input.breakGlassSessionId,
   });
 
-  const scopeMaterial = await resolveDataScopeMaterial({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    assignments,
-    isBreakGlass: Boolean(input.breakGlassSessionId),
-    client: input.client,
-  });
+  const scopeMaterial = isRbacV2DataScopeEnabled()
+    ? await resolveDataScopeMaterial({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        assignments,
+        isBreakGlass: Boolean(input.breakGlassSessionId),
+        client: input.client,
+      })
+    : { scopeHash: hashStoredDataScopeRows([]), scopes: [] };
 
-  const approvalMaterial = await resolveApprovalMaterial({
-    tenantId: input.tenantId,
-    userId: input.userId,
-    permissions,
-    assignments,
-    client: input.client,
-  });
+  const approvalMaterial = isRbacV2ApprovalMatrixEnabled()
+    ? await resolveApprovalMaterial({
+        tenantId: input.tenantId,
+        userId: input.userId,
+        permissions,
+        assignments,
+        client: input.client,
+      })
+    : { approvalHash: hashStoredApprovalRows([]), approvalCapabilities: [] };
 
   const material = await loadAccessVersionMaterial(input.tenantId, input.userId, input.client, {
     breakGlassSessionId: input.breakGlassSessionId,

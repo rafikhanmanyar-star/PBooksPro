@@ -67,12 +67,23 @@ payrollRouter.get('/payroll/departments', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const t0 = perfPayrollNow();
+  perfPayrollLog('[PERF] GET /payroll/departments route-entry', 0, { tenantId });
   try {
     const pool = getPool();
+    const tAcqStart = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/departments db-acquire-start', tAcqStart - t0, { pool_total: pool.totalCount, pool_idle: pool.idleCount, pool_waiting: pool.waitingCount });
     const c = await pool.connect();
+    const tAcqEnd = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/departments db-acquire-complete', tAcqEnd - t0, { waitMs: tAcqEnd - tAcqStart });
     try {
+      const tQStart = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/departments query-start', tQStart - t0);
       const rows = await listDepartments(c, tenantId);
+      const tQEnd = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/departments query-end', tQEnd - t0, { queryMs: tQEnd - tQStart, rowCount: rows.length });
       sendSuccess(res, rows.map((r) => rowToDepartmentApi(r)));
+      perfPayrollLog('[PERF] GET /payroll/departments response-sent', perfPayrollNow() - t0);
     } finally {
       c.release();
     }
@@ -239,12 +250,23 @@ payrollRouter.get('/payroll/grades', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const t0 = perfPayrollNow();
+  perfPayrollLog('[PERF] GET /payroll/grades route-entry', 0, { tenantId });
   try {
     const pool = getPool();
+    const tAcqStart = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/grades db-acquire-start', tAcqStart - t0, { pool_total: pool.totalCount, pool_idle: pool.idleCount, pool_waiting: pool.waitingCount });
     const c = await pool.connect();
+    const tAcqEnd = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/grades db-acquire-complete', tAcqEnd - t0, { waitMs: tAcqEnd - tAcqStart });
     try {
+      const tQStart = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/grades query-start', tQStart - t0);
       const rows = await listGrades(c, tenantId);
+      const tQEnd = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/grades query-end', tQEnd - t0, { queryMs: tQEnd - tQStart, rowCount: rows.length });
       sendSuccess(res, rows.map((r) => rowToGradeApi(r)));
+      perfPayrollLog('[PERF] GET /payroll/grades response-sent', perfPayrollNow() - t0);
     } finally {
       c.release();
     }
@@ -295,15 +317,28 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const t0 = perfPayrollNow();
+  perfPayrollLog('[PERF] GET /payroll/employees route-entry', 0, { tenantId });
   const query = req.query as Record<string, unknown>;
+  const isPaginated = hasPaginationQuery(query);
   try {
     const pool = getPool();
+    const tAcqStart = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/employees db-acquire-start', tAcqStart - t0, { pool_total: pool.totalCount, pool_idle: pool.idleCount, pool_waiting: pool.waitingCount, paginated: isPaginated });
     const c = await pool.connect();
+    const tAcqEnd = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/employees db-acquire-complete', tAcqEnd - t0, { waitMs: tAcqEnd - tAcqStart });
     try {
       const scopeCtx = dataScopeContextFromRequest(req);
-      if (!hasPaginationQuery(query)) {
+      perfPayrollLog('[PERF] GET /payroll/employees auth-complete', perfPayrollNow() - t0, { scopeEnabled: scopeCtx.enabled });
+      if (!isPaginated) {
+        const tQStart = perfPayrollNow();
+        perfPayrollLog('[PERF] GET /payroll/employees query-start (list-all)', tQStart - t0);
         const rows = await listEmployees(c, tenantId, scopeCtx);
+        const tQEnd = perfPayrollNow();
+        perfPayrollLog('[PERF] GET /payroll/employees query-end (list-all)', tQEnd - t0, { queryMs: tQEnd - tQStart, rowCount: rows.length });
         sendSuccess(res, rows.map((r) => rowToEmployeeApi(r)));
+        perfPayrollLog('[PERF] GET /payroll/employees response-sent', perfPayrollNow() - t0);
         return;
       }
 
@@ -314,6 +349,8 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
       const departmentId =
         typeof query.departmentId === 'string' ? query.departmentId : undefined;
 
+      const tQStart = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/employees query-start (paginated count+page)', tQStart - t0, { page, pageSize, search: !!search });
       const { rows, total } = await listEmployeesPage(c, tenantId, {
         page,
         pageSize,
@@ -324,10 +361,13 @@ payrollRouter.get('/payroll/employees', async (req: AuthedRequest, res) => {
         sortBy,
         sortDir,
       }, scopeCtx);
+      const tQEnd = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/employees query-end (paginated count+page)', tQEnd - t0, { queryMs: tQEnd - tQStart, rowCount: rows.length, total });
       sendSuccess(
         res,
         buildPaginatedResponse(rows.map((r) => rowToEmployeeApi(r)), total, page, pageSize)
       );
+      perfPayrollLog('[PERF] GET /payroll/employees response-sent', perfPayrollNow() - t0);
     } finally {
       c.release();
     }
@@ -512,13 +552,25 @@ payrollRouter.get('/payroll/runs', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const t0 = perfPayrollNow();
+  perfPayrollLog('[PERF] GET /payroll/runs route-entry', 0, { tenantId });
   try {
     const pool = getPool();
+    const tAcqStart = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/runs db-acquire-start', tAcqStart - t0, { pool_total: pool.totalCount, pool_idle: pool.idleCount, pool_waiting: pool.waitingCount });
     const c = await pool.connect();
+    const tAcqEnd = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/runs db-acquire-complete', tAcqEnd - t0, { waitMs: tAcqEnd - tAcqStart });
     try {
       const scopeCtx = dataScopeContextFromRequest(req);
+      perfPayrollLog('[PERF] GET /payroll/runs auth-complete', perfPayrollNow() - t0, { scopeEnabled: scopeCtx.enabled });
+      const tQStart = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/runs query-start', tQStart - t0);
       const rows = await listPayrollRuns(c, tenantId, scopeCtx);
+      const tQEnd = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/runs query-end', tQEnd - t0, { queryMs: tQEnd - tQStart, rowCount: rows.length });
       sendSuccess(res, rows.map((r) => rowToPayrollRunApi(r)));
+      perfPayrollLog('[PERF] GET /payroll/runs response-sent', perfPayrollNow() - t0);
     } finally {
       c.release();
     }
@@ -865,12 +917,24 @@ payrollRouter.get('/payroll/earning-types', async (req: AuthedRequest, res) => {
     sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
     return;
   }
+  const t0 = perfPayrollNow();
+  perfPayrollLog('[PERF] GET /payroll/earning-types route-entry', 0, { tenantId });
   try {
     const pool = getPool();
+    const tAcqStart = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/earning-types db-acquire-start', tAcqStart - t0, { pool_total: pool.totalCount, pool_idle: pool.idleCount, pool_waiting: pool.waitingCount });
     const c = await pool.connect();
+    const tAcqEnd = perfPayrollNow();
+    perfPayrollLog('[PERF] GET /payroll/earning-types db-acquire-complete', tAcqEnd - t0, { waitMs: tAcqEnd - tAcqStart });
     try {
+      const tQStart = perfPayrollNow();
+      // getTenantConfig issues 1 SELECT; if no row exists it issues INSERT ON CONFLICT then a 2nd SELECT
+      perfPayrollLog('[PERF] GET /payroll/earning-types query-start', tQStart - t0);
       const cfg = await getTenantConfig(c, tenantId);
+      const tQEnd = perfPayrollNow();
+      perfPayrollLog('[PERF] GET /payroll/earning-types query-end', tQEnd - t0, { queryMs: tQEnd - tQStart, earningTypeCount: Array.isArray(cfg.earning_types) ? cfg.earning_types.length : -1 });
       sendSuccess(res, cfg.earning_types);
+      perfPayrollLog('[PERF] GET /payroll/earning-types response-sent', perfPayrollNow() - t0);
     } finally {
       c.release();
     }

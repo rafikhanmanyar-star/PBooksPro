@@ -14,6 +14,8 @@ import {
 } from './dataScopeResolver.js';
 import type { ScopeDimension } from './dataScopeTypes.js';
 import { hashStoredApprovalRows, resolveApprovalMaterial } from './approvalCapabilityResolver.js';
+import { isRbacV2DataScopeEnabled } from './rbacDataScopeFeatureFlag.js';
+import { isRbacV2ApprovalMatrixEnabled } from './rbacApprovalFeatureFlag.js';
 
 export type AccessVersionMaterial = {
   tenantId: string;
@@ -135,20 +137,24 @@ export async function loadAccessVersionMaterial(
     // User suspension: users.is_active is canonical (authMiddleware blocks inactive users).
     // users.suspended_at is not yet in schema — null placeholder until a future migration.
     const assignments = await resolveActiveRoleAssignments(tenantId, userId, executor);
-    const scopeMaterial = await resolveDataScopeMaterial({
-      tenantId,
-      userId,
-      assignments,
-      isBreakGlass: Boolean(options?.breakGlassSessionId),
-      client: executor,
-    });
-    const approvalMaterial = await resolveApprovalMaterial({
-      tenantId,
-      userId,
-      permissions: assignments.flatMap((a) => a.permissionKeys),
-      assignments,
-      client: executor,
-    });
+    const scopeMaterial = isRbacV2DataScopeEnabled()
+      ? await resolveDataScopeMaterial({
+          tenantId,
+          userId,
+          assignments,
+          isBreakGlass: Boolean(options?.breakGlassSessionId),
+          client: executor,
+        })
+      : { scopeHash: hashStoredDataScopeRows([]), scopes: [] };
+    const approvalMaterial = isRbacV2ApprovalMatrixEnabled()
+      ? await resolveApprovalMaterial({
+          tenantId,
+          userId,
+          permissions: assignments.flatMap((a) => a.permissionKeys),
+          assignments,
+          client: executor,
+        })
+      : { approvalHash: hashStoredApprovalRows([]), approvalCapabilities: [] };
     return buildAccessVersionMaterial({
       tenantId,
       userId,
