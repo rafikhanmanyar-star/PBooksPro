@@ -1,0 +1,98 @@
+{
+  "program": "nav-overlay-probe",
+  "environment": {
+    "app": "https://app.pbookspro.com",
+    "api": "https://api.pbookspro.com/api/v1",
+    "tenant": "ATP",
+    "userRole": "Admin",
+    "deployVersion": "2026.06.22.daae718",
+    "packageVersion": "1.2.463"
+  },
+  "sessions": [
+    {
+      "label": "session-1-rapid-nav",
+      "capturedAt": "2026-06-22T14:37:44.509Z",
+      "totalEvents": 16,
+      "overlayDurationsMs": [],
+      "overlayHideCount": 0,
+      "navClickCount": 7,
+      "api503Count": 2,
+      "notes": "Overlay never cleared during session; probe installed while overlay already visible on Dashboard."
+    },
+    {
+      "label": "session-2-extended-same-page",
+      "capturedAt": "2026-06-22T14:41:15.717Z",
+      "totalEvents": 43,
+      "overlayDurationsMs": [
+        { "durationMs": 92925, "navId": "nav-1782139021569", "module": "Rental" },
+        { "durationMs": 35981, "navId": "nav-1782139021569", "module": "Rental" },
+        { "durationMs": 4642, "navId": "nav-1782139201023" },
+        { "durationMs": 53539, "navId": "nav-1782139201023" }
+      ],
+      "overlayHideCount": 4,
+      "api503Count": 18,
+      "api503Window": {
+        "start": "2026-06-22T14:36:59.768Z",
+        "end": "2026-06-22T14:39:50.835Z",
+        "durationSeconds": 171
+      },
+      "notes": "Merged with session-1 events (page not refreshed). Sustained 503 retry storm on bulk endpoints after Rental navigation."
+    }
+  ],
+  "summary": {
+    "overlayDurationMs": {
+      "min": 4642,
+      "max": 92925,
+      "median": 44760,
+      "targetMs": 500
+    },
+    "api503ByEndpoint": {
+      "/state/bulk": 12,
+      "/state/bulk-chunked": 6
+    },
+    "primaryNavTrigger": {
+      "navId": "nav-1782139021569",
+      "clickedLabel": "Rental",
+      "fromPage": "PROJECT",
+      "toPage": "RENTAL"
+    },
+    "rootCauseClass": "POOL_SATURATED",
+    "serverProbeAvailable": false,
+    "clientStartupPerfAvailable": "not verified in capture"
+  },
+  "apiErrors": [
+    { "at": "2026-06-22T14:36:59.768Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139013406" },
+    { "at": "2026-06-22T14:37:35.456Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:37:45.157Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:37:51.363Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:37:51.563Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:37:54.568Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:37:58.661Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:38:02.639Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:38:15.861Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:38:20.669Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:38:42.246Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:06.529Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:13.464Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:25.572Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:29.561Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:30.264Z", "url": "https://api.pbookspro.com/api/v1/state/bulk-chunked", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:37.957Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" },
+    { "at": "2026-06-22T14:39:50.835Z", "url": "https://api.pbookspro.com/api/v1/state/bulk", "status": 503, "navId": "nav-1782139021569" }
+  ],
+  "navigationTimeline": [
+    { "at": "2026-06-22T14:36:19.232Z", "event": "overlay_show", "page": "Dashboard" },
+    { "at": "2026-06-22T14:36:45.093Z", "event": "nav_click", "label": "General Ledger", "from": "DASHBOARD" },
+    { "at": "2026-06-22T14:36:46.268Z", "event": "nav_click", "label": "Dashboard", "from": "TRANSACTIONS" },
+    { "at": "2026-06-22T14:36:46.952Z", "event": "nav_click", "label": "Accounting", "from": "DASHBOARD" },
+    { "at": "2026-06-22T14:36:48.825Z", "event": "nav_click", "label": "Inv Mgmt", "from": "ACCOUNTING" },
+    { "at": "2026-06-22T14:36:53.407Z", "event": "nav_click", "label": "Project construction", "from": "INVESTMENT" },
+    { "at": "2026-06-22T14:37:01.569Z", "event": "nav_click", "label": "Rental", "from": "PROJECT" }
+  ],
+  "captureSource": "scripts/perf/nav-overlay-probe.browser.js",
+  "reportRefs": [
+    "docs/performance/cloud/reports/01-performance-baseline.md",
+    "docs/performance/cloud/reports/03-pool-analysis.md",
+    "docs/performance/cloud/reports/06-optimization-roadmap.md"
+  ]
+}
