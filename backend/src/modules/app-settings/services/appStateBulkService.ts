@@ -93,13 +93,20 @@ function _bsgRelease(): void {
   if (next) { next(); } else { _bsgCount++; }
 }
 
-/** Loaded on GET /state/bulk-chunked offset=0 (PERF-A6.1 — keep startup payload small). */
+/**
+ * Loaded on GET /state/bulk-chunked offset=0.
+ * contacts, invoices, bills are included here so the dashboard deferred bootstrap
+ * (usePageGroupDeferredBootstrap DASHBOARD) finds them already populated and never
+ * fires a separate GET /state/bulk?entities=invoices,bills,contacts during startup.
+ * That separate request collided with the offset=0 chunk, hit shedIfPoolSaturated,
+ * returned 503, opened the bulk breaker, and triggered the 27-request loadState() fallback.
+ */
 export const BULK_BOOTSTRAP_STATIC_ENTITIES =
-  'accounts,categories,projects,buildings,properties,units,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,personalCategories,appSettings';
+  'accounts,categories,contacts,projects,buildings,properties,units,invoices,bills,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,personalCategories,appSettings';
 
 /** Deferred to on-demand GET /state/bulk?entities=… when a page needs them (not startup). */
 export const BULK_DEFERRED_ENTITIES =
-  'invoices,bills,contacts,vendors,personalTransactions';
+  'vendors,personalTransactions';
 
 const BULK_STATIC_ENTITIES = BULK_BOOTSTRAP_STATIC_ENTITIES;
 
