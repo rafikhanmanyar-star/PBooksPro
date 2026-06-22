@@ -1050,7 +1050,19 @@ export class AppStateApiService {
   }
 
   /**
-   * Preferred path for full refresh / fallback sync: chunked bulk load, then bulk, then parallel loadState().
+   * Preferred path for full refresh / fallback sync: chunked bulk load, then single-shot bulk.
+   *
+   * Fallback chain:
+   *   1. GET /state/bulk-chunked  (paginated; includes static entities on offset=0)
+   *   2. GET /state/bulk          (single-shot; has its own 404→loadState() for old deploys)
+   *
+   * loadState() (27 parallel requests) is intentionally NOT called from this method.
+   * A 503/POOL_SATURATED/circuit-open error on either bulk path must surface to the caller
+   * so it can respect the breaker cooldown and retry later. Cascading to 27 individual
+   * requests on a saturated pool worsens every other user's latency and converts one 503
+   * into ~80 additional network requests.
+   *
+   * The 404→loadState() fallback for old server deploys is preserved inside loadStateBulk().
    */
   async loadStateForSyncRefresh(
     onProgress?: (loaded: number, total: number) => void
@@ -1059,13 +1071,13 @@ export class AppStateApiService {
       const partial = await this.loadStateBulkChunked(onProgress);
       return partial;
     } catch (chunkErr) {
-      // Server busy / unreachable: do NOT cascade to the single-shot bulk or the
-      // 27-request parallel loadState() — that amplifies load and deepens the pool
-      // queue. Propagate so the caller can back off (breaker is already tracking it).
+      // Server busy / unreachable: do NOT cascade — that amplifies pool pressure.
       if (isBulkLoadUnavailable(chunkErr)) {
         logger.warnCategory('sync', 'Chunked state load unavailable (server busy); backing off:', chunkErr);
         throw chunkErr;
       }
+      // Non-transient failure on /state/bulk-chunked (unexpected server error, parse
+      // failure, etc.). Try the single-shot bulk endpoint before giving up.
       logger.warnCategory('sync', 'Chunked state load failed; trying GET /state/bulk:', chunkErr);
       try {
         const partial = await this.loadStateBulk();
@@ -1075,9 +1087,11 @@ export class AppStateApiService {
           logger.warnCategory('sync', 'Bulk state load unavailable (server busy); backing off:', bulkErr);
           throw bulkErr;
         }
-        logger.warnCategory('sync', 'Bulk state load failed; falling back to parallel loadState():', bulkErr);
-        const partial = await this.loadState();
-        return partial;
+        // Both bulk paths failed with non-transient errors. Propagate so the caller
+        // can log and the retry machinery can recover. Never call loadState() here —
+        // 27 parallel requests on a struggling server converts one failure into ~80.
+        logger.warnCategory('sync', 'Both bulk paths failed; propagating without loadState() fallback:', bulkErr);
+        throw bulkErr;
       }
     }
   }
