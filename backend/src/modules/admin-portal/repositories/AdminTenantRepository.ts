@@ -184,7 +184,7 @@ export class AdminTenantRepository {
 
   async listTenantModules(tenantId: string): Promise<unknown[]> {
     const { rows } = await this.pool().query(
-      `SELECT module_key, status, activated_at, expires_at FROM tenant_modules WHERE tenant_id = $1`,
+      `SELECT module_key, status, updated_at AS activated_at, expires_at FROM tenant_modules WHERE tenant_id = $1`,
       [tenantId]
     );
     return rows;

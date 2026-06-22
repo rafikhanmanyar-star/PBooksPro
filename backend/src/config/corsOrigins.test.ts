@@ -4,6 +4,7 @@ import {
   isCorsAllowAll,
   isOriginAllowed,
   parseCorsOriginsFromEnv,
+  resolveExpressCorsOrigin,
   resolveSocketIoCorsOrigin,
 } from './corsOrigins.js';
 
@@ -63,11 +64,49 @@ describe('corsOrigins', () => {
     else process.env.CORS_ALLOW_ALL = prevAllowAll;
   });
 
+  it('includes production admin portal origin when NODE_ENV=production', () => {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const origins = parseCorsOriginsFromEnv();
+      assert.ok(origins.includes('https://admin.pbookspro.com'));
+      assert.ok(isOriginAllowed('https://admin.pbookspro.com', origins));
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+    }
+  });
+
+  it('resolveExpressCorsOrigin allows admin portal in production', async () => {
+    const prevEnv = process.env.NODE_ENV;
+    const prevAllowAll = process.env.CORS_ALLOW_ALL;
+    process.env.NODE_ENV = 'production';
+    delete process.env.CORS_ALLOW_ALL;
+    try {
+      const resolver = resolveExpressCorsOrigin();
+      assert.notEqual(resolver, true);
+      if (typeof resolver !== 'function') {
+        assert.fail('expected callback resolver');
+      }
+      const allowed = await new Promise<boolean>((resolve, reject) => {
+        resolver('https://admin.pbookspro.com', (err, allow) => {
+          if (err) reject(err);
+          else resolve(!!allow);
+        });
+      });
+      assert.equal(allowed, true);
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+      if (prevAllowAll === undefined) delete process.env.CORS_ALLOW_ALL;
+      else process.env.CORS_ALLOW_ALL = prevAllowAll;
+    }
+  });
+
   it('CORS_ALLOW_ALL returns true resolver', () => {
     const prev = process.env.CORS_ALLOW_ALL;
     process.env.CORS_ALLOW_ALL = 'true';
     try {
       assert.equal(resolveSocketIoCorsOrigin(), true);
+      assert.equal(resolveExpressCorsOrigin(), true);
       assert.equal(isCorsAllowAll(), true);
     } finally {
       if (prev === undefined) delete process.env.CORS_ALLOW_ALL;

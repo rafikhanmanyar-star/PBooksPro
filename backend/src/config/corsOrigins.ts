@@ -12,6 +12,16 @@ const DEFAULT_LOCAL_ORIGINS = [
   'file://',
 ];
 
+/** Production cloud admin + app origins (used when env vars are unset on Render). */
+const DEFAULT_PRODUCTION_ORIGINS = [
+  'https://admin.pbookspro.com',
+  'https://app.pbookspro.com',
+  'https://www.pbookspro.com',
+  'https://pbookspro.com',
+  'https://staging.pbookspro.com',
+  'https://admin-staging.pbookspro.com',
+];
+
 export function isCorsAllowAll(): boolean {
   return process.env.CORS_ALLOW_ALL === 'true';
 }
@@ -23,9 +33,29 @@ export function parseCorsOriginsFromEnv(): string[] {
       .map((s) => s.trim())
       .filter(Boolean) ?? [];
   const frontend = process.env.FRONTEND_URL?.trim();
-  const origins = new Set([...DEFAULT_LOCAL_ORIGINS, ...extra]);
+  const adminPortal = process.env.ADMIN_PORTAL_URL?.trim();
+  const productionDefaults =
+    process.env.NODE_ENV === 'production' ? DEFAULT_PRODUCTION_ORIGINS : [];
+  const origins = new Set([...DEFAULT_LOCAL_ORIGINS, ...productionDefaults, ...extra]);
   if (frontend) origins.add(frontend);
+  if (adminPortal) origins.add(adminPortal);
   return [...origins];
+}
+
+/** Express `cors()` origin option — allow-all escape hatch or dynamic allowlist. */
+export function resolveExpressCorsOrigin():
+  | true
+  | string[]
+  | ((origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => void) {
+  if (isCorsAllowAll()) return true;
+  const allowed = parseCorsOriginsFromEnv();
+  return (origin, callback) => {
+    if (!origin || isOriginAllowed(origin, allowed)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS origin not allowed: ${origin}`), false);
+  };
 }
 
 export function isOriginAllowed(origin: string | undefined, allowed: string[]): boolean {
