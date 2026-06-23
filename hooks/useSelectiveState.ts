@@ -16,7 +16,9 @@ import {
     _getInitialDataLoading,
     _getAppDataLoading,
     _getPageChunkLoading,
+    _getBootstrapSoftFailure,
     _subscribeAppState,
+    type BootstrapSoftFailureState,
 } from '../context/appStateStore';
 import { AppState, AppAction } from '../types';
 import { useGatedStateSelector } from './useGatedSubscription';
@@ -595,6 +597,12 @@ export function useInitialDataLoading(): boolean {
 /** True while SQLite/API hydration or lazy page chunks are still loading. */
 export function useAppDataLoading(): boolean {
     const getSnapshot = useCallback(() => _getAppDataLoading(), []);
+    return useSyncExternalStore(_subscribeAppState, getSnapshot);
+}
+
+/** Non-blocking bootstrap soft-failure banner (PERF-P3 overlay recovery). */
+export function useBootstrapSoftFailure(): BootstrapSoftFailureState {
+    const getSnapshot = useCallback(() => _getBootstrapSoftFailure(), []);
     return useSyncExternalStore(_subscribeAppState, getSnapshot);
 }
 

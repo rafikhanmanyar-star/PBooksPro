@@ -1,0 +1,709 @@
+{
+  "program": "PERF-P2-A",
+  "startedAt": "2026-06-23T02:40:45.596Z",
+  "environment": {
+    "apiPort": 3002,
+    "tenantId": "test-company",
+    "poolMax": 20,
+    "globalSlots": 8,
+    "shedWaitingThreshold": 12,
+    "note": "Variants applied via BULK_BOOTSTRAP_CONCURRENCY env at API spawn (no production code change)"
+  },
+  "variants": [
+    {
+      "variant": "A",
+      "label": "baseline",
+      "bootstrapConcurrency": 6,
+      "capacityEstimate": {
+        "bootstrapConcurrencySetting": 6,
+        "observedPeakActiveSingleUser": 16,
+        "theoreticalMinConnectionsPerUser": 8,
+        "estimatedUsersUntilActiveEqualsPoolMax": 1,
+        "estimatedUsersUntilShedRisk": 2,
+        "poolMax": 20,
+        "globalSlots": 8,
+        "shedWaitingThreshold": 12
+      },
+      "scenarios": [
+        {
+          "userCount": 1,
+          "loginMs": {
+            "avg": 240,
+            "max": 240
+          },
+          "dashboardMs": {
+            "avg": 244,
+            "max": 244
+          },
+          "bootstrapMs": {
+            "avg": 178,
+            "max": 178
+          },
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        },
+        {
+          "userCount": 3,
+          "loginMs": {
+            "avg": 268,
+            "max": 285
+          },
+          "dashboardMs": {
+            "avg": 157,
+            "max": 172
+          },
+          "bootstrapMs": {
+            "avg": 202,
+            "max": 214
+          },
+          "peakActive": 3,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        },
+        {
+          "userCount": 5,
+          "loginMs": {
+            "avg": 315,
+            "max": 352
+          },
+          "dashboardMs": {
+            "avg": 236,
+            "max": 250
+          },
+          "bootstrapMs": {
+            "avg": 250,
+            "max": 280
+          },
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        }
+      ],
+      "matrix": [
+        {
+          "variant": "A",
+          "bootstrapConcurrency": 6,
+          "users": 1,
+          "loginMsAvg": 240,
+          "loginMsMax": 240,
+          "dashboardMsAvg": 244,
+          "dashboardMsMax": 244,
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "A",
+          "bootstrapConcurrency": 6,
+          "users": 3,
+          "loginMsAvg": 268,
+          "loginMsMax": 285,
+          "dashboardMsAvg": 157,
+          "dashboardMsMax": 172,
+          "peakActive": 3,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "A",
+          "bootstrapConcurrency": 6,
+          "users": 5,
+          "loginMsAvg": 315,
+          "loginMsMax": 352,
+          "dashboardMsAvg": 236,
+          "dashboardMsMax": 250,
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        }
+      ]
+    },
+    {
+      "variant": "B",
+      "label": "reduced-3",
+      "bootstrapConcurrency": 3,
+      "capacityEstimate": {
+        "bootstrapConcurrencySetting": 3,
+        "observedPeakActiveSingleUser": 16,
+        "theoreticalMinConnectionsPerUser": 5,
+        "estimatedUsersUntilActiveEqualsPoolMax": 1,
+        "estimatedUsersUntilShedRisk": 2,
+        "poolMax": 20,
+        "globalSlots": 8,
+        "shedWaitingThreshold": 12
+      },
+      "scenarios": [
+        {
+          "userCount": 1,
+          "loginMs": {
+            "avg": 247,
+            "max": 247
+          },
+          "dashboardMs": {
+            "avg": 236,
+            "max": 236
+          },
+          "bootstrapMs": {
+            "avg": 195,
+            "max": 195
+          },
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        },
+        {
+          "userCount": 3,
+          "loginMs": {
+            "avg": 279,
+            "max": 290
+          },
+          "dashboardMs": {
+            "avg": 149,
+            "max": 159
+          },
+          "bootstrapMs": {
+            "avg": 222,
+            "max": 228
+          },
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        },
+        {
+          "userCount": 5,
+          "loginMs": {
+            "avg": 345,
+            "max": 385
+          },
+          "dashboardMs": {
+            "avg": 253,
+            "max": 266
+          },
+          "bootstrapMs": {
+            "avg": 273,
+            "max": 312
+          },
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        }
+      ],
+      "matrix": [
+        {
+          "variant": "B",
+          "bootstrapConcurrency": 3,
+          "users": 1,
+          "loginMsAvg": 247,
+          "loginMsMax": 247,
+          "dashboardMsAvg": 236,
+          "dashboardMsMax": 236,
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "B",
+          "bootstrapConcurrency": 3,
+          "users": 3,
+          "loginMsAvg": 279,
+          "loginMsMax": 290,
+          "dashboardMsAvg": 149,
+          "dashboardMsMax": 159,
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "B",
+          "bootstrapConcurrency": 3,
+          "users": 5,
+          "loginMsAvg": 345,
+          "loginMsMax": 385,
+          "dashboardMsAvg": 253,
+          "dashboardMsMax": 266,
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        }
+      ]
+    },
+    {
+      "variant": "C",
+      "label": "reduced-2",
+      "bootstrapConcurrency": 2,
+      "capacityEstimate": {
+        "bootstrapConcurrencySetting": 2,
+        "observedPeakActiveSingleUser": 18,
+        "theoreticalMinConnectionsPerUser": 4,
+        "estimatedUsersUntilActiveEqualsPoolMax": 1,
+        "estimatedUsersUntilShedRisk": 1,
+        "poolMax": 20,
+        "globalSlots": 8,
+        "shedWaitingThreshold": 12
+      },
+      "scenarios": [
+        {
+          "userCount": 1,
+          "loginMs": {
+            "avg": 343,
+            "max": 343
+          },
+          "dashboardMs": {
+            "avg": 261,
+            "max": 261
+          },
+          "bootstrapMs": {
+            "avg": 271,
+            "max": 271
+          },
+          "peakActive": 18,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        },
+        {
+          "userCount": 3,
+          "loginMs": {
+            "avg": 278,
+            "max": 292
+          },
+          "dashboardMs": {
+            "avg": 144,
+            "max": 152
+          },
+          "bootstrapMs": {
+            "avg": 209,
+            "max": 224
+          },
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        },
+        {
+          "userCount": 5,
+          "loginMs": {
+            "avg": 331,
+            "max": 359
+          },
+          "dashboardMs": {
+            "avg": 221,
+            "max": 237
+          },
+          "bootstrapMs": {
+            "avg": 268,
+            "max": 292
+          },
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        }
+      ],
+      "matrix": [
+        {
+          "variant": "C",
+          "bootstrapConcurrency": 2,
+          "users": 1,
+          "loginMsAvg": 343,
+          "loginMsMax": 343,
+          "dashboardMsAvg": 261,
+          "dashboardMsMax": 261,
+          "peakActive": 18,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "C",
+          "bootstrapConcurrency": 2,
+          "users": 3,
+          "loginMsAvg": 278,
+          "loginMsMax": 292,
+          "dashboardMsAvg": 144,
+          "dashboardMsMax": 152,
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "C",
+          "bootstrapConcurrency": 2,
+          "users": 5,
+          "loginMsAvg": 331,
+          "loginMsMax": 359,
+          "dashboardMsAvg": 221,
+          "dashboardMsMax": 237,
+          "peakActive": 4,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        }
+      ]
+    },
+    {
+      "variant": "D",
+      "label": "serial-1",
+      "bootstrapConcurrency": 1,
+      "capacityEstimate": {
+        "bootstrapConcurrencySetting": 1,
+        "observedPeakActiveSingleUser": 16,
+        "theoreticalMinConnectionsPerUser": 3,
+        "estimatedUsersUntilActiveEqualsPoolMax": 1,
+        "estimatedUsersUntilShedRisk": 2,
+        "poolMax": 20,
+        "globalSlots": 8,
+        "shedWaitingThreshold": 12
+      },
+      "scenarios": [
+        {
+          "userCount": 1,
+          "loginMs": {
+            "avg": 327,
+            "max": 327
+          },
+          "dashboardMs": {
+            "avg": 264,
+            "max": 264
+          },
+          "bootstrapMs": {
+            "avg": 260,
+            "max": 260
+          },
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        },
+        {
+          "userCount": 3,
+          "loginMs": {
+            "avg": 298,
+            "max": 400
+          },
+          "dashboardMs": {
+            "avg": 98,
+            "max": 115
+          },
+          "bootstrapMs": {
+            "avg": 242,
+            "max": 341
+          },
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 33
+        },
+        {
+          "userCount": 5,
+          "loginMs": {
+            "avg": 370,
+            "max": 408
+          },
+          "dashboardMs": {
+            "avg": 194,
+            "max": 221
+          },
+          "bootstrapMs": {
+            "avg": 308,
+            "max": 341
+          },
+          "peakActive": 3,
+          "peakWaiting": 0,
+          "saturatedFlag": false,
+          "count503": 0,
+          "poolSaturatedResponses": 0,
+          "breakerActivations": 0,
+          "allOk": true,
+          "poolSampleCount": 32
+        }
+      ],
+      "matrix": [
+        {
+          "variant": "D",
+          "bootstrapConcurrency": 1,
+          "users": 1,
+          "loginMsAvg": 327,
+          "loginMsMax": 327,
+          "dashboardMsAvg": 264,
+          "dashboardMsMax": 264,
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "D",
+          "bootstrapConcurrency": 1,
+          "users": 3,
+          "loginMsAvg": 298,
+          "loginMsMax": 400,
+          "dashboardMsAvg": 98,
+          "dashboardMsMax": 115,
+          "peakActive": 16,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        },
+        {
+          "variant": "D",
+          "bootstrapConcurrency": 1,
+          "users": 5,
+          "loginMsAvg": 370,
+          "loginMsMax": 408,
+          "dashboardMsAvg": 194,
+          "dashboardMsMax": 221,
+          "peakActive": 3,
+          "peakWaiting": 0,
+          "count503": 0,
+          "breakerActivations": 0,
+          "allOk": true
+        }
+      ]
+    }
+  ],
+  "flatMatrix": [
+    {
+      "variant": "A",
+      "bootstrapConcurrency": 6,
+      "users": 1,
+      "loginMsAvg": 240,
+      "loginMsMax": 240,
+      "dashboardMsAvg": 244,
+      "dashboardMsMax": 244,
+      "peakActive": 16,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "A",
+      "bootstrapConcurrency": 6,
+      "users": 3,
+      "loginMsAvg": 268,
+      "loginMsMax": 285,
+      "dashboardMsAvg": 157,
+      "dashboardMsMax": 172,
+      "peakActive": 3,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "A",
+      "bootstrapConcurrency": 6,
+      "users": 5,
+      "loginMsAvg": 315,
+      "loginMsMax": 352,
+      "dashboardMsAvg": 236,
+      "dashboardMsMax": 250,
+      "peakActive": 4,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "B",
+      "bootstrapConcurrency": 3,
+      "users": 1,
+      "loginMsAvg": 247,
+      "loginMsMax": 247,
+      "dashboardMsAvg": 236,
+      "dashboardMsMax": 236,
+      "peakActive": 16,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "B",
+      "bootstrapConcurrency": 3,
+      "users": 3,
+      "loginMsAvg": 279,
+      "loginMsMax": 290,
+      "dashboardMsAvg": 149,
+      "dashboardMsMax": 159,
+      "peakActive": 4,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "B",
+      "bootstrapConcurrency": 3,
+      "users": 5,
+      "loginMsAvg": 345,
+      "loginMsMax": 385,
+      "dashboardMsAvg": 253,
+      "dashboardMsMax": 266,
+      "peakActive": 4,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "C",
+      "bootstrapConcurrency": 2,
+      "users": 1,
+      "loginMsAvg": 343,
+      "loginMsMax": 343,
+      "dashboardMsAvg": 261,
+      "dashboardMsMax": 261,
+      "peakActive": 18,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "C",
+      "bootstrapConcurrency": 2,
+      "users": 3,
+      "loginMsAvg": 278,
+      "loginMsMax": 292,
+      "dashboardMsAvg": 144,
+      "dashboardMsMax": 152,
+      "peakActive": 4,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "C",
+      "bootstrapConcurrency": 2,
+      "users": 5,
+      "loginMsAvg": 331,
+      "loginMsMax": 359,
+      "dashboardMsAvg": 221,
+      "dashboardMsMax": 237,
+      "peakActive": 4,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "D",
+      "bootstrapConcurrency": 1,
+      "users": 1,
+      "loginMsAvg": 327,
+      "loginMsMax": 327,
+      "dashboardMsAvg": 264,
+      "dashboardMsMax": 264,
+      "peakActive": 16,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "D",
+      "bootstrapConcurrency": 1,
+      "users": 3,
+      "loginMsAvg": 298,
+      "loginMsMax": 400,
+      "dashboardMsAvg": 98,
+      "dashboardMsMax": 115,
+      "peakActive": 16,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    },
+    {
+      "variant": "D",
+      "bootstrapConcurrency": 1,
+      "users": 5,
+      "loginMsAvg": 370,
+      "loginMsMax": 408,
+      "dashboardMsAvg": 194,
+      "dashboardMsMax": 221,
+      "peakActive": 3,
+      "peakWaiting": 0,
+      "count503": 0,
+      "breakerActivations": 0,
+      "allOk": true
+    }
+  ],
+  "productionReference": {
+    "source": "nav-probe-2026-06-22-atp.json",
+    "variantA503Count": 18,
+    "note": "Production ATP uses default concurrency 6; large tenant data not replicated in test-company"
+  }
+}

@@ -1,0 +1,72 @@
+{
+  "task": "PERF-P3",
+  "generatedAt": "2026-06-23T03:13:33.599Z",
+  "staticChecks": [
+    {
+      "file": "services/api/bootstrapCoordinator.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "services/api/appStateApi.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "hooks/usePageGroupDeferredBootstrap.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "context/AppContext.tsx",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "App.tsx",
+      "pass": true,
+      "missing": []
+    }
+  ],
+  "filesPresent": [
+    {
+      "file": "services/api/bootstrapCoordinator.ts",
+      "present": true
+    },
+    {
+      "file": "services/api/appStateApi.ts",
+      "present": true
+    },
+    {
+      "file": "hooks/usePageGroupDeferredBootstrap.ts",
+      "present": true
+    },
+    {
+      "file": "context/AppContext.tsx",
+      "present": true
+    },
+    {
+      "file": "context/appStateStore.ts",
+      "present": true
+    },
+    {
+      "file": "App.tsx",
+      "present": true
+    },
+    {
+      "file": "components/stability/BootstrapRecoveryBanner.tsx",
+      "present": true
+    }
+  ],
+  "baseline": {
+    "available": true,
+    "totalRequests": 0,
+    "bulkCount": 0,
+    "bulkChunkedCount": 0,
+    "poolSaturated503": 0,
+    "windowMs": null,
+    "note": "Pre-P3 ATP capture — expect overlap; post-P3 should show coordinator dedupe in browser metrics",
+    "captureFile": "docs/performance/cloud/captures/nav-probe-2026-06-22-atp.json"
+  },
+  "allStaticPass": true
+}

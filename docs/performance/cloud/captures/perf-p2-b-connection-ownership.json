@@ -1,0 +1,3840 @@
+{
+  "program": "PERF-P2-B",
+  "capturedAt": "2026-06-23T02:50:52.553Z",
+  "tenantId": "test-company",
+  "poolMax": 20,
+  "globalSlots": 8,
+  "p2aAnomalyExplanation": "P2-A used 20–45s pool poll windows; peak active 16–18 was process-wide sampling artifact, not simultaneous bootstrap fan-out.",
+  "variants": [
+    {
+      "bootstrapConcurrency": 1,
+      "bootstrapOnly": {
+        "requestMs": 122,
+        "requestStartOffsetMs": 1782183037744,
+        "requestEndOffsetMs": 1782183037865,
+        "peakActiveDuringRequest": 0,
+        "peakWaitingDuringRequest": 0,
+        "poolSamples": [],
+        "holdEventCount": 20,
+        "holdEvents": [
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037833,
+            "releaseAt": 1782183037844,
+            "holdMs": 11,
+            "waitMs": 92,
+            "poolTotalAtAcquire": 9,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 1,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037835,
+            "releaseAt": 1782183037846,
+            "holdMs": 11,
+            "waitMs": 107,
+            "poolTotalAtAcquire": 4,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 1,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037824,
+            "releaseAt": 1782183037834,
+            "holdMs": 10,
+            "waitMs": 93,
+            "poolTotalAtAcquire": 5,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 0,
+            "poolWaitingAtRelease": 3
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037864,
+            "releaseAt": 1782183037874,
+            "holdMs": 10,
+            "waitMs": 110,
+            "poolTotalAtAcquire": 13,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 7,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037849,
+            "releaseAt": 1782183037858,
+            "holdMs": 9,
+            "waitMs": 103,
+            "poolTotalAtAcquire": 10,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 4,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037859,
+            "releaseAt": 1782183037868,
+            "holdMs": 9,
+            "waitMs": 111,
+            "poolTotalAtAcquire": 11,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 7,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037859,
+            "releaseAt": 1782183037868,
+            "holdMs": 9,
+            "waitMs": 103,
+            "poolTotalAtAcquire": 14,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 8,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037869,
+            "releaseAt": 1782183037878,
+            "holdMs": 9,
+            "waitMs": 111,
+            "poolTotalAtAcquire": 15,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 9,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037869,
+            "releaseAt": 1782183037878,
+            "holdMs": 9,
+            "waitMs": 106,
+            "poolTotalAtAcquire": 17,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 10,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037870,
+            "releaseAt": 1782183037879,
+            "holdMs": 9,
+            "waitMs": 109,
+            "poolTotalAtAcquire": 16,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 11,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037873,
+            "releaseAt": 1782183037882,
+            "holdMs": 9,
+            "waitMs": 107,
+            "poolTotalAtAcquire": 18,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 11,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037874,
+            "releaseAt": 1782183037883,
+            "holdMs": 9,
+            "waitMs": 105,
+            "poolTotalAtAcquire": 19,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 12,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037840,
+            "releaseAt": 1782183037848,
+            "holdMs": 8,
+            "waitMs": 105,
+            "poolTotalAtAcquire": 7,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 3,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037856,
+            "releaseAt": 1782183037864,
+            "holdMs": 8,
+            "waitMs": 105,
+            "poolTotalAtAcquire": 12,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 6,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037914,
+            "releaseAt": 1782183037922,
+            "holdMs": 8,
+            "waitMs": 181,
+            "poolTotalAtAcquire": 6,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 18,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "2f742391-b1d4-4978-b2e7-75e54b4c1230",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183037919,
+            "releaseAt": 1782183037927,
+            "holdMs": 8,
+            "waitMs": 180,
+            "poolTotalAtAcquire": 8,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 19,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "a573efb2-5d2e-4e98-808b-f663e16224bd",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183038035,
+            "releaseAt": 1782183038042,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "a573efb2-5d2e-4e98-808b-f663e16224bd",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183038037,
+            "releaseAt": 1782183038044,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "a573efb2-5d2e-4e98-808b-f663e16224bd",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183038056,
+            "releaseAt": 1782183038063,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "a573efb2-5d2e-4e98-808b-f663e16224bd",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183038094,
+            "releaseAt": 1782183038101,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 17,
+            "poolWaitingAtRelease": 0
+          }
+        ],
+        "bootstrapStatus": 403,
+        "holdAnalysisFromReport": {
+          "simultaneousPeak": 5,
+          "timeline": [
+            {
+              "id": "C",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037824,
+              "releaseAt": 1782183037834,
+              "holdMs": 10,
+              "waitMs": 93,
+              "relAcquireMs": -327,
+              "relReleaseMs": -317,
+              "poolAtAcquire": {
+                "total": 5,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037833,
+              "releaseAt": 1782183037844,
+              "holdMs": 11,
+              "waitMs": 92,
+              "relAcquireMs": -318,
+              "relReleaseMs": -307,
+              "poolAtAcquire": {
+                "total": 9,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037835,
+              "releaseAt": 1782183037846,
+              "holdMs": 11,
+              "waitMs": 107,
+              "relAcquireMs": -316,
+              "relReleaseMs": -305,
+              "poolAtAcquire": {
+                "total": 4,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037840,
+              "releaseAt": 1782183037848,
+              "holdMs": 8,
+              "waitMs": 105,
+              "relAcquireMs": -311,
+              "relReleaseMs": -303,
+              "poolAtAcquire": {
+                "total": 7,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037849,
+              "releaseAt": 1782183037858,
+              "holdMs": 9,
+              "waitMs": 103,
+              "relAcquireMs": -302,
+              "relReleaseMs": -293,
+              "poolAtAcquire": {
+                "total": 10,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037856,
+              "releaseAt": 1782183037864,
+              "holdMs": 8,
+              "waitMs": 105,
+              "relAcquireMs": -295,
+              "relReleaseMs": -287,
+              "poolAtAcquire": {
+                "total": 12,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037859,
+              "releaseAt": 1782183037868,
+              "holdMs": 9,
+              "waitMs": 111,
+              "relAcquireMs": -292,
+              "relReleaseMs": -283,
+              "poolAtAcquire": {
+                "total": 11,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037859,
+              "releaseAt": 1782183037868,
+              "holdMs": 9,
+              "waitMs": 103,
+              "relAcquireMs": -292,
+              "relReleaseMs": -283,
+              "poolAtAcquire": {
+                "total": 14,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037864,
+              "releaseAt": 1782183037874,
+              "holdMs": 10,
+              "waitMs": 110,
+              "relAcquireMs": -287,
+              "relReleaseMs": -277,
+              "poolAtAcquire": {
+                "total": 13,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037869,
+              "releaseAt": 1782183037878,
+              "holdMs": 9,
+              "waitMs": 111,
+              "relAcquireMs": -282,
+              "relReleaseMs": -273,
+              "poolAtAcquire": {
+                "total": 15,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037869,
+              "releaseAt": 1782183037878,
+              "holdMs": 9,
+              "waitMs": 106,
+              "relAcquireMs": -282,
+              "relReleaseMs": -273,
+              "poolAtAcquire": {
+                "total": 17,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037870,
+              "releaseAt": 1782183037879,
+              "holdMs": 9,
+              "waitMs": 109,
+              "relAcquireMs": -281,
+              "relReleaseMs": -272,
+              "poolAtAcquire": {
+                "total": 16,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037873,
+              "releaseAt": 1782183037882,
+              "holdMs": 9,
+              "waitMs": 107,
+              "relAcquireMs": -278,
+              "relReleaseMs": -269,
+              "poolAtAcquire": {
+                "total": 18,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037874,
+              "releaseAt": 1782183037883,
+              "holdMs": 9,
+              "waitMs": 105,
+              "relAcquireMs": -277,
+              "relReleaseMs": -268,
+              "poolAtAcquire": {
+                "total": 19,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037914,
+              "releaseAt": 1782183037922,
+              "holdMs": 8,
+              "waitMs": 181,
+              "relAcquireMs": -237,
+              "relReleaseMs": -229,
+              "poolAtAcquire": {
+                "total": 6,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183037919,
+              "releaseAt": 1782183037927,
+              "holdMs": 8,
+              "waitMs": 180,
+              "relAcquireMs": -232,
+              "relReleaseMs": -224,
+              "poolAtAcquire": {
+                "total": 8,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183038035,
+              "releaseAt": 1782183038042,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -116,
+              "relReleaseMs": -109,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183038037,
+              "releaseAt": 1782183038044,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -114,
+              "relReleaseMs": -107,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183038056,
+              "releaseAt": 1782183038063,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -95,
+              "relReleaseMs": -88,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183038094,
+              "releaseAt": 1782183038101,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -57,
+              "relReleaseMs": -50,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            }
+          ]
+        },
+        "holdAnalysisBulkRoute": {
+          "simultaneousPeak": 4,
+          "timeline": [
+            {
+              "id": "A",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037791,
+              "releaseAt": 1782183037795,
+              "holdMs": 4,
+              "waitMs": 1,
+              "relAcquireMs": 0,
+              "relReleaseMs": 4,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 2,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037793,
+              "releaseAt": 1782183037797,
+              "holdMs": 4,
+              "waitMs": 1,
+              "relAcquireMs": 2,
+              "relReleaseMs": 6,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037796,
+              "releaseAt": 1782183037800,
+              "holdMs": 4,
+              "waitMs": 2,
+              "relAcquireMs": 5,
+              "relReleaseMs": 9,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "D",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037807,
+              "releaseAt": 1782183037811,
+              "holdMs": 4,
+              "waitMs": 1,
+              "relAcquireMs": 16,
+              "relReleaseMs": 20,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037810,
+              "releaseAt": 1782183037812,
+              "holdMs": 2,
+              "waitMs": 1,
+              "relAcquireMs": 19,
+              "relReleaseMs": 21,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "F",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037812,
+              "releaseAt": 1782183037815,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 21,
+              "relReleaseMs": 24,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "G",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037814,
+              "releaseAt": 1782183037817,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 23,
+              "relReleaseMs": 26,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037816,
+              "releaseAt": 1782183037817,
+              "holdMs": 1,
+              "waitMs": 2,
+              "relAcquireMs": 25,
+              "relReleaseMs": 26,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "I",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037818,
+              "releaseAt": 1782183037820,
+              "holdMs": 2,
+              "waitMs": 2,
+              "relAcquireMs": 27,
+              "relReleaseMs": 29,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "J",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037820,
+              "releaseAt": 1782183037822,
+              "holdMs": 2,
+              "waitMs": 2,
+              "relAcquireMs": 29,
+              "relReleaseMs": 31,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "K",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037821,
+              "releaseAt": 1782183037824,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 30,
+              "relReleaseMs": 33,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "L",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037823,
+              "releaseAt": 1782183037827,
+              "holdMs": 4,
+              "waitMs": 2,
+              "relAcquireMs": 32,
+              "relReleaseMs": 36,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "M",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037825,
+              "releaseAt": 1782183037827,
+              "holdMs": 2,
+              "waitMs": 1,
+              "relAcquireMs": 34,
+              "relReleaseMs": 36,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "N",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037827,
+              "releaseAt": 1782183037830,
+              "holdMs": 3,
+              "waitMs": 2,
+              "relAcquireMs": 36,
+              "relReleaseMs": 39,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 3
+              }
+            },
+            {
+              "id": "O",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037829,
+              "releaseAt": 1782183037831,
+              "holdMs": 2,
+              "waitMs": 1,
+              "relAcquireMs": 38,
+              "relReleaseMs": 40,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037831,
+              "releaseAt": 1782183037834,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 40,
+              "relReleaseMs": 43,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "Q",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037833,
+              "releaseAt": 1782183037836,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 42,
+              "relReleaseMs": 45,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037834,
+              "releaseAt": 1782183037839,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 43,
+              "relReleaseMs": 48,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 2
+              }
+            },
+            {
+              "id": "S",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037836,
+              "releaseAt": 1782183037840,
+              "holdMs": 4,
+              "waitMs": 0,
+              "relAcquireMs": 45,
+              "relReleaseMs": 49,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 0,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037840,
+              "releaseAt": 1782183037843,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 49,
+              "relReleaseMs": 52,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "U",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037840,
+              "releaseAt": 1782183037844,
+              "holdMs": 4,
+              "waitMs": 0,
+              "relAcquireMs": 49,
+              "relReleaseMs": 53,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 2,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "V",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037841,
+              "releaseAt": 1782183037845,
+              "holdMs": 4,
+              "waitMs": 0,
+              "relAcquireMs": 50,
+              "relReleaseMs": 54,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 2,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "W",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037842,
+              "releaseAt": 1782183037846,
+              "holdMs": 4,
+              "waitMs": 0,
+              "relAcquireMs": 51,
+              "relReleaseMs": 55,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 2,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "X",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037843,
+              "releaseAt": 1782183037846,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 52,
+              "relReleaseMs": 55,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 2,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Y",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037844,
+              "releaseAt": 1782183037847,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 53,
+              "relReleaseMs": 56,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 3,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Z",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037845,
+              "releaseAt": 1782183037847,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 54,
+              "relReleaseMs": 56,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 3,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A26",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037846,
+              "releaseAt": 1782183037848,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 55,
+              "relReleaseMs": 57,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B27",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037847,
+              "releaseAt": 1782183037849,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 56,
+              "relReleaseMs": 58,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 4,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C28",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037848,
+              "releaseAt": 1782183037851,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 57,
+              "relReleaseMs": 60,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D29",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037849,
+              "releaseAt": 1782183037851,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 58,
+              "relReleaseMs": 60,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E30",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037850,
+              "releaseAt": 1782183037852,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 59,
+              "relReleaseMs": 61,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F31",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037850,
+              "releaseAt": 1782183037853,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 59,
+              "relReleaseMs": 62,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G32",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037851,
+              "releaseAt": 1782183037854,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 60,
+              "relReleaseMs": 63,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H33",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037852,
+              "releaseAt": 1782183037855,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 61,
+              "relReleaseMs": 64,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I34",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037853,
+              "releaseAt": 1782183037856,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 62,
+              "relReleaseMs": 65,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J35",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037854,
+              "releaseAt": 1782183037857,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 63,
+              "relReleaseMs": 66,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K36",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037855,
+              "releaseAt": 1782183037858,
+              "holdMs": 3,
+              "waitMs": 1,
+              "relAcquireMs": 64,
+              "relReleaseMs": 67,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L37",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037855,
+              "releaseAt": 1782183037858,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 64,
+              "relReleaseMs": 67,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M38",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037856,
+              "releaseAt": 1782183037859,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 65,
+              "relReleaseMs": 68,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N39",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037857,
+              "releaseAt": 1782183037860,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 66,
+              "relReleaseMs": 69,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O40",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037858,
+              "releaseAt": 1782183037861,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 67,
+              "relReleaseMs": 70,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P41",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037859,
+              "releaseAt": 1782183037862,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 68,
+              "relReleaseMs": 71,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q42",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037860,
+              "releaseAt": 1782183037863,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 69,
+              "relReleaseMs": 72,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R43",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037861,
+              "releaseAt": 1782183037864,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 70,
+              "relReleaseMs": 73,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S44",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037862,
+              "releaseAt": 1782183037865,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 71,
+              "relReleaseMs": 74,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T45",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037863,
+              "releaseAt": 1782183037865,
+              "holdMs": 2,
+              "waitMs": 1,
+              "relAcquireMs": 72,
+              "relReleaseMs": 74,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "U46",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183037864,
+              "releaseAt": 1782183037865,
+              "holdMs": 1,
+              "waitMs": 0,
+              "relAcquireMs": 73,
+              "relReleaseMs": 74,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 0
+              }
+            }
+          ]
+        },
+        "bulkHoldCount": 47
+      },
+      "loginPlusBootstrap": {
+        "totalMs": 123,
+        "bootstrapMs": 59,
+        "peakActiveDuringRequest": 0,
+        "holdEventCount": 20,
+        "holdEvents": [
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040510,
+            "releaseAt": 1782183040519,
+            "holdMs": 9,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 13,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040511,
+            "releaseAt": 1782183040520,
+            "holdMs": 9,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040500,
+            "releaseAt": 1782183040508,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 13,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040509,
+            "releaseAt": 1782183040517,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 15,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 13,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "3e4432cb-e865-4a40-bb07-9ab559421136",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040627,
+            "releaseAt": 1782183040635,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040482,
+            "releaseAt": 1782183040489,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 19,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040494,
+            "releaseAt": 1782183040501,
+            "holdMs": 7,
+            "waitMs": 1,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040495,
+            "releaseAt": 1782183040502,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040502,
+            "releaseAt": 1782183040509,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040514,
+            "releaseAt": 1782183040521,
+            "holdMs": 7,
+            "waitMs": 1,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "3e4432cb-e865-4a40-bb07-9ab559421136",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040624,
+            "releaseAt": 1782183040631,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "3e4432cb-e865-4a40-bb07-9ab559421136",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040626,
+            "releaseAt": 1782183040633,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040480,
+            "releaseAt": 1782183040486,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 20,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040484,
+            "releaseAt": 1782183040490,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040488,
+            "releaseAt": 1782183040494,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040503,
+            "releaseAt": 1782183040509,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 13,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040506,
+            "releaseAt": 1782183040512,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040515,
+            "releaseAt": 1782183040521,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040517,
+            "releaseAt": 1782183040523,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 15,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "29c7b053-feaf-45ba-891b-03065449fa30",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183040521,
+            "releaseAt": 1782183040527,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          }
+        ],
+        "holdAnalysis": {
+          "simultaneousPeak": 5,
+          "timeline": [
+            {
+              "id": "M",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040480,
+              "releaseAt": 1782183040486,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -207,
+              "relReleaseMs": -201,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 20,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040482,
+              "releaseAt": 1782183040489,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -205,
+              "relReleaseMs": -198,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 19,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040484,
+              "releaseAt": 1782183040490,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -203,
+              "relReleaseMs": -197,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040488,
+              "releaseAt": 1782183040494,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -199,
+              "relReleaseMs": -193,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040494,
+              "releaseAt": 1782183040501,
+              "holdMs": 7,
+              "waitMs": 1,
+              "relAcquireMs": -193,
+              "relReleaseMs": -186,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040495,
+              "releaseAt": 1782183040502,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -192,
+              "relReleaseMs": -185,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040500,
+              "releaseAt": 1782183040508,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -187,
+              "relReleaseMs": -179,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040502,
+              "releaseAt": 1782183040509,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -185,
+              "relReleaseMs": -178,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040503,
+              "releaseAt": 1782183040509,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -184,
+              "relReleaseMs": -178,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040506,
+              "releaseAt": 1782183040512,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -181,
+              "relReleaseMs": -175,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040509,
+              "releaseAt": 1782183040517,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -178,
+              "relReleaseMs": -170,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 15,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040510,
+              "releaseAt": 1782183040519,
+              "holdMs": 9,
+              "waitMs": 0,
+              "relAcquireMs": -177,
+              "relReleaseMs": -168,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040511,
+              "releaseAt": 1782183040520,
+              "holdMs": 9,
+              "waitMs": 0,
+              "relAcquireMs": -176,
+              "relReleaseMs": -167,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040514,
+              "releaseAt": 1782183040521,
+              "holdMs": 7,
+              "waitMs": 1,
+              "relAcquireMs": -173,
+              "relReleaseMs": -166,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040515,
+              "releaseAt": 1782183040521,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -172,
+              "relReleaseMs": -166,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040517,
+              "releaseAt": 1782183040523,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -170,
+              "relReleaseMs": -164,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 15,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040521,
+              "releaseAt": 1782183040527,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -166,
+              "relReleaseMs": -160,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040624,
+              "releaseAt": 1782183040631,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -63,
+              "relReleaseMs": -56,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040626,
+              "releaseAt": 1782183040633,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -61,
+              "relReleaseMs": -54,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183040627,
+              "releaseAt": 1782183040635,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -60,
+              "relReleaseMs": -52,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            }
+          ]
+        }
+      },
+      "logHoldLines": 47,
+      "codePaths": {
+        "bypassRunBatched": [
+          "countTenantTransactions → getPool().query() (no semaphore)",
+          "fetchPlSubTypesForTenant → withPoolClient() (no semaphore)",
+          "listTransactions chunk → withPoolClient() (no semaphore)",
+          "authMiddleware → pool.query() / pool.connect() per request",
+          "issueStandardAccessToken path already done before benchmark request"
+        ],
+        "guardedRunBatched": "21 entity loaders via withPoolClientGuarded in batches of BOOTSTRAP_CONCURRENCY"
+      }
+    },
+    {
+      "bootstrapConcurrency": 6,
+      "bootstrapOnly": {
+        "requestMs": 207,
+        "requestStartOffsetMs": 1782183047507,
+        "requestEndOffsetMs": 1782183047714,
+        "peakActiveDuringRequest": 0,
+        "peakWaitingDuringRequest": 0,
+        "poolSamples": [],
+        "holdEventCount": 20,
+        "holdEvents": [
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047645,
+            "releaseAt": 1782183047659,
+            "holdMs": 14,
+            "waitMs": 127,
+            "poolTotalAtAcquire": 13,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 10,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047638,
+            "releaseAt": 1782183047650,
+            "holdMs": 12,
+            "waitMs": 118,
+            "poolTotalAtAcquire": 14,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 6,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047644,
+            "releaseAt": 1782183047656,
+            "holdMs": 12,
+            "waitMs": 105,
+            "poolTotalAtAcquire": 19,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 6,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047645,
+            "releaseAt": 1782183047657,
+            "holdMs": 12,
+            "waitMs": 113,
+            "poolTotalAtAcquire": 16,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 8,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047646,
+            "releaseAt": 1782183047658,
+            "holdMs": 12,
+            "waitMs": 111,
+            "poolTotalAtAcquire": 17,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 9,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047631,
+            "releaseAt": 1782183047642,
+            "holdMs": 11,
+            "waitMs": 116,
+            "poolTotalAtAcquire": 11,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 4,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047633,
+            "releaseAt": 1782183047644,
+            "holdMs": 11,
+            "waitMs": 104,
+            "poolTotalAtAcquire": 15,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 4,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047732,
+            "releaseAt": 1782183047743,
+            "holdMs": 11,
+            "waitMs": 194,
+            "poolTotalAtAcquire": 18,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 16,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047631,
+            "releaseAt": 1782183047641,
+            "holdMs": 10,
+            "waitMs": 127,
+            "poolTotalAtAcquire": 8,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 3,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047626,
+            "releaseAt": 1782183047635,
+            "holdMs": 9,
+            "waitMs": 109,
+            "poolTotalAtAcquire": 12,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 4,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047617,
+            "releaseAt": 1782183047625,
+            "holdMs": 8,
+            "waitMs": 110,
+            "poolTotalAtAcquire": 9,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "f3c89897-2387-4519-988c-16901e64d476",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047619,
+            "releaseAt": 1782183047627,
+            "holdMs": 8,
+            "waitMs": 117,
+            "poolTotalAtAcquire": 7,
+            "poolIdleAtAcquire": 1,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 4,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "7912c383-5842-45a9-8e39-95d623c403b7",
+            "method": "GET",
+            "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+            "acquireAt": 1782183047714,
+            "releaseAt": 1782183047722,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 0,
+            "poolIdleAtRelease": 18,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "0d5fb5b4-534c-4e8f-a382-06a876424fb2",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047772,
+            "releaseAt": 1782183047780,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "0d5fb5b4-534c-4e8f-a382-06a876424fb2",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047774,
+            "releaseAt": 1782183047782,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "4e7d093f-5f02-4ac8-b02a-71e8dd932732",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047637,
+            "releaseAt": 1782183047644,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 6,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "4e7d093f-5f02-4ac8-b02a-71e8dd932732",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047639,
+            "releaseAt": 1782183047646,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 5,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "7912c383-5842-45a9-8e39-95d623c403b7",
+            "method": "GET",
+            "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+            "acquireAt": 1782183047640,
+            "releaseAt": 1782183047647,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 5,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "4e7d093f-5f02-4ac8-b02a-71e8dd932732",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047646,
+            "releaseAt": 1782183047653,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 7,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "4e7d093f-5f02-4ac8-b02a-71e8dd932732",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183047648,
+            "releaseAt": 1782183047655,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 7,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 5,
+            "poolWaitingAtRelease": 0
+          }
+        ],
+        "bootstrapStatus": 403,
+        "holdAnalysisFromReport": {
+          "simultaneousPeak": 7,
+          "timeline": [
+            {
+              "id": "K",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047617,
+              "releaseAt": 1782183047625,
+              "holdMs": 8,
+              "waitMs": 110,
+              "relAcquireMs": -347,
+              "relReleaseMs": -339,
+              "poolAtAcquire": {
+                "total": 9,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047619,
+              "releaseAt": 1782183047627,
+              "holdMs": 8,
+              "waitMs": 117,
+              "relAcquireMs": -345,
+              "relReleaseMs": -337,
+              "poolAtAcquire": {
+                "total": 7,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047626,
+              "releaseAt": 1782183047635,
+              "holdMs": 9,
+              "waitMs": 109,
+              "relAcquireMs": -338,
+              "relReleaseMs": -329,
+              "poolAtAcquire": {
+                "total": 12,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047631,
+              "releaseAt": 1782183047642,
+              "holdMs": 11,
+              "waitMs": 116,
+              "relAcquireMs": -333,
+              "relReleaseMs": -322,
+              "poolAtAcquire": {
+                "total": 11,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047631,
+              "releaseAt": 1782183047641,
+              "holdMs": 10,
+              "waitMs": 127,
+              "relAcquireMs": -333,
+              "relReleaseMs": -323,
+              "poolAtAcquire": {
+                "total": 8,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047633,
+              "releaseAt": 1782183047644,
+              "holdMs": 11,
+              "waitMs": 104,
+              "relAcquireMs": -331,
+              "relReleaseMs": -320,
+              "poolAtAcquire": {
+                "total": 15,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047637,
+              "releaseAt": 1782183047644,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -327,
+              "relReleaseMs": -320,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047638,
+              "releaseAt": 1782183047650,
+              "holdMs": 12,
+              "waitMs": 118,
+              "relAcquireMs": -326,
+              "relReleaseMs": -314,
+              "poolAtAcquire": {
+                "total": 14,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047639,
+              "releaseAt": 1782183047646,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -325,
+              "relReleaseMs": -318,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047640,
+              "releaseAt": 1782183047647,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -324,
+              "relReleaseMs": -317,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047644,
+              "releaseAt": 1782183047656,
+              "holdMs": 12,
+              "waitMs": 105,
+              "relAcquireMs": -320,
+              "relReleaseMs": -308,
+              "poolAtAcquire": {
+                "total": 19,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047645,
+              "releaseAt": 1782183047659,
+              "holdMs": 14,
+              "waitMs": 127,
+              "relAcquireMs": -319,
+              "relReleaseMs": -305,
+              "poolAtAcquire": {
+                "total": 13,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047645,
+              "releaseAt": 1782183047657,
+              "holdMs": 12,
+              "waitMs": 113,
+              "relAcquireMs": -319,
+              "relReleaseMs": -307,
+              "poolAtAcquire": {
+                "total": 16,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047646,
+              "releaseAt": 1782183047658,
+              "holdMs": 12,
+              "waitMs": 111,
+              "relAcquireMs": -318,
+              "relReleaseMs": -306,
+              "poolAtAcquire": {
+                "total": 17,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047646,
+              "releaseAt": 1782183047653,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -318,
+              "relReleaseMs": -311,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047648,
+              "releaseAt": 1782183047655,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -316,
+              "relReleaseMs": -309,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M",
+              "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047714,
+              "releaseAt": 1782183047722,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -250,
+              "relReleaseMs": -242,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 0
+              }
+            },
+            {
+              "id": "H",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047732,
+              "releaseAt": 1782183047743,
+              "holdMs": 11,
+              "waitMs": 194,
+              "relAcquireMs": -232,
+              "relReleaseMs": -221,
+              "poolAtAcquire": {
+                "total": 18,
+                "idle": 1,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047772,
+              "releaseAt": 1782183047780,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -192,
+              "relReleaseMs": -184,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183047774,
+              "releaseAt": 1782183047782,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -190,
+              "relReleaseMs": -182,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            }
+          ]
+        },
+        "holdAnalysisBulkRoute": {
+          "simultaneousPeak": 4,
+          "timeline": [
+            {
+              "id": "A",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047637,
+              "releaseAt": 1782183047643,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 0,
+              "relReleaseMs": 6,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047639,
+              "releaseAt": 1782183047645,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 2,
+              "relReleaseMs": 8,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047640,
+              "releaseAt": 1782183047647,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": 3,
+              "relReleaseMs": 10,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 5,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047643,
+              "releaseAt": 1782183047649,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 6,
+              "relReleaseMs": 12,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 6,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047645,
+              "releaseAt": 1782183047651,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 8,
+              "relReleaseMs": 14,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047647,
+              "releaseAt": 1782183047653,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 10,
+              "relReleaseMs": 16,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047649,
+              "releaseAt": 1782183047656,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": 12,
+              "relReleaseMs": 19,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047651,
+              "releaseAt": 1782183047657,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 14,
+              "relReleaseMs": 20,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 8,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047653,
+              "releaseAt": 1782183047660,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": 16,
+              "relReleaseMs": 23,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047655,
+              "releaseAt": 1782183047661,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 18,
+              "relReleaseMs": 24,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 7,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047658,
+              "releaseAt": 1782183047663,
+              "holdMs": 5,
+              "waitMs": 1,
+              "relAcquireMs": 21,
+              "relReleaseMs": 26,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 11,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047659,
+              "releaseAt": 1782183047665,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 22,
+              "relReleaseMs": 28,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047661,
+              "releaseAt": 1782183047667,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 24,
+              "relReleaseMs": 30,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047663,
+              "releaseAt": 1782183047669,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 26,
+              "relReleaseMs": 32,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047665,
+              "releaseAt": 1782183047670,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 28,
+              "relReleaseMs": 33,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047667,
+              "releaseAt": 1782183047672,
+              "holdMs": 5,
+              "waitMs": 1,
+              "relAcquireMs": 30,
+              "relReleaseMs": 35,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047668,
+              "releaseAt": 1782183047674,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 31,
+              "relReleaseMs": 37,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047670,
+              "releaseAt": 1782183047676,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 33,
+              "relReleaseMs": 39,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047672,
+              "releaseAt": 1782183047677,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 35,
+              "relReleaseMs": 40,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047674,
+              "releaseAt": 1782183047679,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 37,
+              "relReleaseMs": 42,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "U",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047675,
+              "releaseAt": 1782183047681,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 38,
+              "relReleaseMs": 44,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "V",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047677,
+              "releaseAt": 1782183047683,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 40,
+              "relReleaseMs": 46,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "W",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047679,
+              "releaseAt": 1782183047684,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 42,
+              "relReleaseMs": 47,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "X",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047681,
+              "releaseAt": 1782183047686,
+              "holdMs": 5,
+              "waitMs": 1,
+              "relAcquireMs": 44,
+              "relReleaseMs": 49,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Y",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047682,
+              "releaseAt": 1782183047688,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 45,
+              "relReleaseMs": 51,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Z",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047684,
+              "releaseAt": 1782183047690,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 47,
+              "relReleaseMs": 53,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A26",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047686,
+              "releaseAt": 1782183047691,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 49,
+              "relReleaseMs": 54,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B27",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047688,
+              "releaseAt": 1782183047693,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 51,
+              "relReleaseMs": 56,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C28",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047690,
+              "releaseAt": 1782183047695,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 53,
+              "relReleaseMs": 58,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D29",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047691,
+              "releaseAt": 1782183047697,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 54,
+              "relReleaseMs": 60,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E30",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047693,
+              "releaseAt": 1782183047698,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 56,
+              "relReleaseMs": 61,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "F31",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047695,
+              "releaseAt": 1782183047701,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 58,
+              "relReleaseMs": 64,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G32",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047697,
+              "releaseAt": 1782183047702,
+              "holdMs": 5,
+              "waitMs": 1,
+              "relAcquireMs": 60,
+              "relReleaseMs": 65,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H33",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047698,
+              "releaseAt": 1782183047704,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 61,
+              "relReleaseMs": 67,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I34",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047700,
+              "releaseAt": 1782183047706,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": 63,
+              "relReleaseMs": 69,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J35",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047702,
+              "releaseAt": 1782183047707,
+              "holdMs": 5,
+              "waitMs": 0,
+              "relAcquireMs": 65,
+              "relReleaseMs": 70,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 12,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K36",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047704,
+              "releaseAt": 1782183047707,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 67,
+              "relReleaseMs": 70,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 13,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L37",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047705,
+              "releaseAt": 1782183047708,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 68,
+              "relReleaseMs": 71,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 14,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M38",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047706,
+              "releaseAt": 1782183047709,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 69,
+              "relReleaseMs": 72,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 15,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N39",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047707,
+              "releaseAt": 1782183047710,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 70,
+              "relReleaseMs": 73,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O40",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047708,
+              "releaseAt": 1782183047711,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 71,
+              "relReleaseMs": 74,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P41",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047709,
+              "releaseAt": 1782183047712,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 72,
+              "relReleaseMs": 75,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q42",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047710,
+              "releaseAt": 1782183047713,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 73,
+              "relReleaseMs": 76,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R43",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047711,
+              "releaseAt": 1782183047714,
+              "holdMs": 3,
+              "waitMs": 0,
+              "relAcquireMs": 74,
+              "relReleaseMs": 77,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S44",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047712,
+              "releaseAt": 1782183047714,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 75,
+              "relReleaseMs": 77,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T45",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047713,
+              "releaseAt": 1782183047715,
+              "holdMs": 2,
+              "waitMs": 0,
+              "relAcquireMs": 76,
+              "relReleaseMs": 78,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "U46",
+              "route": "GET /api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183047714,
+              "releaseAt": 1782183047722,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": 77,
+              "relReleaseMs": 85,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 0
+              }
+            }
+          ]
+        },
+        "bulkHoldCount": 47
+      },
+      "loginPlusBootstrap": {
+        "totalMs": 115,
+        "bootstrapMs": 57,
+        "peakActiveDuringRequest": 0,
+        "holdEventCount": 20,
+        "holdEvents": [
+          {
+            "requestId": "6eaebb2a-cafb-4847-a0ed-a14b88999f8e",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050405,
+            "releaseAt": 1782183050413,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "6eaebb2a-cafb-4847-a0ed-a14b88999f8e",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050407,
+            "releaseAt": 1782183050415,
+            "holdMs": 8,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 19,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 14,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050278,
+            "releaseAt": 1782183050285,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 19,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "6eaebb2a-cafb-4847-a0ed-a14b88999f8e",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050412,
+            "releaseAt": 1782183050419,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 16,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "6eaebb2a-cafb-4847-a0ed-a14b88999f8e",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050423,
+            "releaseAt": 1782183050430,
+            "holdMs": 7,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "8bc32ebc-15e9-4c50-87a2-6b040754befd",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050155,
+            "releaseAt": 1782183050161,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 13,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 10,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "e9601744-767d-4edf-b521-1e608eb47a3c",
+            "method": "GET",
+            "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+            "acquireAt": 1782183050187,
+            "releaseAt": 1782183050193,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 19,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 16,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "e9601744-767d-4edf-b521-1e608eb47a3c",
+            "method": "GET",
+            "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+            "acquireAt": 1782183050188,
+            "releaseAt": 1782183050194,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 16,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "e9601744-767d-4edf-b521-1e608eb47a3c",
+            "method": "GET",
+            "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+            "acquireAt": 1782183050189,
+            "releaseAt": 1782183050195,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050280,
+            "releaseAt": 1782183050286,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050282,
+            "releaseAt": 1782183050288,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050284,
+            "releaseAt": 1782183050290,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050286,
+            "releaseAt": 1782183050292,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050288,
+            "releaseAt": 1782183050294,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050289,
+            "releaseAt": 1782183050295,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050291,
+            "releaseAt": 1782183050297,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050293,
+            "releaseAt": 1782183050299,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 17,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050320,
+            "releaseAt": 1782183050326,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050338,
+            "releaseAt": 1782183050344,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 15,
+            "poolWaitingAtRelease": 0
+          },
+          {
+            "requestId": "56277c1d-f525-4c2f-91fe-c6fe9593c487",
+            "method": "GET",
+            "route": "/api/v1/monitoring/pool-pressure",
+            "acquireAt": 1782183050342,
+            "releaseAt": 1782183050348,
+            "holdMs": 6,
+            "waitMs": 0,
+            "poolTotalAtAcquire": 20,
+            "poolIdleAtAcquire": 18,
+            "poolWaitingAtAcquire": 1,
+            "poolIdleAtRelease": 16,
+            "poolWaitingAtRelease": 0
+          }
+        ],
+        "holdAnalysis": {
+          "simultaneousPeak": 4,
+          "timeline": [
+            {
+              "id": "F",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050155,
+              "releaseAt": 1782183050161,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -342,
+              "relReleaseMs": -336,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 13,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "G",
+              "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183050187,
+              "releaseAt": 1782183050193,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -310,
+              "relReleaseMs": -304,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 19,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "H",
+              "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183050188,
+              "releaseAt": 1782183050194,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -309,
+              "relReleaseMs": -303,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "I",
+              "route": "/api/v1/state/bulk-chunked?limit=200&offset=0",
+              "acquireAt": 1782183050189,
+              "releaseAt": 1782183050195,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -308,
+              "relReleaseMs": -302,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "C",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050278,
+              "releaseAt": 1782183050285,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -219,
+              "relReleaseMs": -212,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 19,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "J",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050280,
+              "releaseAt": 1782183050286,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -217,
+              "relReleaseMs": -211,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "K",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050282,
+              "releaseAt": 1782183050288,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -215,
+              "relReleaseMs": -209,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "L",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050284,
+              "releaseAt": 1782183050290,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -213,
+              "relReleaseMs": -207,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "M",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050286,
+              "releaseAt": 1782183050292,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -211,
+              "relReleaseMs": -205,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "N",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050288,
+              "releaseAt": 1782183050294,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -209,
+              "relReleaseMs": -203,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "O",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050289,
+              "releaseAt": 1782183050295,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -208,
+              "relReleaseMs": -202,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "P",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050291,
+              "releaseAt": 1782183050297,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -206,
+              "relReleaseMs": -200,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "Q",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050293,
+              "releaseAt": 1782183050299,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -204,
+              "relReleaseMs": -198,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 17,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "R",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050320,
+              "releaseAt": 1782183050326,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -177,
+              "relReleaseMs": -171,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "S",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050338,
+              "releaseAt": 1782183050344,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -159,
+              "relReleaseMs": -153,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "T",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050342,
+              "releaseAt": 1782183050348,
+              "holdMs": 6,
+              "waitMs": 0,
+              "relAcquireMs": -155,
+              "relReleaseMs": -149,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "A",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050405,
+              "releaseAt": 1782183050413,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -92,
+              "relReleaseMs": -84,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "B",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050407,
+              "releaseAt": 1782183050415,
+              "holdMs": 8,
+              "waitMs": 0,
+              "relAcquireMs": -90,
+              "relReleaseMs": -82,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 19,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "D",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050412,
+              "releaseAt": 1782183050419,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -85,
+              "relReleaseMs": -78,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 16,
+                "waiting": 1
+              }
+            },
+            {
+              "id": "E",
+              "route": "/api/v1/monitoring/pool-pressure",
+              "acquireAt": 1782183050423,
+              "releaseAt": 1782183050430,
+              "holdMs": 7,
+              "waitMs": 0,
+              "relAcquireMs": -74,
+              "relReleaseMs": -67,
+              "poolAtAcquire": {
+                "total": 20,
+                "idle": 18,
+                "waiting": 1
+              }
+            }
+          ]
+        }
+      },
+      "logHoldLines": 47,
+      "codePaths": {
+        "bypassRunBatched": [
+          "countTenantTransactions → getPool().query() (no semaphore)",
+          "fetchPlSubTypesForTenant → withPoolClient() (no semaphore)",
+          "listTransactions chunk → withPoolClient() (no semaphore)",
+          "authMiddleware → pool.query() / pool.connect() per request",
+          "issueStandardAccessToken path already done before benchmark request"
+        ],
+        "guardedRunBatched": "21 entity loaders via withPoolClientGuarded in batches of BOOTSTRAP_CONCURRENCY"
+      }
+    }
+  ]
+}

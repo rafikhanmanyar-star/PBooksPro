@@ -4,7 +4,7 @@ import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
 import { Page, TransactionType } from './types';
-import { useStateSelector, useDispatchOnly, useInitialDataLoading, useAppDataLoading } from './hooks/useSelectiveState';
+import { useStateSelector, useDispatchOnly, useInitialDataLoading, useAppDataLoading, useBootstrapSoftFailure } from './hooks/useSelectiveState';
 import ErrorBoundary from './components/ErrorBoundary';
 import ProgressDisplay from './components/ui/ProgressDisplay';
 import CustomKeyboard from './components/ui/CustomKeyboard';
@@ -60,6 +60,7 @@ import { lazyWithRetry } from './utils/lazyWithRetry';
 import { PrintController } from './components/print/PrintController';
 import { ensureReportPrintStyles } from './services/printService';
 import StabilityBanner from './components/stability/StabilityBanner';
+import BootstrapRecoveryBanner from './components/stability/BootstrapRecoveryBanner';
 import ApiLoginScreen from './components/auth/ApiLoginScreen';
 import CompanySelectionScreen from './components/auth/CompanySelectionScreen';
 import ConnectServerScreen from './components/auth/ConnectServerScreen';
@@ -131,6 +132,7 @@ const App: React.FC = () => {
   const dispatch = useDispatchOnly();
   const isInitialDataLoading = useInitialDataLoading();
   const isAppDataLoading = useAppDataLoading();
+  const bootstrapSoftFailure = useBootstrapSoftFailure();
   const { isOpen: isCustomKeyboardOpen, closeKeyboard } = useKeyboard();
   const { isPanelOpen } = useKpis();
   const { isExpired } = useLicense(); // License Check
@@ -590,7 +592,8 @@ const App: React.FC = () => {
   }, [activeGroup]);
 
   const isPageGroupMounting = !visitedGroups.has(activeGroup);
-  const isPageDataNotReady = isAppDataLoading || isPageGroupMounting;
+  const isPageDataNotReady =
+    (isAppDataLoading || isPageGroupMounting) && !bootstrapSoftFailure.active;
 
   usePageGroupDeferredBootstrap(
     activeGroup,
@@ -921,6 +924,7 @@ const App: React.FC = () => {
           <Header title={getPageTitle(currentPage)} isNavigating={isPending || isPageDataNotReady} />
 
           <StabilityBanner />
+          <BootstrapRecoveryBanner />
 
           {/* Mobile Offline Warning Banner */}
           <MobileOfflineWarning />

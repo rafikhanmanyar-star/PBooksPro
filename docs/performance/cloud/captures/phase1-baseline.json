@@ -1,0 +1,190 @@
+{
+  "program": "cloud-perf-phase1",
+  "phase": "Login & Dashboard Baseline",
+  "startedAt": "2026-06-22T13:49:04.036Z",
+  "base": "https://api.pbookspro.com/api/v1",
+  "iterations": 3,
+  "apiRequestCount": 21,
+  "poolBefore": null,
+  "poolAfter": null,
+  "serverBaseline": {
+    "disabled": true,
+    "status": 401
+  },
+  "scenarios": [
+    {
+      "phase": "shell",
+      "name": "permissions_me",
+      "path": "/permissions/me",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "shell",
+      "name": "license_status",
+      "path": "/tenants/license-status",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "bootstrap",
+      "name": "state_bulk_chunked_p0",
+      "path": "/state/bulk-chunked?limit=200&offset=0",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_activity",
+      "path": "/dashboard/activity?limit=5",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_metrics",
+      "path": "/dashboard/metrics?from=2025-01-01&to=2026-12-31",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_snapshots",
+      "path": "/dashboard/snapshots",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_charts",
+      "path": "/dashboard/charts?year=2026&from=2025-01-01&to=2026-12-31",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    }
+  ],
+  "slowestEndpoints": [
+    {
+      "phase": "shell",
+      "name": "permissions_me",
+      "path": "/permissions/me",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "shell",
+      "name": "license_status",
+      "path": "/tenants/license-status",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "bootstrap",
+      "name": "state_bulk_chunked_p0",
+      "path": "/state/bulk-chunked?limit=200&offset=0",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_activity",
+      "path": "/dashboard/activity?limit=5",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_metrics",
+      "path": "/dashboard/metrics?from=2025-01-01&to=2026-12-31",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_snapshots",
+      "path": "/dashboard/snapshots",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    },
+    {
+      "phase": "dashboard",
+      "name": "dashboard_charts",
+      "path": "/dashboard/charts?year=2026&from=2025-01-01&to=2026-12-31",
+      "iterations": 3,
+      "ok": false,
+      "status": 401,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": null,
+      "lastPayloadBytes": 98
+    }
+  ],
+  "notes": [
+    "Pair with client snapshot: localStorage.setItem(\"PBOOKS_STARTUP_PERF\",\"1\"), login, then window.__PBOOKS_EXPORT_STARTUP_PERF__()",
+    "Enable server pool sampling: PBOOKS_PERF_POOL_SAMPLE=1 and PBOOKS_PERF_BASELINE_EXPORT=1"
+  ]
+}

@@ -388,6 +388,12 @@ const PayrollHub: React.FC = () => {
     );
   }, [tenantId, filterYear, filterMonth, payrollStorageRevision]);
 
+  /** All runs awaiting approval (GENERATED status) — shown as a persistent banner regardless of filter */
+  const pendingApprovalRuns = useMemo(() => {
+    if (!tenantId) return [];
+    return storageService.getPayrollRuns(tenantId).filter((r) => r.status === 'GENERATED');
+  }, [tenantId, payrollStorageRevision]);
+
   const cyclePeriodPayslipCount = useMemo(() => {
     if (!tenantId || !cyclePeriodRun) return 0;
     return storageService.getPayslipsByRunId(tenantId, cyclePeriodRun.id).length;
@@ -1342,6 +1348,38 @@ const PayrollHub: React.FC = () => {
                 </button>
               </div>
             </div>
+            {pendingApprovalRuns.length > 0 && (
+              <div className="flex-shrink-0 mb-4 rounded-xl border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex items-start gap-2 flex-1 min-w-0">
+                  <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                      {pendingApprovalRuns.length === 1
+                        ? 'Payroll run pending approval'
+                        : `${pendingApprovalRuns.length} payroll runs pending approval`}
+                    </p>
+                    <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5">
+                      {pendingApprovalRuns.map((r) => `${r.month} ${r.year}`).join(', ')} — click to filter and approve.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  {pendingApprovalRuns.map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => {
+                        setFilterYear(r.year as number);
+                        setFilterMonth(MONTH_LABEL_TO_NUM[r.month] ?? '');
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-amber-600 text-white text-xs font-semibold hover:bg-amber-700 transition-colors whitespace-nowrap"
+                    >
+                      Review {r.month} {r.year}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Split: resizable on md+ */}
             <div

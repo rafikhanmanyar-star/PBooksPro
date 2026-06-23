@@ -1,0 +1,3153 @@
+{
+  "program": "PERF-P2-C",
+  "capturedAt": "2026-06-23T03:03:48.279Z",
+  "mode": "local-spawn",
+  "envFile": ".env.production",
+  "tenant": {
+    "id": "rk-builders-284d6d",
+    "name": "RK Builders",
+    "company_name": null
+  },
+  "volumes": {
+    "transactions": 4988,
+    "invoices": 1602,
+    "bills": 233,
+    "contacts": 353,
+    "units": 137,
+    "properties": 126,
+    "contracts": 8,
+    "rentalAgreements": 115,
+    "projectAgreements": 124,
+    "projects": 16,
+    "accounts": 21,
+    "categories": 106,
+    "agreements": 239
+  },
+  "rawSqlTimings": {
+    "countTenantTransactionsSql": {
+      "n": 5,
+      "avg": 2,
+      "p50": 2,
+      "p95": 3,
+      "max": 3,
+      "min": 2
+    },
+    "listTransactionsPageSql": {
+      "n": 5,
+      "avg": 9,
+      "p50": 6,
+      "p95": 20,
+      "max": 20,
+      "min": 5
+    }
+  },
+  "iterations": [
+    {
+      "index": 0,
+      "ok": true,
+      "status": 200,
+      "wallMs": 354,
+      "totals": {
+        "transactions": 4988,
+        "accounts": 32,
+        "contacts": 353,
+        "categories": 144,
+        "projects": 16,
+        "buildings": 4,
+        "properties": 126,
+        "units": 137,
+        "invoices": 1602,
+        "bills": 233,
+        "budgets": 1,
+        "planAmenities": 1,
+        "installmentPlans": 0,
+        "rentalAgreements": 115,
+        "projectAgreements": 124,
+        "projectReceivedAssets": 0,
+        "contracts": 8,
+        "salesReturns": 0,
+        "recurringInvoiceTemplates": 62,
+        "pmCycleAllocations": 5,
+        "personalCategories": 25
+      },
+      "stages": {
+        "authMiddleware": 1,
+        "countTenantTransactions": 7,
+        "entityLoaderTotal": 87,
+        "fetchPlSubTypesForTenant": 5,
+        "listTransactions": 15,
+        "overallRequest": 122,
+        "handlerTotal": 121
+      },
+      "entities": [
+        {
+          "entity": "accounts",
+          "rows": 32,
+          "durationMs": 11
+        },
+        {
+          "entity": "contacts",
+          "rows": 353,
+          "durationMs": 8
+        },
+        {
+          "entity": "transactions_inner",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "categories",
+          "rows": 144,
+          "durationMs": 4
+        },
+        {
+          "entity": "projects",
+          "rows": 16,
+          "durationMs": 1
+        },
+        {
+          "entity": "buildings",
+          "rows": 4,
+          "durationMs": 2
+        },
+        {
+          "entity": "properties",
+          "rows": 126,
+          "durationMs": 6
+        },
+        {
+          "entity": "units",
+          "rows": 137,
+          "durationMs": 7
+        },
+        {
+          "entity": "invoices",
+          "rows": 1602,
+          "durationMs": 24
+        },
+        {
+          "entity": "bills",
+          "rows": 233,
+          "durationMs": 11
+        },
+        {
+          "entity": "budgets",
+          "rows": 1,
+          "durationMs": 4
+        },
+        {
+          "entity": "planAmenities",
+          "rows": 1,
+          "durationMs": 4
+        },
+        {
+          "entity": "installmentPlans",
+          "rows": 0,
+          "durationMs": 5
+        },
+        {
+          "entity": "rentalAgreements",
+          "rows": 115,
+          "durationMs": 9
+        },
+        {
+          "entity": "projectAgreements",
+          "rows": 124,
+          "durationMs": 10
+        },
+        {
+          "entity": "projectReceivedAssets",
+          "rows": 0,
+          "durationMs": 5
+        },
+        {
+          "entity": "contracts",
+          "rows": 8,
+          "durationMs": 9
+        },
+        {
+          "entity": "salesReturns",
+          "rows": 0,
+          "durationMs": 5
+        },
+        {
+          "entity": "recurringInvoiceTemplates",
+          "rows": 62,
+          "durationMs": 4
+        },
+        {
+          "entity": "pmCycleAllocations",
+          "rows": 5,
+          "durationMs": 6
+        },
+        {
+          "entity": "vendors",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "quotations",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "documents",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "transactionLog",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "personalCategories",
+          "rows": 25,
+          "durationMs": 4
+        },
+        {
+          "entity": "personalTransactions",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "appSettings",
+          "rows": 1,
+          "durationMs": 4
+        }
+      ],
+      "holdSummary": {
+        "connectionCycles": 89,
+        "peakSimultaneous": 13,
+        "sumHoldMs": 699,
+        "maxSingleHoldMs": 43,
+        "timeline": [
+          {
+            "label": "A",
+            "relAcquireMs": 0,
+            "relReleaseMs": 21,
+            "holdMs": 21,
+            "waitMs": 0
+          },
+          {
+            "label": "B",
+            "relAcquireMs": 23,
+            "relReleaseMs": 27,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "C",
+            "relAcquireMs": 30,
+            "relReleaseMs": 73,
+            "holdMs": 43,
+            "waitMs": 1
+          },
+          {
+            "label": "D",
+            "relAcquireMs": 32,
+            "relReleaseMs": 72,
+            "holdMs": 40,
+            "waitMs": 1
+          },
+          {
+            "label": "E",
+            "relAcquireMs": 33,
+            "relReleaseMs": 74,
+            "holdMs": 41,
+            "waitMs": 0
+          },
+          {
+            "label": "F",
+            "relAcquireMs": 64,
+            "relReleaseMs": 75,
+            "holdMs": 11,
+            "waitMs": 2
+          },
+          {
+            "label": "G",
+            "relAcquireMs": 73,
+            "relReleaseMs": 76,
+            "holdMs": 3,
+            "waitMs": 8
+          },
+          {
+            "label": "H",
+            "relAcquireMs": 83,
+            "relReleaseMs": 88,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "I",
+            "relAcquireMs": 85,
+            "relReleaseMs": 90,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "J",
+            "relAcquireMs": 86,
+            "relReleaseMs": 93,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "K",
+            "relAcquireMs": 88,
+            "relReleaseMs": 95,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "L",
+            "relAcquireMs": 90,
+            "relReleaseMs": 97,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "M",
+            "relAcquireMs": 93,
+            "relReleaseMs": 99,
+            "holdMs": 6,
+            "waitMs": 1
+          },
+          {
+            "label": "N",
+            "relAcquireMs": 95,
+            "relReleaseMs": 101,
+            "holdMs": 6,
+            "waitMs": 1
+          },
+          {
+            "label": "O",
+            "relAcquireMs": 97,
+            "relReleaseMs": 102,
+            "holdMs": 5,
+            "waitMs": 1
+          },
+          {
+            "label": "P",
+            "relAcquireMs": 99,
+            "relReleaseMs": 103,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "Q",
+            "relAcquireMs": 101,
+            "relReleaseMs": 105,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "R",
+            "relAcquireMs": 102,
+            "relReleaseMs": 107,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "S",
+            "relAcquireMs": 104,
+            "relReleaseMs": 107,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "T",
+            "relAcquireMs": 105,
+            "relReleaseMs": 108,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "U",
+            "relAcquireMs": 106,
+            "relReleaseMs": 109,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "V",
+            "relAcquireMs": 107,
+            "relReleaseMs": 110,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "W",
+            "relAcquireMs": 108,
+            "relReleaseMs": 112,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "X",
+            "relAcquireMs": 110,
+            "relReleaseMs": 112,
+            "holdMs": 2,
+            "waitMs": 1
+          },
+          {
+            "label": "Y",
+            "relAcquireMs": 111,
+            "relReleaseMs": 113,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "Z",
+            "relAcquireMs": 112,
+            "relReleaseMs": 114,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "A26",
+            "relAcquireMs": 113,
+            "relReleaseMs": 116,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "B27",
+            "relAcquireMs": 114,
+            "relReleaseMs": 116,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "C28",
+            "relAcquireMs": 115,
+            "relReleaseMs": 117,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "D29",
+            "relAcquireMs": 117,
+            "relReleaseMs": 118,
+            "holdMs": 1,
+            "waitMs": 0
+          },
+          {
+            "label": "E30",
+            "relAcquireMs": 118,
+            "relReleaseMs": 120,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "F31",
+            "relAcquireMs": 119,
+            "relReleaseMs": 122,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "G32",
+            "relAcquireMs": 121,
+            "relReleaseMs": 124,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "H33",
+            "relAcquireMs": 122,
+            "relReleaseMs": 124,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "I34",
+            "relAcquireMs": 123,
+            "relReleaseMs": 125,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "J35",
+            "relAcquireMs": 124,
+            "relReleaseMs": 128,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "K36",
+            "relAcquireMs": 126,
+            "relReleaseMs": 129,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "L37",
+            "relAcquireMs": 127,
+            "relReleaseMs": 130,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "M38",
+            "relAcquireMs": 128,
+            "relReleaseMs": 131,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "N39",
+            "relAcquireMs": 129,
+            "relReleaseMs": 132,
+            "holdMs": 3,
+            "waitMs": 0
+          }
+        ],
+        "stageDurationComparison": [
+          [
+            "authMiddleware (est.)",
+            1
+          ],
+          [
+            "countTenantTransactions",
+            7
+          ],
+          [
+            "entity loaders (aggregate)",
+            87
+          ],
+          [
+            "fetchPlSubTypesForTenant",
+            5
+          ],
+          [
+            "listTransactions",
+            15
+          ]
+        ]
+      },
+      "requestId": "8801d84f-b513-485a-9c8d-4e6d4defcb81"
+    },
+    {
+      "index": 1,
+      "ok": true,
+      "status": 200,
+      "wallMs": 333,
+      "totals": {
+        "transactions": 4988,
+        "accounts": 32,
+        "contacts": 353,
+        "categories": 144,
+        "projects": 16,
+        "buildings": 4,
+        "properties": 126,
+        "units": 137,
+        "invoices": 1602,
+        "bills": 233,
+        "budgets": 1,
+        "planAmenities": 1,
+        "installmentPlans": 0,
+        "rentalAgreements": 115,
+        "projectAgreements": 124,
+        "projectReceivedAssets": 0,
+        "contracts": 8,
+        "salesReturns": 0,
+        "recurringInvoiceTemplates": 62,
+        "pmCycleAllocations": 5,
+        "personalCategories": 25
+      },
+      "stages": {
+        "authMiddleware": 0,
+        "countTenantTransactions": 2,
+        "entityLoaderTotal": 118,
+        "fetchPlSubTypesForTenant": 6,
+        "listTransactions": 28,
+        "overallRequest": 175,
+        "handlerTotal": 175
+      },
+      "entities": [
+        {
+          "entity": "accounts",
+          "rows": 32,
+          "durationMs": 20
+        },
+        {
+          "entity": "contacts",
+          "rows": 353,
+          "durationMs": 12
+        },
+        {
+          "entity": "transactions_inner",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "categories",
+          "rows": 144,
+          "durationMs": 9
+        },
+        {
+          "entity": "projects",
+          "rows": 16,
+          "durationMs": 6
+        },
+        {
+          "entity": "buildings",
+          "rows": 4,
+          "durationMs": 6
+        },
+        {
+          "entity": "properties",
+          "rows": 126,
+          "durationMs": 7
+        },
+        {
+          "entity": "units",
+          "rows": 137,
+          "durationMs": 10
+        },
+        {
+          "entity": "invoices",
+          "rows": 1602,
+          "durationMs": 36
+        },
+        {
+          "entity": "bills",
+          "rows": 233,
+          "durationMs": 17
+        },
+        {
+          "entity": "budgets",
+          "rows": 1,
+          "durationMs": 5
+        },
+        {
+          "entity": "planAmenities",
+          "rows": 1,
+          "durationMs": 5
+        },
+        {
+          "entity": "installmentPlans",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "rentalAgreements",
+          "rows": 115,
+          "durationMs": 12
+        },
+        {
+          "entity": "projectAgreements",
+          "rows": 124,
+          "durationMs": 19
+        },
+        {
+          "entity": "projectReceivedAssets",
+          "rows": 0,
+          "durationMs": 6
+        },
+        {
+          "entity": "contracts",
+          "rows": 8,
+          "durationMs": 10
+        },
+        {
+          "entity": "salesReturns",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "recurringInvoiceTemplates",
+          "rows": 62,
+          "durationMs": 6
+        },
+        {
+          "entity": "pmCycleAllocations",
+          "rows": 5,
+          "durationMs": 6
+        },
+        {
+          "entity": "vendors",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "quotations",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "documents",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "transactionLog",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "personalCategories",
+          "rows": 25,
+          "durationMs": 5
+        },
+        {
+          "entity": "personalTransactions",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "appSettings",
+          "rows": 1,
+          "durationMs": 4
+        }
+      ],
+      "holdSummary": {
+        "connectionCycles": 87,
+        "peakSimultaneous": 6,
+        "sumHoldMs": 514,
+        "maxSingleHoldMs": 36,
+        "timeline": [
+          {
+            "label": "A",
+            "relAcquireMs": 0,
+            "relReleaseMs": 7,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "B",
+            "relAcquireMs": 2,
+            "relReleaseMs": 9,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "C",
+            "relAcquireMs": 5,
+            "relReleaseMs": 14,
+            "holdMs": 9,
+            "waitMs": 1
+          },
+          {
+            "label": "D",
+            "relAcquireMs": 7,
+            "relReleaseMs": 16,
+            "holdMs": 9,
+            "waitMs": 0
+          },
+          {
+            "label": "E",
+            "relAcquireMs": 9,
+            "relReleaseMs": 16,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "F",
+            "relAcquireMs": 11,
+            "relReleaseMs": 19,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "G",
+            "relAcquireMs": 13,
+            "relReleaseMs": 21,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "H",
+            "relAcquireMs": 15,
+            "relReleaseMs": 21,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "I",
+            "relAcquireMs": 18,
+            "relReleaseMs": 25,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "J",
+            "relAcquireMs": 20,
+            "relReleaseMs": 26,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "K",
+            "relAcquireMs": 23,
+            "relReleaseMs": 28,
+            "holdMs": 5,
+            "waitMs": 1
+          },
+          {
+            "label": "L",
+            "relAcquireMs": 24,
+            "relReleaseMs": 29,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "M",
+            "relAcquireMs": 26,
+            "relReleaseMs": 31,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "N",
+            "relAcquireMs": 27,
+            "relReleaseMs": 32,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "O",
+            "relAcquireMs": 29,
+            "relReleaseMs": 35,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "P",
+            "relAcquireMs": 30,
+            "relReleaseMs": 36,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "Q",
+            "relAcquireMs": 32,
+            "relReleaseMs": 38,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "R",
+            "relAcquireMs": 34,
+            "relReleaseMs": 39,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "S",
+            "relAcquireMs": 36,
+            "relReleaseMs": 41,
+            "holdMs": 5,
+            "waitMs": 1
+          },
+          {
+            "label": "T",
+            "relAcquireMs": 38,
+            "relReleaseMs": 44,
+            "holdMs": 6,
+            "waitMs": 1
+          },
+          {
+            "label": "U",
+            "relAcquireMs": 39,
+            "relReleaseMs": 44,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "V",
+            "relAcquireMs": 40,
+            "relReleaseMs": 45,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "W",
+            "relAcquireMs": 42,
+            "relReleaseMs": 46,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "X",
+            "relAcquireMs": 43,
+            "relReleaseMs": 47,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "Y",
+            "relAcquireMs": 45,
+            "relReleaseMs": 48,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "Z",
+            "relAcquireMs": 46,
+            "relReleaseMs": 49,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "A26",
+            "relAcquireMs": 47,
+            "relReleaseMs": 50,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "B27",
+            "relAcquireMs": 48,
+            "relReleaseMs": 51,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "C28",
+            "relAcquireMs": 49,
+            "relReleaseMs": 52,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "D29",
+            "relAcquireMs": 50,
+            "relReleaseMs": 54,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "E30",
+            "relAcquireMs": 51,
+            "relReleaseMs": 54,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "F31",
+            "relAcquireMs": 52,
+            "relReleaseMs": 55,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "G32",
+            "relAcquireMs": 53,
+            "relReleaseMs": 57,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "H33",
+            "relAcquireMs": 54,
+            "relReleaseMs": 58,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "I34",
+            "relAcquireMs": 55,
+            "relReleaseMs": 59,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "J35",
+            "relAcquireMs": 56,
+            "relReleaseMs": 60,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "K36",
+            "relAcquireMs": 57,
+            "relReleaseMs": 60,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "L37",
+            "relAcquireMs": 58,
+            "relReleaseMs": 61,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "M38",
+            "relAcquireMs": 59,
+            "relReleaseMs": 62,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "N39",
+            "relAcquireMs": 60,
+            "relReleaseMs": 63,
+            "holdMs": 3,
+            "waitMs": 0
+          }
+        ],
+        "stageDurationComparison": [
+          [
+            "authMiddleware (est.)",
+            0
+          ],
+          [
+            "countTenantTransactions",
+            2
+          ],
+          [
+            "entity loaders (aggregate)",
+            118
+          ],
+          [
+            "fetchPlSubTypesForTenant",
+            6
+          ],
+          [
+            "listTransactions",
+            28
+          ]
+        ]
+      },
+      "requestId": "9f21dba0-2112-476e-b90b-d393ad5776c9"
+    },
+    {
+      "index": 2,
+      "ok": true,
+      "status": 200,
+      "wallMs": 346,
+      "totals": {
+        "transactions": 4988,
+        "accounts": 32,
+        "contacts": 353,
+        "categories": 144,
+        "projects": 16,
+        "buildings": 4,
+        "properties": 126,
+        "units": 137,
+        "invoices": 1602,
+        "bills": 233,
+        "budgets": 1,
+        "planAmenities": 1,
+        "installmentPlans": 0,
+        "rentalAgreements": 115,
+        "projectAgreements": 124,
+        "projectReceivedAssets": 0,
+        "contracts": 8,
+        "salesReturns": 0,
+        "recurringInvoiceTemplates": 62,
+        "pmCycleAllocations": 5,
+        "personalCategories": 25
+      },
+      "stages": {
+        "authMiddleware": 0,
+        "countTenantTransactions": 3,
+        "entityLoaderTotal": 121,
+        "fetchPlSubTypesForTenant": 6,
+        "listTransactions": 26,
+        "overallRequest": 168,
+        "handlerTotal": 168
+      },
+      "entities": [
+        {
+          "entity": "accounts",
+          "rows": 32,
+          "durationMs": 18
+        },
+        {
+          "entity": "contacts",
+          "rows": 353,
+          "durationMs": 11
+        },
+        {
+          "entity": "transactions_inner",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "categories",
+          "rows": 144,
+          "durationMs": 6
+        },
+        {
+          "entity": "projects",
+          "rows": 16,
+          "durationMs": 6
+        },
+        {
+          "entity": "buildings",
+          "rows": 4,
+          "durationMs": 4
+        },
+        {
+          "entity": "properties",
+          "rows": 126,
+          "durationMs": 8
+        },
+        {
+          "entity": "units",
+          "rows": 137,
+          "durationMs": 9
+        },
+        {
+          "entity": "invoices",
+          "rows": 1602,
+          "durationMs": 27
+        },
+        {
+          "entity": "bills",
+          "rows": 233,
+          "durationMs": 14
+        },
+        {
+          "entity": "budgets",
+          "rows": 1,
+          "durationMs": 5
+        },
+        {
+          "entity": "planAmenities",
+          "rows": 1,
+          "durationMs": 5
+        },
+        {
+          "entity": "installmentPlans",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "rentalAgreements",
+          "rows": 115,
+          "durationMs": 11
+        },
+        {
+          "entity": "projectAgreements",
+          "rows": 124,
+          "durationMs": 20
+        },
+        {
+          "entity": "projectReceivedAssets",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "contracts",
+          "rows": 8,
+          "durationMs": 11
+        },
+        {
+          "entity": "salesReturns",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "recurringInvoiceTemplates",
+          "rows": 62,
+          "durationMs": 6
+        },
+        {
+          "entity": "pmCycleAllocations",
+          "rows": 5,
+          "durationMs": 1
+        },
+        {
+          "entity": "vendors",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "quotations",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "documents",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "transactionLog",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "personalCategories",
+          "rows": 25,
+          "durationMs": 5
+        },
+        {
+          "entity": "personalTransactions",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "appSettings",
+          "rows": 1,
+          "durationMs": 1
+        }
+      ],
+      "holdSummary": {
+        "connectionCycles": 87,
+        "peakSimultaneous": 6,
+        "sumHoldMs": 511,
+        "maxSingleHoldMs": 27,
+        "timeline": [
+          {
+            "label": "A",
+            "relAcquireMs": 0,
+            "relReleaseMs": 9,
+            "holdMs": 9,
+            "waitMs": 0
+          },
+          {
+            "label": "B",
+            "relAcquireMs": 2,
+            "relReleaseMs": 9,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "C",
+            "relAcquireMs": 4,
+            "relReleaseMs": 12,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "D",
+            "relAcquireMs": 6,
+            "relReleaseMs": 14,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "E",
+            "relAcquireMs": 9,
+            "relReleaseMs": 16,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "F",
+            "relAcquireMs": 11,
+            "relReleaseMs": 18,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "G",
+            "relAcquireMs": 14,
+            "relReleaseMs": 19,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "H",
+            "relAcquireMs": 17,
+            "relReleaseMs": 23,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "I",
+            "relAcquireMs": 19,
+            "relReleaseMs": 24,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "J",
+            "relAcquireMs": 21,
+            "relReleaseMs": 26,
+            "holdMs": 5,
+            "waitMs": 1
+          },
+          {
+            "label": "K",
+            "relAcquireMs": 22,
+            "relReleaseMs": 29,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "L",
+            "relAcquireMs": 24,
+            "relReleaseMs": 29,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "M",
+            "relAcquireMs": 26,
+            "relReleaseMs": 33,
+            "holdMs": 7,
+            "waitMs": 1
+          },
+          {
+            "label": "N",
+            "relAcquireMs": 28,
+            "relReleaseMs": 34,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "O",
+            "relAcquireMs": 31,
+            "relReleaseMs": 36,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "P",
+            "relAcquireMs": 33,
+            "relReleaseMs": 40,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "Q",
+            "relAcquireMs": 35,
+            "relReleaseMs": 40,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "R",
+            "relAcquireMs": 37,
+            "relReleaseMs": 42,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "S",
+            "relAcquireMs": 39,
+            "relReleaseMs": 46,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "T",
+            "relAcquireMs": 41,
+            "relReleaseMs": 46,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "U",
+            "relAcquireMs": 44,
+            "relReleaseMs": 47,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "V",
+            "relAcquireMs": 46,
+            "relReleaseMs": 52,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "W",
+            "relAcquireMs": 48,
+            "relReleaseMs": 51,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "X",
+            "relAcquireMs": 50,
+            "relReleaseMs": 55,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "Y",
+            "relAcquireMs": 52,
+            "relReleaseMs": 55,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "Z",
+            "relAcquireMs": 53,
+            "relReleaseMs": 56,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "A26",
+            "relAcquireMs": 54,
+            "relReleaseMs": 57,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "B27",
+            "relAcquireMs": 56,
+            "relReleaseMs": 58,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "C28",
+            "relAcquireMs": 57,
+            "relReleaseMs": 61,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "D29",
+            "relAcquireMs": 58,
+            "relReleaseMs": 63,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "E30",
+            "relAcquireMs": 59,
+            "relReleaseMs": 66,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "F31",
+            "relAcquireMs": 60,
+            "relReleaseMs": 68,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "G32",
+            "relAcquireMs": 63,
+            "relReleaseMs": 70,
+            "holdMs": 7,
+            "waitMs": 1
+          },
+          {
+            "label": "H33",
+            "relAcquireMs": 65,
+            "relReleaseMs": 72,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "I34",
+            "relAcquireMs": 67,
+            "relReleaseMs": 74,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "J35",
+            "relAcquireMs": 69,
+            "relReleaseMs": 75,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "K36",
+            "relAcquireMs": 71,
+            "relReleaseMs": 78,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "L37",
+            "relAcquireMs": 73,
+            "relReleaseMs": 80,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "M38",
+            "relAcquireMs": 75,
+            "relReleaseMs": 81,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "N39",
+            "relAcquireMs": 77,
+            "relReleaseMs": 82,
+            "holdMs": 5,
+            "waitMs": 0
+          }
+        ],
+        "stageDurationComparison": [
+          [
+            "authMiddleware (est.)",
+            0
+          ],
+          [
+            "countTenantTransactions",
+            3
+          ],
+          [
+            "entity loaders (aggregate)",
+            121
+          ],
+          [
+            "fetchPlSubTypesForTenant",
+            6
+          ],
+          [
+            "listTransactions",
+            26
+          ]
+        ]
+      },
+      "requestId": "cc27dce5-de79-4964-84f5-bffee3b0cfcf"
+    },
+    {
+      "index": 3,
+      "ok": true,
+      "status": 200,
+      "wallMs": 317,
+      "totals": {
+        "transactions": 4988,
+        "accounts": 32,
+        "contacts": 353,
+        "categories": 144,
+        "projects": 16,
+        "buildings": 4,
+        "properties": 126,
+        "units": 137,
+        "invoices": 1602,
+        "bills": 233,
+        "budgets": 1,
+        "planAmenities": 1,
+        "installmentPlans": 0,
+        "rentalAgreements": 115,
+        "projectAgreements": 124,
+        "projectReceivedAssets": 0,
+        "contracts": 8,
+        "salesReturns": 0,
+        "recurringInvoiceTemplates": 62,
+        "pmCycleAllocations": 5,
+        "personalCategories": 25
+      },
+      "stages": {
+        "authMiddleware": 0,
+        "countTenantTransactions": 3,
+        "entityLoaderTotal": 112,
+        "fetchPlSubTypesForTenant": 2,
+        "listTransactions": 10,
+        "overallRequest": 136,
+        "handlerTotal": 136
+      },
+      "entities": [
+        {
+          "entity": "accounts",
+          "rows": 32,
+          "durationMs": 18
+        },
+        {
+          "entity": "contacts",
+          "rows": 353,
+          "durationMs": 12
+        },
+        {
+          "entity": "transactions_inner",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "categories",
+          "rows": 144,
+          "durationMs": 8
+        },
+        {
+          "entity": "projects",
+          "rows": 16,
+          "durationMs": 5
+        },
+        {
+          "entity": "buildings",
+          "rows": 4,
+          "durationMs": 5
+        },
+        {
+          "entity": "properties",
+          "rows": 126,
+          "durationMs": 8
+        },
+        {
+          "entity": "units",
+          "rows": 137,
+          "durationMs": 13
+        },
+        {
+          "entity": "invoices",
+          "rows": 1602,
+          "durationMs": 42
+        },
+        {
+          "entity": "bills",
+          "rows": 233,
+          "durationMs": 6
+        },
+        {
+          "entity": "budgets",
+          "rows": 1,
+          "durationMs": 6
+        },
+        {
+          "entity": "planAmenities",
+          "rows": 1,
+          "durationMs": 6
+        },
+        {
+          "entity": "installmentPlans",
+          "rows": 0,
+          "durationMs": 13
+        },
+        {
+          "entity": "rentalAgreements",
+          "rows": 115,
+          "durationMs": 11
+        },
+        {
+          "entity": "projectAgreements",
+          "rows": 124,
+          "durationMs": 14
+        },
+        {
+          "entity": "projectReceivedAssets",
+          "rows": 0,
+          "durationMs": 13
+        },
+        {
+          "entity": "contracts",
+          "rows": 8,
+          "durationMs": 14
+        },
+        {
+          "entity": "salesReturns",
+          "rows": 0,
+          "durationMs": 13
+        },
+        {
+          "entity": "recurringInvoiceTemplates",
+          "rows": 62,
+          "durationMs": 3
+        },
+        {
+          "entity": "pmCycleAllocations",
+          "rows": 5,
+          "durationMs": 10
+        },
+        {
+          "entity": "vendors",
+          "rows": 0,
+          "durationMs": 1
+        },
+        {
+          "entity": "quotations",
+          "rows": 0,
+          "durationMs": 1
+        },
+        {
+          "entity": "documents",
+          "rows": 0,
+          "durationMs": 1
+        },
+        {
+          "entity": "transactionLog",
+          "rows": 0,
+          "durationMs": 1
+        },
+        {
+          "entity": "personalCategories",
+          "rows": 25,
+          "durationMs": 1
+        },
+        {
+          "entity": "personalTransactions",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "appSettings",
+          "rows": 1,
+          "durationMs": 4
+        }
+      ],
+      "holdSummary": {
+        "connectionCycles": 87,
+        "peakSimultaneous": 6,
+        "sumHoldMs": 536,
+        "maxSingleHoldMs": 42,
+        "timeline": [
+          {
+            "label": "A",
+            "relAcquireMs": 0,
+            "relReleaseMs": 7,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "B",
+            "relAcquireMs": 2,
+            "relReleaseMs": 10,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "C",
+            "relAcquireMs": 4,
+            "relReleaseMs": 11,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "D",
+            "relAcquireMs": 6,
+            "relReleaseMs": 14,
+            "holdMs": 8,
+            "waitMs": 0
+          },
+          {
+            "label": "E",
+            "relAcquireMs": 9,
+            "relReleaseMs": 16,
+            "holdMs": 7,
+            "waitMs": 1
+          },
+          {
+            "label": "F",
+            "relAcquireMs": 11,
+            "relReleaseMs": 18,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "G",
+            "relAcquireMs": 13,
+            "relReleaseMs": 20,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "H",
+            "relAcquireMs": 15,
+            "relReleaseMs": 22,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "I",
+            "relAcquireMs": 17,
+            "relReleaseMs": 23,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "J",
+            "relAcquireMs": 20,
+            "relReleaseMs": 25,
+            "holdMs": 5,
+            "waitMs": 1
+          },
+          {
+            "label": "K",
+            "relAcquireMs": 21,
+            "relReleaseMs": 27,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "L",
+            "relAcquireMs": 23,
+            "relReleaseMs": 29,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "M",
+            "relAcquireMs": 25,
+            "relReleaseMs": 29,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "N",
+            "relAcquireMs": 26,
+            "relReleaseMs": 31,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "O",
+            "relAcquireMs": 28,
+            "relReleaseMs": 32,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "P",
+            "relAcquireMs": 29,
+            "relReleaseMs": 33,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "Q",
+            "relAcquireMs": 30,
+            "relReleaseMs": 34,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "R",
+            "relAcquireMs": 32,
+            "relReleaseMs": 35,
+            "holdMs": 3,
+            "waitMs": 1
+          },
+          {
+            "label": "S",
+            "relAcquireMs": 33,
+            "relReleaseMs": 36,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "T",
+            "relAcquireMs": 34,
+            "relReleaseMs": 38,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "U",
+            "relAcquireMs": 35,
+            "relReleaseMs": 39,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "V",
+            "relAcquireMs": 36,
+            "relReleaseMs": 40,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "W",
+            "relAcquireMs": 38,
+            "relReleaseMs": 41,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "X",
+            "relAcquireMs": 39,
+            "relReleaseMs": 44,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "Y",
+            "relAcquireMs": 40,
+            "relReleaseMs": 44,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "Z",
+            "relAcquireMs": 41,
+            "relReleaseMs": 46,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "A26",
+            "relAcquireMs": 43,
+            "relReleaseMs": 50,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "B27",
+            "relAcquireMs": 45,
+            "relReleaseMs": 52,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "C28",
+            "relAcquireMs": 47,
+            "relReleaseMs": 52,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "D29",
+            "relAcquireMs": 49,
+            "relReleaseMs": 54,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "E30",
+            "relAcquireMs": 52,
+            "relReleaseMs": 56,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "F31",
+            "relAcquireMs": 53,
+            "relReleaseMs": 57,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "G32",
+            "relAcquireMs": 55,
+            "relReleaseMs": 58,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "H33",
+            "relAcquireMs": 56,
+            "relReleaseMs": 59,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "I34",
+            "relAcquireMs": 57,
+            "relReleaseMs": 62,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "J35",
+            "relAcquireMs": 59,
+            "relReleaseMs": 62,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "K36",
+            "relAcquireMs": 60,
+            "relReleaseMs": 66,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "L37",
+            "relAcquireMs": 62,
+            "relReleaseMs": 64,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "M38",
+            "relAcquireMs": 64,
+            "relReleaseMs": 68,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "N39",
+            "relAcquireMs": 65,
+            "relReleaseMs": 68,
+            "holdMs": 3,
+            "waitMs": 0
+          }
+        ],
+        "stageDurationComparison": [
+          [
+            "authMiddleware (est.)",
+            0
+          ],
+          [
+            "countTenantTransactions",
+            3
+          ],
+          [
+            "entity loaders (aggregate)",
+            112
+          ],
+          [
+            "fetchPlSubTypesForTenant",
+            2
+          ],
+          [
+            "listTransactions",
+            10
+          ]
+        ]
+      },
+      "requestId": "fb4ca7e2-cc37-45e5-8b1f-dcf32b46e8d1"
+    },
+    {
+      "index": 4,
+      "ok": true,
+      "status": 200,
+      "wallMs": 311,
+      "totals": {
+        "transactions": 4988,
+        "accounts": 32,
+        "contacts": 353,
+        "categories": 144,
+        "projects": 16,
+        "buildings": 4,
+        "properties": 126,
+        "units": 137,
+        "invoices": 1602,
+        "bills": 233,
+        "budgets": 1,
+        "planAmenities": 1,
+        "installmentPlans": 0,
+        "rentalAgreements": 115,
+        "projectAgreements": 124,
+        "projectReceivedAssets": 0,
+        "contracts": 8,
+        "salesReturns": 0,
+        "recurringInvoiceTemplates": 62,
+        "pmCycleAllocations": 5,
+        "personalCategories": 25
+      },
+      "stages": {
+        "authMiddleware": 0,
+        "countTenantTransactions": 2,
+        "entityLoaderTotal": 132,
+        "fetchPlSubTypesForTenant": 7,
+        "listTransactions": 18,
+        "overallRequest": 169,
+        "handlerTotal": 169
+      },
+      "entities": [
+        {
+          "entity": "accounts",
+          "rows": 32,
+          "durationMs": 2
+        },
+        {
+          "entity": "contacts",
+          "rows": 353,
+          "durationMs": 11
+        },
+        {
+          "entity": "transactions_inner",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "categories",
+          "rows": 144,
+          "durationMs": 7
+        },
+        {
+          "entity": "projects",
+          "rows": 16,
+          "durationMs": 1
+        },
+        {
+          "entity": "buildings",
+          "rows": 4,
+          "durationMs": 5
+        },
+        {
+          "entity": "properties",
+          "rows": 126,
+          "durationMs": 2
+        },
+        {
+          "entity": "units",
+          "rows": 137,
+          "durationMs": 3
+        },
+        {
+          "entity": "invoices",
+          "rows": 1602,
+          "durationMs": 32
+        },
+        {
+          "entity": "bills",
+          "rows": 233,
+          "durationMs": 19
+        },
+        {
+          "entity": "budgets",
+          "rows": 1,
+          "durationMs": 2
+        },
+        {
+          "entity": "planAmenities",
+          "rows": 1,
+          "durationMs": 1
+        },
+        {
+          "entity": "installmentPlans",
+          "rows": 0,
+          "durationMs": 7
+        },
+        {
+          "entity": "rentalAgreements",
+          "rows": 115,
+          "durationMs": 15
+        },
+        {
+          "entity": "projectAgreements",
+          "rows": 124,
+          "durationMs": 7
+        },
+        {
+          "entity": "projectReceivedAssets",
+          "rows": 0,
+          "durationMs": 2
+        },
+        {
+          "entity": "contracts",
+          "rows": 8,
+          "durationMs": 12
+        },
+        {
+          "entity": "salesReturns",
+          "rows": 0,
+          "durationMs": 8
+        },
+        {
+          "entity": "recurringInvoiceTemplates",
+          "rows": 62,
+          "durationMs": 3
+        },
+        {
+          "entity": "pmCycleAllocations",
+          "rows": 5,
+          "durationMs": 7
+        },
+        {
+          "entity": "vendors",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "quotations",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "documents",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "transactionLog",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "personalCategories",
+          "rows": 25,
+          "durationMs": 5
+        },
+        {
+          "entity": "personalTransactions",
+          "rows": 0,
+          "durationMs": 0
+        },
+        {
+          "entity": "appSettings",
+          "rows": 1,
+          "durationMs": 2
+        }
+      ],
+      "holdSummary": {
+        "connectionCycles": 87,
+        "peakSimultaneous": 6,
+        "sumHoldMs": 403,
+        "maxSingleHoldMs": 32,
+        "timeline": [
+          {
+            "label": "A",
+            "relAcquireMs": 0,
+            "relReleaseMs": 6,
+            "holdMs": 6,
+            "waitMs": 1
+          },
+          {
+            "label": "B",
+            "relAcquireMs": 3,
+            "relReleaseMs": 10,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "C",
+            "relAcquireMs": 5,
+            "relReleaseMs": 12,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "D",
+            "relAcquireMs": 7,
+            "relReleaseMs": 14,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "E",
+            "relAcquireMs": 9,
+            "relReleaseMs": 16,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "F",
+            "relAcquireMs": 11,
+            "relReleaseMs": 18,
+            "holdMs": 7,
+            "waitMs": 0
+          },
+          {
+            "label": "G",
+            "relAcquireMs": 14,
+            "relReleaseMs": 18,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "H",
+            "relAcquireMs": 16,
+            "relReleaseMs": 22,
+            "holdMs": 6,
+            "waitMs": 1
+          },
+          {
+            "label": "I",
+            "relAcquireMs": 17,
+            "relReleaseMs": 23,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "J",
+            "relAcquireMs": 19,
+            "relReleaseMs": 25,
+            "holdMs": 6,
+            "waitMs": 0
+          },
+          {
+            "label": "K",
+            "relAcquireMs": 21,
+            "relReleaseMs": 26,
+            "holdMs": 5,
+            "waitMs": 0
+          },
+          {
+            "label": "L",
+            "relAcquireMs": 23,
+            "relReleaseMs": 27,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "M",
+            "relAcquireMs": 24,
+            "relReleaseMs": 28,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "N",
+            "relAcquireMs": 26,
+            "relReleaseMs": 29,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "O",
+            "relAcquireMs": 27,
+            "relReleaseMs": 30,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "P",
+            "relAcquireMs": 28,
+            "relReleaseMs": 32,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "Q",
+            "relAcquireMs": 29,
+            "relReleaseMs": 33,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "R",
+            "relAcquireMs": 30,
+            "relReleaseMs": 34,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "S",
+            "relAcquireMs": 32,
+            "relReleaseMs": 36,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "T",
+            "relAcquireMs": 33,
+            "relReleaseMs": 37,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "U",
+            "relAcquireMs": 34,
+            "relReleaseMs": 37,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "V",
+            "relAcquireMs": 36,
+            "relReleaseMs": 40,
+            "holdMs": 4,
+            "waitMs": 1
+          },
+          {
+            "label": "W",
+            "relAcquireMs": 37,
+            "relReleaseMs": 40,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "X",
+            "relAcquireMs": 38,
+            "relReleaseMs": 42,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "Y",
+            "relAcquireMs": 40,
+            "relReleaseMs": 42,
+            "holdMs": 2,
+            "waitMs": 1
+          },
+          {
+            "label": "Z",
+            "relAcquireMs": 40,
+            "relReleaseMs": 43,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "A26",
+            "relAcquireMs": 41,
+            "relReleaseMs": 44,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "B27",
+            "relAcquireMs": 42,
+            "relReleaseMs": 44,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "C28",
+            "relAcquireMs": 44,
+            "relReleaseMs": 46,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "D29",
+            "relAcquireMs": 45,
+            "relReleaseMs": 46,
+            "holdMs": 1,
+            "waitMs": 1
+          },
+          {
+            "label": "E30",
+            "relAcquireMs": 46,
+            "relReleaseMs": 49,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "F31",
+            "relAcquireMs": 47,
+            "relReleaseMs": 49,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "G32",
+            "relAcquireMs": 48,
+            "relReleaseMs": 51,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "H33",
+            "relAcquireMs": 49,
+            "relReleaseMs": 52,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "I34",
+            "relAcquireMs": 50,
+            "relReleaseMs": 54,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "J35",
+            "relAcquireMs": 52,
+            "relReleaseMs": 54,
+            "holdMs": 2,
+            "waitMs": 1
+          },
+          {
+            "label": "K36",
+            "relAcquireMs": 52,
+            "relReleaseMs": 55,
+            "holdMs": 3,
+            "waitMs": 0
+          },
+          {
+            "label": "L37",
+            "relAcquireMs": 53,
+            "relReleaseMs": 55,
+            "holdMs": 2,
+            "waitMs": 0
+          },
+          {
+            "label": "M38",
+            "relAcquireMs": 54,
+            "relReleaseMs": 58,
+            "holdMs": 4,
+            "waitMs": 0
+          },
+          {
+            "label": "N39",
+            "relAcquireMs": 55,
+            "relReleaseMs": 58,
+            "holdMs": 3,
+            "waitMs": 0
+          }
+        ],
+        "stageDurationComparison": [
+          [
+            "authMiddleware (est.)",
+            0
+          ],
+          [
+            "countTenantTransactions",
+            2
+          ],
+          [
+            "entity loaders (aggregate)",
+            132
+          ],
+          [
+            "fetchPlSubTypesForTenant",
+            7
+          ],
+          [
+            "listTransactions",
+            18
+          ]
+        ]
+      },
+      "requestId": "2d7e1615-f333-4f99-b1db-94d86f4801f8"
+    }
+  ],
+  "stageStats": {
+    "authMiddleware": {
+      "n": 5,
+      "avg": 0,
+      "p50": 0,
+      "p95": 1,
+      "max": 1,
+      "min": 0
+    },
+    "countTenantTransactions": {
+      "n": 5,
+      "avg": 3,
+      "p50": 3,
+      "p95": 7,
+      "max": 7,
+      "min": 2
+    },
+    "entityLoaderTotal": {
+      "n": 5,
+      "avg": 114,
+      "p50": 118,
+      "p95": 132,
+      "max": 132,
+      "min": 87
+    },
+    "fetchPlSubTypesForTenant": {
+      "n": 5,
+      "avg": 5,
+      "p50": 6,
+      "p95": 7,
+      "max": 7,
+      "min": 2
+    },
+    "listTransactions": {
+      "n": 5,
+      "avg": 19,
+      "p50": 18,
+      "p95": 28,
+      "max": 28,
+      "min": 10
+    },
+    "overallRequest": {
+      "n": 5,
+      "avg": 154,
+      "p50": 168,
+      "p95": 175,
+      "max": 175,
+      "min": 122
+    }
+  },
+  "entityRanking": [
+    {
+      "entity": "invoices",
+      "rows": 1602,
+      "durationMs": 42,
+      "avgMs": 32,
+      "p95Ms": 42
+    },
+    {
+      "entity": "accounts",
+      "rows": 32,
+      "durationMs": 20,
+      "avgMs": 14,
+      "p95Ms": 20
+    },
+    {
+      "entity": "projectAgreements",
+      "rows": 124,
+      "durationMs": 20,
+      "avgMs": 14,
+      "p95Ms": 20
+    },
+    {
+      "entity": "bills",
+      "rows": 233,
+      "durationMs": 19,
+      "avgMs": 13,
+      "p95Ms": 19
+    },
+    {
+      "entity": "rentalAgreements",
+      "rows": 115,
+      "durationMs": 15,
+      "avgMs": 12,
+      "p95Ms": 15
+    },
+    {
+      "entity": "contracts",
+      "rows": 8,
+      "durationMs": 14,
+      "avgMs": 11,
+      "p95Ms": 14
+    },
+    {
+      "entity": "units",
+      "rows": 137,
+      "durationMs": 13,
+      "avgMs": 8,
+      "p95Ms": 13
+    },
+    {
+      "entity": "installmentPlans",
+      "rows": 0,
+      "durationMs": 13,
+      "avgMs": 8,
+      "p95Ms": 13
+    },
+    {
+      "entity": "projectReceivedAssets",
+      "rows": 0,
+      "durationMs": 13,
+      "avgMs": 7,
+      "p95Ms": 13
+    },
+    {
+      "entity": "salesReturns",
+      "rows": 0,
+      "durationMs": 13,
+      "avgMs": 8,
+      "p95Ms": 13
+    },
+    {
+      "entity": "contacts",
+      "rows": 353,
+      "durationMs": 12,
+      "avgMs": 11,
+      "p95Ms": 12
+    },
+    {
+      "entity": "pmCycleAllocations",
+      "rows": 5,
+      "durationMs": 10,
+      "avgMs": 6,
+      "p95Ms": 10
+    },
+    {
+      "entity": "categories",
+      "rows": 144,
+      "durationMs": 9,
+      "avgMs": 7,
+      "p95Ms": 9
+    },
+    {
+      "entity": "properties",
+      "rows": 126,
+      "durationMs": 8,
+      "avgMs": 6,
+      "p95Ms": 8
+    },
+    {
+      "entity": "projects",
+      "rows": 16,
+      "durationMs": 6,
+      "avgMs": 4,
+      "p95Ms": 6
+    },
+    {
+      "entity": "buildings",
+      "rows": 4,
+      "durationMs": 6,
+      "avgMs": 4,
+      "p95Ms": 6
+    },
+    {
+      "entity": "budgets",
+      "rows": 1,
+      "durationMs": 6,
+      "avgMs": 4,
+      "p95Ms": 6
+    },
+    {
+      "entity": "planAmenities",
+      "rows": 1,
+      "durationMs": 6,
+      "avgMs": 4,
+      "p95Ms": 6
+    },
+    {
+      "entity": "recurringInvoiceTemplates",
+      "rows": 62,
+      "durationMs": 6,
+      "avgMs": 4,
+      "p95Ms": 6
+    },
+    {
+      "entity": "personalCategories",
+      "rows": 25,
+      "durationMs": 5,
+      "avgMs": 4,
+      "p95Ms": 5
+    },
+    {
+      "entity": "appSettings",
+      "rows": 1,
+      "durationMs": 4,
+      "avgMs": 3,
+      "p95Ms": 4
+    },
+    {
+      "entity": "vendors",
+      "rows": 0,
+      "durationMs": 1,
+      "avgMs": 0,
+      "p95Ms": 1
+    },
+    {
+      "entity": "quotations",
+      "rows": 0,
+      "durationMs": 1,
+      "avgMs": 0,
+      "p95Ms": 1
+    },
+    {
+      "entity": "documents",
+      "rows": 0,
+      "durationMs": 1,
+      "avgMs": 0,
+      "p95Ms": 1
+    },
+    {
+      "entity": "transactionLog",
+      "rows": 0,
+      "durationMs": 1,
+      "avgMs": 0,
+      "p95Ms": 1
+    },
+    {
+      "entity": "transactions_inner",
+      "rows": 0,
+      "durationMs": 0,
+      "avgMs": 0,
+      "p95Ms": 0
+    },
+    {
+      "entity": "personalTransactions",
+      "rows": 0,
+      "durationMs": 0,
+      "avgMs": 0,
+      "p95Ms": 0
+    }
+  ],
+  "holdAnalysis": {
+    "connectionCycles": 89,
+    "peakSimultaneous": 13,
+    "sumHoldMs": 699,
+    "maxSingleHoldMs": 43,
+    "timeline": [
+      {
+        "label": "A",
+        "relAcquireMs": 0,
+        "relReleaseMs": 21,
+        "holdMs": 21,
+        "waitMs": 0
+      },
+      {
+        "label": "B",
+        "relAcquireMs": 23,
+        "relReleaseMs": 27,
+        "holdMs": 4,
+        "waitMs": 1
+      },
+      {
+        "label": "C",
+        "relAcquireMs": 30,
+        "relReleaseMs": 73,
+        "holdMs": 43,
+        "waitMs": 1
+      },
+      {
+        "label": "D",
+        "relAcquireMs": 32,
+        "relReleaseMs": 72,
+        "holdMs": 40,
+        "waitMs": 1
+      },
+      {
+        "label": "E",
+        "relAcquireMs": 33,
+        "relReleaseMs": 74,
+        "holdMs": 41,
+        "waitMs": 0
+      },
+      {
+        "label": "F",
+        "relAcquireMs": 64,
+        "relReleaseMs": 75,
+        "holdMs": 11,
+        "waitMs": 2
+      },
+      {
+        "label": "G",
+        "relAcquireMs": 73,
+        "relReleaseMs": 76,
+        "holdMs": 3,
+        "waitMs": 8
+      },
+      {
+        "label": "H",
+        "relAcquireMs": 83,
+        "relReleaseMs": 88,
+        "holdMs": 5,
+        "waitMs": 0
+      },
+      {
+        "label": "I",
+        "relAcquireMs": 85,
+        "relReleaseMs": 90,
+        "holdMs": 5,
+        "waitMs": 0
+      },
+      {
+        "label": "J",
+        "relAcquireMs": 86,
+        "relReleaseMs": 93,
+        "holdMs": 7,
+        "waitMs": 0
+      },
+      {
+        "label": "K",
+        "relAcquireMs": 88,
+        "relReleaseMs": 95,
+        "holdMs": 7,
+        "waitMs": 0
+      },
+      {
+        "label": "L",
+        "relAcquireMs": 90,
+        "relReleaseMs": 97,
+        "holdMs": 7,
+        "waitMs": 0
+      },
+      {
+        "label": "M",
+        "relAcquireMs": 93,
+        "relReleaseMs": 99,
+        "holdMs": 6,
+        "waitMs": 1
+      },
+      {
+        "label": "N",
+        "relAcquireMs": 95,
+        "relReleaseMs": 101,
+        "holdMs": 6,
+        "waitMs": 1
+      },
+      {
+        "label": "O",
+        "relAcquireMs": 97,
+        "relReleaseMs": 102,
+        "holdMs": 5,
+        "waitMs": 1
+      },
+      {
+        "label": "P",
+        "relAcquireMs": 99,
+        "relReleaseMs": 103,
+        "holdMs": 4,
+        "waitMs": 1
+      },
+      {
+        "label": "Q",
+        "relAcquireMs": 101,
+        "relReleaseMs": 105,
+        "holdMs": 4,
+        "waitMs": 1
+      },
+      {
+        "label": "R",
+        "relAcquireMs": 102,
+        "relReleaseMs": 107,
+        "holdMs": 5,
+        "waitMs": 0
+      },
+      {
+        "label": "S",
+        "relAcquireMs": 104,
+        "relReleaseMs": 107,
+        "holdMs": 3,
+        "waitMs": 1
+      },
+      {
+        "label": "T",
+        "relAcquireMs": 105,
+        "relReleaseMs": 108,
+        "holdMs": 3,
+        "waitMs": 1
+      },
+      {
+        "label": "U",
+        "relAcquireMs": 106,
+        "relReleaseMs": 109,
+        "holdMs": 3,
+        "waitMs": 1
+      },
+      {
+        "label": "V",
+        "relAcquireMs": 107,
+        "relReleaseMs": 110,
+        "holdMs": 3,
+        "waitMs": 1
+      },
+      {
+        "label": "W",
+        "relAcquireMs": 108,
+        "relReleaseMs": 112,
+        "holdMs": 4,
+        "waitMs": 0
+      },
+      {
+        "label": "X",
+        "relAcquireMs": 110,
+        "relReleaseMs": 112,
+        "holdMs": 2,
+        "waitMs": 1
+      },
+      {
+        "label": "Y",
+        "relAcquireMs": 111,
+        "relReleaseMs": 113,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "Z",
+        "relAcquireMs": 112,
+        "relReleaseMs": 114,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "A26",
+        "relAcquireMs": 113,
+        "relReleaseMs": 116,
+        "holdMs": 3,
+        "waitMs": 0
+      },
+      {
+        "label": "B27",
+        "relAcquireMs": 114,
+        "relReleaseMs": 116,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "C28",
+        "relAcquireMs": 115,
+        "relReleaseMs": 117,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "D29",
+        "relAcquireMs": 117,
+        "relReleaseMs": 118,
+        "holdMs": 1,
+        "waitMs": 0
+      },
+      {
+        "label": "E30",
+        "relAcquireMs": 118,
+        "relReleaseMs": 120,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "F31",
+        "relAcquireMs": 119,
+        "relReleaseMs": 122,
+        "holdMs": 3,
+        "waitMs": 0
+      },
+      {
+        "label": "G32",
+        "relAcquireMs": 121,
+        "relReleaseMs": 124,
+        "holdMs": 3,
+        "waitMs": 0
+      },
+      {
+        "label": "H33",
+        "relAcquireMs": 122,
+        "relReleaseMs": 124,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "I34",
+        "relAcquireMs": 123,
+        "relReleaseMs": 125,
+        "holdMs": 2,
+        "waitMs": 0
+      },
+      {
+        "label": "J35",
+        "relAcquireMs": 124,
+        "relReleaseMs": 128,
+        "holdMs": 4,
+        "waitMs": 0
+      },
+      {
+        "label": "K36",
+        "relAcquireMs": 126,
+        "relReleaseMs": 129,
+        "holdMs": 3,
+        "waitMs": 0
+      },
+      {
+        "label": "L37",
+        "relAcquireMs": 127,
+        "relReleaseMs": 130,
+        "holdMs": 3,
+        "waitMs": 0
+      },
+      {
+        "label": "M38",
+        "relAcquireMs": 128,
+        "relReleaseMs": 131,
+        "holdMs": 3,
+        "waitMs": 1
+      },
+      {
+        "label": "N39",
+        "relAcquireMs": 129,
+        "relReleaseMs": 132,
+        "holdMs": 3,
+        "waitMs": 0
+      }
+    ],
+    "stageDurationComparison": [
+      [
+        "authMiddleware (est.)",
+        1
+      ],
+      [
+        "countTenantTransactions",
+        7
+      ],
+      [
+        "entity loaders (aggregate)",
+        87
+      ],
+      [
+        "fetchPlSubTypesForTenant",
+        5
+      ],
+      [
+        "listTransactions",
+        15
+      ]
+    ]
+  },
+  "p95Queries": [
+    {
+      "name": "overallRequest",
+      "n": 5,
+      "avg": 154,
+      "p50": 168,
+      "p95": 175,
+      "max": 175,
+      "min": 122
+    },
+    {
+      "name": "countTenantTransactions",
+      "n": 5,
+      "avg": 3,
+      "p50": 3,
+      "p95": 7,
+      "max": 7,
+      "min": 2
+    },
+    {
+      "name": "entityLoaderTotal",
+      "n": 5,
+      "avg": 114,
+      "p50": 118,
+      "p95": 132,
+      "max": 132,
+      "min": 87
+    },
+    {
+      "name": "fetchPlSubTypesForTenant",
+      "n": 5,
+      "avg": 5,
+      "p50": 6,
+      "p95": 7,
+      "max": 7,
+      "min": 2
+    },
+    {
+      "name": "listTransactions",
+      "n": 5,
+      "avg": 19,
+      "p50": 18,
+      "p95": 28,
+      "max": 28,
+      "min": 10
+    },
+    {
+      "name": "entity:invoices",
+      "avg": 32,
+      "p95": 42,
+      "max": 42
+    },
+    {
+      "name": "entity:accounts",
+      "avg": 14,
+      "p95": 20,
+      "max": 20
+    },
+    {
+      "name": "entity:projectAgreements",
+      "avg": 14,
+      "p95": 20,
+      "max": 20
+    },
+    {
+      "name": "entity:bills",
+      "avg": 13,
+      "p95": 19,
+      "max": 19
+    },
+    {
+      "name": "entity:rentalAgreements",
+      "avg": 12,
+      "p95": 15,
+      "max": 15
+    }
+  ],
+  "poolContributors": [
+    {
+      "operation": "entityLoaderTotal",
+      "evidence": "P95=132ms avg=114ms max=132ms (n=5)"
+    },
+    {
+      "operation": "listTransactions",
+      "evidence": "P95=28ms avg=19ms max=28ms (n=5)"
+    },
+    {
+      "operation": "countTenantTransactions",
+      "evidence": "P95=7ms avg=3ms max=7ms (n=5)"
+    },
+    {
+      "operation": "fetchPlSubTypesForTenant",
+      "evidence": "P95=7ms avg=5ms max=7ms (n=5)"
+    },
+    {
+      "operation": "authMiddleware",
+      "evidence": "P95=1ms avg=0ms max=1ms (n=5)"
+    },
+    {
+      "operation": "entity loader: invoices",
+      "evidence": "P95=42ms max=42ms rows=1602"
+    },
+    {
+      "operation": "entity loader: accounts",
+      "evidence": "P95=20ms max=20ms rows=32"
+    },
+    {
+      "operation": "entity loader: projectAgreements",
+      "evidence": "P95=20ms max=20ms rows=124"
+    },
+    {
+      "operation": "connection hold sum (bulk route)",
+      "evidence": "sumHoldMs=699 peakSimultaneous=13 cycles=89"
+    }
+  ],
+  "verdict": "On tenant `rk-builders-284d6d` (4988 transactions, 1602 invoices), **entityLoaderTotal** is the slowest bootstrap stage by P95 (**132 ms**). Top entity loader: **invoices** (P95 42 ms). Raw SQL probe: countTenantTransactions P95=3 ms, listTransactions page P95=20 ms. With PERF-P2-B (peak ~4 simultaneous bootstrap connections; bypass paths for count/plSubTypes/listTransactions), **stage duration × connection overlap × concurrent login/nav requests** — not entity-count growth or `runBatched` concurrency alone — drives cumulative pool pressure and `POOL_SATURATED` on production ATP.",
+  "dataLimitations": [
+    "Using **RK Builders** (`rk-builders-284d6d`, ~5k transactions) as **ATP-scale volume proxy** — largest tenant on accessible DB; ATP org on Render DB is empty.",
+    "Measurements run via **local API → DB** (`.env.production`); production Render adds network latency and multi-user overlap not fully replicated here."
+  ],
+  "productionAtpReference": {
+    "capture": "docs/performance/cloud/captures/nav-probe-2026-06-22-atp.json",
+    "api503Count": 18,
+    "overlayMaxMs": 92925
+  },
+  "outJson": "docs/performance/cloud/captures/perf-p2-c-atp-bootstrap-query-analysis.json"
+}

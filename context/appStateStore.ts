@@ -7,6 +7,11 @@ let _initialDataLoading = false;
 let _appDataLoading = false;
 let _pageChunkLoadingCount = 0;
 let _apiHydrationLoading = false;
+export type BootstrapSoftFailureState = {
+  active: boolean;
+  message: string | null;
+};
+let _bootstrapSoftFailure: BootstrapSoftFailureState = { active: false, message: null };
 const _stateListeners = new Set<() => void>();
 export function _getAppState(): AppState { return _appState!; }
 export function _getAppDispatch(): React.Dispatch<AppAction> { return _appDispatch!; }
@@ -15,6 +20,14 @@ export function _getAppDataLoading(): boolean {
     return _appDataLoading || _apiHydrationLoading || _pageChunkLoadingCount > 0;
 }
 export function _getPageChunkLoading(): boolean { return _pageChunkLoadingCount > 0; }
+export function _getBootstrapSoftFailure(): BootstrapSoftFailureState {
+  return _bootstrapSoftFailure;
+}
+export function _setBootstrapSoftFailure(active: boolean, message: string | null): void {
+  if (_bootstrapSoftFailure.active === active && _bootstrapSoftFailure.message === message) return;
+  _bootstrapSoftFailure = { active, message };
+  _notifyStateListeners();
+}
 export function _subscribeAppState(listener: () => void): () => void {
     _stateListeners.add(listener);
     return () => { _stateListeners.delete(listener); };
