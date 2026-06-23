@@ -106,7 +106,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
           const norm = normalizePayslip(row);
           storageService.updatePayslip(tenantId, norm, userId);
         }
-        await syncPayrollFromServer(tenantId);
+        await syncPayrollFromServer(tenantId, { force: true, source: 'edit-payslip-save' });
       onSaved();
       onClose();
     } finally {
@@ -124,7 +124,7 @@ const EditPayslipModal: React.FC<EditPayslipModalProps> = ({
         deleted = storageService.deletePayslip(tenantId, payslip.id, userId);
       } else {
         deleted = await payrollApi.deletePayslip(payslip.id, tenantId, userId);
-        if (deleted) await syncPayrollFromServer(tenantId);
+        if (deleted) await syncPayrollFromServer(tenantId, { force: true, source: 'edit-payslip-delete' });
       }
       if (deleted) {
         onDeleted?.();

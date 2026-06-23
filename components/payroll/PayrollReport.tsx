@@ -51,7 +51,7 @@ const PayrollReport: React.FC = () => {
     setIsLoading(true);
     const load = async () => {
       try {
-                  await syncPayrollFromServer(tenantId);
+                  await syncPayrollFromServer(tenantId, { source: 'payroll-report' });
         storageService.init(tenantId);
         setEmployees(storageService.getEmployees(tenantId));
         setRuns(storageService.getPayrollRuns(tenantId));

@@ -434,7 +434,7 @@ const PaySalaryModal: React.FC<PaySalaryModalProps> = ({
           await paySlices(cashC, bankAccountId, descriptionBase);
         }
 
-        await syncPayrollFromServer(tenantId);
+        await syncPayrollFromServer(tenantId, { force: true, source: 'pay-salary' });
         onPaymentComplete();
         onClose();
       }

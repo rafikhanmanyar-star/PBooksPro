@@ -360,7 +360,7 @@ const BulkPayPayslipsModal: React.FC<BulkPayPayslipsModalProps> = ({
         }
 
         const runIds = [...new Set(itemsWithPositivePay.map(({ payslip }) => payslip.payroll_run_id))];
-        await syncPayrollFromServer(tenantId, { runIds });
+        await syncPayrollFromServer(tenantId, { runIds, force: true, source: 'bulk-pay-payslips' });
         onPaymentComplete();
         onClose();
       }
