@@ -24,6 +24,7 @@ if (!process.env.DATABASE_URL) {
 
 await import('../loadEnv.js');
 
+import type pg from 'pg';
 import { getPool } from '../db/pool.js';
 import { bootstrapTenantChart } from '../modules/organization/services/tenantBootstrap.js';
 import {
@@ -39,7 +40,7 @@ function arg(name: string): string | undefined {
 }
 
 async function listMissing(
-  client: Awaited<ReturnType<ReturnType<typeof getPool>['connect']>>,
+  client: pg.PoolClient,
   table: 'accounts' | 'categories',
   ids: string[]
 ): Promise<string[]> {
