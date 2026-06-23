@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useDispatchOnly, useStateSelector } from './useSelectiveState';
 import { getAppStateApiService } from '../services/api/appStateApi';
+import { getBootstrapCoordinator } from '../services/api/bootstrapCoordinator';
 import type { AppAction, AppState } from '../types';
 
 /** PERF-A6.1 — excluded from bulk-chunked offset=0; loaded on demand via GET /state/bulk?entities= */
@@ -73,8 +74,15 @@ export function usePageGroupDeferredBootstrap(activeGroup: string, enabled: bool
 
     void (async () => {
       try {
-        const partial = await getAppStateApiService().loadStateBulk(missing.join(','));
-        const hasPayload = missing.some((key) => {
+        const coordinator = getBootstrapCoordinator();
+        const proceed = await coordinator.awaitDeferredBootstrapGate();
+        if (!proceed) return;
+
+        const stillMissing = needed.filter((key) => lengths[key] === 0);
+        if (stillMissing.length === 0) return;
+
+        const partial = await getAppStateApiService().loadStateBulk(stillMissing.join(','));
+        const hasPayload = stillMissing.some((key) => {
           const slice = partial[ENTITY_STATE_KEYS[key]];
           return Array.isArray(slice) && slice.length > 0;
         });

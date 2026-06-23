@@ -267,6 +267,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             });
                         }
                     } catch (apiErr) {
+                        const { isBulkLoadUnavailable, getAppStateApiService, pickTenantSettingsPartial } =
+                            await import('../services/api/appStateApi');
+                        if (isBulkLoadUnavailable(apiErr)) {
+                            const { getBootstrapCoordinator } = await import('../services/api/bootstrapCoordinator');
+                            const coord = getBootstrapCoordinator();
+                            coord.enterSoftFailure(apiErr);
+                            coord.scheduleBackgroundRecovery(async () => {
+                                const partial = await getAppStateApiService().loadStateBulkChunked();
+                                if (!isMounted) return;
+                                const mergedInit = {
+                                    ...initialState,
+                                    ...partial,
+                                    ...pickTenantSettingsPartial(partial),
+                                } as AppState;
+                                setStoredState(mergedInit);
+                                dispatchRef.current?.({
+                                    type: 'SET_STATE',
+                                    payload: partial,
+                                    _isRemote: true,
+                                } as AppAction);
+                                if (typeof sessionStorage !== 'undefined') {
+                                    sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
+                                    if (currentTenantId) {
+                                        sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
+                                    }
+                                }
+                                didPostAuthApiMergeRef.current = true;
+                                sessionRestoreRefreshDoneRef.current = true;
+                                markDbLoadCompleteRef.current?.();
+                            });
+                            logger.warnCategory(
+                                'sync',
+                                'API bulk load unavailable — soft-failure recovery (shell usable):',
+                                apiErr
+                            );
+                            if (!isMounted) return;
+                            if (timeoutId) clearTimeout(timeoutId);
+                            if (forceTimeoutId) clearTimeout(forceTimeoutId);
+                            markDbLoadCompleteRef.current?.();
+                            setInitProgress(100);
+                            setInitMessage('Ready!');
+                            setTimeout(() => {
+                                if (isMounted) setIsInitializing(false);
+                            }, 300);
+                            return;
+                        }
                         logger.warnCategory(
                             'sync',
                             'API load failed — not using local database (no offline fallback to SQLite in API mode):',
@@ -1554,6 +1600,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             currentTenantId !== prevTenantId
         ) {
             logger.logCategory('sync', `🔒 Tenant switched (${prevTenantId} → ${currentTenantId}), clearing previous tenant state`);
+            void import('../services/api/bootstrapCoordinator').then(({ getBootstrapCoordinator }) => {
+                getBootstrapCoordinator().resetForTenant(currentTenantId);
+            });
             if (typeof sessionStorage !== 'undefined') {
                 sessionStorage.removeItem('pbooks_api_last_sync_at');
             }

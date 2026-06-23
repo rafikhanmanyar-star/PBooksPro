@@ -1,0 +1,677 @@
+{
+  "program": "PERF-P2-D",
+  "capturedAt": "2026-06-23T03:06:47.670Z",
+  "sourceCapture": "docs/performance/cloud/captures/nav-probe-2026-06-22-atp.json",
+  "environment": {
+    "app": "https://app.pbookspro.com",
+    "api": "https://api.pbookspro.com/api/v1",
+    "tenant": "ATP",
+    "userRole": "Admin",
+    "deployVersion": "2026.06.22.daae718",
+    "packageVersion": "1.2.463"
+  },
+  "codeOrigins": [
+    {
+      "source": "AppContext init",
+      "trigger": "isAuthenticated during AppProvider initialization",
+      "endpoints": [
+        "GET /state/bulk-chunked?offset=0 (+ pagination)"
+      ],
+      "loader": "getAppStateApiService().loadStateBulkChunked()",
+      "resilience": "withBulkLoadResilience(loadStateBulkChunked) per chunk",
+      "file": "context/AppContext.tsx ~245"
+    },
+    {
+      "source": "AppContext refreshFromApi",
+      "trigger": "post-auth effect, tenant switch, socket refresh, pbooks:request-api-refresh",
+      "endpoints": [
+        "GET /state/changes (incremental)",
+        "GET /state/bulk-chunked*",
+        "GET /state/bulk"
+      ],
+      "loader": "loadStateViaIncrementalSync → else loadStateForSyncRefresh()",
+      "resilience": "chunked then bulk fallback; each path uses withBulkLoadResilience",
+      "file": "context/AppContext.tsx ~1573–1649"
+    },
+    {
+      "source": "usePageGroupDeferredBootstrap",
+      "trigger": "active page group changes; missing deferred entity slices (length===0)",
+      "endpoints": [
+        "GET /state/bulk?entities=…"
+      ],
+      "loader": "loadStateBulk(missing.join(\",\"))",
+      "resilience": "withBulkLoadResilience(loadStateBulk); 404→loadState() only",
+      "file": "hooks/usePageGroupDeferredBootstrap.ts ~74–76"
+    },
+    {
+      "source": "loadStateForSyncRefresh fallback chain",
+      "trigger": "refreshFromApi full load path",
+      "endpoints": [
+        "GET /state/bulk-chunked*",
+        "GET /state/bulk"
+      ],
+      "loader": "loadStateBulkChunked then loadStateBulk on non-transient chunk error",
+      "resilience": "Up to 3 attempts × 2 endpoints per refresh cycle on 503",
+      "file": "services/api/appStateApi.ts ~1067–1096"
+    },
+    {
+      "source": "loadStateBulkChunked pagination",
+      "trigger": "Any chunked load with txTotal > chunkSize",
+      "endpoints": [
+        "GET /state/bulk-chunked?offset=N (N>0 tx pages only)"
+      ],
+      "loader": "while(hasMore) loop",
+      "resilience": "Each page: separate withBulkLoadResilience invocation",
+      "file": "services/api/appStateApi.ts ~995–1040"
+    }
+  ],
+  "retryConstants": {
+    "maxAttempts": 3,
+    "baseBackoffMs": 1000,
+    "maxBackoffMs": 15000,
+    "breakerThreshold": 3,
+    "breakerBaseCooldownMs": 5000,
+    "breakerMaxCooldownMs": 60000,
+    "shedRetryAfterSeconds": 5
+  },
+  "requestTimeline": [
+    {
+      "at": "2026-06-22T14:36:59.768Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139013406",
+      "gapFromPreviousMs": null,
+      "inferredSource": "loadStateBulk / loadStateForSyncRefresh",
+      "detail": "Deferred bootstrap or bulk fallback"
+    },
+    {
+      "at": "2026-06-22T14:37:35.456Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 35688,
+      "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+      "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+    },
+    {
+      "at": "2026-06-22T14:37:45.157Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 9701,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:37:51.363Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 6206,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:37:51.563Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 200,
+      "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+      "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+    },
+    {
+      "at": "2026-06-22T14:37:54.568Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 3005,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:37:58.661Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 4093,
+      "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+      "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+    },
+    {
+      "at": "2026-06-22T14:38:02.639Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 3978,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:38:15.861Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 13222,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:38:20.669Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 4808,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:38:42.246Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 21577,
+      "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+      "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+    },
+    {
+      "at": "2026-06-22T14:39:06.529Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 24283,
+      "inferredSource": "loadStateBulkChunked",
+      "detail": "Paginated bootstrap or refresh chunked load"
+    },
+    {
+      "at": "2026-06-22T14:39:13.464Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 6935,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:39:25.572Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 12108,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:39:29.561Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 3989,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:39:30.264Z",
+      "endpoint": "/state/bulk-chunked",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 703,
+      "inferredSource": "loadStateBulkChunked",
+      "detail": "Paginated bootstrap or refresh chunked load"
+    },
+    {
+      "at": "2026-06-22T14:39:37.957Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 7693,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    },
+    {
+      "at": "2026-06-22T14:39:50.835Z",
+      "endpoint": "/state/bulk",
+      "status": 503,
+      "navId": "nav-1782139021569",
+      "gapFromPreviousMs": 12878,
+      "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+      "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+    }
+  ],
+  "retryAnalysis": {
+    "rows": [
+      {
+        "index": 1,
+        "at": "2026-06-22T14:36:59.768Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 0,
+        "navId": "nav-1782139013406",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "loadStateBulk / loadStateForSyncRefresh",
+        "detail": "Deferred bootstrap or bulk fallback"
+      },
+      {
+        "index": 2,
+        "at": "2026-06-22T14:37:35.456Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 35688,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+        "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+      },
+      {
+        "index": 3,
+        "at": "2026-06-22T14:37:45.157Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 9701,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 4,
+        "at": "2026-06-22T14:37:51.363Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 6206,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 5,
+        "at": "2026-06-22T14:37:51.563Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 200,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "likely same loader retry or parallel path",
+        "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+        "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+      },
+      {
+        "index": 6,
+        "at": "2026-06-22T14:37:54.568Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 3005,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 7,
+        "at": "2026-06-22T14:37:58.661Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 4093,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+        "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+      },
+      {
+        "index": 8,
+        "at": "2026-06-22T14:38:02.639Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 3978,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 9,
+        "at": "2026-06-22T14:38:15.861Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 13222,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 10,
+        "at": "2026-06-22T14:38:20.669Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 4808,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 11,
+        "at": "2026-06-22T14:38:42.246Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 21577,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "loadStateBulkChunked / loadStateForSyncRefresh",
+        "detail": "Likely login bootstrap or refreshFromApi chunked path during/after nav to Rental (PROJECT)"
+      },
+      {
+        "index": 12,
+        "at": "2026-06-22T14:39:06.529Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 24283,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "loadStateBulkChunked",
+        "detail": "Paginated bootstrap or refresh chunked load"
+      },
+      {
+        "index": 13,
+        "at": "2026-06-22T14:39:13.464Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 6935,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 14,
+        "at": "2026-06-22T14:39:25.572Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 12108,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 15,
+        "at": "2026-06-22T14:39:29.561Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 3989,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 16,
+        "at": "2026-06-22T14:39:30.264Z",
+        "endpoint": "/state/bulk-chunked",
+        "status": 503,
+        "gapFromPreviousMs": 703,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "likely same loader retry or parallel path",
+        "inferredSource": "loadStateBulkChunked",
+        "detail": "Paginated bootstrap or refresh chunked load"
+      },
+      {
+        "index": 17,
+        "at": "2026-06-22T14:39:37.957Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 7693,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      },
+      {
+        "index": 18,
+        "at": "2026-06-22T14:39:50.835Z",
+        "endpoint": "/state/bulk",
+        "status": 503,
+        "gapFromPreviousMs": 12878,
+        "navId": "nav-1782139021569",
+        "attemptGuess": "new loader invocation or backoff cycle",
+        "inferredSource": "usePageGroupDeferredBootstrap OR loadStateForSyncRefresh bulk fallback",
+        "detail": "Page group PROJECT deferred entities [bills, contacts, vendors] OR sync refresh bulk fallback after chunked failure"
+      }
+    ],
+    "concurrentWindows": [
+      {
+        "t": "2026-06-22T14:37:51.363Z",
+        "gapMs": 200,
+        "a": "/state/bulk",
+        "b": "/state/bulk-chunked"
+      }
+    ],
+    "estimatedHttpAttempts": {
+      "logged503Responses": 18,
+      "note": "Each 503 is one HTTP response; withBulkLoadResilience allows up to 3 attempts per loader invocation",
+      "minLoaderInvocationsIfAllFirstAttempt": 18,
+      "maxLoaderInvocationsIfAllThirdAttempt": 6,
+      "estimatedTotalHttpAttemptsRange": "18–54 if each logged event is one attempt of overlapping invocations"
+    }
+  },
+  "overlayTimeline": [
+    {
+      "event": "overlay_shown",
+      "at": "2026-06-22T14:36:19.232Z",
+      "detail": "Dashboard",
+      "relSec": 0
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:36:45.093Z",
+      "label": "General Ledger",
+      "from": "DASHBOARD",
+      "relSec": 26
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:36:46.268Z",
+      "label": "Dashboard",
+      "from": "TRANSACTIONS",
+      "relSec": 27
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:36:46.952Z",
+      "label": "Accounting",
+      "from": "DASHBOARD",
+      "relSec": 28
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:36:48.825Z",
+      "label": "Inv Mgmt",
+      "from": "ACCOUNTING",
+      "relSec": 30
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:36:53.407Z",
+      "label": "Project construction",
+      "from": "INVESTMENT",
+      "relSec": 34
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:36:59.768Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139013406",
+      "relSec": 41
+    },
+    {
+      "event": "nav_click",
+      "at": "2026-06-22T14:37:01.569Z",
+      "label": "Rental",
+      "from": "PROJECT",
+      "relSec": 42
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:35.456Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 76
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:45.157Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 86
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:51.363Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 92
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:51.563Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 92
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:54.568Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 95
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:37:58.661Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 99
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:38:02.639Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 103
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:38:15.861Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 117
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:38:20.669Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 121
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:38:42.246Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 143
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:06.529Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 167
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:13.464Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 174
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:25.572Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 186
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:29.561Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 190
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:30.264Z",
+      "endpoint": "/state/bulk-chunked",
+      "navId": "nav-1782139021569",
+      "relSec": 191
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:37.957Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 199
+    },
+    {
+      "event": "503_bulk",
+      "at": "2026-06-22T14:39:50.835Z",
+      "endpoint": "/state/bulk",
+      "navId": "nav-1782139021569",
+      "relSec": 212
+    }
+  ],
+  "navigationSummary": {
+    "navClicks": 6,
+    "primaryTrigger": {
+      "navId": "nav-1782139021569",
+      "clickedLabel": "Rental",
+      "fromPage": "PROJECT",
+      "toPage": "RENTAL"
+    },
+    "api503ByEndpoint": {
+      "/state/bulk": 12,
+      "/state/bulk-chunked": 6
+    }
+  },
+  "deferredEntitiesByPageGroup": {
+    "DASHBOARD": [
+      "invoices",
+      "bills",
+      "contacts"
+    ],
+    "TRANSACTIONS": [
+      "contacts",
+      "invoices",
+      "bills",
+      "vendors"
+    ],
+    "RENTAL": [
+      "invoices",
+      "contacts",
+      "bills"
+    ],
+    "PROJECT": [
+      "bills",
+      "contacts",
+      "vendors"
+    ],
+    "ACCOUNTING": [
+      "invoices",
+      "bills",
+      "contacts",
+      "vendors"
+    ]
+  },
+  "verdict": "**Mechanism:** A single successful bootstrap handler (~175 ms) is irrelevant to the ATP incident. The client issued **at least 18 bulk HTTP calls that returned 503** over **171 seconds**, from **multiple overlapping loaders** (login `loadStateBulkChunked`, `loadStateForSyncRefresh` bulk fallback, `usePageGroupDeferredBootstrap` on rapid module navigation). Each invocation retries up to **3 times** with **1–15 s backoff**, and **alternating /state/bulk vs /state/bulk-chunked** responses prove **parallel code paths**. Pool shedding (`POOL_SATURATED`, Retry-After 5s) converts fast per-request work into a **retry storm**. The overlay stays visible because `isAppDataLoading` / `isPageGroupMounting` remain true until bootstrap data arrives — which never happens while 503s persist. **18 failures × retries × concurrent paths** explains cloud slowness without any single long-running query."
+}

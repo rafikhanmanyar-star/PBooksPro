@@ -432,6 +432,7 @@ import {
 import { getApiRootUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
 import { applyChangeLogToMergedState } from './changeLogMerge';
+import { getBootstrapCoordinator, getBulkCoordTenantId } from './bootstrapCoordinator';
 import { logger } from '../logger';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
@@ -526,10 +527,6 @@ function backoffDelayMs(attempt: number, hintMs?: number): number {
   return Math.max(hintMs ?? 0, exp + jitter);
 }
 
-function bulkLoadDelay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** Whether the shared bulk-load breaker is currently open (cooldown in effect). */
 export function isBulkLoadCircuitOpen(): boolean {
   return bulkLoadBreaker.openUntil > Date.now();
@@ -562,8 +559,22 @@ function recordBulkLoadFailure(hintMs?: number): number {
  * - Fast-fails (no network) with BulkLoadUnavailableError while the breaker is open.
  * - Retries only transient pressure/connectivity errors, with exponential backoff + jitter.
  * - Non-transient errors (401/404/validation) propagate immediately and never trip the breaker.
+ * - PERF-P3: coalesces parallel retry trees and shared backoff per tenant via BootstrapCoordinator.
  */
 async function withBulkLoadResilience<T>(label: string, fn: () => Promise<T>): Promise<T> {
+  const tenantId = getBulkCoordTenantId();
+  const coordinator = getBootstrapCoordinator();
+  return coordinator.withCoalescedBulkRetry(tenantId, label, () =>
+    withBulkLoadResilienceImpl(label, fn, tenantId)
+  );
+}
+
+async function withBulkLoadResilienceImpl<T>(
+  label: string,
+  fn: () => Promise<T>,
+  tenantId: string
+): Promise<T> {
+  const coordinator = getBootstrapCoordinator();
   if (isBulkLoadCircuitOpen()) {
     const remaining = bulkLoadCircuitRetryAfterMs();
     logger.warnCategory(
@@ -582,7 +593,6 @@ async function withBulkLoadResilience<T>(label: string, fn: () => Promise<T>): P
     } catch (error) {
       lastError = error;
       if (!isTransientLoadError(error)) {
-        // Real error (e.g. 401/404/validation) — don't retry or trip the breaker.
         throw error;
       }
       if (attempt === BULK_LOAD_MAX_ATTEMPTS - 1) break;
@@ -592,7 +602,7 @@ async function withBulkLoadResilience<T>(label: string, fn: () => Promise<T>): P
         `🔁 ${label} transient failure (attempt ${attempt + 1}/${BULK_LOAD_MAX_ATTEMPTS}); retrying in ${wait}ms`,
         error
       );
-      await bulkLoadDelay(wait);
+      await coordinator.awaitSharedBackoff(tenantId, wait);
     }
   }
 
@@ -938,8 +948,11 @@ export class AppStateApiService {
       logger.logCategory('sync', '📡 Loading state from API (bulk)...');
       const endpoint = entities ? `/state/bulk?entities=${encodeURIComponent(entities)}` : '/state/bulk';
       console.log('[DIAG] loadStateBulk: baseUrl=', apiClient.getBaseUrl(), 'tenantId=', apiClient.getTenantId(), 'hasToken=', !!apiClient.getToken(), 'endpoint=', endpoint);
-      const raw = await withBulkLoadResilience('loadStateBulk', () =>
-        apiClient.get<Record<string, any[]>>(endpoint)
+      const tenantId = getBulkCoordTenantId();
+      const raw = await getBootstrapCoordinator().dedupeBulkRequest(tenantId, endpoint, () =>
+        withBulkLoadResilience('loadStateBulk', () =>
+          apiClient.get<Record<string, any[]>>(endpoint)
+        )
       );
       console.log('[DIAG] loadStateBulk: response keys=', Object.keys(raw || {}), 'contacts=', (raw?.contacts || []).length, 'accounts=', (raw?.accounts || []).length, 'transactions=', (raw?.transactions || []).length);
       const state = this.normalizeLoadedState(raw);
@@ -983,6 +996,18 @@ export class AppStateApiService {
     onProgress?: (loaded: number, total: number) => void,
     chunkSize: number = 200
   ): Promise<Partial<AppState>> {
+    const tenantId = getBulkCoordTenantId();
+    return getBootstrapCoordinator().runPrimaryBootstrap(
+      tenantId,
+      'loadStateBulkChunked',
+      () => this.loadStateBulkChunkedImpl(onProgress, chunkSize)
+    );
+  }
+
+  private async loadStateBulkChunkedImpl(
+    onProgress?: (loaded: number, total: number) => void,
+    chunkSize: number = 200
+  ): Promise<Partial<AppState>> {
     try {
       logger.logCategory('sync', '📡 Loading state from API (chunked)...');
 
@@ -991,16 +1016,19 @@ export class AppStateApiService {
       let hasMore = true;
       const accumulated: Record<string, any[]> = {};
       let totalRecordCount = 0;
+      const tenantId = getBulkCoordTenantId();
 
       while (hasMore) {
         const endpoint = `/state/bulk-chunked?limit=${CHUNK_SIZE}&offset=${offset}`;
-        const chunk = await withBulkLoadResilience('loadStateBulkChunked', () =>
-          apiClient.get<{
-            entities: Record<string, any[]>;
-            totals: Record<string, number>;
-            has_more: boolean;
-            next_offset: number | null;
-          }>(endpoint)
+        const chunk = await getBootstrapCoordinator().dedupeBulkRequest(tenantId, endpoint, () =>
+          withBulkLoadResilience('loadStateBulkChunked', () =>
+            apiClient.get<{
+              entities: Record<string, any[]>;
+              totals: Record<string, number>;
+              has_more: boolean;
+              next_offset: number | null;
+            }>(endpoint)
+          )
         );
 
         // Merge chunk into accumulated state (appSettings is an object, not an array)
@@ -1067,8 +1095,19 @@ export class AppStateApiService {
   async loadStateForSyncRefresh(
     onProgress?: (loaded: number, total: number) => void
   ): Promise<Partial<AppState>> {
+    const tenantId = getBulkCoordTenantId();
+    return getBootstrapCoordinator().runPrimaryBootstrap(
+      tenantId,
+      'loadStateForSyncRefresh',
+      () => this.loadStateForSyncRefreshImpl(onProgress)
+    );
+  }
+
+  private async loadStateForSyncRefreshImpl(
+    onProgress?: (loaded: number, total: number) => void
+  ): Promise<Partial<AppState>> {
     try {
-      const partial = await this.loadStateBulkChunked(onProgress);
+      const partial = await this.loadStateBulkChunkedImpl(onProgress);
       return partial;
     } catch (chunkErr) {
       // Server busy / unreachable: do NOT cascade — that amplifies pool pressure.
