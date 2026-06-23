@@ -95,6 +95,7 @@ const ExecutiveMobileShell = lazyWithRetry(() => import('./modules/executive-mob
 const PayrollHub = lazyWithRetry(() => import('./components/payroll/PayrollHub'));
 const PersonalTransactionsPage = lazyWithRetry(() => import('./components/personalTransactions/PersonalTransactionsPage'));
 const AccountingPage = lazyWithRetry(() => import('./components/accounting/AccountingPage'));
+const ApprovalsPage = lazyWithRetry(() => import('./components/workflow/ApprovalsPage'));
 
 // Define page groups to determine which component instance handles which routes
 const PAGE_GROUPS = {
@@ -116,6 +117,7 @@ const PAGE_GROUPS = {
   PAYROLL: ['payroll'],
   PERSONAL_TRANSACTIONS: ['personalTransactions'],
   ACCOUNTING: ['accounting'],
+  APPROVALS: ['approvals'],
 };
 
 /** Pages a Sales User role may open (matches sidebar + project selling workflow). */
@@ -158,6 +160,7 @@ const App: React.FC = () => {
     canReadPayroll,
     canWriteFinancial,
     canReadProjectSelling,
+    canViewWorkflow,
   } = usePermissions();
 
   // Ref tracks currentPage without causing callback identity changes on navigation
@@ -675,6 +678,7 @@ const App: React.FC = () => {
       case 'payroll': return 'Payroll Management';
       case 'personalTransactions': return 'Personal transactions';
       case 'accounting': return 'Accounting';
+      case 'approvals': return 'Approvals';
 
       default: return getAppDisplayName();
     }
@@ -714,6 +718,7 @@ const App: React.FC = () => {
       ACCOUNTING: { allowed: financial, moduleName: 'Accounting', requiredPermission: 'financial.write' },
       SETTINGS: { allowed: settings, moduleName: 'Settings', requiredPermission: 'users.read' },
       IMPORT: { allowed: canWriteFinancial, moduleName: 'Import Data', requiredPermission: 'financial.write' },
+      APPROVALS: { allowed: canViewWorkflow, moduleName: 'Approvals', requiredPermission: 'workflow.view' },
     } as Record<string, { allowed: boolean; moduleName?: string; requiredPermission?: string }>;
   }, [
     canAccessFinancials,
@@ -722,6 +727,7 @@ const App: React.FC = () => {
     canReadPayroll,
     canWriteFinancial,
     canReadProjectSelling,
+    canViewWorkflow,
   ]);
 
   // Optimized page renderer - preserves page state by keeping pages mounted but hidden
@@ -949,6 +955,7 @@ const App: React.FC = () => {
               {renderPersistentPage('PAYROLL', <PayrollHub />)}
               {renderPersistentPage('PERSONAL_TRANSACTIONS', <PersonalTransactionsPage />)}
               {renderPersistentPage('ACCOUNTING', <AccountingPage />)}
+              {renderPersistentPage('APPROVALS', <ApprovalsPage />)}
               {renderPersistentPage('SETTINGS', <SettingsPage />)}
               {renderPersistentPage('IMPORT', <ImportExportWizard />)}
             </ErrorBoundary>
