@@ -433,6 +433,7 @@ import { getApiRootUrl } from '../../config/apiUrl';
 import { apiClient, type ApiError } from './client';
 import { applyChangeLogToMergedState } from './changeLogMerge';
 import { getBootstrapCoordinator, getBulkCoordTenantId } from './bootstrapCoordinator';
+import { buildCanonicalBulkEntitiesEndpoint } from './deferredBundleState';
 import { logger } from '../logger';
 import type { Invoice, ProjectReceivedAsset } from '../../types';
 
@@ -946,7 +947,7 @@ export class AppStateApiService {
   async loadStateBulk(entities?: string): Promise<Partial<AppState>> {
     try {
       logger.logCategory('sync', '📡 Loading state from API (bulk)...');
-      const endpoint = entities ? `/state/bulk?entities=${encodeURIComponent(entities)}` : '/state/bulk';
+      const endpoint = buildCanonicalBulkEntitiesEndpoint(entities);
       console.log('[DIAG] loadStateBulk: baseUrl=', apiClient.getBaseUrl(), 'tenantId=', apiClient.getTenantId(), 'hasToken=', !!apiClient.getToken(), 'endpoint=', endpoint);
       const tenantId = getBulkCoordTenantId();
       const raw = await getBootstrapCoordinator().dedupeBulkRequest(tenantId, endpoint, () =>

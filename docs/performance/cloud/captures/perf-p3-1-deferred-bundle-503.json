@@ -1,0 +1,201 @@
+{
+  "program": "PERF-P3.1",
+  "generatedAt": "2026-06-23T03:39:07.789Z",
+  "targetBundles": [
+    "bills,vendors",
+    "invoices,bills"
+  ],
+  "coordinatorPath": [
+    {
+      "step": 1,
+      "location": "hooks/usePageGroupDeferredBootstrap.ts",
+      "call": "awaitDeferredBootstrapGate()",
+      "role": "Wait if primary bootstrap running; suppress if unhealthy"
+    },
+    {
+      "step": 2,
+      "location": "hooks/usePageGroupDeferredBootstrap.ts",
+      "call": "getAppStateApiService().loadStateBulk(stillMissing.join(\",\"))",
+      "role": "Deferred bundle HTTP — NOT runPrimaryBootstrap"
+    },
+    {
+      "step": 3,
+      "location": "services/api/appStateApi.ts loadStateBulk",
+      "call": "dedupeBulkRequest(tenantId, endpoint, ...)",
+      "role": "Identical tenant+endpoint shares one in-flight promise"
+    },
+    {
+      "step": 4,
+      "location": "services/api/appStateApi.ts",
+      "call": "withCoalescedBulkRetry(tenantId, \"loadStateBulk\", ...)",
+      "role": "Same retry label for ALL deferred bundles (coarse coalesce)"
+    },
+    {
+      "step": 5,
+      "location": "services/api/appStateApi.ts",
+      "call": "withBulkLoadResilienceImpl → awaitSharedBackoff",
+      "role": "Shared backoff per tenant across bulk loaders"
+    }
+  ],
+  "primaryNotUsed": {
+    "runPrimaryBootstrap": [
+      "loadStateBulkChunked",
+      "loadStateForSyncRefresh"
+    ],
+    "notWrapped": [
+      "loadStateBulk (deferred entity bundles)"
+    ]
+  },
+  "serverShed": {
+    "route": "GET /state/bulk",
+    "condition": "pool.idleCount === 0 && pool.waitingCount >= PG_POOL_SHED_WAITING (default 12)",
+    "logPrefix": "[BULK_STATE_ERROR] errorName=POOL_SATURATED",
+    "poolFields": "pool={total,idle,waiting}",
+    "shedBeforeHandler": true
+  },
+  "deferredServerLoad": {
+    "perRequest": "getBulkAppState with entity filter still runs runBatched loaders (up to BULK_BOOTSTRAP_CONCURRENCY=6) with withPoolClientGuarded (global bootstrap slots=8)",
+    "vendorsNote": "vendors is in BULK_DEFERRED_ENTITIES — never loaded on primary chunked offset=0",
+    "staticNote": "invoices,bills ARE in BULK_BOOTSTRAP_STATIC_ENTITIES — deferred invoices,bills implies empty slices or failed/partial bootstrap"
+  },
+  "triggerMatrix": [
+    {
+      "bundle": "bills,vendors",
+      "pageGroups": [
+        "TRANSACTIONS",
+        "PROJECT",
+        "ACCOUNTING"
+      ],
+      "dedupeKeyExample": "<tenantId>|/state/bulk?entities=bills%2Cvendors",
+      "orderCollision": "Also emitted as 'vendors,bills' from VENDORS group → separate dedupe key, dedupe MISS"
+    },
+    {
+      "bundle": "invoices,bills",
+      "pageGroups": [
+        "DASHBOARD",
+        "TRANSACTIONS",
+        "RENTAL",
+        "ACCOUNTING"
+      ],
+      "dedupeKeyExample": "<tenantId>|/state/bulk?entities=invoices%2Cbills",
+      "orderCollision": "Stable 'invoices,bills' when only those two missing across DASHBOARD/RENTAL/ACCOUNTING"
+    }
+  ],
+  "coordinatorCoverage": [
+    {
+      "request": "GET /state/bulk?entities=bills,vendors",
+      "source": "usePageGroupDeferredBootstrap → loadStateBulk",
+      "gateAttached": "Yes — awaitDeferredBootstrapGate",
+      "primaryBootstrapAttached": "No — runPrimaryBootstrap only wraps chunked/sync refresh",
+      "dedupeParticipation": "Yes — dedupeBulkRequest on exact endpoint string",
+      "retryCoalesce": "Partial — label loadStateBulk shared across all entity bundles"
+    },
+    {
+      "request": "GET /state/bulk?entities=invoices,bills",
+      "source": "usePageGroupDeferredBootstrap → loadStateBulk",
+      "gateAttached": "Yes — awaitDeferredBootstrapGate",
+      "primaryBootstrapAttached": "No — runPrimaryBootstrap only wraps chunked/sync refresh",
+      "dedupeParticipation": "Yes — dedupeBulkRequest on exact endpoint string",
+      "retryCoalesce": "Partial — label loadStateBulk shared across all entity bundles"
+    }
+  ],
+  "dedupeScenarios": [
+    {
+      "scenario": "Two tabs same bundle concurrently",
+      "bundle": "invoices,bills",
+      "dedupeHit": "Yes — same key"
+    },
+    {
+      "scenario": "Nav PROJECT then VENDORS (bills+vendors missing)",
+      "bundle": "bills,vendors vs vendors,bills",
+      "dedupeHit": "No — entity order differs in query string"
+    },
+    {
+      "scenario": "Sequential nav after prior 503 failed",
+      "bundle": "invoices,bills",
+      "dedupeHit": "No — prior promise rejected; map entry cleared in finally"
+    },
+    {
+      "scenario": "DASHBOARD then RENTAL (only invoices+bills missing)",
+      "bundle": "invoices,bills",
+      "dedupeHit": "Yes if overlapping in-flight; else miss after first completes"
+    }
+  ],
+  "emptySliceLoop": {
+    "trigger": "missing = needed.filter(key => lengths[key] === 0)",
+    "implication": "Zero-row tenant (empty bills/invoices arrays) still counts as missing → deferred bundle fires on every page visit",
+    "retryOn503": "catch {} clears inFlightRef → next navigation re-issues same bundle"
+  },
+  "pageTriggerTable": [
+    {
+      "pageGroup": "DASHBOARD",
+      "bundleIfAllMissing": "invoices,bills,contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "TRANSACTIONS",
+      "bundleIfAllMissing": "contacts,invoices,bills,vendors",
+      "bundleIfOnlyVendorsMissing": "vendors"
+    },
+    {
+      "pageGroup": "PAYMENTS",
+      "bundleIfAllMissing": "contacts,invoices",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "LOANS",
+      "bundleIfAllMissing": "contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "VENDORS",
+      "bundleIfAllMissing": "vendors,bills,contacts",
+      "bundleIfOnlyVendorsMissing": "vendors"
+    },
+    {
+      "pageGroup": "CONTACTS",
+      "bundleIfAllMissing": "contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "RENTAL",
+      "bundleIfAllMissing": "invoices,contacts,bills",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "PROJECT",
+      "bundleIfAllMissing": "bills,contacts,vendors",
+      "bundleIfOnlyVendorsMissing": "vendors"
+    },
+    {
+      "pageGroup": "PROJECT_SELLING",
+      "bundleIfAllMissing": "contacts,invoices",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "INVESTMENT",
+      "bundleIfAllMissing": "contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "SETTINGS",
+      "bundleIfAllMissing": "contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "PAYROLL",
+      "bundleIfAllMissing": "contacts",
+      "bundleIfOnlyVendorsMissing": null
+    },
+    {
+      "pageGroup": "PERSONAL_TRANSACTIONS",
+      "bundleIfAllMissing": "personalTransactions",
+      "bundleIfOnlyVendorsMissing": "personalTransactions"
+    },
+    {
+      "pageGroup": "ACCOUNTING",
+      "bundleIfAllMissing": "invoices,bills,contacts,vendors",
+      "bundleIfOnlyVendorsMissing": "vendors"
+    }
+  ]
+}
