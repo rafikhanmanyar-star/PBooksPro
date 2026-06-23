@@ -253,6 +253,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                         if (isMounted) {
                             const mergedInit = { ...initialState, ...partial, ...pickTenantSettingsPartial(partial) } as AppState;
                             setStoredState(mergedInit);
+                            void import('../services/api/deferredBundleState').then(({ markDeferredSlicesFromPartial }) => {
+                                markDeferredSlicesFromPartial(partial);
+                            });
                             if (typeof sessionStorage !== 'undefined') {
                                 sessionStorage.setItem('pbooks_api_last_sync_at', new Date().toISOString());
                                 if (currentTenantId) sessionStorage.setItem('pbooks_api_sync_tenant_id', currentTenantId);
@@ -282,6 +285,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                     ...pickTenantSettingsPartial(partial),
                                 } as AppState;
                                 setStoredState(mergedInit);
+                                void import('../services/api/deferredBundleState').then(({ markDeferredSlicesFromPartial }) => {
+                                    markDeferredSlicesFromPartial(partial);
+                                });
                                 dispatchRef.current?.({
                                     type: 'SET_STATE',
                                     payload: partial,
@@ -1602,6 +1608,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             logger.logCategory('sync', `🔒 Tenant switched (${prevTenantId} → ${currentTenantId}), clearing previous tenant state`);
             void import('../services/api/bootstrapCoordinator').then(({ getBootstrapCoordinator }) => {
                 getBootstrapCoordinator().resetForTenant(currentTenantId);
+            });
+            void import('../services/api/deferredBundleState').then(({ resetDeferredBundleSession }) => {
+                resetDeferredBundleSession(currentTenantId);
             });
             if (typeof sessionStorage !== 'undefined') {
                 sessionStorage.removeItem('pbooks_api_last_sync_at');

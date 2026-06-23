@@ -1,0 +1,39 @@
+{
+  "program": "PERF-P3.2",
+  "generatedAt": "2026-06-23T03:42:49.502Z",
+  "staticChecks": [
+    {
+      "file": "services/api/deferredBundleState.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "hooks/usePageGroupDeferredBootstrap.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "services/api/appStateApi.ts",
+      "pass": true,
+      "missing": []
+    },
+    {
+      "file": "context/AppContext.tsx",
+      "pass": true,
+      "missing": []
+    }
+  ],
+  "unitChecks": [
+    {
+      "name": "Scenario C — canonical keys match",
+      "pass": true,
+      "detail": "bills,vendors === bills,vendors"
+    },
+    {
+      "name": "Endpoint canonicalization",
+      "pass": true,
+      "detail": "identical dedupe endpoint for order variants"
+    }
+  ],
+  "allPass": true
+}

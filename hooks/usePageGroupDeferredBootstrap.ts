@@ -2,18 +2,21 @@ import { useEffect, useRef } from 'react';
 import { useDispatchOnly, useStateSelector } from './useSelectiveState';
 import { getAppStateApiService } from '../services/api/appStateApi';
 import { getBootstrapCoordinator } from '../services/api/bootstrapCoordinator';
+import {
+  type DeferredBootstrapEntityKey,
+  DEFERRED_BOOTSTRAP_ENTITY_KEYS,
+  ensureDeferredBundleSessionTenant,
+  isDeferredBundleSessionLoaded,
+  markDeferredBundleLoadSuccess,
+  normalizeEntityBundle,
+  recordDeferredBundleCacheHit,
+  recordDeferredBundleCacheMiss,
+  resolveDeferredMissingEntities,
+} from '../services/api/deferredBundleState';
+import { apiClient } from '../services/api/client';
 import type { AppAction, AppState } from '../types';
 
-/** PERF-A6.1 — excluded from bulk-chunked offset=0; loaded on demand via GET /state/bulk?entities= */
-export const DEFERRED_BOOTSTRAP_ENTITY_KEYS = [
-  'contacts',
-  'invoices',
-  'bills',
-  'vendors',
-  'personalTransactions',
-] as const;
-
-export type DeferredBootstrapEntityKey = (typeof DEFERRED_BOOTSTRAP_ENTITY_KEYS)[number];
+export { DEFERRED_BOOTSTRAP_ENTITY_KEYS, type DeferredBootstrapEntityKey };
 
 const ENTITY_STATE_KEYS: Record<DeferredBootstrapEntityKey, keyof AppState> = {
   contacts: 'contacts',
@@ -51,8 +54,8 @@ function useDeferredEntityLengths(): Record<DeferredBootstrapEntityKey, number> 
 }
 
 /**
- * Loads deferred bootstrap entities when the active page group needs them and AppState slices are empty.
- * Uses existing GET /state/bulk?entities= API — no global preload at login.
+ * Loads deferred bootstrap entities when the active page group needs them and slices are not yet loaded.
+ * Uses GET /state/bulk?entities= with canonical bundle ordering and session load tracking (PERF-P3.2).
  */
 export function usePageGroupDeferredBootstrap(activeGroup: string, enabled: boolean): void {
   const dispatch = useDispatchOnly();
@@ -62,15 +65,23 @@ export function usePageGroupDeferredBootstrap(activeGroup: string, enabled: bool
   useEffect(() => {
     if (!enabled) return;
 
+    ensureDeferredBundleSessionTenant(apiClient.getTenantId());
+
     const needed = PAGE_GROUP_DEFERRED_ENTITIES[activeGroup];
     if (!needed?.length) return;
 
-    const missing = needed.filter((key) => lengths[key] === 0);
+    const missing = resolveDeferredMissingEntities(needed, lengths);
     if (missing.length === 0) return;
 
-    const requestKey = `${activeGroup}:${missing.join(',')}`;
-    if (inFlightRef.current === requestKey) return;
-    inFlightRef.current = requestKey;
+    const normalizedBundle = normalizeEntityBundle(missing.join(','));
+    if (isDeferredBundleSessionLoaded(normalizedBundle)) {
+      recordDeferredBundleCacheHit(normalizedBundle);
+      return;
+    }
+
+    if (inFlightRef.current === normalizedBundle) return;
+    inFlightRef.current = normalizedBundle;
+    recordDeferredBundleCacheMiss(normalizedBundle);
 
     void (async () => {
       try {
@@ -78,25 +89,26 @@ export function usePageGroupDeferredBootstrap(activeGroup: string, enabled: bool
         const proceed = await coordinator.awaitDeferredBootstrapGate();
         if (!proceed) return;
 
-        const stillMissing = needed.filter((key) => lengths[key] === 0);
+        const stillMissing = resolveDeferredMissingEntities(needed, lengths);
         if (stillMissing.length === 0) return;
 
-        const partial = await getAppStateApiService().loadStateBulk(stillMissing.join(','));
-        const hasPayload = stillMissing.some((key) => {
-          const slice = partial[ENTITY_STATE_KEYS[key]];
-          return Array.isArray(slice) && slice.length > 0;
-        });
-        if (hasPayload) {
-          dispatch({
-            type: 'SET_STATE',
-            payload: partial,
-            _isRemote: true,
-          } as AppAction);
+        const bundle = normalizeEntityBundle(stillMissing.join(','));
+        if (isDeferredBundleSessionLoaded(bundle)) {
+          recordDeferredBundleCacheHit(bundle);
+          return;
         }
+
+        const partial = await getAppStateApiService().loadStateBulk(bundle);
+        markDeferredBundleLoadSuccess(stillMissing, bundle);
+        dispatch({
+          type: 'SET_STATE',
+          payload: partial,
+          _isRemote: true,
+        } as AppAction);
       } catch {
-        // Allow retry on next navigation when slices are still empty
+        // Allow retry on next navigation when slices are still not marked loaded
       } finally {
-        if (inFlightRef.current === requestKey) {
+        if (inFlightRef.current === normalizedBundle) {
           inFlightRef.current = null;
         }
       }
