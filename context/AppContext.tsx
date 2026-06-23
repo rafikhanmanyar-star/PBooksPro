@@ -302,6 +302,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                                 didPostAuthApiMergeRef.current = true;
                                 sessionRestoreRefreshDoneRef.current = true;
                                 markDbLoadCompleteRef.current?.();
+                                logger.logCategory('sync', '[DASHBOARD_RECOVERY] bootstrap_recovered');
+                                if (typeof window !== 'undefined') {
+                                    window.dispatchEvent(
+                                        new CustomEvent('pbooks-bootstrap-recovered', {
+                                            detail: {
+                                                tenantId: currentTenantId,
+                                                recoveredAt: new Date().toISOString(),
+                                            },
+                                        })
+                                    );
+                                }
                             });
                             logger.warnCategory(
                                 'sync',
@@ -1791,6 +1802,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         window.addEventListener('pbooks:request-api-refresh', onRequestApiRefresh);
         return () => window.removeEventListener('pbooks:request-api-refresh', onRequestApiRefresh);
     }, [refreshFromApi]);
+
+    // After a soft-failure bootstrap recovery completes, invalidate all dashboard queries so cards
+    // populate automatically without requiring a manual Refresh click.
+    // One invalidation per recovery — the event fires exactly once because scheduleBackgroundRecovery
+    // deduplicates via backgroundRecoveryPromise and only calls task() until first success.
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+        let handled = false;
+        const onBootstrapRecovered = async () => {
+            if (handled) return;
+            handled = true;
+            logger.logCategory('sync', '[DASHBOARD_RECOVERY] dashboard_refresh_started');
+            try {
+                const { getQueryClient } = await import('../config/queryClient');
+                const { dashboardMetricsQueryKeys } = await import('../hooks/useDashboardMetrics');
+                await getQueryClient().invalidateQueries({ queryKey: dashboardMetricsQueryKeys.root });
+                logger.logCategory('sync', '[DASHBOARD_RECOVERY] dashboard_refresh_complete');
+            } catch (err) {
+                logger.warnCategory('sync', '[DASHBOARD_RECOVERY] dashboard_refresh_error', err);
+            }
+        };
+        window.addEventListener('pbooks-bootstrap-recovered', onBootstrapRecovered);
+        return () => {
+            window.removeEventListener('pbooks-bootstrap-recovered', onBootstrapRecovered);
+        };
+    }, []);
 
     /** After auth hydrates, if init ran before isAuthenticated was true, SQLite had no API-backed projects — merge once. */
     useEffect(() => {
