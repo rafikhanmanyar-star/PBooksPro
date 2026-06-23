@@ -457,6 +457,17 @@ export async function updateBill(
   const fields = billWriteFieldsFromPick(p);
   const billRepo = new BillRepository(tenantId);
 
+  const existing = await getBillById(client, tenantId, id);
+  if (existing) {
+    const approvalStatus = String(existing.approval_status ?? 'Approved');
+    if (approvalStatus === 'Submitted') {
+      throw Object.assign(
+        new Error('This bill is pending approval and cannot be edited. Reject it first to make changes.'),
+        { code: 'APPROVAL_PENDING' }
+      );
+    }
+  }
+
   await assertContractBillWithinLimit(client, tenantId, p.contract_id, p.amount, id);
   await assertBillAllowedAgainstPurchaseOrder(client, tenantId, {
     purchaseOrderId: p.purchase_order_id,

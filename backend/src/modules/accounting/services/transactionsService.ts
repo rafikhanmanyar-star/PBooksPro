@@ -702,6 +702,13 @@ export async function upsertTransaction(
     }
   }
 
+  if (String(existing.approval_status ?? 'Approved') === 'Submitted') {
+    throw Object.assign(
+      new Error('This transaction is pending approval and cannot be edited. Reject it first to make changes.'),
+      { code: 'APPROVAL_PENDING' }
+    );
+  }
+
   const locked = await new TransactionRepository(tenantId).lockByIdIncludingDeletedForUpdate(client, id);
   if (!locked) {
     return {

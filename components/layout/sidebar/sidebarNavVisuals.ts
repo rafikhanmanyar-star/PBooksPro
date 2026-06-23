@@ -3,6 +3,7 @@ import {
   BarChart3,
   Building2,
   Calculator,
+  CheckSquare,
   ClipboardList,
   HardHat,
   LayoutDashboard,
@@ -34,5 +35,6 @@ export const SIDEBAR_PAGE_VISUALS: Record<string, SidebarPageVisual> = {
   pmConfig: { Icon: RefreshCw, color: '#38BDF8' },
   rentalManagement: { Icon: Building2, color: '#6366F1' },
   payroll: { Icon: Users, color: '#22C55E' },
+  approvals: { Icon: CheckSquare, color: '#F59E0B' },
   settings: { Icon: Settings, color: '#94A3B8' },
 };

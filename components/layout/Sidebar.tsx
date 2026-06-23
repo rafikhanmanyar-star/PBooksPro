@@ -18,6 +18,7 @@ import useLocalStorage from '../../hooks/useLocalStorage';
 import { useViewport } from '../../context/ViewportContext';
 import { isAdminRole } from '../../hooks/useRecordLock';
 import { usePermissions } from '../../hooks/usePermissions';
+import { isRbacV2ApprovalMatrixUiEnabled } from '../../services/api/securityApprovalMatrixApi';
 import NavGroupHeader from './NavGroupHeader';
 import SidebarNavIcon from './sidebar/SidebarNavIcon';
 
@@ -195,6 +196,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         canAccessFinancials,
         canReadProcurement,
         canAccessSettings,
+        canViewWorkflow,
     } = usePermissions();
     const isSalesFocusedUser = enterpriseRole === 'sales_user';
     // Use V2 enterprise role for menu guards — legacy effectiveRole bypasses RBAC V2 role assignments
@@ -263,6 +265,16 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
                 ]
             },
         ];
+
+        // Add Approvals inbox when approval matrix feature is enabled and user has workflow.view
+        if (isRbacV2ApprovalMatrixUiEnabled() && canViewWorkflow) {
+            groups.push({
+                title: 'Approvals',
+                items: [
+                    { page: 'approvals', label: 'Approvals', icon: ICONS.clipboard },
+                ]
+            });
+        }
 
         // Add Settings only for users who have relevant management capabilities
         if (canAccessSettings) {
@@ -333,6 +345,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentPage, setCurrentPage }) => {
         canWriteFinancial,
         canReadPayroll,
         enterpriseRole,
+        canViewWorkflow,
     ]);
 
     const isCurrent = (itemPage: Page) => {
