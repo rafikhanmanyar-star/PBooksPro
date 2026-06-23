@@ -82,11 +82,6 @@ const PayslipModal: React.FC<PayslipModalProps> = ({ isOpen, onClose, employee, 
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [categories]);
 
-  // Get projects
-  const projects = React.useMemo(() => {
-    return projects;
-  }, [projects]);
-
   /** Project/building split for this payslip: snapshot when present, else employee profile (legacy). */
   const allocationForPayment = React.useMemo(
     () => resolvePayslipAssignment(payslipData ?? null, employee),
