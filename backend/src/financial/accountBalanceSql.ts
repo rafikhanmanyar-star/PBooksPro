@@ -33,11 +33,12 @@ export const TRANSACTION_SIGNED_BALANCE_SUBQUERY = `(
   WHERE t.tenant_id = $1 AND t.deleted_at IS NULL
 )`;
 
-/** $1 = tenantId for list queries; account alias must be `a`. */
-export const ACCOUNT_BALANCE_CASE = `CASE WHEN a.tenant_id = $2 THEN COALESCE(a.opening_balance, 0) + ${JOURNAL_SIGNED_BALANCE_SUBQUERY} ELSE a.balance END`;
+/** $1 = tenantId for list queries; $2 = GLOBAL_SYSTEM_TENANT_ID; account alias must be `a`. */
+/** Shared chart rows (`tenant_id = $2`) must not use global opening_balance — journal is scoped per tenant. */
+export const ACCOUNT_BALANCE_CASE = `CASE WHEN a.tenant_id = $2 THEN ${JOURNAL_SIGNED_BALANCE_SUBQUERY} ELSE COALESCE(a.opening_balance, 0) + ${JOURNAL_SIGNED_BALANCE_SUBQUERY} END`;
 
 /** $1 = account id, $2 = tenantId, $3 = GLOBAL_SYSTEM_TENANT_ID for get-by-id queries. */
-export const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN COALESCE(a.opening_balance, 0) + (
+export const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN (
     SELECT COALESCE(SUM(
       CASE
         WHEN LOWER(a.type) IN ('asset', 'expense', 'bank', 'cash') THEN (jl.debit_amount - jl.credit_amount)
@@ -47,4 +48,14 @@ export const ACCOUNT_BALANCE_CASE_BY_ID = `CASE WHEN a.tenant_id = $3 THEN COALE
     FROM journal_lines jl
     INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
     WHERE jl.account_id = a.id AND je.tenant_id = $2
-  ) ELSE a.balance END`;
+  ) ELSE COALESCE(a.opening_balance, 0) + (
+    SELECT COALESCE(SUM(
+      CASE
+        WHEN LOWER(a.type) IN ('asset', 'expense', 'bank', 'cash') THEN (jl.debit_amount - jl.credit_amount)
+        ELSE (jl.credit_amount - jl.debit_amount)
+      END
+    ), 0)
+    FROM journal_lines jl
+    INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+    WHERE jl.account_id = a.id AND je.tenant_id = $2
+  ) END`;

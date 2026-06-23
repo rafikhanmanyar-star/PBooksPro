@@ -480,15 +480,19 @@ export class JournalRepository extends TenantRepository {
       is_brought_forward?: boolean;
     }>;
   }> {
-    const acc = await client.query(
-      `SELECT type, name, COALESCE(opening_balance, 0)::float AS opening_balance
+    const acc = await client.query<{ tenant_id: string; type: string; name: string; opening_balance: number }>(
+      `SELECT tenant_id, type, name, COALESCE(opening_balance, 0)::float AS opening_balance
        FROM accounts WHERE id = $1 AND (tenant_id = $2 OR tenant_id = $3) AND deleted_at IS NULL`,
       [accountId, this.tenantId, GLOBAL_SYSTEM_TENANT_ID]
     );
     if (acc.rows.length === 0) throw new Error('Account not found.');
-    const accountType = String((acc.rows[0] as { type: string }).type);
-    const accountName = String((acc.rows[0] as { name: string }).name);
-    const openingBalance = roundMoney(Number((acc.rows[0] as { opening_balance: number }).opening_balance));
+    const accountRow = acc.rows[0]!;
+    const accountType = String(accountRow.type);
+    const accountName = String(accountRow.name);
+    const openingBalance =
+      accountRow.tenant_id === GLOBAL_SYSTEM_TENANT_ID
+        ? 0
+        : roundMoney(Number(accountRow.opening_balance));
     const dir = normalBalanceDirection(accountType);
 
     let running = roundMoney(dir * openingBalance);
