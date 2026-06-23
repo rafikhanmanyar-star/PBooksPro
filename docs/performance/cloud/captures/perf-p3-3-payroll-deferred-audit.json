@@ -1,0 +1,37 @@
+{
+  "program": "PERF-P3.3",
+  "generatedAt": "2026-06-23T04:09:51.102Z",
+  "pageGroupMappings": {
+    "payrollSubTabs": {
+      "workforce": {
+        "label": "Employees (EmployeeList)",
+        "file": "components/payroll/PayrollHub.tsx activeSubTab=workforce"
+      },
+      "history": {
+        "label": "Payment History (PaymentHistory)",
+        "file": "components/payroll/PayrollHub.tsx activeSubTab=history"
+      },
+      "audit": {
+        "label": "Audit Log (PayrollAuditLog)",
+        "file": "components/payroll/PayrollHub.tsx activeSubTab=audit"
+      }
+    },
+    "PAGE_GROUPS": {
+      "PAYROLL": [
+        "payroll"
+      ],
+      "PERSONAL_TRANSACTIONS": [
+        "personalTransactions"
+      ]
+    },
+    "PAGE_GROUP_DEFERRED_ENTITIES": {
+      "PAYROLL": [
+        "contacts"
+      ],
+      "PERSONAL_TRANSACTIONS": [
+        "personalTransactions"
+      ]
+    }
+  },
+  "finding": "personalTransactions deferred bulk is NOT triggered by PAYROLL page group; payroll slowness is primarily syncPayrollFromServer + duplicate getEmployees"
+}

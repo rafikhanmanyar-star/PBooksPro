@@ -1,0 +1,103 @@
+{
+  "program": "PAYROLL-PERF-01",
+  "generatedAt": "2026-06-23T04:12:37.935Z",
+  "syncFunction": "components/payroll/services/payrollSync.ts",
+  "phase1Apis": [
+    {
+      "method": "GET",
+      "path": "/payroll/employees",
+      "storeKey": "employees"
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/runs",
+      "storeKey": "payroll_runs"
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/departments",
+      "storeKey": "departments"
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/grades",
+      "storeKey": "grade_levels"
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/earning-types",
+      "storeKey": "earning_types"
+    },
+    {
+      "method": "GET",
+      "path": "/payroll/deduction-types",
+      "storeKey": "deduction_types"
+    }
+  ],
+  "phase2Api": {
+    "method": "GET",
+    "path": "/payroll/runs/{runId}/payslips",
+    "per": "each payroll run returned in phase 1",
+    "sequential": true,
+    "storeKey": "payslips (full replace)"
+  },
+  "callers": [
+    {
+      "file": "components/payroll/PayrollHub.tsx",
+      "line": "~1046",
+      "trigger": "useEffect([tenantId]) on hub mount",
+      "scope": "full sync"
+    },
+    {
+      "file": "components/payroll/PayrollDashboard.tsx",
+      "line": "~30",
+      "trigger": "useEffect([tenantId]) when Dashboard tab mounted",
+      "scope": "full sync (duplicate with hub on landing)"
+    },
+    {
+      "file": "components/payroll/PaymentHistory.tsx",
+      "line": "~70,81",
+      "trigger": "useEffect when activeSubTab===history",
+      "scope": "full sync ×1–2 per tab visit"
+    },
+    {
+      "file": "components/payroll/PayslipsPage.tsx",
+      "line": "~17",
+      "trigger": "useEffect([tenantId])",
+      "scope": "full sync per Payslips tab mount"
+    },
+    {
+      "file": "components/payroll/PayrollSettingsPage.tsx",
+      "line": "~83",
+      "trigger": "settings load path",
+      "scope": "full sync"
+    },
+    {
+      "file": "components/payroll/PayrollReport.tsx",
+      "line": "~54",
+      "trigger": "report mount",
+      "scope": "full sync"
+    },
+    {
+      "file": "components/payroll/PayrollHub.tsx",
+      "line": "~420",
+      "trigger": "onAfterMutation (approval flow)",
+      "scope": "full sync after mutation"
+    },
+    {
+      "file": "components/payroll/modals/*.tsx",
+      "line": "various",
+      "trigger": "post pay/edit/void",
+      "scope": "full or runIds-scoped sync"
+    }
+  ],
+  "duplicateSyncModel": {
+    "openPayrollDashboard": 2,
+    "openEmployeesTab": {
+      "sync": 0,
+      "getEmployees": 1
+    },
+    "openPaymentHistory": "1-2",
+    "openAuditLog": 0
+  }
+}

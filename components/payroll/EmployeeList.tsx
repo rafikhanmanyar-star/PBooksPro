@@ -6,6 +6,11 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Search, UserPlus, FileDown, Mail, Phone, Loader2 } from 'lucide-react';
 import { storageService } from './services/storageService';
 import { payrollApi } from '../../services/api/payrollApi';
+import {
+  getPayrollSyncCoordinator,
+  isPayrollCacheFresh,
+  requestPayrollSync,
+} from './services/payrollSyncCoordinator';
 import { PayrollEmployee, EmployeeListProps } from './types';
 import { useAuth } from '../../context/AuthContext';
 import { usePayrollContext } from '../../context/PayrollContext';
@@ -46,37 +51,71 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ onSelect, onAdd }) => {
     return Array.from(byId.values());
   };
 
-  // Fetch employees from API with localStorage fallback
+  // Cache-first: render from localStorage immediately; refresh in background when stale.
   useEffect(() => {
-    const fetchEmployees = async () => {
-      if (!tenantId) {
-        setIsLoading(false);
+    if (!tenantId) {
+      setIsLoading(false);
+      return;
+    }
+
+    storageService.init(tenantId);
+    setEmployees(dedupeById(storageService.getEmployees(tenantId)));
+    setIsLoading(false);
+
+    if (!isAccountingBackedByRemoteApi()) return;
+
+    let cancelled = false;
+
+    const refreshIfStale = async () => {
+      const coordinator = getPayrollSyncCoordinator();
+
+      if (isPayrollCacheFresh(tenantId)) {
+        coordinator.recordCacheHit();
         return;
       }
 
-      setIsLoading(true);
-      try {
-        // Try API first
-        const apiEmployees = await payrollApi.getEmployees();
-        if (apiEmployees.length > 0) {
-          const unique = dedupeById(apiEmployees);
-          setEmployees(unique);
-          storageService.init(tenantId);
-          storageService.setEmployees(tenantId, unique);
-        } else {
-          // Fallback to localStorage
-          setEmployees(storageService.getEmployees(tenantId));
+      coordinator.recordCacheMiss();
+
+      if (coordinator.isSyncRunning(tenantId)) {
+        try {
+          await requestPayrollSync(tenantId, { source: 'employee-list-wait' });
+        } catch (error) {
+          console.warn('Payroll sync wait failed for employee list:', error);
         }
+        if (!cancelled) {
+          setEmployees(dedupeById(storageService.getEmployees(tenantId)));
+        }
+        return;
+      }
+
+      try {
+        const apiEmployees = await payrollApi.getEmployees();
+        if (cancelled) return;
+        const unique = dedupeById(apiEmployees);
+        setEmployees(unique);
+        storageService.setEmployees(tenantId, unique);
       } catch (error) {
-        console.warn('Failed to fetch employees from API, using localStorage:', error);
-        // Fallback to localStorage
-        setEmployees(storageService.getEmployees(tenantId));
-      } finally {
-        setIsLoading(false);
+        console.warn('Failed to refresh employees from API, using cache:', error);
       }
     };
 
-    fetchEmployees();
+    void refreshIfStale();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const onStorageUpdated = (ev: Event) => {
+      const t = (ev as CustomEvent<{ tenantId?: string }>).detail?.tenantId;
+      if (t && t !== tenantId) return;
+      storageService.init(tenantId);
+      setEmployees(dedupeById(storageService.getEmployees(tenantId)));
+    };
+    window.addEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
+    return () => window.removeEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
   }, [tenantId]);
 
   useEffect(() => {

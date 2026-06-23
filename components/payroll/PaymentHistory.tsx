@@ -21,6 +21,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
 import { payrollApi } from '../../services/api/payrollApi';
 import { syncPayrollFromServer } from './services/payrollSync';
+import { isPayrollCacheFresh } from './services/payrollSyncCoordinator';
 import { usePayrollContext } from '../../context/PayrollContext';
 import { usePrintReport } from '../../hooks/usePrintReport';
 import ReportHeader from '../reports/ReportHeader';
@@ -63,11 +64,28 @@ const PaymentHistory: React.FC = () => {
       return;
     }
     if (activeSubTab !== 'history') return;
+
+    const readPaidHistory = (): PayrollRun[] =>
+      storageService
+        .getPayrollRuns(tenantId)
+        .filter(
+          (r) =>
+            r.status === PayrollStatus.PAID && r.employee_count > 0 && (r.total_amount ?? 0) > 0
+        );
+
+    storageService.init(tenantId);
+
+    if (isAccountingBackedByRemoteApi() && isPayrollCacheFresh(tenantId)) {
+      setHistory(readPaidHistory());
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
     const load = async () => {
       try {
         if (isAccountingBackedByRemoteApi()) {
-          await syncPayrollFromServer(tenantId);
+          await syncPayrollFromServer(tenantId, { skipIfFresh: true, source: 'payment-history' });
         }
         storageService.init(tenantId);
         const allPaid = storageService.getPayrollRuns(tenantId).filter(r => r.status === PayrollStatus.PAID);
@@ -78,17 +96,37 @@ const PaymentHistory: React.FC = () => {
           for (const runId of emptyRunIds) {
             await payrollApi.deletePayrollRun(runId);
           }
-          if (emptyRunIds.length > 0) await syncPayrollFromServer(tenantId);
+          if (emptyRunIds.length > 0) {
+            await syncPayrollFromServer(tenantId, { force: true, source: 'payment-history-after-delete' });
+          }
         }
-        const runs = storageService
-          .getPayrollRuns(tenantId)
-          .filter(r => r.status === PayrollStatus.PAID && r.employee_count > 0 && (r.total_amount ?? 0) > 0);
+        const runs = readPaidHistory();
         setHistory(runs);
       } finally {
         setIsLoading(false);
       }
     };
     void load();
+  }, [tenantId, activeSubTab]);
+
+  useEffect(() => {
+    if (!tenantId) return;
+    const onStorageUpdated = (ev: Event) => {
+      const t = (ev as CustomEvent<{ tenantId?: string }>).detail?.tenantId;
+      if (t && t !== tenantId) return;
+      if (activeSubTab !== 'history') return;
+      storageService.init(tenantId);
+      setHistory(
+        storageService
+          .getPayrollRuns(tenantId)
+          .filter(
+            (r) =>
+              r.status === PayrollStatus.PAID && r.employee_count > 0 && (r.total_amount ?? 0) > 0
+          )
+      );
+    };
+    window.addEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
+    return () => window.removeEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
   }, [tenantId, activeSubTab]);
 
   const years = useMemo(() => {

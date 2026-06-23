@@ -417,7 +417,7 @@ const PayrollHub: React.FC = () => {
       setPayrollStorageRevision((r) => r + 1);
     },
     onAfterMutation: async () => {
-      if (tenantId) await syncPayrollFromServer(tenantId);
+      if (tenantId) await syncPayrollFromServer(tenantId, { force: true, source: 'approval-mutation' });
       setPayrollStorageRevision((r) => r + 1);
     },
   });
@@ -997,7 +997,7 @@ const PayrollHub: React.FC = () => {
           deleted = storageService.deletePayslip(tenantId, ps.id, userId);
         } else {
           deleted = await payrollApi.deletePayslip(ps.id, tenantId, userId);
-          if (deleted) await syncPayrollFromServer(tenantId);
+          if (deleted) await syncPayrollFromServer(tenantId, { force: true, source: 'delete-payslip' });
         }
         if (deleted) {
           showToast(paid ? 'Payslip removed.' : 'Payslip deleted.', 'info');
@@ -1043,7 +1043,7 @@ const PayrollHub: React.FC = () => {
         if (!cancelled) setPayrollStorageRevision((r) => r + 1);
       });
     } else {
-      syncPayrollFromServer(tenantId)
+      syncPayrollFromServer(tenantId, { source: 'payroll-hub' })
         .then(() => {
           if (cancelled) return;
           if (selectedRunId) setCyclePayslips(storageService.getPayslipsByRunId(tenantId, selectedRunId));
@@ -2270,7 +2270,7 @@ const PayrollHub: React.FC = () => {
           try {
             const result = await payrollApi.reversePayrollPayment(reversePaymentTx.id, reason);
             if (!result.success) throw new Error(result.error || 'Reverse failed.');
-            await syncPayrollFromServer(tenantId);
+            await syncPayrollFromServer(tenantId, { force: true, source: 'reverse-payment' });
             refreshCyclePayslips();
             showToast('Payroll payment reversed.', 'success');
           } catch (e) {

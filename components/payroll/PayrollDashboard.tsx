@@ -10,7 +10,6 @@ import {
   CalendarCheck,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { syncPayrollFromServer } from './services/payrollSync';
 import { storageService } from './services/storageService';
 import { formatCurrency } from './utils/formatters';
 import { payslipRemainingAmount, payslipIsFullyPaid, payslipDisplayPaidAmount } from './utils/payslipPaymentState';
@@ -27,7 +26,13 @@ const PayrollDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!tenantId) return;
-    void syncPayrollFromServer(tenantId).then(() => setRevision((r) => r + 1));
+    const onStorageUpdated = (ev: Event) => {
+      const t = (ev as CustomEvent<{ tenantId?: string }>).detail?.tenantId;
+      if (t && t !== tenantId) return;
+      setRevision((r) => r + 1);
+    };
+    window.addEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
+    return () => window.removeEventListener('pbooks-payroll-storage-updated', onStorageUpdated);
   }, [tenantId]);
 
   const stats = useMemo(() => {

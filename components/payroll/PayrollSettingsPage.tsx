@@ -80,7 +80,7 @@ const PayrollSettingsPage: React.FC = () => {
   useEffect(() => {
     if (!tenantId) return;
     const load = async () => {
-              await syncPayrollFromServer(tenantId);
+              await syncPayrollFromServer(tenantId, { source: 'payroll-settings' });
       loadData();
     };
     void load();

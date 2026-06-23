@@ -14,7 +14,7 @@ const PayslipsPage: React.FC = () => {
 
   useEffect(() => {
     if (!tenantId) return;
-    void syncPayrollFromServer(tenantId).then(() => setRevision((r) => r + 1));
+    void syncPayrollFromServer(tenantId, { source: 'payslips-page' }).then(() => setRevision((r) => r + 1));
   }, [tenantId]);
 
   const { payslips, runsById } = useMemo(() => {
