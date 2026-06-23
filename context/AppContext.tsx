@@ -1351,6 +1351,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             } else if (a.type === 'ADD_RENTAL_AGREEMENT') {
                 const ra = a.payload as RentalAgreement;
                 if (!ra?.id) return;
+                // Skip re-persistence when the caller already wrote to the backend (_isRemote: true).
+                // Without this guard, a direct rentalApi.create() followed by dispatch() would issue
+                // a second POST /rental-agreements and hit the duplicate-active-agreement validation.
+                if ((a as { _isRemote?: boolean })._isRemote) return;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     const nextList = [...(prev.rentalAgreements || []), ra];
                     const reconciled = reconcileRentalAgreementsList(nextList);

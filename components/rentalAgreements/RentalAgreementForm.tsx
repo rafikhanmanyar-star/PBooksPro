@@ -381,7 +381,7 @@ const RentalAgreementForm: React.FC<RentalAgreementFormProps> = ({ onClose, agre
                     status: agreementData.status,
                     previousAgreementId: agreementData.previousAgreementId,
                 });
-                dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement });
+                dispatch({ type: 'ADD_RENTAL_AGREEMENT', payload: newAgreement, _isRemote: true } as AppAction);
                 agreementIdForInvoices = newAgreement.id;
             } catch (err: unknown) {
                 const msg =

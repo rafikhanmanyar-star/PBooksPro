@@ -1,23 +1,15 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, RefreshCw, ShieldCheck, Clock, User, ChevronDown, ChevronUp } from 'lucide-react';
-import { apiClient } from '../../services/api/client';
 import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { useAuth } from '../../context/AuthContext';
 import { PAYROLL_AUDIT_LABELS, extractAuditReason } from './utils/payrollAuditCatalog';
-
-type AuditRow = {
-  id: string;
-  created_at: string;
-  user_id: string | null;
-  user_name?: string | null;
-  module: string;
-  entity_type: string;
-  entity_id: string;
-  action: string;
-  audit_action: string | null;
-  summary: string | null;
-  old_value?: unknown;
-  new_value?: unknown;
-};
+import {
+  filterPayrollAuditEvents,
+  isPayrollAuditCacheFresh,
+  loadPayrollAuditEvents,
+  readPayrollAuditCache,
+  type PayrollAuditEvent,
+} from './services/payrollAuditCache';
 
 const ACTION_COLORS: Record<string, string> = {
   'payroll.run.approved': 'bg-ds-success/15 text-ds-success',
@@ -66,29 +58,80 @@ function DiffViewer({ label, value }: { label: string; value: unknown }) {
 }
 
 const PayrollAuditLog: React.FC = () => {
+  const { tenant } = useAuth();
+  const tenantId = tenant?.id ?? '';
   const isApi = isAccountingBackedByRemoteApi();
-  const [rows, setRows] = useState<AuditRow[]>([]);
+  const [allEvents, setAllEvents] = useState<PayrollAuditEvent[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionFilter, setActionFilter] = useState('');
 
-  const load = useCallback(async () => {
-    if (!isApi) return;
-    setLoading(true);
+  const rows = useMemo(
+    () => filterPayrollAuditEvents(allEvents, actionFilter),
+    [allEvents, actionFilter]
+  );
+
+  useEffect(() => {
+    if (!isApi || !tenantId) return;
+
+    let cancelled = false;
+    const cached = readPayrollAuditCache(tenantId);
+
+    if (cached) {
+      setAllEvents(cached.events);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
+
+    const run = async () => {
+      setError(null);
+
+      try {
+        if (cached && isPayrollAuditCacheFresh(tenantId)) {
+          await loadPayrollAuditEvents(tenantId);
+          return;
+        }
+
+        if (cached && !isPayrollAuditCacheFresh(tenantId)) {
+          const events = await loadPayrollAuditEvents(tenantId, { background: true });
+          if (!cancelled) setAllEvents(events);
+          return;
+        }
+
+        const events = await loadPayrollAuditEvents(tenantId);
+        if (!cancelled) setAllEvents(events);
+      } catch (e) {
+        if (!cancelled) {
+          setError(e instanceof Error ? e.message : 'Failed to load audit log.');
+        }
+      } finally {
+        if (!cancelled && !cached) setLoading(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isApi, tenantId]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!isApi || !tenantId) return;
+    setRefreshing(true);
     setError(null);
     try {
-      const q = new URLSearchParams({ module: 'payroll', limit: '200' });
-      if (actionFilter) q.set('action', actionFilter);
-      const resp = await apiClient.get<{ items: AuditRow[] }>(`/audit/events?${q.toString()}`);
-      setRows(resp?.items ?? []);
+      const events = await loadPayrollAuditEvents(tenantId, { force: true });
+      setAllEvents(events);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load audit log.');
     } finally {
+      setRefreshing(false);
       setLoading(false);
     }
-  }, [isApi, actionFilter]);
-
-  useEffect(() => { void load(); }, [load]);
+  }, [isApi, tenantId]);
 
   if (!isApi) {
     return (
@@ -98,7 +141,8 @@ const PayrollAuditLog: React.FC = () => {
     );
   }
 
-  const uniqueActions = [...new Set(rows.map(r => r.audit_action ?? r.action).filter(Boolean))].sort();
+  const uniqueActions = [...new Set(allEvents.map(r => r.audit_action ?? r.action).filter(Boolean))].sort();
+  const showBlockingLoader = loading && rows.length === 0;
 
   return (
     <div className="space-y-4">
@@ -121,19 +165,19 @@ const PayrollAuditLog: React.FC = () => {
           </select>
           <button
             type="button"
-            onClick={() => void load()}
-            disabled={loading}
+            onClick={() => void handleRefresh()}
+            disabled={refreshing}
             className="p-2 rounded-lg border border-app-border hover:bg-app-toolbar transition-colors text-app-muted disabled:opacity-50"
             aria-label="Refresh"
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
       </div>
 
       {error && <p className="text-sm text-red-600 bg-red-50 rounded-xl p-3">{error}</p>}
 
-      {loading && rows.length === 0 ? (
+      {showBlockingLoader ? (
         <div className="flex items-center justify-center py-12"><Loader2 size={22} className="animate-spin text-app-muted" /></div>
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-app-muted">
