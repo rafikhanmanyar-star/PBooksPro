@@ -21,7 +21,7 @@ import ProjectInvestorReport from '../reports/ProjectInvestorReport';
 import UndistributedFundsReport from '../investmentManagement/UndistributedFundsReport';
 import InvMgmtProjectProfitabilityAnalytics from '../../modules/project-profitability/ProjectProfitabilityAnalytics';
 import FundAvailabilityPage from '../../modules/investor-fund-availability/components/FundAvailabilityPage';
-import { validateWithdrawal } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
+import { validateWithdrawalEdit } from '../../modules/investor-fund-availability/utils/validateWithdrawal';
 import { useFundAvailabilityFiltersStore } from '../../modules/investor-fund-availability/store/fundAvailabilityFiltersStore';
 import { formatCurrency } from '../../utils/numberUtils';
 import { usePrintReport } from '../../hooks/usePrintReport';
@@ -788,7 +788,11 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 bankAccounts.some((a) => a.id === fromId) && investorAccounts.some((a) => a.id === toId);
             if (isWithdrawalEdit && projectId) {
                 const reservePolicy = useFundAvailabilityFiltersStore.getState().reservePolicy;
-                const v = validateWithdrawal(state, projectId, numAmount, resolvedDate, reservePolicy);
+                const originalWithdrawalIncluded =
+                    mainTx.projectId === projectId && parseFlexibleDateToYyyyMmDd(mainTx.date) <= resolvedDate;
+                const v = validateWithdrawalEdit(state, projectId, mainTx.amount, numAmount, resolvedDate, reservePolicy, {
+                    currentBalanceIncludesOriginal: originalWithdrawalIncluded,
+                });
                 if (!v.ok) {
                     await showAlert(
                         `Withdrawal exceeds distributable funds for this project.\n\n${v.messages.slice(0, 3).join('\n')}\n\nDistributable: ${CURRENCY} ${v.distributableFunds.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
