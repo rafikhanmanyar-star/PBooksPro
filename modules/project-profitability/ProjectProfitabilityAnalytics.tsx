@@ -35,7 +35,7 @@ import {
     useProjectProfitabilityDetailsQuery,
     useProjectProfitabilitySummaryQuery,
 } from './hooks/useProjectProfitabilityAnalytics';
-import { derivePortfolioSummaryFromRows } from './services/projectProfitability.service';
+import { derivePortfolioSummaryFromRows, selectMonthlyChartPoints } from './services/projectProfitability.service';
 import { useProfitabilityFiltersStore } from './store/profitabilityFiltersStore';
 
 const COLUMN_PRESETS: { id: string; label: string }[] = [
@@ -137,10 +137,7 @@ const ProjectProfitabilityAnalytics: React.FC = () => {
     }, [summaryQuery.data, filteredRows, endDate]);
 
     const monthlyChartPoints = useMemo(() => {
-        if (focusedProjectId && projectDetailsQuery.data?.monthlyTrend?.length) {
-            return projectDetailsQuery.data.monthlyTrend;
-        }
-        return monthlyQuery.data ?? [];
+        return selectMonthlyChartPoints(focusedProjectId, projectDetailsQuery.data?.monthlyTrend, monthlyQuery.data);
     }, [focusedProjectId, projectDetailsQuery.data, monthlyQuery.data]);
 
     const selectedProjectName =

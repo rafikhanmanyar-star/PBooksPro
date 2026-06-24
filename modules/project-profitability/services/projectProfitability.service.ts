@@ -467,6 +467,17 @@ export function derivePortfolioSummaryFromRows(rows: ProjectProfitabilityRow[], 
     };
 }
 
+export function selectMonthlyChartPoints(
+    focusedProjectId: string | null,
+    projectTrend: MonthlyProfitPoint[] | null | undefined,
+    portfolioTrend: MonthlyProfitPoint[] | null | undefined
+): MonthlyProfitPoint[] {
+    if (focusedProjectId) {
+        return projectTrend ?? [];
+    }
+    return portfolioTrend ?? [];
+}
+
 export function getProjectProfitabilitySummary(state: AppState, endYmd: string): PortfolioProfitabilitySummary {
     const rows = state.projects.map((p) => buildProjectProfitabilityRow(state, p, endYmd));
     return derivePortfolioSummaryFromRows(rows, endYmd);

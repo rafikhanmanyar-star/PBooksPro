@@ -688,12 +688,13 @@ const OwnerPayoutsReport: React.FC = () => {
 
                             <LedgerSummaryCards show={showLedgerSummary} cards={ledgerSummaryCards} />
 
-                            {/* Data table (scroll container) — this block alone is cloned for print / PDF */}
+                            {/* Print/PDF root includes the report header plus the scrollable ledger table. */}
                             <div
                                 className={`owner-rental-income-print-root flex-1 min-h-0 flex flex-col px-6 pb-2${ledgerUpdating ? ' opacity-80 pointer-events-none' : ''}`}
                                 id="owner-rental-income-print-root"
                                 data-print-orientation="landscape"
                                 data-print-page-size="a4"
+                                data-pdf-capture-root
                             >
                                 <div className="owner-rental-income-print-header">
                                     <h2>Owner Rental Income</h2>
