@@ -41,8 +41,10 @@ export async function buildPdfGridBuffer(params: {
   maxCols?: number;
 }): Promise<Buffer> {
   const PDFDocument = (await import('pdfkit')).default;
-  const maxCols = params.maxCols ?? 8;
-  const cols = params.columns.slice(0, maxCols);
+  const cols =
+    typeof params.maxCols === 'number' && params.maxCols > 0
+      ? params.columns.slice(0, params.maxCols)
+      : params.columns;
   const doc = new PDFDocument({ margin: 36, size: 'A4', layout: 'landscape' });
   const chunks: Buffer[] = [];
   doc.on('data', (c) => chunks.push(c as Buffer));
@@ -51,7 +53,7 @@ export async function buildPdfGridBuffer(params: {
   doc.moveDown(0.5);
   doc.fontSize(9);
   const titles = cols.map((c) => String(params.labels[c] ?? c));
-  const rows = params.rows.slice(0, 200); // readable cap for PDF preview
+  const rows = params.rows;
   // Simple row layout
   for (let r = -1; r < rows.length; r++) {
     const parts =
