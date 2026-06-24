@@ -2,6 +2,18 @@ import html2canvas from 'html2canvas';
 
 type PrintOrientation = 'portrait' | 'landscape';
 
+export interface PdfCaptureTargets {
+  captureEl: HTMLElement;
+  scrollEl: HTMLElement | null;
+}
+
+export interface PdfCanvasSize {
+  width: number;
+  height: number;
+  windowWidth: number;
+  windowHeight: number;
+}
+
 function resolvePrintOrientation(root: HTMLElement): PrintOrientation {
   return root.dataset.printOrientation === 'landscape' ? 'landscape' : 'portrait';
 }
@@ -12,14 +24,47 @@ function a4ContentWidthPx(orientation: PrintOrientation, marginMm = 8): number {
   return ((pageWidthMm - 2 * marginMm) * 96) / 25.4;
 }
 
+export function resolvePdfCaptureTargets(root: HTMLElement): PdfCaptureTargets {
+  const scrollEl = root.querySelector<HTMLElement>('[data-print-scroll-container]');
+  if (!scrollEl) {
+    return { captureEl: root, scrollEl: null };
+  }
+
+  const hasContentOutsideScroll = Array.from(root.children).some((child) => (
+    child !== scrollEl && !child.contains(scrollEl)
+  ));
+
+  return {
+    captureEl: hasContentOutsideScroll ? root : scrollEl,
+    scrollEl,
+  };
+}
+
+export function resolvePdfCanvasSize(captureEl: HTMLElement, contentWidthPx: number): PdfCanvasSize {
+  const rectHeight = captureEl.getBoundingClientRect().height;
+  const contentHeightPx = Math.max(
+    1,
+    Math.ceil(captureEl.scrollHeight),
+    Math.ceil(captureEl.offsetHeight),
+    Math.ceil(rectHeight),
+  );
+
+  return {
+    width: contentWidthPx,
+    height: contentHeightPx,
+    windowWidth: contentWidthPx,
+    windowHeight: contentHeightPx,
+  };
+}
+
 /**
  * Rasterizes a DOM subtree to a multi-page A4 PDF.
  * Expands overflow-hidden scroll containers marked with `[data-print-scroll-container]` when present.
  * Honors `data-print-orientation="landscape"` on the root element.
  */
 export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
-  const inner = root.querySelector<HTMLElement>('[data-print-scroll-container]');
-  const captureEl = inner ?? root;
+  const { captureEl, scrollEl } = resolvePdfCaptureTargets(root);
+  const overflowEl = scrollEl ?? captureEl;
   const orientation = resolvePrintOrientation(root);
   const marginMm = 8;
   const contentWidthPx = a4ContentWidthPx(orientation, marginMm);
@@ -30,12 +75,15 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   const prev = {
     rootWidth: root.style.width,
     rootMaxWidth: root.style.maxWidth,
-    captureOverflow: captureEl.style.overflow,
-    captureMaxHeight: captureEl.style.maxHeight,
-    captureHeight: captureEl.style.height,
     captureWidth: captureEl.style.width,
     captureMaxWidth: captureEl.style.maxWidth,
     captureBackgroundColor: captureEl.style.backgroundColor,
+    captureOverflow: captureEl.style.overflow,
+    captureMaxHeight: captureEl.style.maxHeight,
+    captureHeight: captureEl.style.height,
+    overflow: overflowEl.style.overflow,
+    overflowMaxHeight: overflowEl.style.maxHeight,
+    overflowHeight: overflowEl.style.height,
   };
 
   root.style.width = `${contentWidthPx}px`;
@@ -43,6 +91,9 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   captureEl.style.overflow = 'visible';
   captureEl.style.maxHeight = 'none';
   captureEl.style.height = 'auto';
+  overflowEl.style.overflow = 'visible';
+  overflowEl.style.maxHeight = 'none';
+  overflowEl.style.height = 'auto';
   captureEl.style.width = `${contentWidthPx}px`;
   captureEl.style.maxWidth = `${contentWidthPx}px`;
   if (!captureEl.style.backgroundColor) {
@@ -50,13 +101,13 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
   }
 
   try {
+    const canvasSize = resolvePdfCanvasSize(captureEl, contentWidthPx);
     const canvas = await html2canvas(captureEl, {
       scale: 2,
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
-      width: contentWidthPx,
-      windowWidth: contentWidthPx,
+      ...canvasSize,
     });
 
     const { jsPDF } = await import('jspdf');
@@ -86,11 +137,14 @@ export async function elementToPdfBlob(root: HTMLElement): Promise<Blob> {
     }
     root.style.width = prev.rootWidth;
     root.style.maxWidth = prev.rootMaxWidth;
-    captureEl.style.overflow = prev.captureOverflow;
-    captureEl.style.maxHeight = prev.captureMaxHeight;
-    captureEl.style.height = prev.captureHeight;
     captureEl.style.width = prev.captureWidth;
     captureEl.style.maxWidth = prev.captureMaxWidth;
     captureEl.style.backgroundColor = prev.captureBackgroundColor;
+    captureEl.style.overflow = prev.captureOverflow;
+    captureEl.style.maxHeight = prev.captureMaxHeight;
+    captureEl.style.height = prev.captureHeight;
+    overflowEl.style.overflow = prev.overflow;
+    overflowEl.style.maxHeight = prev.overflowMaxHeight;
+    overflowEl.style.height = prev.overflowHeight;
   }
 }
