@@ -95,6 +95,7 @@
     "typecheck:strict-financial": "tsc -p tsconfig.strict-financial.json --noEmit",
     "typecheck:c2": "tsc -p tsconfig.strict-all.json --noEmit",
     "verify:equity-ledger": "node scripts/verify-equity-ledger.mjs",
+    "test:withdrawal-guard": "tsx tests/validateWithdrawal.test.ts",
     "test:date-only": "tsx tests/dateOnlySerialization.test.ts",
     "verify:api-client:phase6": "powershell -ExecutionPolicy Bypass -File scripts/verify-api-client-phase6.ps1",
     "verify:realtime:track-e": "powershell -ExecutionPolicy Bypass -File scripts/verify-realtime-track-e.ps1",
