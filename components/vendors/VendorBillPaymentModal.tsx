@@ -222,7 +222,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
         advancesLoaded && supplierAdvances.some((a) => a.remainingAmount > EPS);
 
     const advanceSettlementPath =
-        !selectedSorted.length > 0 &&
+        selectedSorted.length > 0 &&
         (!!editSettlement || (applyPrepaidFifo && !supplierPartiesMixed && hasPrepaidFifoRows));
 
     useEffect(() => {
@@ -349,15 +349,13 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
     useEffect(() => {
         const selected = pendingBills.filter((b) => selectedBillIds.has(b.id));
         const sumDue = Math.round(selected.reduce((acc, b) => acc + (b.amount - b.paidAmount), 0) * 100) / 100;
-        if (
-            !advanceSettlementPath &&
-            !editSettlement &&
-            !manualSettlementSplit &&
-            selected.length > 0 &&
-            fifoPlans.size > 0
-        ) {
-            setTotalAmount((cashToPayFromBank > EPS ? cashToPayFromBank : '').toString());
-        } else if (!(advanceSettlementPath && (editSettlement || manualSettlementSplit))) {
+        if (advanceSettlementPath) {
+            // Auto FIFO: cash field = remainder after prepaid advances (0 when fully covered).
+            // Edit / manual split: the user types the bank portion, so don't override it.
+            if (!editSettlement && !manualSettlementSplit) {
+                setTotalAmount(cashToPayFromBank > EPS ? String(cashToPayFromBank) : '');
+            }
+        } else {
             setTotalAmount(sumDue > 0 ? String(sumDue) : '');
         }
     }, [
@@ -857,7 +855,7 @@ const VendorBillPaymentModal: React.FC<VendorBillPaymentModalProps> = ({
                         </div>
                     </div>
 
-                    {!advancesLoaded &&
+                    {advancesLoaded &&
                         (supplierAdvances.some((a) => a.remainingAmount > EPS) || !!editSettlement) && (
                         <div className={`${backupAlertSuccess} mb-3 p-3 text-xs leading-relaxed space-y-2`}>
                             <p className="font-semibold text-sm text-app-text">
