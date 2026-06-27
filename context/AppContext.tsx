@@ -1651,7 +1651,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         let hydrationStarted = false;
         try {
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
-            const base = stateRef.current;
+            // Use latestStateRef (updated synchronously in render body) rather than stateRef
+            // (updated in a passive useEffect). The async refresh continuation can run before the
+            // effect flushes, so stateRef may be one render stale and miss a just-added payment —
+            // which then gets dropped by the merge if the server snapshot also lacks it.
+            const base = latestStateRef.current;
             const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
             const syncTenant = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
 
@@ -1686,13 +1690,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (lastSync && cursorMatchesTenant && baselineHasCoreData) {
                 try {
-                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(lastSync, base);
-                    merged = { ...base, ...inc, ...pickTenantSettingsPartial(inc) } as AppState;
+                    const { merged: inc, serverCursor } = await getAppStateApiService().loadStateViaIncrementalSync(
+                        lastSync,
+                        latestStateRef.current
+                    );
+                    const mergeBaseline = latestStateRef.current;
+                    merged = mergePartialStateIntoBaseline(
+                        mergeBaseline,
+                        inc,
+                        pickTenantSettingsPartial(inc)
+                    );
                     nextSyncCursor = serverCursor;
                 } catch {
                     const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                    const mergeBaseline = latestStateRef.current;
                     merged = mergePartialStateIntoBaseline(
-                        base,
+                        mergeBaseline,
                         partial,
                         pickTenantSettingsPartial(partial)
                     );
@@ -1700,9 +1713,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 }
             } else {
                 const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                const mergeBaseline = latestStateRef.current;
                 // When the sync cursor doesn't match the current tenant (or is missing),
                 // use initialState as the baseline to avoid mixing old tenant data.
-                const safeBase = cursorMatchesTenant ? base : initialState;
+                const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
                 merged = mergePartialStateIntoBaseline(
                     safeBase,
                     partial,
@@ -2150,8 +2164,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             try {
                 const { getAppStateApiService, pickTenantSettingsPartial } = await import('../services/api/appStateApi');
                 const partial = await getAppStateApiService().loadStateForSyncRefresh();
+                const mergeBaseline = latestStateRef.current;
+                const lastSync =
+                    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
+                const syncTenant =
+                    typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
+                const cursorMatchesTenant = !lastSync || syncTenant === currentTenantId;
+                const safeBase = cursorMatchesTenant ? mergeBaseline : initialState;
                 const loadedState = mergePartialStateIntoBaseline(
-                    initialState,
+                    safeBase,
                     partial,
                     pickTenantSettingsPartial(partial)
                 );
@@ -2174,7 +2195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         };
         window.addEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
         return () => window.removeEventListener('sync:bidir-downstream-complete', handleBidirDownstreamComplete as EventListener);
-    }, [dispatch, setStoredState, isAuthenticated]);
+    }, [dispatch, setStoredState, isAuthenticated, currentTenantId]);
 
     // Listen for cloud settings loaded after login
     useEffect(() => {
