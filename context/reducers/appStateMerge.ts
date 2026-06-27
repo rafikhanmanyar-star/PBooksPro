@@ -1,4 +1,13 @@
-import type { AppState, AppAction, Invoice, Bill, ProjectReceivedAsset, SalesReturn } from '../../types';
+import type {
+    AppState,
+    AppAction,
+    Invoice,
+    Bill,
+    ProjectReceivedAsset,
+    SalesReturn,
+    Transaction,
+    ProjectAgreement,
+} from '../../types';
 
 export function mergeTenantSettingsFromAction(prev: AppState, action: AppAction): AppState | null {
     switch (action.type) {
@@ -96,6 +105,35 @@ export function mergeSalesReturnsWithServerBaseline(base: SalesReturn[], server:
     return out;
 }
 
+/**
+ * Merge server transaction rows into the current client baseline.
+ * Server wins on id conflict. Keeps client rows missing from a stale partial
+ * (sync-gap / concurrent full refresh after save or socket patch).
+ */
+export function mergeTransactionsWithServerBaseline(base: Transaction[], server: Transaction[]): Transaction[] {
+    const serverIds = new Set(server.map((t) => t.id).filter(Boolean));
+    const out = [...server];
+    for (const tx of base) {
+        if (!tx.id || serverIds.has(tx.id)) continue;
+        out.push(tx);
+    }
+    return out;
+}
+
+/** Same merge policy as transactions — project selling agreements vanish without this on stale refresh. */
+export function mergeProjectAgreementsWithServerBaseline(
+    base: ProjectAgreement[],
+    server: ProjectAgreement[]
+): ProjectAgreement[] {
+    const serverIds = new Set(server.map((a) => a.id).filter(Boolean));
+    const out = [...server];
+    for (const agreement of base) {
+        if (!agreement.id || serverIds.has(agreement.id)) continue;
+        out.push(agreement);
+    }
+    return out;
+}
+
 /** Merge a server partial snapshot into a client baseline (preserves optimistic rows). */
 export function mergePartialStateIntoBaseline(
     base: AppState,
@@ -105,8 +143,24 @@ export function mergePartialStateIntoBaseline(
     return {
         ...base,
         ...partial,
-        invoices: mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices || []),
-        bills: mergeBillsWithServerBaseline(base.bills || [], partial.bills || []),
+        transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
+        // Deferred entities: only replace when the partial actually contains the entity.
+        // When loadStateBulkChunked runs (bootstrap without deferred entities), these keys
+        // are absent from partial, so we preserve the existing state to prevent flash.
+        invoices: partial.invoices !== undefined
+            ? mergeInvoicesWithServerBaseline(base.invoices || [], partial.invoices)
+            : (base.invoices || []),
+        bills: partial.bills !== undefined
+            ? mergeBillsWithServerBaseline(base.bills || [], partial.bills)
+            : (base.bills || []),
+        projectAgreements: partial.projectAgreements !== undefined
+            ? mergeProjectAgreementsWithServerBaseline(base.projectAgreements || [], partial.projectAgreements)
+            : (base.projectAgreements || []),
+        contacts: partial.contacts !== undefined ? partial.contacts : (base.contacts || []),
+        vendors: partial.vendors !== undefined ? partial.vendors : (base.vendors || []),
+        personalTransactions: partial.personalTransactions !== undefined
+            ? partial.personalTransactions
+            : (base.personalTransactions || []),
         projectReceivedAssets: mergeProjectReceivedAssetsWithServerBaseline(
             base.projectReceivedAssets || [],
             partial.projectReceivedAssets || []

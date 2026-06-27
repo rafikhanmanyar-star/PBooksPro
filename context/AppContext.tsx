@@ -532,7 +532,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                             if (typeof v === 'number') {
                                 dispatch({
                                     type: 'UPDATE_TRANSACTION',
-                                    payload: { ...tx, version: v },
+                                    payload: { ...tx, ...saved, version: v },
                                     _isRemote: true,
                                 } as AppAction);
                             }
