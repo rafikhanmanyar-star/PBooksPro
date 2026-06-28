@@ -12,6 +12,7 @@ import {
     prepaidClearingDisplayDateForBill,
     VENDOR_LEDGER_MONEY_EPS,
 } from '../../utils/vendorLedgerPrepaid';
+import RecordSupplierAdvanceModal, { type EditableSupplierAdvance } from './RecordSupplierAdvanceModal';
 
 interface VendorLedgerProps {
     vendorId: string | null;
@@ -63,6 +64,32 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
     const [supplierAdvances, setSupplierAdvances] = useState<Awaited<ReturnType<typeof contractorApi.getAdvances>>>(
         []
     );
+    const [editingAdvanceId, setEditingAdvanceId] = useState<string | null>(null);
+
+    const refetchAdvances = useCallback(() => {
+        if (!vendorId) return;
+        contractorApi
+            .getAdvances(vendorId)
+            .then((rows) => setSupplierAdvances(rows ?? []))
+            .catch(() => setSupplierAdvances([]));
+    }, [vendorId]);
+
+    const editingVendor = useMemo(() => vendors?.find((v) => v.id === vendorId) ?? null, [vendors, vendorId]);
+    const editingAdvance = useMemo<EditableSupplierAdvance | null>(() => {
+        if (!editingAdvanceId) return null;
+        const a = supplierAdvances.find((adv) => adv.id === editingAdvanceId);
+        if (!a) return null;
+        return {
+            id: a.id,
+            advanceDate: a.advanceDate,
+            originalAmount: a.originalAmount,
+            remainingAmount: a.remainingAmount,
+            cashAccountId: a.cashAccountId,
+            advanceAssetAccountId: a.advanceAssetAccountId,
+            projectId: a.projectId ?? null,
+            description: a.description ?? null,
+        };
+    }, [editingAdvanceId, supplierAdvances]);
 
     useEffect(() => {
         let cancel = false;
@@ -492,7 +519,21 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                                                     >
                                                         {(item.balance ?? 0).toLocaleString()}
                                                     </td>
-                                                    <td className="py-2 pl-1 pr-2 w-8"></td>
+                                                    <td className="py-2 pl-1 pr-2 w-8 text-right">
+                                                        {item.type === 'supplier_advance' && item.originalId && (
+                                                            <button
+                                                                type="button"
+                                                                title="Edit advance"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setEditingAdvanceId(item.originalId ?? null);
+                                                                }}
+                                                                className="inline-flex items-center justify-center w-6 h-6 rounded text-app-muted hover:bg-app-table-hover hover:text-app-text transition-colors"
+                                                            >
+                                                                <span className="w-3.5 h-3.5">{ICONS.edit}</span>
+                                                            </button>
+                                                        )}
+                                                    </td>
                                                 </tr>
                                                 {isExpanded &&
                                                     hasChildren &&
@@ -535,6 +576,16 @@ const VendorLedger: React.FC<VendorLedgerProps> = ({ vendorId, onItemClick }) =>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {editingVendor && editingAdvance && (
+                <RecordSupplierAdvanceModal
+                    isOpen
+                    onClose={() => setEditingAdvanceId(null)}
+                    vendor={editingVendor}
+                    advance={editingAdvance}
+                    onSaved={refetchAdvances}
+                />
             )}
         </div>
     );

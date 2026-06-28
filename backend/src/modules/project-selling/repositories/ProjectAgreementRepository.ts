@@ -167,6 +167,24 @@ export class ProjectAgreementRepository extends TenantRepository {
     return r.rows[0] ?? null;
   }
 
+  /**
+   * Update only the selling price (used when linked installment invoices change so the agreement
+   * value mirrors the sum of its invoices). Bumps version + updated_at for LWW/sync.
+   */
+  async updateSellingPrice(
+    client: pg.PoolClient,
+    id: string,
+    sellingPrice: number
+  ): Promise<ProjectAgreementRow | null> {
+    const r = await client.query<ProjectAgreementRow>(
+      `UPDATE project_agreements SET selling_price = $3, version = version + 1, updated_at = NOW()
+       WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+       RETURNING ${PROJECT_AGREEMENT_COLUMNS}`,
+      [id, this.tenantId, sellingPrice]
+    );
+    return r.rows[0] ?? null;
+  }
+
   async deleteAgreementUnits(client: pg.PoolClient, agreementId: string): Promise<void> {
     await client.query(`DELETE FROM project_agreement_units WHERE agreement_id = $1`, [agreementId]);
   }

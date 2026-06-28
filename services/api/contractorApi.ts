@@ -47,6 +47,8 @@ export type ContractorLedgerAdvance = {
   advanceDate: string;
   originalAmount: number;
   remainingAmount: number;
+  cashAccountId?: string;
+  advanceAssetAccountId?: string;
   advanceJournalEntryId?: string;
   projectId?: string;
   description?: string;
@@ -81,6 +83,22 @@ export type CreateSupplierAdvancePayload = {
   projectId?: string | null;
   description?: string | null;
   reference?: string | null;
+};
+
+export type UpdateSupplierAdvancePayload = {
+  advanceDate: string;
+  amount: number;
+  cashAccountId: string;
+  advanceAssetAccountId: string;
+  projectId?: string | null;
+  description?: string | null;
+  reference?: string | null;
+};
+
+export type SupplierAdvanceUpdated = {
+  advance: SupplierAdvanceCreated;
+  touchedBillIds: string[];
+  deletedTransactionIds: string[];
 };
 
 /** API row returned from POST /contractor/advance (see rowAdvanceToApi). */
@@ -167,5 +185,13 @@ export const contractorApi = {
   /** Record prepaid funds to a supplier (journal: Dr advance asset, Cr bank/cash). */
   async createSupplierAdvance(body: CreateSupplierAdvancePayload): Promise<SupplierAdvanceCreated> {
     return apiClient.post<SupplierAdvanceCreated>('/contractor/advance', body);
+  },
+
+  /**
+   * Edit an existing supplier advance. Reducing the amount below what has been applied to bills
+   * auto-claws back the most recent settlements (LIFO) and updates those bills' payment status.
+   */
+  async updateSupplierAdvance(id: string, body: UpdateSupplierAdvancePayload): Promise<SupplierAdvanceUpdated> {
+    return apiClient.put<SupplierAdvanceUpdated>(`/contractor/advance/${encodeURIComponent(id)}`, body);
   },
 };

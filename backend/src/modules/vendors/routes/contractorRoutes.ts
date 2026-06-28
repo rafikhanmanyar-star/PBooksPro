@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { sendFailure, sendSuccess, handleRouteError } from '../../../utils/apiResponse.js';
 import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
-import { emitEntityEvent } from '../../../core/realtime.js';
+import { emitEntityEvent, emitFinancialPosted } from '../../../core/realtime.js';
 import {
   approveContractorBill,
   createContractorAdvance,
@@ -14,6 +14,9 @@ import {
   rowBillToApi,
   type AdjustmentInput,
 } from '../services/contractorBillingService.js';
+import { updateContractorAdvance } from '../services/contractorAdvanceEditService.js';
+import { getBillById, rowToBillApi } from '../services/billsService.js';
+import { rowToTransactionApi } from '../../accounting/services/transactionsService.js';
 
 export const contractorRouter = Router();
 
@@ -62,6 +65,78 @@ contractorRouter.post('/contractor/advance', async (req: AuthedRequest, res) => 
     const api = rowAdvanceToApi(row);
     emitEntityEvent(tenantId, 'created', 'contractor_advance', { data: api, sourceUserId: req.userId });
     sendSuccess(res, api, 201);
+  } catch (e) {
+    handleRouteError(res, e);
+  }
+});
+
+/** PUT edit a supplier/vendor advance; reduces below applied auto-claw back bill settlements (LIFO). */
+contractorRouter.put('/contractor/advance/:id', async (req: AuthedRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    sendFailure(res, 401, 'UNAUTHORIZED', 'Unauthorized');
+    return;
+  }
+  const { id } = req.params;
+  const b = req.body as Record<string, unknown>;
+  try {
+    const result = await withTransaction((client) =>
+      updateContractorAdvance(
+        client,
+        tenantId,
+        id,
+        {
+          advanceDate: String(b.advanceDate ?? b.date ?? '').trim(),
+          amount: typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount ?? NaN)),
+          cashAccountId: String(b.cashAccountId ?? '').trim(),
+          advanceAssetAccountId: String(b.advanceAssetAccountId ?? '').trim(),
+          projectId: (b.projectId as string | null | undefined) ?? null,
+          description: (b.description as string | null | undefined) ?? null,
+          reference: (b.reference as string | null | undefined) ?? null,
+        },
+        req.userId ?? null
+      )
+    );
+
+    const advanceApi = rowAdvanceToApi(result.advance);
+    emitEntityEvent(tenantId, 'updated', 'contractor_advance', { data: advanceApi, sourceUserId: req.userId });
+
+    const pool = getPool();
+    const client = await pool.connect();
+    try {
+      for (const billId of result.touchedBillIds) {
+        const billRow = await getBillById(client, tenantId, billId);
+        if (billRow) {
+          emitEntityEvent(tenantId, 'updated', 'bill', { data: rowToBillApi(billRow), sourceUserId: req.userId });
+        }
+      }
+    } finally {
+      client.release();
+    }
+
+    for (const txId of result.deletedTransactionIds) {
+      emitEntityEvent(tenantId, 'deleted', 'transaction', { data: { id: txId }, sourceUserId: req.userId });
+    }
+    for (const tx of result.createdTransactions) {
+      emitEntityEvent(tenantId, 'created', 'transaction', { data: rowToTransactionApi(tx), sourceUserId: req.userId });
+    }
+    const seenJe = new Set<string>();
+    for (const jeId of result.financialJournalEntryIds) {
+      if (!jeId || seenJe.has(jeId)) continue;
+      seenJe.add(jeId);
+      emitFinancialPosted(tenantId, {
+        journalEntryId: jeId,
+        sourceModule: 'contractor_advance',
+        sourceId: id,
+        sourceUserId: req.userId,
+      });
+    }
+
+    sendSuccess(res, {
+      advance: advanceApi,
+      touchedBillIds: result.touchedBillIds,
+      deletedTransactionIds: result.deletedTransactionIds,
+    });
   } catch (e) {
     handleRouteError(res, e);
   }

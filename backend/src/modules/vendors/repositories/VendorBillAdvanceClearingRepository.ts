@@ -54,6 +54,58 @@ export class VendorBillAdvanceClearingRepository extends TenantRepository {
     return r.rows;
   }
 
+  /** Non-reversed advance-kind clearings for one advance, most recent settlement first (LIFO). */
+  async listActiveSettlementsForAdvance(
+    client: pg.PoolClient,
+    advanceId: string
+  ): Promise<Array<{ journal_entry_id: string; bill_id: string; amount: string; entry_date: Date }>> {
+    const r = await client.query<{
+      journal_entry_id: string;
+      bill_id: string;
+      amount: string;
+      entry_date: Date;
+    }>(
+      `SELECT vbc.journal_entry_id, vbc.bill_id, vbc.amount::text, je.entry_date
+       FROM vendor_bill_advance_clearings vbc
+       INNER JOIN journal_entries je
+         ON je.id = vbc.journal_entry_id AND je.tenant_id = vbc.tenant_id
+       WHERE vbc.tenant_id = $1
+         AND vbc.contractor_advance_id = $2
+         AND COALESCE(NULLIF(TRIM(vbc.settlement_kind), ''), 'advance') <> 'cash'
+         AND TRIM(COALESCE(je.source_module, '')) = 'vendor_bill_advance_clearing'
+         AND NOT EXISTS (
+           SELECT 1 FROM journal_reversals jr
+           WHERE jr.tenant_id = vbc.tenant_id
+             AND jr.original_journal_entry_id = vbc.journal_entry_id
+         )
+       ORDER BY je.entry_date DESC, vbc.journal_entry_id DESC, vbc.id DESC`,
+      [this.tenantId, advanceId]
+    );
+    return r.rows;
+  }
+
+  /** Total non-reversed advance-kind amount currently applied from one advance against vendor bills. */
+  async sumAppliedForAdvance(client: pg.PoolClient, advanceId: string): Promise<number> {
+    const r = await client.query<{ sum: string | null }>(
+      `SELECT COALESCE(SUM(vbc.amount), 0)::text AS sum
+       FROM vendor_bill_advance_clearings vbc
+       INNER JOIN journal_entries je
+         ON je.id = vbc.journal_entry_id AND je.tenant_id = vbc.tenant_id
+       WHERE vbc.tenant_id = $1
+         AND vbc.contractor_advance_id = $2
+         AND COALESCE(NULLIF(TRIM(vbc.settlement_kind), ''), 'advance') <> 'cash'
+         AND TRIM(COALESCE(je.source_module, '')) = 'vendor_bill_advance_clearing'
+         AND NOT EXISTS (
+           SELECT 1 FROM journal_reversals jr
+           WHERE jr.tenant_id = vbc.tenant_id
+             AND jr.original_journal_entry_id = vbc.journal_entry_id
+         )`,
+      [this.tenantId, advanceId]
+    );
+    const n = Number(r.rows[0]?.sum ?? 0);
+    return Number.isFinite(n) ? n : 0;
+  }
+
   async listByJournalEntryIdForUpdate(
     client: pg.PoolClient,
     journalEntryId: string

@@ -1184,6 +1184,14 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDelete = async () => {
     if (!itemToEdit) return;
+    if (type === 'invoice' && (itemToEdit as Invoice).agreementId) {
+      await showAlert(
+        'This invoice was created from a project agreement and cannot be deleted. ' +
+        'You can edit the invoice amount instead — the agreement value will update automatically.',
+        { title: 'Cannot Delete Invoice' }
+      );
+      return;
+    }
     if (itemToEdit && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
       return;
@@ -1400,11 +1408,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       await showAlert(`Cannot update invoice: The associated project agreement is cancelled.`, { title: 'Agreement Cancelled' });
       return;
     }
-    if (agreementForInvoice && (parseFloat(amount) > agreementBalance)) {
-      await showAlert(`Invoice amount cannot exceed remaining agreement balance of ${CURRENCY} ${agreementBalance.toLocaleString()}.`, { title: 'Limit Exceeded' });
-      return;
-    }
-
     let finalAmount: number;
     if (invoiceType === InvoiceType.RENTAL || invoiceType === InvoiceType.SECURITY_DEPOSIT) {
       finalAmount = calculatedAmount;
@@ -2820,7 +2823,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
             required
             disabled={isAgreementCancelled}
             placeholder="0.00"
-            helperText={agreementForInvoice ? `Max: ${CURRENCY} ${agreementBalance.toLocaleString()}` : undefined}
+            helperText={agreementForInvoice ? `Remaining agreement balance: ${CURRENCY} ${agreementBalance.toLocaleString()} (changing the amount updates the agreement value)` : undefined}
           />
         )}
 

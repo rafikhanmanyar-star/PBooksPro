@@ -52,12 +52,28 @@ function accountIsInactiveForPosting(acc: Account): boolean {
     return acc.isActive === false;
 }
 
+/** Existing advance passed when the modal is opened in edit mode. */
+export interface EditableSupplierAdvance {
+    id: string;
+    advanceDate: string;
+    originalAmount: number;
+    remainingAmount: number;
+    cashAccountId?: string;
+    advanceAssetAccountId?: string;
+    projectId?: string | null;
+    description?: string | null;
+}
+
 interface RecordSupplierAdvanceModalProps {
     isOpen: boolean;
     onClose: () => void;
     vendor: Vendor;
     /** When set (e.g. project bills sidebar), pre-selects this project on the form. */
     defaultProjectId?: string | null;
+    /** When set, the modal edits this advance instead of creating a new one. */
+    advance?: EditableSupplierAdvance | null;
+    /** Called after a successful edit/create so callers can refresh their lists. */
+    onSaved?: () => void;
 }
 
 /**
@@ -69,10 +85,18 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     onClose,
     vendor,
     defaultProjectId,
+    advance,
+    onSaved,
 }) => {
+    const isEdit = !!advance;
+    /** Amount already applied to bills (original minus remaining); locks accounts and warns on reduction. */
+    const appliedAmount = advance
+        ? Math.max(0, Number(advance.originalAmount ?? 0) - Number(advance.remainingAmount ?? 0))
+        : 0;
+    const accountsLocked = isEdit && appliedAmount > 0.005;
     const state = useFinancialReportAppState();
     const { accounts, projects, bills, defaultProjectId: savedDefaultProjectId } = state;
-    const { showToast, showAlert } = useNotification();
+    const { showToast, showAlert, showConfirm } = useNotification();
 
     const [advanceDate, setAdvanceDate] = useState(toLocalDateString(new Date()));
     const [amountStr, setAmountStr] = useState('');
@@ -166,11 +190,19 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
 
     useEffect(() => {
         if (!isOpen) return;
-        setAdvanceDate(toLocalDateString(new Date()));
-        setAmountStr('');
-        setReference('');
-        setDescription('');
-        setProjectId((defaultProjectId ?? '').trim());
+        if (advance) {
+            setAdvanceDate((advance.advanceDate ?? toLocalDateString(new Date())).slice(0, 10));
+            setAmountStr(String(advance.originalAmount ?? ''));
+            setReference('');
+            setDescription(advance.description ?? '');
+            setProjectId((advance.projectId ?? '').trim());
+        } else {
+            setAdvanceDate(toLocalDateString(new Date()));
+            setAmountStr('');
+            setReference('');
+            setDescription('');
+            setProjectId((defaultProjectId ?? '').trim());
+        }
         setSubmitting(false);
         setAccountsLoadError(null);
 
@@ -194,17 +226,23 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
         return () => {
             cancelled = true;
         };
-    }, [isOpen, vendor.id, defaultProjectId]);
+    }, [isOpen, vendor.id, defaultProjectId, advance?.id]);
 
     useEffect(() => {
         if (!isOpen) return;
+        if (advance) {
+            // Edit mode: keep the advance's own accounts (locked once anything is applied).
+            setCashAccountId(String(advance.cashAccountId ?? '').trim());
+            setAdvanceAssetAccountId(String(advance.advanceAssetAccountId ?? '').trim());
+            return;
+        }
         const firstCash = payFromAccounts.find((a) => (a.name || '').toLowerCase() === 'cash') ?? payFromAccounts[0];
         setCashAccountId(String(firstCash?.id ?? '').trim());
         const preferredAsset =
             assetAccounts.find((a) => /prepaid|advance|supplier|contractor|deposit/i.test(a.name || '')) ||
             assetAccounts[0];
         setAdvanceAssetAccountId(String(preferredAsset?.id ?? '').trim());
-    }, [isOpen, payFromAccounts, assetAccounts]);
+    }, [isOpen, payFromAccounts, assetAccounts, advance?.id]);
 
     const handleSubmit = async () => {
         const amt = parseFloat(amountStr);
@@ -220,21 +258,42 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
             await showAlert('Select a prepaid asset account (e.g. supplier advance).');
             return;
         }
+        if (isEdit && amt < appliedAmount - 0.005) {
+            const ok = await showConfirm(
+                `This advance has ${CURRENCY} ${appliedAmount.toLocaleString()} already applied to bills. ` +
+                    `Reducing it to ${CURRENCY} ${amt.toLocaleString()} will unsettle the most recent bill payment(s) ` +
+                    `and update their status. Continue?`
+            );
+            if (!ok) return;
+        }
         try {
             setSubmitting(true);
-            await contractorApi.createSupplierAdvance({
-                contractorContactId: vendor.id.trim(),
-                advanceDate: advanceDate.trim(),
-                amount: amt,
-                cashAccountId: cashAccountId.trim(),
-                advanceAssetAccountId: advanceAssetAccountId.trim(),
-                projectId: projectId.trim() || null,
-                reference: reference.trim() || null,
-                description:
-                    description.trim() ||
-                    `Supplier advance — ${vendor.name || vendor.id}`,
-            });
-            showToast(`Advance recorded for ${vendor.name}. Use Record Payment to allocate it to bills when due.`, 'success');
+            if (isEdit && advance) {
+                await contractorApi.updateSupplierAdvance(advance.id, {
+                    advanceDate: advanceDate.trim(),
+                    amount: amt,
+                    cashAccountId: cashAccountId.trim(),
+                    advanceAssetAccountId: advanceAssetAccountId.trim(),
+                    projectId: projectId.trim() || null,
+                    reference: reference.trim() || null,
+                    description: description.trim() || `Supplier advance — ${vendor.name || vendor.id}`,
+                });
+                showToast(`Advance updated for ${vendor.name}.`, 'success');
+            } else {
+                await contractorApi.createSupplierAdvance({
+                    contractorContactId: vendor.id.trim(),
+                    advanceDate: advanceDate.trim(),
+                    amount: amt,
+                    cashAccountId: cashAccountId.trim(),
+                    advanceAssetAccountId: advanceAssetAccountId.trim(),
+                    projectId: projectId.trim() || null,
+                    reference: reference.trim() || null,
+                    description:
+                        description.trim() ||
+                        `Supplier advance — ${vendor.name || vendor.id}`,
+                });
+                showToast(`Advance recorded for ${vendor.name}. Use Record Payment to allocate it to bills when due.`, 'success');
+            }
             if (typeof window !== 'undefined') {
                 window.dispatchEvent(
                     new CustomEvent<{ vendorId: string }>('pbooks:supplier-advance-recorded', {
@@ -242,6 +301,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                     })
                 );
             }
+            onSaved?.();
             onClose();
         } catch (e) {
             await showAlert(formatApiErrorMessage(e));
@@ -253,7 +313,12 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
     const localBlocked = false;
 
     return (
-        <Modal isOpen={isOpen} onClose={() => !submitting && onClose()} title={`Record supplier advance — ${vendor.name}`} size="lg">
+        <Modal
+            isOpen={isOpen}
+            onClose={() => !submitting && onClose()}
+            title={`${isEdit ? 'Edit supplier advance' : 'Record supplier advance'} — ${vendor.name}`}
+            size="lg"
+        >
             <div className="space-y-4">
                 {localBlocked ? (
                     <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -266,6 +331,14 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                         <strong className="text-slate-800">Record Payment</strong> on this vendor so unpaid bills absorb this balance (FIFO)
                         plus any bank remainder.
                     </p>
+                )}
+
+                {accountsLocked && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        {CURRENCY} {appliedAmount.toLocaleString()} of this advance is already applied to bills, so the
+                        pay-from and prepaid asset accounts are locked. Reduce the amount to claw back the most recent
+                        bill payment(s).
+                    </div>
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -297,7 +370,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                         onSelect={(item) => setCashAccountId(item?.id || '')}
                         placeholder="Search or select an account (e.g. HBL, Cash)"
                         required
-                        disabled={localBlocked || submitting || payFromAccounts.length === 0}
+                        disabled={localBlocked || submitting || accountsLocked || payFromAccounts.length === 0}
                         entityType="account"
                         allowAddNew={false}
                     />
@@ -310,7 +383,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                         onSelect={(item) => setAdvanceAssetAccountId(item?.id || '')}
                         placeholder="e.g. Prepaid advances / supplier deposit"
                         required
-                        disabled={localBlocked || submitting || assetAccounts.length === 0}
+                        disabled={localBlocked || submitting || accountsLocked || assetAccounts.length === 0}
                         entityType="account"
                         allowAddNew={false}
                     />
@@ -351,6 +424,16 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                     </div>
                 </div>
 
+                {isEdit &&
+                    appliedAmount > 0.005 &&
+                    Number.isFinite(parseFloat(amountStr)) &&
+                    parseFloat(amountStr) < appliedAmount - 0.005 && (
+                        <p className="text-sm text-amber-700">
+                            New amount is below the {CURRENCY} {appliedAmount.toLocaleString()} already applied to bills.
+                            Saving will reverse the most recent bill settlement(s) and update their payment status.
+                        </p>
+                    )}
+
                 {accountsLoadError && !localBlocked && (
                     <p className="text-sm text-rose-700">{accountsLoadError}</p>
                 )}
@@ -379,7 +462,7 @@ const RecordSupplierAdvanceModal: React.FC<RecordSupplierAdvanceModalProps> = ({
                             assetAccounts.length === 0
                         }
                     >
-                        {submitting ? 'Saving…' : 'Record advance'}
+                        {submitting ? 'Saving…' : isEdit ? 'Save changes' : 'Record advance'}
                     </Button>
                 </div>
             </div>

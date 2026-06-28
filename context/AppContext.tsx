@@ -1112,13 +1112,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     void enqueueInvoiceApiSave(async () => {
                         try {
-                            const saved = await getAppStateApiService().saveInvoice(inv);
+                            const api = getAppStateApiService();
+                            const saved = await api.saveInvoice(inv);
                             if (saved && typeof saved.version === 'number') {
                                 dispatch({
                                     type: 'UPDATE_INVOICE',
                                     payload: { ...inv, ...saved },
                                     _isRemote: true,
                                 } as AppAction);
+                            }
+                            // Editing an agreement-linked invoice drives the agreement value: the
+                            // server recalculates selling_price = sum of linked invoices in the same txn.
+                            // Pull the fresh agreement so the editing user sees the updated value (own
+                            // socket events are ignored by the global handler).
+                            if (a.type === 'UPDATE_INVOICE' && inv.agreementId) {
+                                const freshAgreement = await api.fetchProjectAgreement(inv.agreementId);
+                                if (freshAgreement?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_PROJECT_AGREEMENT',
+                                        payload: freshAgreement,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
                             }
                         } catch (err) {
                             logger.warnCategory('sync', '⚠️ Failed to persist invoice to API:', err);

@@ -932,7 +932,7 @@ const MarketingPage: React.FC = () => {
             // Show initial confirmation
             const confirmed = await showConfirm(
                 `This will convert the installment plan to an agreement:\n\n` +
-                `1. Add client as owner\n` +
+                `1. Promote the lead to owner (plan record is preserved)\n` +
                 `2. Update unit ownership\n` +
                 `3. Create agreement\n` +
                 `4. Generate invoices\n` +
@@ -956,20 +956,34 @@ const MarketingPage: React.FC = () => {
                 return;
             }
 
-            // Step 2: Add client to owner list if not already an owner
+            // Step 2: Promote the plan's lead to an Owner so the agreement and invoices
+            // can be created against a real owner. Only the contact type changes — the same
+            // contact id is preserved, so the original installment plan record (and its
+            // leadId reference) stays intact and is not lost when the lead becomes an owner.
             let ownerId = client.id;
-            if (client.type !== ContactType.OWNER && client.type !== ContactType.CLIENT) {
-                logProgress(`Adding ${client.name} to owner list...`);
-                const updatedClient: Contact = {
+            if (client.type !== ContactType.OWNER) {
+                logProgress(`Promoting ${client.name} from lead to owner...`);
+                const promotedOwner: Contact = {
                     ...client,
-                    type: ContactType.CLIENT,
+                    type: ContactType.OWNER,
                     updatedAt: new Date().toISOString()
                 };
-                dispatch({ type: 'UPDATE_CONTACT', payload: updatedClient });
-                ownerId = updatedClient.id;
-                logProgress(`${client.name} added as owner/client`);
+                try {
+                    const { getAppStateApiService } = await import('../../services/api/appStateApi');
+                    const savedOwner = await getAppStateApiService().saveContact(promotedOwner);
+                    dispatch({ type: 'UPDATE_CONTACT', payload: { ...promotedOwner, ...savedOwner } });
+                    ownerId = savedOwner.id || promotedOwner.id;
+                } catch (err) {
+                    devLogger.error('[Convert] Failed to promote lead to owner:', err);
+                    await showAlert(
+                        `Failed to promote ${client.name} to owner. The agreement was not created.\n\n` +
+                        `${err instanceof Error ? err.message : 'Unknown error'}`
+                    );
+                    return;
+                }
+                logProgress(`${client.name} promoted to owner`);
             } else {
-                logProgress(`${client.name} is already an owner/client`);
+                logProgress(`${client.name} is already an owner`);
             }
 
             // Step 3: Update unit with owner
@@ -1035,7 +1049,21 @@ const MarketingPage: React.FC = () => {
                 updatedAt: new Date().toISOString()
             };
 
-            dispatch({ type: 'ADD_PROJECT_AGREEMENT', payload: agreement });
+            // Persist the agreement to PostgreSQL (ADD_PROJECT_AGREEMENT is local-only in
+            // AppContext). The generated agreement id is preserved so the invoices below stay
+            // correctly linked via agreementId.
+            try {
+                const { ProjectAgreementsApiRepository } = await import('../../services/api/repositories/projectAgreementsApi');
+                const savedAgreement = await new ProjectAgreementsApiRepository().create(agreement);
+                dispatch({ type: 'ADD_PROJECT_AGREEMENT', payload: savedAgreement });
+            } catch (err) {
+                devLogger.error('[Convert] Failed to create agreement:', err);
+                await showAlert(
+                    `Failed to create the agreement. No invoices were generated.\n\n` +
+                    `${err instanceof Error ? err.message : 'Unknown error'}`
+                );
+                return;
+            }
             logProgress(`Agreement ${agreementNumber} created`);
 
             // Step 6: Generate invoices
@@ -1070,7 +1098,7 @@ const MarketingPage: React.FC = () => {
                 }
             });
 
-            const invoices: Invoice[] = [];
+            const generatedInvoices: Invoice[] = [];
             const today = toLocalDateString(new Date());
 
             // Calculate installment details
@@ -1097,7 +1125,7 @@ const MarketingPage: React.FC = () => {
                     unitId: plan.unitId,
                     agreementId: agreementId
                 };
-                invoices.push(downPaymentInvoice);
+                generatedInvoices.push(downPaymentInvoice);
                 nextInvNum++;
             }
 
@@ -1127,14 +1155,14 @@ const MarketingPage: React.FC = () => {
                         unitId: plan.unitId,
                         agreementId: agreementId
                     };
-                    invoices.push(installmentInvoice);
+                    generatedInvoices.push(installmentInvoice);
                     nextInvNum++;
                 }
             }
 
             // Add all invoices to state
-            invoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
-            logProgress(`Generated ${invoices.length} invoices`);
+            generatedInvoices.forEach(inv => dispatch({ type: 'ADD_INVOICE', payload: inv }));
+            logProgress(`Generated ${generatedInvoices.length} invoices`);
 
             // Step 7: Update installment plan status to 'Sale Recognized' and lock it
             logProgress('Updating plan status to Sale Recognized...');
@@ -1167,7 +1195,7 @@ const MarketingPage: React.FC = () => {
                 planId: plan.id,
                 agreementId: agreementId,
                 agreementNumber: agreementNumber,
-                invoiceCount: invoices.length,
+                invoiceCount: generatedInvoices.length,
                 newStatus: 'Sale Recognized',
                 timestamp: now
             });
@@ -1177,7 +1205,7 @@ const MarketingPage: React.FC = () => {
                 `Ô£à Conversion completed successfully!\n\n` +
                 progressMessages.join('\n') + '\n\n' +
                 `­ƒôä Agreement: ${agreementNumber}\n` +
-                `­ƒôï Invoices: ${invoices.length} created\n` +
+                `­ƒôï Invoices: ${generatedInvoices.length} created\n` +
                 `­ƒÆ░ Total Amount: Rs. ${netValue.toLocaleString()}\n\n` +
                 `­ƒöÆ Plan Status: Sale Recognized (Locked)\n` +
                 `This plan cannot be converted again.`

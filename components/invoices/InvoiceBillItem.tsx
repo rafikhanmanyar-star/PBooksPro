@@ -80,6 +80,14 @@ const InvoiceBillItem: React.FC<InvoiceBillItemProps> = ({ item, type, onRecordP
   };
 
   const handleDelete = async () => {
+    if (type === 'invoice' && (item as Invoice).agreementId) {
+      await showAlert(
+        'This invoice was created from a project agreement and cannot be deleted. ' +
+        'You can edit the invoice amount instead — the agreement value will update automatically.',
+        { title: 'Cannot Delete Invoice' }
+      );
+      return;
+    }
     if (paidAmount > 0) {
       await showAlert(`Cannot delete this ${type} because it has associated payments (${CURRENCY} ${formatCurrency(paidAmount)}).\n\nPlease delete the payment transactions from the ledger first.`, { title: 'Deletion Blocked' });
     } else {

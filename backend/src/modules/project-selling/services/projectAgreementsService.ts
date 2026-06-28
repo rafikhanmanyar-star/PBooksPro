@@ -459,6 +459,50 @@ export async function softDeleteProjectAgreement(
   return { ok: row != null, conflict: false };
 }
 
+/**
+ * Set an agreement's selling price to mirror its linked installment invoices.
+ * Called from the invoices service after a linked invoice is created/updated so the agreement
+ * value always equals the sum of its invoices. No-ops (returns null) when the agreement is missing,
+ * the price is unchanged, or the new price is not greater than zero (selling price must stay > 0).
+ * Returns the updated agreement API row so the route can emit a real-time `agreement` event.
+ */
+export async function setAgreementSellingPrice(
+  client: pg.PoolClient,
+  tenantId: string,
+  agreementId: string,
+  newPrice: number,
+  actorUserId?: string | null
+): Promise<Record<string, unknown> | null> {
+  if (!agreementId || !String(agreementId).trim()) return null;
+  if (!Number.isFinite(newPrice) || newPrice <= 0) return null;
+
+  const repo = new ProjectAgreementRepository(tenantId);
+  const existing = await repo.getById(client, agreementId);
+  if (!existing) return null;
+
+  const current = Number(existing.selling_price) || 0;
+  if (Math.abs(newPrice - current) < 0.005) return null;
+
+  const row = await repo.updateSellingPrice(client, agreementId, newPrice);
+  if (!row) return null;
+
+  const unitMap = await loadUnitIdsMap(client, [agreementId]);
+  const unitIds = unitMap.get(agreementId) ?? [];
+  const apiRow = rowToProjectAgreementApi(row, unitIds);
+  await recordDomainMutation(client, {
+    tenantId,
+    userId: actorUserId ?? row.user_id,
+    module: 'project_agreements',
+    entityType: 'project_agreement',
+    entityId: row.id,
+    action: 'update',
+    summary: `Project agreement ${row.agreement_number} value updated to match linked invoices`,
+    newValue: apiRow,
+    version: row.version,
+  });
+  return apiRow;
+}
+
 /** For incremental sync: attach unit ids from junction + JSON fallback */
 export async function enrichRowsWithUnitIds(
   client: pg.PoolClient,

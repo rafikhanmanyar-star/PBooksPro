@@ -69,6 +69,45 @@ export class ContractorAdvanceRepository extends TenantRepository {
     );
   }
 
+  /** Edit user-facing + GL fields of an advance (caller must have validated remaining vs applied). */
+  async updateEditableFields(
+    client: pg.PoolClient,
+    id: string,
+    fields: {
+      advance_date: string;
+      original_amount: number;
+      remaining_amount: number;
+      cash_account_id: string;
+      advance_asset_account_id: string;
+      project_id: string | null;
+      description: string | null;
+    }
+  ): Promise<void> {
+    await client.query(
+      `UPDATE contractor_advances SET
+         advance_date = $1::date,
+         original_amount = $2,
+         remaining_amount = $3,
+         cash_account_id = $4,
+         advance_asset_account_id = $5,
+         project_id = $6,
+         description = $7,
+         updated_at = NOW()
+       WHERE tenant_id = $8 AND id = $9 AND deleted_at IS NULL`,
+      [
+        fields.advance_date,
+        fields.original_amount,
+        fields.remaining_amount,
+        fields.cash_account_id,
+        fields.advance_asset_account_id,
+        fields.project_id,
+        fields.description,
+        this.tenantId,
+        id,
+      ]
+    );
+  }
+
   async appendDescriptionNote(client: pg.PoolClient, id: string, note: string): Promise<void> {
     await client.query(
       `UPDATE contractor_advances SET

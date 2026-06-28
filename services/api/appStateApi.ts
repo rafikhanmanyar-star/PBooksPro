@@ -2239,6 +2239,14 @@ export class AppStateApiService {
   }
 
   /**
+   * Load a project agreement from API (GET). Used after saving an agreement-linked invoice so the
+   * editing user picks up the server-recalculated selling price (sum of linked invoices).
+   */
+  async fetchProjectAgreement(id: string): Promise<AppState['projectAgreements'][0] | null> {
+    return this.projectAgreementsRepo.findById(id);
+  }
+
+  /**
    * Delete invoice from API
    */
   async deleteInvoice(id: string, version?: number): Promise<void> {

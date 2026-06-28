@@ -272,6 +272,16 @@ export async function approveOrganization(
 export async function provisionApprovedOrganization(tenantId: string): Promise<void> {
   const { withTransaction } = await import('../../db/pool.js');
   await withTransaction(async (client) => {
+    // Guarantee the shared system chart (accounts + categories) exists for the approved org.
+    // Categories are seeded by migrations, but the core system accounts are only created by
+    // this idempotent bootstrap — without it an approved tenant can end up with categories
+    // but no chart of accounts.
+    await withSavepoint(client, 'org_approve_chart', async (spClient) => {
+      await bootstrapTenantChart(spClient, tenantId, { legacyIds: false });
+    }).catch((err) => {
+      console.warn('[organizationApproval] System chart bootstrap failed on approve:', err);
+    });
+
     await withSavepoint(client, 'org_approve_trial', async (spClient) => {
       await startTrialSubscription(spClient, tenantId);
     }).catch((err) => {

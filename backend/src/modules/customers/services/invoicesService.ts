@@ -6,6 +6,39 @@ import { syncInvoiceJournalMirror, reverseInvoiceJournalMirror } from '../../acc
 import { recordDomainMutation } from '../../../core/recordDomainMutation.js';
 import { checkEntityLwwConflict } from '../../../core/entityMutation.js';
 import { InvoiceRepository, type InvoiceWriteFields } from '../repositories/InvoiceRepository.js';
+import { setAgreementSellingPrice } from '../../project-selling/services/projectAgreementsService.js';
+
+/**
+ * Thrown when a caller attempts to delete an invoice that was generated from / linked to a project
+ * agreement. Such invoices may be edited (which adjusts the agreement value) but never deleted.
+ */
+export class InvoiceLinkedToAgreementError extends Error {
+  readonly code = 'INVOICE_LINKED_TO_AGREEMENT';
+  constructor(message = 'Invoices linked to a project agreement cannot be deleted.') {
+    super(message);
+    this.name = 'InvoiceLinkedToAgreementError';
+  }
+}
+
+/**
+ * Recalculate a linked project agreement's selling price to equal the sum of its active invoices.
+ * Returns the updated agreement API row (for real-time emit) or null when nothing changed.
+ */
+async function recalcLinkedAgreementSellingPrice(
+  client: pg.PoolClient,
+  tenantId: string,
+  agreementId: string | null | undefined,
+  actorUserId: string | null
+): Promise<Record<string, unknown> | null> {
+  if (!agreementId || !String(agreementId).trim()) return null;
+  const sumR = await client.query<{ sum: string | null }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS sum FROM invoices
+     WHERE tenant_id = $1 AND agreement_id = $2 AND deleted_at IS NULL`,
+    [tenantId, agreementId]
+  );
+  const newPrice = Math.max(0, Number(sumR.rows[0]?.sum ?? 0));
+  return setAgreementSellingPrice(client, tenantId, agreementId, newPrice, actorUserId);
+}
 
 export type InvoiceRow = {
   id: string;
@@ -223,7 +256,12 @@ export async function upsertInvoice(
   tenantId: string,
   body: Record<string, unknown>,
   actorUserId: string | null
-): Promise<{ row: InvoiceRow; conflict: boolean; wasInsert: boolean }> {
+): Promise<{
+  row: InvoiceRow;
+  conflict: boolean;
+  wasInsert: boolean;
+  agreement?: Record<string, unknown> | null;
+}> {
   const p = pickBody(body);
   if (!p.invoice_number) throw new Error('invoiceNumber is required.');
   if (!p.contact_id) throw new Error('contactId is required.');
@@ -233,6 +271,9 @@ export async function upsertInvoice(
 
   const existing = await getInvoiceByIdIncludingDeleted(client, tenantId, id);
   if (!existing) {
+    // New invoice (e.g. installment generation): invoices are already created to sum to the
+    // agreement's selling price, so no recalc is needed. Recalc only runs on edits (below) where
+    // the amount actually changes — avoids version churn during multi-invoice generation.
     const row = await createInvoice(client, tenantId, { ...body, id }, actorUserId);
     return { row, conflict: false, wasInsert: true };
   }
@@ -258,7 +299,13 @@ export async function upsertInvoice(
   });
   if (!row) throw new Error('Upsert failed.');
   const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id);
-  return { row: finalized, conflict: false, wasInsert: false };
+  const agreement = await recalcLinkedAgreementSellingPrice(
+    client,
+    tenantId,
+    finalized.agreement_id ?? existing.agreement_id,
+    actorUserId
+  );
+  return { row: finalized, conflict: false, wasInsert: false, agreement };
 }
 
 export async function createInvoice(
@@ -289,7 +336,7 @@ export async function updateInvoice(
   id: string,
   body: Record<string, unknown>,
   actorUserId?: string | null
-): Promise<{ row: InvoiceRow | null; conflict: boolean }> {
+): Promise<{ row: InvoiceRow | null; conflict: boolean; agreement?: Record<string, unknown> | null }> {
   const existing = await getInvoiceById(client, tenantId, id);
   if (!existing) return { row: null, conflict: false };
 
@@ -318,7 +365,13 @@ export async function updateInvoice(
   const finalized = await finalizeInvoiceSaveFromLedger(client, tenantId, id, {
     actorUserId: actorUserId ?? null,
   });
-  return { row: finalized, conflict: false };
+  const agreement = await recalcLinkedAgreementSellingPrice(
+    client,
+    tenantId,
+    finalized.agreement_id ?? existing.agreement_id,
+    actorUserId ?? null
+  );
+  return { row: finalized, conflict: false, agreement };
 }
 
 export async function softDeleteInvoice(
@@ -330,6 +383,13 @@ export async function softDeleteInvoice(
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const before = await getInvoiceById(client, tenantId, id);
   if (!before) return { ok: false, conflict: false };
+
+  if (before.agreement_id && String(before.agreement_id).trim()) {
+    throw new InvoiceLinkedToAgreementError(
+      `Invoice ${before.invoice_number} was created from a project agreement and cannot be deleted. ` +
+        'Edit the invoice amount instead — the agreement value updates automatically.'
+    );
+  }
 
   await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
 

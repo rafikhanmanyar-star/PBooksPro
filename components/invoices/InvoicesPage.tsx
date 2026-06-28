@@ -1057,6 +1057,14 @@ const InvoicesPage: React.FC<InvoicesPageProps> = ({ invoiceTypeFilter, hideTitl
 
     const handleDeleteInvoice = async (invoice: Invoice) => {
         if (!invoice) return;
+        if (invoice.agreementId) {
+            await showAlert(
+                'This invoice was created from a project agreement and cannot be deleted. ' +
+                'You can edit the invoice amount instead — the agreement value will update automatically.',
+                { title: 'Cannot Delete Invoice' }
+            );
+            return;
+        }
         if (invoice.paidAmount > 0) {
             await showAlert('This invoice has payments recorded. Please delete the payments first.', { title: 'Cannot Delete' });
             return;
