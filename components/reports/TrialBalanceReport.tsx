@@ -31,6 +31,17 @@ function money(n: number): string {
   return `${CURRENCY} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+function formatReportError(e: unknown): string {
+  if (e instanceof Error) return e.message;
+  if (e && typeof e === 'object') {
+    const msg = (e as { message?: unknown }).message;
+    if (typeof msg === 'string' && msg.trim()) return msg;
+    const err = (e as { error?: unknown }).error;
+    if (typeof err === 'string' && err.trim()) return err;
+  }
+  return 'Failed to load trial balance.';
+}
+
 const TrialBalanceReport: React.FC = () => {
   const projects = useProjects();
   const buildings = useBuildings();
@@ -99,7 +110,7 @@ const TrialBalanceReport: React.FC = () => {
         if (!cancelled) setData(r);
       } catch (e) {
         if (!cancelled) {
-          setError(e instanceof Error ? e.message : String(e));
+          setError(formatReportError(e));
           setData(null);
         }
       } finally {

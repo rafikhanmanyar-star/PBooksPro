@@ -431,9 +431,12 @@ const ProjectContractForm: React.FC<ProjectContractFormProps> = ({ onClose, cont
                         placeholder="Select Vendor"
                         required
                         allowAddNew={true}
-                        entityType="contact"
-                        onAddNew={(entityType, name) => {
+                        entityType="vendor"
+                        onAddNew={(_entityType, name) => {
                             sessionStorage.setItem('addNewVendor', 'true');
+                            if (name?.trim()) {
+                                sessionStorage.setItem('addNewVendorName', name.trim());
+                            }
                             dispatch({ type: 'SET_PAGE', payload: 'vendorDirectory' });
                             onClose();
                         }}

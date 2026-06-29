@@ -1,4 +1,4 @@
-import { useDispatchOnly, useFinancialReportAppState } from '../../hooks/useSelectiveState';
+import { useDispatchOnly, useFinancialReportAppState, useStateSelector } from '../../hooks/useSelectiveState';
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { getAppStateApiService } from '../../services/api/appStateApi';
@@ -69,8 +69,9 @@ function normalizeProcurementView(raw: string): ProcurementView {
 
 const ProcurementActionBar: React.FC<{
     triggerAddVendor?: boolean;
+    initialVendorName?: string;
     onModalOpenHandled?: () => void;
-}> = ({ triggerAddVendor, onModalOpenHandled }) => {
+}> = ({ triggerAddVendor, initialVendorName = '', onModalOpenHandled }) => {
     const state = useFinancialReportAppState();
     const { contacts, vendors: appVendors, transactions, invoices, bills, whatsAppTemplates, whatsAppMode, currentUser } = state;
     const dispatch = useDispatchOnly();
@@ -145,6 +146,7 @@ const ProcurementActionBar: React.FC<{
                     onCancel={() => setIsModalOpen(false)}
                     isVendorForm={true}
                     existingVendors={appVendors}
+                    initialName={initialVendorName}
                     onSubmittingChange={setIsVendorFormSubmitting}
                 />
             </Modal>
@@ -164,6 +166,7 @@ const payableBadgeClass =
     'px-4 py-2 bg-[color:var(--badge-unpaid-bg)] border border-ds-danger/30 rounded-xl flex flex-col items-end min-w-[120px]';
 
 const VendorDirectoryPage: React.FC = () => {
+    const currentPage = useStateSelector((s) => s.currentPage);
     const state = useFinancialReportAppState();
     const {
         contacts,
@@ -240,29 +243,35 @@ const VendorDirectoryPage: React.FC = () => {
         }
     }, [setProcurementView]);
 
-    // Check if we need to open a vendor from search or add new vendor
+    const [triggerAddVendor, setTriggerAddVendor] = useState(false);
+    const [pendingAddVendorName, setPendingAddVendorName] = useState('');
+
+    const handleAddVendorIntentHandled = useCallback(() => {
+        setTriggerAddVendor(false);
+        setPendingAddVendorName('');
+    }, []);
+
+    // Deep-link: open vendor or add-vendor modal when navigating to Procurement (including re-visits while mounted)
     useEffect(() => {
+        if (currentPage !== 'vendorDirectory') return;
+
         const vendorId = sessionStorage.getItem('openVendorId');
         if (vendorId) {
             sessionStorage.removeItem('openVendorId');
+            setProcurementView('Directory');
             setSelectedVendorId(vendorId);
         }
 
         const addNewVendor = sessionStorage.getItem('addNewVendor');
         if (addNewVendor === 'true') {
             sessionStorage.removeItem('addNewVendor');
-            // We need to trigger the modal which is inside AddVendorSection
-            // Since we can't easily reach into AddVendorSection, we'll expose the state
-            // But for now, let's use a custom event or refactor. 
-            // Better: Move the Modal state to VendorDirectoryPage or trigger via prop.
-            // Since AddVendorSection is a child, we can pass a prop 'initialOpenModal'.
-            // However, we are in a useEffect here.
-            // Let's use a state variable passed to AddVendorSection.
+            const name = sessionStorage.getItem('addNewVendorName')?.trim() || '';
+            sessionStorage.removeItem('addNewVendorName');
+            setProcurementView('Directory');
+            setPendingAddVendorName(name);
             setTriggerAddVendor(true);
         }
-    }, []);
-
-    const [triggerAddVendor, setTriggerAddVendor] = useState(false);
+    }, [currentPage, setProcurementView]);
 
     const vendors = useMemo(() => {
         const list = [...(appVendors || [])];
@@ -637,7 +646,8 @@ const VendorDirectoryPage: React.FC = () => {
             {procurementView === 'Directory' && (
                 <ProcurementActionBar
                     triggerAddVendor={triggerAddVendor}
-                    onModalOpenHandled={() => setTriggerAddVendor(false)}
+                    initialVendorName={pendingAddVendorName}
+                    onModalOpenHandled={handleAddVendorIntentHandled}
                 />
             )}
             {procurementView === 'Directory' ? (
