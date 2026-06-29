@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { getDatabaseService } from '../../../services/databaseService.js';
+import { adminAuthMiddleware, type AdminRequest } from '../../../middleware/adminAuthMiddleware.js';
 
 const router = Router();
 const getDb = () => getDatabaseService();
@@ -170,10 +171,10 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// Get current admin (requires authentication - handled by middleware in index.ts)
-router.get('/me', async (req, res) => {
+// Get current admin (requires authentication)
+router.get('/me', adminAuthMiddleware(), async (req: AdminRequest, res) => {
   try {
-    const adminId = (req as any).adminId;
+    const adminId = req.adminId;
     const admins = await getDb().query(
       'SELECT id, username, name, email, role, last_login FROM admin_users WHERE id = $1',
       [adminId]

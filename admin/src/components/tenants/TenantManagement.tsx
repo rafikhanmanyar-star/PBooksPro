@@ -112,9 +112,9 @@ const TenantManagement: React.FC = () => {
     if (!searchTerm) return true;
     const search = searchTerm.toLowerCase();
     return (
-      tenant.name.toLowerCase().includes(search) ||
+      tenant.name?.toLowerCase().includes(search) ||
       tenant.company_name?.toLowerCase().includes(search) ||
-      tenant.email.toLowerCase().includes(search)
+      tenant.email?.toLowerCase().includes(search)
     );
   });
 
@@ -1275,50 +1275,57 @@ const TenantDetailsModal: React.FC<{ tenant: Tenant; onClose: () => void; onUpda
                   setNewPassword('');
                 }} style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', padding: '0.25rem', lineHeight: 1 }}>×</button>
               </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
-                  Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
-                </p>
-                <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
-                  New Password *
-                </label>
-                <input
-                  type="password"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="input"
-                  placeholder="Enter new password (min 6 characters)"
-                  style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
-                  autoFocus
-                  autoComplete="off"
-                  data-form-type="other"
-                />
-                <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
-                  Password must be at least 6 characters long
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleResetPassword();
+                }}
+              >
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <p style={{ fontSize: '0.8125rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                    Reset password for: <strong>{selectedUser.name}</strong> ({selectedUser.username})
+                  </p>
+                  <label style={{ fontSize: '0.75rem', color: '#6b7280', display: 'block', marginBottom: '0.25rem', fontWeight: 500 }}>
+                    New Password *
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    className="input"
+                    placeholder="Enter new password (min 6 characters)"
+                    style={{ width: '100%', padding: '0.375rem', fontSize: '0.8125rem' }}
+                    autoFocus
+                    autoComplete="new-password"
+                  />
+                  <div style={{ fontSize: '0.6875rem', color: '#6b7280', marginTop: '0.25rem' }}>
+                    Password must be at least 6 characters long
+                  </div>
                 </div>
-              </div>
-              <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    setShowPasswordReset(false);
-                    setSelectedUser(null);
-                    setNewPassword('');
-                  }}
-                  disabled={resettingPassword}
-                  style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="btn btn-primary"
-                  onClick={handleResetPassword}
-                  disabled={resettingPassword || !newPassword || newPassword.length < 6}
-                  style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-                >
-                  {resettingPassword ? 'Resetting...' : 'Reset'}
-                </button>
-              </div>
+                <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setShowPasswordReset(false);
+                      setSelectedUser(null);
+                      setNewPassword('');
+                    }}
+                    disabled={resettingPassword}
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={resettingPassword || !newPassword || newPassword.length < 6}
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                  >
+                    {resettingPassword ? 'Resetting...' : 'Reset'}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}

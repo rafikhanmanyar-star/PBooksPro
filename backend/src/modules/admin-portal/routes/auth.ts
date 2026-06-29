@@ -3,6 +3,10 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { AdminUserRepository } from '../repositories/AdminPortalRepository.js';
+import {
+  adminAuthMiddleware,
+  type AdminRequest,
+} from '../../../adminPortal/middleware/adminAuthMiddleware.js';
 
 const router = Router();
 const adminUserRepo = new AdminUserRepository();
@@ -88,9 +92,9 @@ router.post('/login', async (req, res) => {
   }
 });
 
-router.get('/me', async (req, res) => {
+router.get('/me', adminAuthMiddleware(), async (req: AdminRequest, res) => {
   try {
-    const adminId = (req as any).adminId;
+    const adminId = req.adminId;
     const admin = await adminUserRepo.getPublicProfile(adminId);
     if (!admin) return res.status(404).json({ error: 'Admin not found' });
     res.json(admin);

@@ -446,7 +446,7 @@ router.get('/:id/modules', async (req: AdminRequest, res) => {
     }
 
     const modules = await db.query(
-      'SELECT module_key, status, activated_at, expires_at FROM tenant_modules WHERE tenant_id = $1',
+      'SELECT module_key, status, updated_at, expires_at FROM tenant_modules WHERE tenant_id = $1',
       [tenantId]
     );
 
