@@ -59,7 +59,6 @@ export async function assertUserIsMarketingPlanApprover(
      INNER JOIN users u ON u.id = ut.user_id
      WHERE ut.tenant_id = $1
        AND ut.user_id = $2
-       AND u.deleted_at IS NULL
        AND u.is_active = TRUE`,
     [tenantId, approverUserId]
   );
@@ -78,9 +77,8 @@ export async function listMarketingPlanApprovers(
      FROM user_tenants ut
      INNER JOIN users u ON u.id = ut.user_id
      WHERE ut.tenant_id = $1
-       AND u.deleted_at IS NULL
        AND u.is_active = TRUE
-     ORDER BY name ASC, username ASC`,
+     ORDER BY u.name ASC, u.username ASC`,
     [tenantId]
   );
   return r.rows.filter((row) => roleCanApproveMarketingPlans(row.role));
