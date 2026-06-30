@@ -3,7 +3,7 @@
  * Uses session_replication_role = replica to bypass immutable audit/journal triggers.
  */
 import type pg from 'pg';
-import { withTransaction } from '../../db/pool.js';
+import { withTransaction, withSavepoint } from '../../db/pool.js';
 import { wipeTenantBusinessData } from '../tenantDataManagementService.js';
 import {
   DEMO_INTERNAL_TENANT_IDS,
@@ -78,9 +78,13 @@ export async function purgeAndDeleteTenant(client: pg.PoolClient, tenantId: stri
   };
 
   try {
-    await deleteWithReplicaRole(client, runDelete);
+    await withSavepoint(client, 'tenant_delete_replica', async (c) => {
+      await deleteWithReplicaRole(c, runDelete);
+    });
   } catch (replicaErr) {
-    await deleteWithTriggersDisabled(client, runDelete).catch((triggerErr) => {
+    await withSavepoint(client, 'tenant_delete_triggers', async (c) => {
+      await deleteWithTriggersDisabled(c, runDelete);
+    }).catch((triggerErr) => {
       const replicaMsg = replicaErr instanceof Error ? replicaErr.message : String(replicaErr);
       const triggerMsg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
       throw new Error(`Failed to delete tenant: ${triggerMsg} (replica mode: ${replicaMsg})`);

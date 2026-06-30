@@ -145,10 +145,16 @@ export async function purgeTenantJournal(
   await journalMaintenance.clearJournalForeignKeyReferences(client, tenantId);
 
   try {
-    await purgeJournalRowsWithReplicaRole(client, tenantId);
+    await withSavepoint(client, 'journal_purge_replica', async (c) => {
+      await purgeJournalRowsWithReplicaRole(c, tenantId);
+    });
+    return;
   } catch (replicaErr) {
     try {
-      await purgeJournalRowsWithTriggersDisabled(client, tenantId);
+      await withSavepoint(client, 'journal_purge_triggers', async (c) => {
+        await purgeJournalRowsWithTriggersDisabled(c, tenantId);
+      });
+      return;
     } catch (triggerErr) {
       const replicaMsg = replicaErr instanceof Error ? replicaErr.message : String(replicaErr);
       const triggerMsg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
