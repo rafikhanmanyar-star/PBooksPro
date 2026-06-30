@@ -118,6 +118,32 @@ export class ProjectAgreementRepository extends TenantRepository {
     return r.rows;
   }
 
+  /** Includes soft-deleted rows — unique index is on (tenant_id, agreement_number) for all rows. */
+  async agreementNumberExists(client: pg.PoolClient, agreementNumber: string): Promise<boolean> {
+    const r = await client.query(
+      `SELECT 1 FROM project_agreements WHERE tenant_id = $1 AND agreement_number = $2 LIMIT 1`,
+      [this.tenantId, agreementNumber]
+    );
+    return (r.rowCount ?? 0) > 0;
+  }
+
+  async maxNumericSuffixForPrefix(client: pg.PoolClient, prefix: string): Promise<number> {
+    const r = await client.query<{ agreement_number: string }>(
+      `SELECT agreement_number FROM project_agreements
+       WHERE tenant_id = $1 AND agreement_number LIKE $2`,
+      [this.tenantId, `${prefix}%`]
+    );
+    let max = 0;
+    for (const row of r.rows) {
+      const part = row.agreement_number.slice(prefix.length);
+      if (/^\d+$/.test(part)) {
+        const n = parseInt(part, 10);
+        if (n > max) max = n;
+      }
+    }
+    return max;
+  }
+
   async insertAgreement(
     client: pg.PoolClient,
     id: string,

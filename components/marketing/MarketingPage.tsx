@@ -36,6 +36,11 @@ import ReportFooter from '../reports/ReportFooter';
 import { toLocalDateString } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
+import ConvertPlanToAgreementModal, {
+    type ConvertPlanToAgreementConfig,
+    buildAgreementNumberPreview,
+} from './ConvertPlanToAgreementModal';
+import { formatApiErrorMessage } from '../../services/api/client';
 
 function normalizeMarketingPlanStatus(status: string | undefined): string {
     return (status ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
@@ -360,6 +365,8 @@ const MarketingPage: React.FC = () => {
     // Dynamic Amenity Selection State
     const [selectedAmenityIdToAdd, setSelectedAmenityIdToAdd] = useState('');
     const [showApprovalModal, setShowApprovalModal] = useState(false);
+    const [convertModalPlan, setConvertModalPlan] = useState<InstallmentPlan | null>(null);
+    const [isConvertingPlan, setIsConvertingPlan] = useState(false);
     const [showHistoryDrawer, setShowHistoryDrawer] = useState(false);
     const [historyRootId, setHistoryRootId] = useState<string | null>(null);
     const [approvalModalApproverId, setApprovalModalApproverId] = useState('');
@@ -944,50 +951,45 @@ const MarketingPage: React.FC = () => {
         }
     };
 
-    // Convert Installment Plan to Agreement
-    const handleConvertToAgreement = async (plan: InstallmentPlan) => {
-        try {
-            // CRITICAL: Prevent duplicate conversions
-            const normalizedPlanStatus = normalizeMarketingPlanStatus(plan.status);
-            if (normalizedPlanStatus === 'sale recognized' || normalizedPlanStatus === 'locked') {
-                await showAlert(
-                    `This plan has already been converted to an agreement.\n\n` +
+    // Open conversion review modal (user confirms contact type + previews agreement)
+    const handleConvertToAgreement = (plan: InstallmentPlan) => {
+        const normalizedPlanStatus = normalizeMarketingPlanStatus(plan.status);
+        if (normalizedPlanStatus === 'sale recognized' || normalizedPlanStatus === 'locked') {
+            void showAlert(
+                `This plan has already been converted to an agreement.\n\n` +
                     `Status: ${plan.status}\n\n` +
                     `Cannot convert the same plan multiple times.`
-                );
-                return;
-            }
+            );
+            return;
+        }
 
-            // Only approved plans can be converted
-            if (!isMarketingPlanApproved(plan.status)) {
-                await showAlert(
-                    `Only approved plans can be converted to agreements.\n\n` +
+        if (!isMarketingPlanApproved(plan.status)) {
+            void showAlert(
+                `Only approved plans can be converted to agreements.\n\n` +
                     `Current status: ${plan.status}\n\n` +
                     `Please get the plan approved first.`
-                );
-                return;
-            }
-
-            // Show initial confirmation
-            const confirmed = await showConfirm(
-                `This will convert the installment plan to an agreement:\n\n` +
-                `1. Promote the lead to owner (plan record is preserved)\n` +
-                `2. Update unit ownership\n` +
-                `3. Create agreement\n` +
-                `4. Generate invoices\n` +
-                `5. Lock the plan (status: Sale Recognized)\n\n` +
-                `Continue?`
             );
-            if (!confirmed) return;
+            return;
+        }
 
-            // Progress tracking messages
+        const client = contacts.find(c => c.id === plan.leadId);
+        if (!client) {
+            void showAlert('Client not found for this plan.');
+            return;
+        }
+
+        setConvertModalPlan(plan);
+    };
+
+    const executeConvertToAgreement = async (plan: InstallmentPlan, config: ConvertPlanToAgreementConfig) => {
+        setIsConvertingPlan(true);
+        try {
             const progressMessages: string[] = [];
             const logProgress = (message: string) => {
-                progressMessages.push(`Ô£ô ${message}`);
+                progressMessages.push(`✓ ${message}`);
                 showToast(message);
             };
 
-            // Step 1: Get the lead/client
             logProgress('Getting client information...');
             const client = contacts.find(c => c.id === plan.leadId);
             if (!client) {
@@ -995,34 +997,33 @@ const MarketingPage: React.FC = () => {
                 return;
             }
 
-            // Step 2: Promote the plan's lead to an Owner so the agreement and invoices
-            // can be created against a real owner. Only the contact type changes — the same
-            // contact id is preserved, so the original installment plan record (and its
-            // leadId reference) stays intact and is not lost when the lead becomes an owner.
             let ownerId = client.id;
-            if (client.type !== ContactType.OWNER) {
-                logProgress(`Promoting ${client.name} from lead to owner...`);
-                const promotedOwner: Contact = {
+            if (config.targetContactType !== client.type) {
+                logProgress(`Updating ${client.name} contact type to ${config.targetContactType}...`);
+                const updatedContact: Contact = {
                     ...client,
-                    type: ContactType.OWNER,
-                    updatedAt: new Date().toISOString()
+                    type: config.targetContactType,
+                    updatedAt: new Date().toISOString(),
                 };
                 try {
                     const { getAppStateApiService } = await import('../../services/api/appStateApi');
-                    const savedOwner = await getAppStateApiService().saveContact(promotedOwner);
-                    dispatch({ type: 'UPDATE_CONTACT', payload: { ...promotedOwner, ...savedOwner } });
-                    ownerId = savedOwner.id || promotedOwner.id;
+                    const savedContact = await getAppStateApiService().saveContact(updatedContact);
+                    dispatch({
+                        type: 'UPDATE_CONTACT',
+                        payload: { ...updatedContact, ...savedContact },
+                    });
+                    ownerId = savedContact.id || updatedContact.id;
                 } catch (err) {
-                    devLogger.error('[Convert] Failed to promote lead to owner:', err);
+                    devLogger.error('[Convert] Failed to update contact type:', err);
                     await showAlert(
-                        `Failed to promote ${client.name} to owner. The agreement was not created.\n\n` +
-                        `${err instanceof Error ? err.message : 'Unknown error'}`
+                        `Failed to update ${client.name} to ${config.targetContactType}. The agreement was not created.\n\n` +
+                            formatApiErrorMessage(err)
                     );
                     return;
                 }
-                logProgress(`${client.name} promoted to owner`);
+                logProgress(`${client.name} is now ${config.targetContactType}`);
             } else {
-                logProgress(`${client.name} is already an owner`);
+                logProgress(`${client.name} contact type unchanged (${client.type})`);
             }
 
             // Step 3: Update unit with owner
@@ -1042,21 +1043,7 @@ const MarketingPage: React.FC = () => {
 
             // Step 4: Generate agreement number
             logProgress('Generating agreement number...');
-            const agreementSettings = projectAgreementSettings || {
-                prefix: 'P-AGR-',
-                nextNumber: 1,
-                padding: 4
-            };
-            
-            const prefix = agreementSettings.prefix || 'P-AGR-';
-            let maxNum = agreementSettings.nextNumber || 1;
-            projectAgreements.forEach(agr => {
-                if (agr.agreementNumber && agr.agreementNumber.startsWith(prefix)) {
-                    const numPart = parseInt(agr.agreementNumber.slice(prefix.length), 10);
-                    if (!isNaN(numPart) && numPart >= maxNum) maxNum = numPart + 1;
-                }
-            });
-            const agreementNumber = `${prefix}${String(maxNum).padStart(agreementSettings.padding ?? 4, '0')}`;
+            const agreementNumber = buildAgreementNumberPreview(projectAgreements, projectAgreementSettings || undefined);
 
             // Step 5: Create agreement from installment plan (NO DISCOUNTS)
             logProgress('Creating agreement...');
@@ -1075,8 +1062,8 @@ const MarketingPage: React.FC = () => {
                 lumpSumDiscount: 0,
                 miscDiscount: 0,
                 sellingPrice: netValue,
-                issueDate: toLocalDateString(new Date()),
-                description: plan.description || `Converted from installment plan`,
+                issueDate: config.issueDate,
+                description: config.description,
                 status: ProjectAgreementStatus.ACTIVE,
                 installmentPlan: {
                     durationYears: plan.durationYears,
@@ -1099,7 +1086,7 @@ const MarketingPage: React.FC = () => {
                 devLogger.error('[Convert] Failed to create agreement:', err);
                 await showAlert(
                     `Failed to create the agreement. No invoices were generated.\n\n` +
-                    `${err instanceof Error ? err.message : 'Unknown error'}`
+                    formatApiErrorMessage(err)
                 );
                 return;
             }
@@ -1251,9 +1238,12 @@ const MarketingPage: React.FC = () => {
             );
 
             resetForm();
+            setConvertModalPlan(null);
         } catch (error) {
             devLogger.error('Error converting plan to agreement:', error);
-            await showAlert(`Failed to convert plan to agreement: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            await showAlert(`Failed to convert plan to agreement: ${formatApiErrorMessage(error)}`);
+        } finally {
+            setIsConvertingPlan(false);
         }
     };
 
@@ -2630,6 +2620,35 @@ const MarketingPage: React.FC = () => {
                     }
                     handleSave('submitApproval', approvalModalApproverId);
                     setShowApprovalModal(false);
+                }}
+            />
+            <ConvertPlanToAgreementModal
+                isOpen={!!convertModalPlan}
+                plan={convertModalPlan}
+                contact={
+                    convertModalPlan
+                        ? contacts.find(c => c.id === convertModalPlan.leadId) ?? null
+                        : null
+                }
+                project={
+                    convertModalPlan
+                        ? projects.find(p => p.id === convertModalPlan.projectId)
+                        : undefined
+                }
+                unit={
+                    convertModalPlan
+                        ? appUnits.find(u => u.id === convertModalPlan.unitId)
+                        : undefined
+                }
+                projectAgreements={projectAgreements}
+                agreementSettings={projectAgreementSettings || undefined}
+                isSubmitting={isConvertingPlan}
+                onClose={() => {
+                    if (!isConvertingPlan) setConvertModalPlan(null);
+                }}
+                onConfirm={(config) => {
+                    if (!convertModalPlan) return;
+                    void executeConvertToAgreement(convertModalPlan, config);
                 }}
             />
             <EntityFormModal

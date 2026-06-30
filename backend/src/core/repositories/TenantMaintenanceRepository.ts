@@ -55,6 +55,16 @@ export class TenantJournalMaintenanceRepository {
     }
   }
 
+  async clearJournalForeignKeyReferences(client: pg.PoolClient, tenantId: string): Promise<void> {
+    await client.query(
+      `UPDATE accounting_periods
+       SET closing_journal_entry_id = NULL,
+           year_end_transfer_journal_entry_id = NULL
+       WHERE tenant_id = $1`,
+      [tenantId]
+    );
+  }
+
   async deleteTenantJournalRows(client: pg.PoolClient, tenantId: string): Promise<void> {
     await client.query(`DELETE FROM journal_reversals WHERE tenant_id = $1`, [tenantId]);
     await client.query(

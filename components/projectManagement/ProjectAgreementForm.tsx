@@ -37,6 +37,10 @@ import RecordLockBanner from '../recordLock/RecordLockBanner';
 import RecordLockConflictModal from '../recordLock/RecordLockConflictModal';
 import { backupAlertWarning, backupAlertInfo } from '../settings/backupThemeClasses';
 import { parseStoredDateToYyyyMmDdInput, toLocalDateString } from '../../utils/dateUtils';
+import {
+    buildNextProjectAgreementNumber,
+    bumpProjectAgreementSettingsNextNumber,
+} from '../../utils/projectAgreementNumber';
 import { isActiveInvoice } from '../../utils/invoiceActive';
 
 /** Active invoices tied to a project agreement (by agreement_id or legacy unit+project installment link). */
@@ -175,36 +179,23 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
     const [showMissingPlanDialog, setShowMissingPlanDialog] = useState(false);
     const [showInstallmentConfig, setShowInstallmentConfig] = useState(false);
 
-    const generateNextAgreementNumber = () => {
-        try {
-            if (!projectAgreementSettings) return '';
-            const { prefix, nextNumber, padding } = projectAgreementSettings;
-            
-            let maxExisting = 0;
-            // Scan existing agreements to find the highest number for this prefix
-            if (state.projectAgreements && Array.isArray(state.projectAgreements)) {
-                state.projectAgreements.forEach(pa => {
-                    if (pa.agreementNumber && pa.agreementNumber.startsWith(prefix)) {
-                        const part = pa.agreementNumber.substring(prefix.length);
-                        if (/^\d+$/.test(part)) {
-                            const num = parseInt(part, 10);
-                            if (num > maxExisting) maxExisting = num;
-                        }
-                    }
-                });
-            }
-            
-            // Candidate is either nextNumber from settings OR maxExisting + 1, whichever is higher
-            const candidate = Math.max(nextNumber || 1, maxExisting + 1);
+    const initialAutoAgreementNumber = useMemo(
+        () =>
+            agreementToEdit
+                ? ''
+                : buildNextProjectAgreementNumber(
+                      state.projectAgreements ?? [],
+                      projectAgreementSettings
+                  ),
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- only seed on first mount for new agreements
+        []
+    );
+    const userEditedAgreementNumberRef = useRef(false);
+    const autoAgreementNumberRef = useRef(initialAutoAgreementNumber);
 
-            return `${prefix}${String(candidate).padStart(padding || 4, '0')}`;
-        } catch (error) {
-            console.error('Error generating agreement number:', error);
-            return '';
-        }
-    };
-
-    const [agreementNumber, setAgreementNumber] = useState(agreementToEdit?.agreementNumber || generateNextAgreementNumber());
+    const [agreementNumber, setAgreementNumber] = useState(
+        agreementToEdit?.agreementNumber || initialAutoAgreementNumber
+    );
     const [clientId, setClientId] = useState(agreementToEdit?.clientId || '');
     const [projectId, setProjectId] = useState(agreementToEdit?.projectId || state.defaultProjectId || '');
     const [unitIds, setUnitIds] = useState<string[]>(agreementToEdit?.unitIds || []);
@@ -305,6 +296,17 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             if(!rebateCatId) setRebateCatId(findCat('Broker Fee'));
         }
     }, [agreementToEdit, state.categories]);
+
+    useEffect(() => {
+        if (agreementToEdit || userEditedAgreementNumberRef.current) return;
+        const next = buildNextProjectAgreementNumber(
+            state.projectAgreements ?? [],
+            projectAgreementSettings
+        );
+        if (!next || next === agreementNumber) return;
+        autoAgreementNumberRef.current = next;
+        setAgreementNumber(next);
+    }, [agreementToEdit, state.projectAgreements, projectAgreementSettings, agreementNumber]);
 
     useEffect(() => {
         try {
@@ -716,8 +718,18 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
             }
             const ok = await validateMandatoryAgreementFields();
             if (!ok) return;
+
+            const resolvedAgreementNumber = agreementToEdit
+                ? agreementNumber.trim()
+                : userEditedAgreementNumberRef.current
+                  ? agreementNumber.trim()
+                  : buildNextProjectAgreementNumber(
+                        state.projectAgreements ?? [],
+                        projectAgreementSettings
+                    );
+
             const agreementData = {
-            agreementNumber: agreementNumber.trim(),
+            agreementNumber: resolvedAgreementNumber,
             clientId,
             projectId,
             unitIds,
@@ -814,16 +826,17 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                 }
 
             // Update Next Number in Settings if this number pushes the counter forward
-            if (projectAgreementSettings && agreementNumber && agreementNumber.startsWith(projectAgreementSettings.prefix)) {
-                 const numPart = parseInt(agreementNumber.substring(projectAgreementSettings.prefix.length));
-                 if (!isNaN(numPart)) {
-                     if (numPart >= projectAgreementSettings.nextNumber) {
-                         dispatch({
-                             type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS',
-                             payload: { ...projectAgreementSettings, nextNumber: numPart + 1 }
-                         });
-                     }
-                 }
+            if (projectAgreementSettings && newAgreement.agreementNumber) {
+                const bumped = bumpProjectAgreementSettingsNextNumber(
+                    projectAgreementSettings,
+                    newAgreement.agreementNumber
+                );
+                if (bumped.nextNumber !== projectAgreementSettings.nextNumber) {
+                    dispatch({
+                        type: 'UPDATE_PROJECT_AGREEMENT_SETTINGS',
+                        payload: bumped,
+                    });
+                }
             }
 
             // CHECK FOR INSTALLMENT PLAN IN AGREEMENT
@@ -1020,7 +1033,10 @@ const ProjectAgreementForm: React.FC<ProjectAgreementFormProps> = ({ onClose, ag
                                         <input
                                             type="text"
                                             value={agreementNumber}
-                                            onChange={(e) => setAgreementNumber(e.target.value)}
+                                            onChange={(e) => {
+                                                userEditedAgreementNumberRef.current = true;
+                                                setAgreementNumber(e.target.value);
+                                            }}
                                             disabled={agreementFieldsDisabled}
                                             autoFocus={!isEditMode}
                                             aria-label="Agreement ID"

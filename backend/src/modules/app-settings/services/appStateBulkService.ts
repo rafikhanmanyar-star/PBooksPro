@@ -54,7 +54,7 @@ import { isAdminRole } from '../../../middleware/authMiddleware.js';
 export const BULK_TRANSACTION_CAP = 50_000;
 
 const BULK_STATIC_ENTITIES =
-  'accounts,contacts,categories,projects,buildings,properties,units,invoices,bills,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,recurringInvoiceTemplates,pmCycleAllocations,vendors,personalCategories,personalTransactions,appSettings';
+  'accounts,contacts,categories,projects,buildings,properties,units,invoices,bills,budgets,planAmenities,installmentPlans,rentalAgreements,projectAgreements,projectReceivedAssets,contracts,salesReturns,quotations,documents,recurringInvoiceTemplates,pmCycleAllocations,vendors,personalCategories,personalTransactions,appSettings';
 
 type BulkEntityKey =
   | 'accounts'

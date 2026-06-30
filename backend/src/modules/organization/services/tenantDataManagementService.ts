@@ -20,10 +20,12 @@ import {
 
 /** Child tables first. Missing tables are skipped (savepoint per table). */
 const CLEAR_TRANSACTION_TABLES = [
+  'bill_po_lines',
   'vendor_bill_advance_clearings',
   'contractor_bill_adjustments',
   'contractor_bills',
   'contractor_advances',
+  'project_expense_vouchers',
   'pm_cycle_allocations',
   'project_agreement_units',
   'sales_returns',
@@ -31,6 +33,15 @@ const CLEAR_TRANSACTION_TABLES = [
   'transactions',
   'invoices',
   'bills',
+  'goods_receipt_lines',
+  'goods_receipts',
+  'purchase_order_lines',
+  'purchase_orders',
+  'quotation_comparison_session_quotations',
+  'quotation_comparison_sessions',
+  'quotation_price_overrides',
+  'quotation_items',
+  'quotation_attachments',
   'quotations',
   'recurring_invoice_templates',
   'contracts',
@@ -101,48 +112,56 @@ type PurgeTenantJournalOptions = {
   strict?: boolean;
 };
 
-/** Bypass journal immutability triggers (managed Postgres / Render). */
+async function purgeJournalRowsWithReplicaRole(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<void> {
+  await client.query(`SET session_replication_role = replica`);
+  try {
+    await journalMaintenance.deleteTenantJournalRows(client, tenantId);
+  } finally {
+    await client.query(`SET session_replication_role = DEFAULT`);
+  }
+}
+
+async function purgeJournalRowsWithTriggersDisabled(
+  client: pg.PoolClient,
+  tenantId: string
+): Promise<void> {
+  await journalMaintenance.setJournalImmutabilityTriggers(client, false);
+  try {
+    await journalMaintenance.deleteTenantJournalRows(client, tenantId);
+  } finally {
+    await journalMaintenance.setJournalImmutabilityTriggers(client, true);
+  }
+}
+
+/** Bypass journal immutability triggers (managed Postgres / Render). Call after dependent rows are removed. */
 export async function purgeTenantJournal(
   client: pg.PoolClient,
   tenantId: string,
   opts?: PurgeTenantJournalOptions
 ): Promise<void> {
-  const purgeWithReplicaRole = () =>
-    withSavepoint(client, 'tenant_journal_purge_replica', async (c) => {
-      await c.query(`SET session_replication_role = replica`);
-      try {
-        await journalMaintenance.deleteTenantJournalRows(c, tenantId);
-      } finally {
-        await c.query(`SET session_replication_role = DEFAULT`);
-      }
-    });
-
-  const purgeWithTriggersDisabled = () =>
-    withSavepoint(client, 'tenant_journal_purge_triggers', async (c) => {
-      await journalMaintenance.setJournalImmutabilityTriggers(c, false);
-      try {
-        await journalMaintenance.deleteTenantJournalRows(c, tenantId);
-      } finally {
-        await journalMaintenance.setJournalImmutabilityTriggers(c, true);
-      }
-    });
+  await journalMaintenance.clearJournalForeignKeyReferences(client, tenantId);
 
   try {
-    await purgeWithReplicaRole();
+    await purgeJournalRowsWithReplicaRole(client, tenantId);
   } catch (replicaErr) {
     try {
-      await purgeWithTriggersDisabled();
+      await purgeJournalRowsWithTriggersDisabled(client, tenantId);
     } catch (triggerErr) {
+      const replicaMsg = replicaErr instanceof Error ? replicaErr.message : String(replicaErr);
+      const triggerMsg = triggerErr instanceof Error ? triggerErr.message : String(triggerErr);
       const message = 'Failed to purge journal entries; account balances cannot be reset safely.';
       if (opts?.strict) {
-        throw new Error(message, {
+        throw new Error(`${message} (${triggerMsg}; replica: ${replicaMsg})`, {
           cause: triggerErr instanceof Error ? triggerErr : replicaErr,
         });
       }
       logger.warn('Tenant journal purge skipped (stale GL rows may remain)', {
         tenantId,
-        replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
-        triggerErr: triggerErr instanceof Error ? triggerErr.message : String(triggerErr),
+        replicaErr: replicaMsg,
+        triggerErr: triggerMsg,
       });
     }
   }
@@ -168,10 +187,6 @@ async function wipeTenantTables(
   let recordsDeleted = 0;
   let accountsReset = 0;
 
-  await purgeTenantJournal(client, tenantId, { strict: strictJournalPurge });
-  tablesCleared += 1;
-  recordsDeleted += 3;
-
   for (const table of tables) {
     try {
       const n = await withSavepoint(client, `wipe_${table}`, async (c) =>
@@ -184,15 +199,15 @@ async function wipeTenantTables(
     }
   }
 
+  await purgeTenantJournal(client, tenantId, { strict: strictJournalPurge });
+  tablesCleared += 1;
+  recordsDeleted += 3;
+
   if (preserveAccounts) {
-    try {
-      accountsReset = await withSavepoint(client, 'reset_tenant_account_balances', async (c) =>
-        wipeRepo.resetTenantAccountBalances(c, tenantId)
-      );
-      if (accountsReset > 0) tablesCleared += 1;
-    } catch {
-      /* optional */
-    }
+    accountsReset = await withSavepoint(client, 'reset_tenant_account_balances', async (c) =>
+      wipeRepo.resetTenantAccountBalances(c, tenantId)
+    );
+    if (accountsReset > 0) tablesCleared += 1;
   } else {
     try {
       const n = await withSavepoint(client, 'wipe_tenant_accounts', async (c) =>

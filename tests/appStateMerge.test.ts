@@ -130,6 +130,63 @@ describe('mergePartialStateIntoBaseline', () => {
     assert.equal(merged.projectAgreements[0].id, 'agr-keep');
   });
 
+  it('preserves quotations when partial omits the key (chunked bulk static load gap)', () => {
+    const base = {
+      ...initialState,
+      quotations: [
+        {
+          id: 'qtn-1',
+          vendorId: 'v-1',
+          name: 'Vendor A',
+          date: '2026-06-18',
+          items: [],
+          totalAmount: 1000,
+          createdAt: '2026-06-18T00:00:00.000Z',
+          updatedAt: '2026-06-18T00:00:00.000Z',
+          version: 1,
+        },
+      ],
+    };
+    const merged = mergePartialStateIntoBaseline(base, { transactions: [tx('srv-1', { version: 1 })] });
+    assert.equal(merged.quotations?.length, 1);
+    assert.equal(merged.quotations?.[0]?.id, 'qtn-1');
+  });
+
+  it('replaces quotations when partial includes them from server', () => {
+    const base = {
+      ...initialState,
+      quotations: [
+        {
+          id: 'qtn-stale',
+          vendorId: 'v-1',
+          name: 'Stale',
+          date: '2026-06-01',
+          items: [],
+          totalAmount: 100,
+          createdAt: '2026-06-01T00:00:00.000Z',
+          updatedAt: '2026-06-01T00:00:00.000Z',
+        },
+      ],
+    };
+    const merged = mergePartialStateIntoBaseline(base, {
+      quotations: [
+        {
+          id: 'qtn-server',
+          vendorId: 'v-2',
+          name: 'From server',
+          date: '2026-06-18',
+          items: [],
+          totalAmount: 2000,
+          createdAt: '2026-06-18T00:00:00.000Z',
+          updatedAt: '2026-06-18T00:00:00.000Z',
+          version: 1,
+        },
+      ],
+    });
+    assert.equal(merged.quotations?.length, 1);
+    assert.equal(merged.quotations?.[0]?.id, 'qtn-server');
+  });
+
   it('preserves session UI navigation when partial includes stale currentPage', () => {
     const base = { ...initialState, currentPage: 'transactions' as const, initialTabs: ['Reports'] };
     const merged = mergePartialStateIntoBaseline(base, {

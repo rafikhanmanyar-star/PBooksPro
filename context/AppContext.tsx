@@ -1793,6 +1793,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 accounts: merged.accounts?.length ?? 0,
                 categories: merged.categories?.length ?? 0,
                 transactions: merged.transactions?.length ?? 0,
+                quotations: merged.quotations?.length ?? 0,
                 personalCategories: merged.personalCategories?.length ?? 0,
                 personalTransactions: merged.personalTransactions?.length ?? 0,
                 pmCycleAllocations: merged.pmCycleAllocations?.length ?? 0,

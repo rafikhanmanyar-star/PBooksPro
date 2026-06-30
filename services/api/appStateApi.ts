@@ -1760,7 +1760,10 @@ export class AppStateApiService {
       if (contact.id) {
         // Use PUT endpoint for updates
         logger.logCategory('sync', `💾 Updating contact (PUT): ${contact.id} - ${contact.name}`);
-        saved = await this.contactsRepo.update(contact.id, contact);
+        saved = await this.contactsRepo.update(contact.id, {
+          ...contact,
+          version: contact.version,
+        });
         logger.logCategory('sync', `✅ Contact updated successfully: ${saved.name} (${saved.id})`);
       } else {
         // Use POST endpoint for new contacts
@@ -1783,6 +1786,7 @@ export class AppStateApiService {
         companyName: (saved as any).company_name || saved.companyName || undefined,
         address: saved.address || undefined,
         userId: (saved as any).user_id || saved.userId || undefined,
+        version: typeof (saved as any).version === 'number' ? (saved as any).version : saved.version,
         createdAt: (saved as any).created_at || saved.createdAt || undefined,
         updatedAt: (saved as any).updated_at || saved.updatedAt || undefined
       };

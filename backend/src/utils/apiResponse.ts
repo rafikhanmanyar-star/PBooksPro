@@ -96,6 +96,21 @@ function mapErrorToHttp(e: unknown): {
         message: 'The operation took too long. Please try again.',
       };
     }
+    if (msg.includes('purge journal entries') || msg.includes('cannot be reset')) {
+      return {
+        status: 500,
+        code: 'CLEAR_TRANSACTIONS_FAILED',
+        message:
+          'Could not clear the general ledger for this organization. Some linked records may still exist. Please try again or contact support.',
+      };
+    }
+    if (msg.includes('cannot be reset') || msg.includes('cannot be wiped')) {
+      return {
+        status: 403,
+        code: 'OPERATION_NOT_ALLOWED',
+        message: e.message,
+      };
+    }
     const isProd = process.env.NODE_ENV === 'production';
     return {
       status: 500,

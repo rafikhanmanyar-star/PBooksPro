@@ -181,6 +181,8 @@ export function mergePartialStateIntoBaseline(
             : (base.projectAgreements || []),
         contacts: partial.contacts !== undefined ? partial.contacts : (base.contacts || []),
         vendors: partial.vendors !== undefined ? partial.vendors : (base.vendors || []),
+        quotations: partial.quotations !== undefined ? partial.quotations : (base.quotations || []),
+        documents: partial.documents !== undefined ? partial.documents : (base.documents || []),
         personalTransactions: partial.personalTransactions !== undefined
             ? partial.personalTransactions
             : (base.personalTransactions || []),

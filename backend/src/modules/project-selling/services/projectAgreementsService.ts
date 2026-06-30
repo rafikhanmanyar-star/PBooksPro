@@ -8,6 +8,7 @@ import {
   ProjectAgreementRepository,
   type ProjectAgreementWriteFields,
 } from '../repositories/ProjectAgreementRepository.js';
+import { getSettingByKey, upsertSetting } from '../../app-settings/services/appSettingsService.js';
 
 export type ProjectAgreementRow = {
   id: string;
@@ -309,6 +310,84 @@ function assertProjectAgreementCore(p: { unitIds: string[]; selling_price: numbe
   }
 }
 
+type AgreementSequenceSettings = {
+  prefix?: string;
+  nextNumber?: number;
+  padding?: number;
+};
+
+function parseAgreementSequenceSettings(raw: unknown): AgreementSequenceSettings {
+  if (!raw || typeof raw !== 'object') return {};
+  const o = raw as Record<string, unknown>;
+  return {
+    prefix: typeof o.prefix === 'string' ? o.prefix : undefined,
+    nextNumber: typeof o.nextNumber === 'number' ? o.nextNumber : undefined,
+    padding: typeof o.padding === 'number' ? o.padding : undefined,
+  };
+}
+
+async function resolveAvailableAgreementNumber(
+  client: pg.PoolClient,
+  tenantId: string,
+  requested: string
+): Promise<string> {
+  const repo = new ProjectAgreementRepository(tenantId);
+  if (!(await repo.agreementNumberExists(client, requested))) return requested;
+
+  const settingsRaw = await getSettingByKey(client, tenantId, 'projectAgreementSettings');
+  const settings = parseAgreementSequenceSettings(settingsRaw);
+  const prefix = settings.prefix || 'P-AGR-';
+  const padding = settings.padding ?? 4;
+  const maxInDb = await repo.maxNumericSuffixForPrefix(client, prefix);
+  let candidate = Math.max(settings.nextNumber ?? 1, maxInDb + 1);
+
+  for (let attempt = 0; attempt < 1000; attempt++) {
+    const candidateStr = `${prefix}${String(candidate).padStart(padding, '0')}`;
+    if (!(await repo.agreementNumberExists(client, candidateStr))) {
+      return candidateStr;
+    }
+    candidate++;
+  }
+
+  throw new Error(
+    `Agreement number "${requested}" is already in use. Please choose a different number.`
+  );
+}
+
+async function bumpProjectAgreementSettingsIfNeeded(
+  client: pg.PoolClient,
+  tenantId: string,
+  usedAgreementNumber: string,
+  actorUserId: string | null
+): Promise<void> {
+  const settingsRaw = await getSettingByKey(client, tenantId, 'projectAgreementSettings');
+  const current =
+    settingsRaw && typeof settingsRaw === 'object'
+      ? ({ ...(settingsRaw as Record<string, unknown>) } as Record<string, unknown>)
+      : {};
+  const prefix = typeof current.prefix === 'string' ? current.prefix : 'P-AGR-';
+  if (!usedAgreementNumber.startsWith(prefix)) return;
+
+  const numPart = parseInt(usedAgreementNumber.slice(prefix.length), 10);
+  if (isNaN(numPart)) return;
+
+  const currentNext = typeof current.nextNumber === 'number' ? current.nextNumber : 1;
+  if (numPart < currentNext) return;
+
+  await upsertSetting(
+    client,
+    tenantId,
+    'projectAgreementSettings',
+    {
+      ...current,
+      prefix,
+      padding: typeof current.padding === 'number' ? current.padding : 4,
+      nextNumber: numPart + 1,
+    },
+    { userId: actorUserId, skipChangeLog: false }
+  );
+}
+
 export async function createProjectAgreement(
   client: pg.PoolClient,
   tenantId: string,
@@ -323,8 +402,19 @@ export async function createProjectAgreement(
     typeof body.id === 'string' && body.id.trim() ? body.id.trim() : `pa_${randomUUID().replace(/-/g, '')}`;
 
   const repo = new ProjectAgreementRepository(tenantId);
-  const row = await repo.insertAgreement(client, id, toProjectAgreementWriteFields(p));
+  const resolvedAgreementNumber = await resolveAvailableAgreementNumber(client, tenantId, p.agreement_number);
+  const writeFields = toProjectAgreementWriteFields({
+    ...p,
+    agreement_number: resolvedAgreementNumber,
+  });
+  const row = await repo.insertAgreement(client, id, writeFields);
   await replaceAgreementUnits(client, tenantId, id, p.unitIds);
+  await bumpProjectAgreementSettingsIfNeeded(
+    client,
+    tenantId,
+    resolvedAgreementNumber,
+    actorUserIdFromBody(body)
+  );
   await recordDomainMutation(client, {
     tenantId,
     userId: row.user_id ?? actorUserIdFromBody(body),
