@@ -80,6 +80,7 @@ import { appReducer } from './reducers/appReducer';
 import {
   mergeTenantSettingsFromAction,
   mergePartialStateIntoBaseline,
+  type RefreshFromApiOptions,
 } from './reducers/appStateMerge';
 import { useAuth } from './AuthContext';
 import { useCompanyOptional } from './CompanyContext';
@@ -242,7 +243,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Ref for dispatch so init effect (declared before useReducer) can update reducer when background sync completes
     const dispatchRef = useRef<React.Dispatch<AppAction> | null>(null);
     /** Set after refreshFromApi is defined; used from dispatch for post-conflict merge (declared early for closure). */
-    const refreshFromApiRef = useRef<(() => Promise<void>) | null>(null);
+    const refreshFromApiRef = useRef<
+        ((onCriticalLoaded?: () => void, syncOpts?: RefreshFromApiOptions) => Promise<void>) | null
+    >(null);
     useEffect(() => {
         if (storedState) {
             storedStateRef.current = storedState;
@@ -1676,9 +1679,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      * Merge latest server state into React + persisted state (LAN / PostgreSQL API).
      * Required so User B sees projects/units created by User A without reloading the app.
      */
-    const refreshFromApi = useCallback(async (_onCriticalLoaded?: () => void) => {
+    const refreshFromApi = useCallback(async (_onCriticalLoaded?: () => void, syncOpts?: RefreshFromApiOptions) => {
         if (!isAuthenticated) return;
         let hydrationStarted = false;
+        const forceFull = syncOpts?.forceFull === true;
+        const replaceTransactionalEntities = syncOpts?.replaceTransactionalEntities === true;
+        const mergeOptions = replaceTransactionalEntities ? { replaceTransactionalEntities: true as const } : undefined;
         try {
             const { getAppStateApiService, pickTenantSettingsPartial, getServerTimeIso } = await import('../services/api/appStateApi');
             // Use latestStateRef (updated synchronously in render body) rather than stateRef
@@ -1686,7 +1692,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             // effect flushes, so stateRef may be one render stale and miss a just-added payment —
             // which then gets dropped by the merge if the server snapshot also lacks it.
             const base = latestStateRef.current;
-            const lastSync = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_last_sync_at') : null;
+            const lastSync = forceFull
+                ? null
+                : typeof sessionStorage !== 'undefined'
+                  ? sessionStorage.getItem('pbooks_api_last_sync_at')
+                  : null;
             const syncTenant = typeof sessionStorage !== 'undefined' ? sessionStorage.getItem('pbooks_api_sync_tenant_id') : null;
 
             // Guard: if the sync cursor belongs to a different tenant, discard it to force a
@@ -1728,7 +1738,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     merged = mergePartialStateIntoBaseline(
                         mergeBaseline,
                         inc,
-                        pickTenantSettingsPartial(inc)
+                        pickTenantSettingsPartial(inc),
+                        mergeOptions
                     );
                     nextSyncCursor = serverCursor;
                 } catch {
@@ -1737,7 +1748,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     merged = mergePartialStateIntoBaseline(
                         mergeBaseline,
                         partial,
-                        pickTenantSettingsPartial(partial)
+                        pickTenantSettingsPartial(partial),
+                        mergeOptions
                     );
                     nextSyncCursor = await getServerTimeIso();
                 }
@@ -1750,7 +1762,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 merged = mergePartialStateIntoBaseline(
                     safeBase,
                     partial,
-                    pickTenantSettingsPartial(partial)
+                    pickTenantSettingsPartial(partial),
+                    mergeOptions
                 );
                 nextSyncCursor = await getServerTimeIso();
             }
@@ -1829,8 +1842,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, [refreshFromApi]);
 
     useEffect(() => {
-        const onRequestApiRefresh = () => {
-            void refreshFromApi();
+        const onRequestApiRefresh = (event: Event) => {
+            const detail = (event as CustomEvent<RefreshFromApiOptions | undefined>).detail;
+            void refreshFromApi(undefined, detail);
         };
         if (typeof window === 'undefined') return;
         window.addEventListener('pbooks:request-api-refresh', onRequestApiRefresh);
@@ -1907,7 +1921,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     ? (d as { bulkRefresh: string }).bulkRefresh
                     : undefined;
             if (bulkRefresh) {
-                void refreshFromApiRef.current?.();
+                if (typeof sessionStorage !== 'undefined') {
+                    sessionStorage.removeItem('pbooks_api_last_sync_at');
+                }
+                if (bulkRefresh === 'clear_transactions') {
+                    baseDispatch({ type: 'RESET_TRANSACTIONS', _isRemote: true } as AppAction);
+                }
+                void refreshFromApiRef.current?.(undefined, {
+                    forceFull: true,
+                    replaceTransactionalEntities: true,
+                });
                 return;
             }
 

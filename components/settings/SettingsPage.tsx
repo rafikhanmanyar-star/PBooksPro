@@ -597,6 +597,13 @@ const SettingsPage: React.FC = () => {
             console.log('✅ Server cleared:', result.details);
 
             dispatch({ type: 'RESET_TRANSACTIONS' });
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(
+                    new CustomEvent('pbooks:request-api-refresh', {
+                        detail: { forceFull: true, replaceTransactionalEntities: true },
+                    })
+                );
+            }
             showToast('Successfully cleared transaction data from the server.', 'success');
         } catch (error: any) {
             console.error('❌ Error clearing transactions:', error);

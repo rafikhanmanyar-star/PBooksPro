@@ -90,6 +90,12 @@ async function invalidateBulkTenantRefresh(queryClient: QueryClient): Promise<vo
     queryClient.invalidateQueries({ queryKey: queryKeys.projects.all }),
     queryClient.invalidateQueries({ queryKey: ['payroll'] }),
     queryClient.invalidateQueries({ queryKey: ['documents'] }),
+    queryClient.invalidateQueries({ queryKey: ['workflow'] }),
+    queryClient.invalidateQueries({ queryKey: ['mobile'] }),
+    queryClient.invalidateQueries({ queryKey: ['quotations'] }),
+    queryClient.invalidateQueries({ queryKey: ['purchase-orders'] }),
+    queryClient.invalidateQueries({ queryKey: ['goods-receipts'] }),
+    queryClient.invalidateQueries({ queryKey: ['procurement-dashboard'] }),
     invalidateSellingAnalytics(queryClient),
   ]);
 }

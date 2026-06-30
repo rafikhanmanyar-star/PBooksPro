@@ -155,12 +155,47 @@ function pickSessionUiState(base: AppState): Pick<AppState, (typeof SESSION_UI_S
     };
 }
 
+export type MergePartialStateOptions = {
+    /** After clear-transactions / factory-reset: trust server lists; do not resurrect stale client rows. */
+    replaceTransactionalEntities?: boolean;
+};
+
+export type RefreshFromApiOptions = {
+    /** Skip incremental /state/changes and load a full snapshot from the API. */
+    forceFull?: boolean;
+    /** Replace transactional lists from the server (no optimistic resurrection). */
+    replaceTransactionalEntities?: boolean;
+};
+
 /** Merge a server partial snapshot into a client baseline (preserves optimistic rows). */
 export function mergePartialStateIntoBaseline(
     base: AppState,
     partial: Partial<AppState>,
-    tenantSettings: Partial<AppState> = {}
+    tenantSettings: Partial<AppState> = {},
+    options?: MergePartialStateOptions
 ): AppState {
+    if (options?.replaceTransactionalEntities) {
+        const sessionUi = pickSessionUiState(base);
+        return {
+            ...base,
+            ...partial,
+            ...sessionUi,
+            transactions: partial.transactions ?? [],
+            invoices: partial.invoices ?? [],
+            bills: partial.bills ?? [],
+            contracts: partial.contracts ?? [],
+            rentalAgreements: partial.rentalAgreements ?? [],
+            projectAgreements: partial.projectAgreements ?? [],
+            salesReturns: partial.salesReturns ?? [],
+            projectReceivedAssets: partial.projectReceivedAssets ?? [],
+            quotations: partial.quotations ?? [],
+            installmentPlans: partial.installmentPlans ?? [],
+            recurringInvoiceTemplates: partial.recurringInvoiceTemplates ?? [],
+            pmCycleAllocations: partial.pmCycleAllocations ?? [],
+            ...tenantSettings,
+        } as AppState;
+    }
+
     const sessionUi = pickSessionUiState(base);
     return {
         ...base,

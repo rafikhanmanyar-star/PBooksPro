@@ -1009,7 +1009,7 @@ export function appReducer(state: AppState, action: AppAction): AppState {
             return { ...state, errorLog: [] };
 
         case 'RESET_TRANSACTIONS': {
-            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', '', 'Cleared all transactions, invoices, bills, contracts, agreements, and sales returns', state.currentUser);
+            const logEntry = createLogEntry('CLEAR_ALL', 'Transactions', '', 'Cleared all transactions, invoices, bills, contracts, agreements, marketing plans, and sales returns', state.currentUser);
             return {
                 ...state,
                 transactions: [],
@@ -1019,7 +1019,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 rentalAgreements: [],
                 projectAgreements: [],
                 salesReturns: [],
-                // Preserve settings: recurringInvoiceTemplates, accounts (balances + bank opening reset), contacts, categories, projects, buildings, properties, units
+                installmentPlans: [],
+                quotations: [],
+                recurringInvoiceTemplates: [],
+                pmCycleAllocations: [],
+                projectReceivedAssets: [],
                 accounts: state.accounts.map(acc => ({
                     ...acc,
                     balance: 0,
