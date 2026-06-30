@@ -5,7 +5,7 @@ import type { InstallmentPlanRow } from '../services/installmentPlansService.js'
 const SELECT_IP = `SELECT id, tenant_id, project_id, lead_id, unit_id, net_value::text, status, duration_years,
   down_payment_percentage::text, frequency, list_price::text, customer_discount::text, floor_discount::text,
   lump_sum_discount::text, misc_discount::text, down_payment_amount::text, installment_amount::text, total_installments,
-  description, user_id, intro_text, root_id, approval_requested_by, approval_requested_to, approval_requested_at,
+  description, user_id, intro_text, root_id, plan_revision, approval_requested_by, approval_requested_to, approval_requested_at,
   approval_reviewed_by, approval_reviewed_at, discounts, customer_discount_category_id, floor_discount_category_id,
   lump_sum_discount_category_id, misc_discount_category_id, selected_amenities, amenities_total::text,
   created_at, updated_at, version, deleted_at
@@ -13,7 +13,8 @@ const SELECT_IP = `SELECT id, tenant_id, project_id, lead_id, unit_id, net_value
 
 export type InstallmentPlanListFilters = {
   projectId?: string;
-  createdByUserId?: string;
+  /** Sales users: plans they created or submitted for approval */
+  visibleToUserId?: string;
 };
 
 export class InstallmentPlanRepository extends TenantRepository {
@@ -44,9 +45,9 @@ export class InstallmentPlanRepository extends TenantRepository {
       params.push(filters.projectId);
       q += ` AND project_id = $${params.length}`;
     }
-    if (filters?.createdByUserId) {
-      params.push(filters.createdByUserId);
-      q += ` AND user_id = $${params.length}`;
+    if (filters?.visibleToUserId) {
+      params.push(filters.visibleToUserId);
+      q += ` AND (user_id = $${params.length} OR approval_requested_by = $${params.length})`;
     }
     q += ` ORDER BY updated_at DESC`;
     const r = await client.query<InstallmentPlanRow>(q, params);
@@ -61,19 +62,19 @@ export class InstallmentPlanRepository extends TenantRepository {
     return r.rows;
   }
 
-  /** Field values from project_id through amenities_total (32 params). */
+  /** Field values from project_id through amenities_total (33 params). */
   async insertPlan(client: pg.PoolClient, id: string, fieldValues: unknown[]): Promise<InstallmentPlanRow> {
     const r = await client.query<InstallmentPlanRow>(
       `INSERT INTO installment_plans (
         id, tenant_id, project_id, lead_id, unit_id, net_value, status, duration_years, down_payment_percentage,
         frequency, list_price, customer_discount, floor_discount, lump_sum_discount, misc_discount,
         down_payment_amount, installment_amount, total_installments, description, user_id, intro_text, root_id,
-        approval_requested_by, approval_requested_to, approval_requested_at, approval_reviewed_by, approval_reviewed_at,
+        plan_revision, approval_requested_by, approval_requested_to, approval_requested_at, approval_reviewed_by, approval_reviewed_at,
         discounts, customer_discount_category_id, floor_discount_category_id, lump_sum_discount_category_id,
         misc_discount_category_id, selected_amenities, amenities_total, version, deleted_at, created_at, updated_at
       ) VALUES (
-        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22,
-        $23, $24, $25::timestamptz, $26, $27::timestamptz, $28::jsonb, $29, $30, $31, $32, $33::jsonb, $34,
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23,
+        $24, $25, $26::timestamptz, $27, $28::timestamptz, $29::jsonb, $30, $31, $32, $33, $34::jsonb, $35,
         1, NULL, NOW(), NOW()
       )
       RETURNING *`,
@@ -95,11 +96,11 @@ export class InstallmentPlanRepository extends TenantRepository {
         down_payment_percentage = $9, frequency = $10, list_price = $11, customer_discount = $12, floor_discount = $13,
         lump_sum_discount = $14, misc_discount = $15, down_payment_amount = $16, installment_amount = $17,
         total_installments = $18, description = $19, user_id = COALESCE($20, user_id), intro_text = $21, root_id = $22,
-        approval_requested_by = $23, approval_requested_to = $24, approval_requested_at = $25::timestamptz,
-        approval_reviewed_by = $26, approval_reviewed_at = $27::timestamptz,
-        discounts = $28::jsonb, customer_discount_category_id = $29, floor_discount_category_id = $30,
-        lump_sum_discount_category_id = $31, misc_discount_category_id = $32, selected_amenities = $33::jsonb,
-        amenities_total = $34, deleted_at = NULL, version = version + 1, updated_at = NOW()
+        plan_revision = COALESCE($23, plan_revision), approval_requested_by = $24, approval_requested_to = $25,
+        approval_requested_at = $26::timestamptz, approval_reviewed_by = $27, approval_reviewed_at = $28::timestamptz,
+        discounts = $29::jsonb, customer_discount_category_id = $30, floor_discount_category_id = $31,
+        lump_sum_discount_category_id = $32, misc_discount_category_id = $33, selected_amenities = $34::jsonb,
+        amenities_total = $35, deleted_at = NULL, version = version + 1, updated_at = NOW()
         WHERE id = $1 AND tenant_id = $2${activeOnly ? ' AND deleted_at IS NULL' : ''}
         RETURNING *`,
       [id, this.tenantId, ...fieldValues]

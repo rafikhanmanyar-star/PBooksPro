@@ -37,6 +37,44 @@ import { toLocalDateString } from '../../utils/dateUtils';
 import { WhatsAppService, sendOrOpenWhatsApp } from '../../services/whatsappService';
 import { useWhatsApp } from '../../context/WhatsAppContext';
 
+function normalizeMarketingPlanStatus(status: string | undefined): string {
+    return (status ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function isMarketingPlanApproved(status: string | undefined): boolean {
+    return normalizeMarketingPlanStatus(status) === 'approved';
+}
+
+function marketingPlanStatusRank(status: string | undefined): number {
+    const normalized = normalizeMarketingPlanStatus(status);
+    if (normalized === 'sale recognized' || normalized === 'locked') return 5;
+    if (normalized === 'approved') return 4;
+    if (normalized === 'pending approval') return 3;
+    if (normalized === 'draft') return 2;
+    if (normalized === 'rejected') return 1;
+    return 0;
+}
+
+function shouldReplaceMarketingPlanCandidate(current: InstallmentPlan, candidate: InstallmentPlan): boolean {
+    const currentRevision = current.version || 1;
+    const candidateRevision = candidate.version || 1;
+    if (candidateRevision > currentRevision) return true;
+    if (candidateRevision < currentRevision) return false;
+    const rankDiff = marketingPlanStatusRank(candidate.status) - marketingPlanStatusRank(current.status);
+    if (rankDiff !== 0) return rankDiff > 0;
+    return (candidate.updatedAt || '') > (current.updatedAt || '');
+}
+
+function canUserSeeMarketingPlan(
+    plan: InstallmentPlan,
+    currentUserId: string | undefined,
+    canViewAll: boolean
+): boolean {
+    if (canViewAll) return true;
+    if (!currentUserId) return false;
+    return plan.userId === currentUserId || plan.approvalRequestedById === currentUserId;
+}
+
 // Amenity Configuration Modal Component
 const AmenityConfigModal: React.FC<{
     isOpen: boolean;
@@ -910,7 +948,8 @@ const MarketingPage: React.FC = () => {
     const handleConvertToAgreement = async (plan: InstallmentPlan) => {
         try {
             // CRITICAL: Prevent duplicate conversions
-            if (plan.status === 'Sale Recognized' || plan.status === 'Locked') {
+            const normalizedPlanStatus = normalizeMarketingPlanStatus(plan.status);
+            if (normalizedPlanStatus === 'sale recognized' || normalizedPlanStatus === 'locked') {
                 await showAlert(
                     `This plan has already been converted to an agreement.\n\n` +
                     `Status: ${plan.status}\n\n` +
@@ -920,7 +959,7 @@ const MarketingPage: React.FC = () => {
             }
 
             // Only approved plans can be converted
-            if (plan.status !== 'Approved') {
+            if (!isMarketingPlanApproved(plan.status)) {
                 await showAlert(
                     `Only approved plans can be converted to agreements.\n\n` +
                     `Current status: ${plan.status}\n\n` +
@@ -1222,15 +1261,15 @@ const MarketingPage: React.FC = () => {
     const filteredPlans = useMemo(() => {
         const currentUserId = currentUser?.id;
         const allPlans = (installmentPlans || []).filter(plan =>
-            canViewAllMarketingPlans ? true : plan.userId === currentUserId
+            canUserSeeMarketingPlan(plan, currentUserId, canViewAllMarketingPlans)
         );
         
-        // Group plans by rootId and find the latest version for each
+        // Group plans by rootId and find the latest marketing revision for each
         const latestPlansMap = new Map<string, InstallmentPlan>();
         allPlans.forEach(plan => {
             const rId = plan.rootId || plan.id;
             const existing = latestPlansMap.get(rId);
-            if (!existing || (plan.version || 1) > (existing.version || 1)) {
+            if (!existing || shouldReplaceMarketingPlanCandidate(existing, plan)) {
                 latestPlansMap.set(rId, plan);
             }
         });
@@ -1263,7 +1302,7 @@ const MarketingPage: React.FC = () => {
     const activityFeed = useMemo(() => {
         const currentUserId = currentUser?.id;
         const feed = (installmentPlans || [])
-            .filter(plan => (canViewAllMarketingPlans ? true : plan.userId === currentUserId))
+            .filter(plan => canUserSeeMarketingPlan(plan, currentUserId, canViewAllMarketingPlans))
             .flatMap(plan => {
             const lead = contacts.find(l => l.id === plan.leadId);
             const project = projects.find(p => p.id === plan.projectId);
@@ -2357,8 +2396,10 @@ const MarketingPage: React.FC = () => {
                                         const project = projects.find(p => p.id === plan.projectId);
                                         const unit = appUnits.find(u => u.id === plan.unitId);
                                         const statusMeta = getStatusMeta(plan.status);
-                                        const isConvertible = plan.status === 'Approved';
-                                        const isLocked = plan.status === 'Locked' || plan.status === 'Sale Recognized';
+                                        const isConvertible = isMarketingPlanApproved(plan.status);
+                                        const isLocked =
+                                            normalizeMarketingPlanStatus(plan.status) === 'locked' ||
+                                            normalizeMarketingPlanStatus(plan.status) === 'sale recognized';
                                         
                                         return (
                                             <Card 

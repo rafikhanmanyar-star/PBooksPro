@@ -1818,7 +1818,7 @@ const ProjectEquityManagement: React.FC<ProjectEquityManagementProps> = ({ equit
                 </div>
             )}
             {equityTab === 'Profitability' && (
-                <div className="flex-grow overflow-hidden">
+                <div className="flex-grow min-h-0 overflow-hidden flex flex-col">
                     <InvMgmtProjectProfitabilityAnalytics />
                 </div>
             )}

@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState, useMemo, useRef, Suspense, useCallback, useTransition } from 'react';
+import React, { useEffect, useState, useMemo, useRef, Suspense, useCallback } from 'react';
 import Header from './components/layout/Header';
 import Footer from './components/layout/Footer';
 import Sidebar from './components/layout/Sidebar';
@@ -198,9 +198,6 @@ const App: React.FC = () => {
 
   // State to track if the native OS keyboard is likely open
   const [isNativeKeyboardOpen, setIsNativeKeyboardOpen] = useState(false);
-
-  // Use React 18 startTransition for non-blocking navigation (improves INP)
-  const [isPending, startNavTransition] = useTransition();
 
   // State to control loading overlay visibility (with small delay to avoid flashing)
   const [showLoadingOverlay, setShowLoadingOverlay] = useState(false);
@@ -462,16 +459,14 @@ const App: React.FC = () => {
       }
     }
 
-    startNavTransition(() => {
-      if (openRentalSetupFromLast) {
-        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Rental setup'] });
-      }
-      if (openPayoutsFromLast) {
-        dispatch({ type: 'SET_INITIAL_TABS', payload: ['Payouts'] });
-      }
-      dispatch({ type: 'SET_PAGE', payload: pageToSet });
-    });
-  }, [dispatch, startNavTransition]);
+    if (openRentalSetupFromLast) {
+      dispatch({ type: 'SET_INITIAL_TABS', payload: ['Rental setup'] });
+    }
+    if (openPayoutsFromLast) {
+      dispatch({ type: 'SET_INITIAL_TABS', payload: ['Payouts'] });
+    }
+    dispatch({ type: 'SET_PAGE', payload: pageToSet });
+  }, [dispatch]);
 
   // Log when currentPage actually updates (to measure delay between request and commit)
   useEffect(() => {
@@ -541,7 +536,6 @@ const App: React.FC = () => {
   // visited pages mounted (LRU eviction). This prevents 10+ pages from accumulating
   // in the DOM with their effects, event listeners, and state all active.
   const MAX_PERSISTENT_PAGES = 3;
-  const [visitedGroups, setVisitedGroups] = useState<Set<string>>(new Set());
   const visitOrderRef = useRef<string[]>([]);
 
   const activeGroup = useMemo(() => {
@@ -551,23 +545,16 @@ const App: React.FC = () => {
     return 'DASHBOARD';
   }, [currentPage]);
 
-  useEffect(() => {
-    setVisitedGroups(prev => {
-      // Update visit order (move to front if already visited)
-      const order = visitOrderRef.current.filter(g => g !== activeGroup);
-      order.unshift(activeGroup);
-      visitOrderRef.current = order;
+  // Compute visited groups synchronously so the target page mounts on the same render
+  // as currentPage changes (useEffect caused a one-frame gap where no page was active).
+  const visitedGroups = useMemo(() => {
+    const order = visitOrderRef.current.filter(g => g !== activeGroup);
+    order.unshift(activeGroup);
+    visitOrderRef.current = order;
 
-      // Keep only the most recent N pages, but pin RENTAL once visited so rental sub-page state
-      // (agreements/invoices/bills filters, selection, scroll, etc.) survives cross-module navigation.
-      const keepSet = new Set(order.slice(0, MAX_PERSISTENT_PAGES));
-      if (order.includes('RENTAL')) keepSet.add('RENTAL');
-      // Check if the set actually changed to avoid unnecessary re-renders
-      if (keepSet.size === prev.size && [...keepSet].every(g => prev.has(g))) {
-        return prev;
-      }
-      return keepSet;
-    });
+    const keepSet = new Set(order.slice(0, MAX_PERSISTENT_PAGES));
+    if (order.includes('RENTAL')) keepSet.add('RENTAL');
+    return keepSet;
   }, [activeGroup]);
 
   const isPageGroupMounting = !visitedGroups.has(activeGroup);
@@ -582,22 +569,6 @@ const App: React.FC = () => {
       }
       setShowLoadingOverlay(true);
       return;
-    }
-
-    if (isPending) {
-      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-      if (minLoadingTimeRef.current) {
-        clearTimeout(minLoadingTimeRef.current);
-        minLoadingTimeRef.current = null;
-      }
-
-      loadingTimeoutRef.current = setTimeout(() => {
-        setShowLoadingOverlay(true);
-      }, 100);
-
-      return () => {
-        if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
-      };
     }
 
     if (loadingTimeoutRef.current) {
@@ -618,7 +589,7 @@ const App: React.FC = () => {
         minLoadingTimeRef.current = null;
       }
     };
-  }, [isPending, showLoadingOverlay, isPageDataNotReady]);
+  }, [showLoadingOverlay, isPageDataNotReady]);
 
   // Redundant SW check removed as it is now handled in PWAContext/Header
 
@@ -830,7 +801,7 @@ const App: React.FC = () => {
         >
           <DemoExploreBanner />
           <TrialUpgradeBanner />
-          <Header title={getPageTitle(currentPage)} isNavigating={isPending || isPageDataNotReady} />
+          <Header title={getPageTitle(currentPage)} isNavigating={isPageDataNotReady} />
 
           <StabilityBanner />
 

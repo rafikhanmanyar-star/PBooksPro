@@ -9,6 +9,7 @@ import {
   ProcurementSettings,
   QuotationStatus,
   QuotationType,
+  AppAction,
 } from '../../types';
 import Input from '../ui/Input';
 import Button from '../ui/Button';
@@ -21,6 +22,8 @@ import { ICONS, CURRENCY } from '../../constants';
 import { documentService } from '../../services/documentService';
 import { fromPickerDateToYyyyMmDd, todayLocalYyyyMmDd } from '../../utils/dateUtils';
 import { useEntityFormModal, EntityFormModal } from '../../hooks/useEntityFormModal';
+import { isAccountingBackedByRemoteApi } from '../../config/apiUrl';
+import { formatApiErrorMessage } from '../../utils/formatApiErrorMessage';
 import QuotationItemGrid from './QuotationItemGrid';
 
 interface QuotationFormProps {
@@ -277,202 +280,192 @@ const QuotationForm: React.FC<QuotationFormProps> = ({
         version: quotationToEdit?.version,
       };
 
-      if (quotationToEdit) {
-        dispatch({ type: 'UPDATE_QUOTATION', payload: quotation });
-        showToast('Quotation updated successfully!', 'success');
+      let savedQuotation = quotation;
+      if (isAccountingBackedByRemoteApi()) {
+        const { getAppStateApiService } = await import('../../services/api/appStateApi');
+        savedQuotation = await getAppStateApiService().saveQuotation(quotation);
+        dispatch({
+          type: quotationToEdit ? 'UPDATE_QUOTATION' : 'ADD_QUOTATION',
+          payload: { ...quotation, ...savedQuotation },
+          _isRemote: true,
+        } as AppAction);
       } else {
-        dispatch({ type: 'ADD_QUOTATION', payload: quotation });
-        showToast('Quotation added successfully!', 'success');
+        dispatch({
+          type: quotationToEdit ? 'UPDATE_QUOTATION' : 'ADD_QUOTATION',
+          payload: quotation,
+        });
       }
+
+      showToast(
+        quotationToEdit ? 'Quotation updated successfully!' : 'Quotation added successfully!',
+        'success'
+      );
       onClose();
+    } catch (error) {
+      showAlert(formatApiErrorMessage(error) || 'Failed to save quotation. Please try again.');
+      console.error('Quotation save error:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const fieldGrid = 'grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-x-3 gap-y-2';
+
   return (
-    <div className="space-y-6 max-h-[80vh] overflow-y-auto pr-1">
-      <section>
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Vendor Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {allowVendorSelection ? (
-            <ComboBox
-              label="Vendor"
-              items={vendors ?? []}
-              selectedId={selectedVendorId}
-              onSelect={handleVendorSelect}
-              placeholder="Select vendor"
-              entityType="vendor"
+    <div className="flex flex-col gap-2 p-1 sm:p-2 text-sm">
+      <div className={fieldGrid}>
+        {allowVendorSelection ? (
+          <ComboBox
+            label="Vendor"
+            items={vendors ?? []}
+            selectedId={selectedVendorId}
+            onSelect={handleVendorSelect}
+            placeholder="Select vendor"
+            entityType="vendor"
+          />
+        ) : (
+          <Input label="Vendor" value={name} onChange={(e) => setName(e.target.value)} required />
+        )}
+        <Input label="Contact Person" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
+        <Input label="Phone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
+        <Input label="Email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+        <Input
+          label="Quotation No."
+          value={quotationNumber}
+          onChange={(e) => setQuotationNumber(e.target.value)}
+          placeholder="Auto if empty"
+        />
+        <DatePicker label="Quotation Date" value={date} onChange={(d) => setDate(fromPickerDateToYyyyMmDd(d))} required />
+        <DatePicker
+          label="Valid Until"
+          value={expiryDate}
+          onChange={(d) => setExpiryDate(fromPickerDateToYyyyMmDd(d))}
+        />
+        <Input label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)} />
+        <ComboBox
+          label="Project"
+          items={projects}
+          selectedId={projectId}
+          onSelect={(p) => {
+            setProjectId(p?.id || '');
+            setBuildingId('');
+          }}
+          placeholder="Select project"
+          entityType="project"
+        />
+        <ComboBox
+          label="Building"
+          items={projectBuildings}
+          selectedId={buildingId}
+          onSelect={(b) => setBuildingId(b?.id || '')}
+          placeholder="Select building"
+          entityType="building"
+        />
+        <Select label="Contract Package" value={packageName} onChange={(e) => setPackageName(e.target.value)}>
+          <option value="">Select package</option>
+          {PACKAGE_OPTIONS.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </Select>
+        <Select
+          label="Quotation Type"
+          value={quotationType}
+          onChange={(e) => setQuotationType(e.target.value as QuotationType | '')}
+        >
+          <option value="">Select type</option>
+          {QUOTATION_TYPES.map((t) => (
+            <option key={t} value={t}>{t}</option>
+          ))}
+        </Select>
+        <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as QuotationStatus)}>
+          {QUOTATION_STATUSES.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </Select>
+        <Select
+          label="Validation Scope"
+          value={validationScope}
+          onChange={(e) => setValidationScope(e.target.value as 'CATEGORY' | 'ITEM')}
+        >
+          <option value="CATEGORY">Category — all items</option>
+          <option value="ITEM">Item — category + unit</option>
+        </Select>
+        <div className="flex items-end pb-1">
+          <label className="flex items-center gap-2 text-xs text-slate-700 cursor-pointer whitespace-nowrap">
+            <input
+              type="checkbox"
+              checked={enablePriceValidation}
+              onChange={(e) => setEnablePriceValidation(e.target.checked)}
             />
-          ) : (
-            <Input label="Vendor" value={name} onChange={(e) => setName(e.target.value)} required />
-          )}
-          <Input label="Contact Person" value={contactPerson} onChange={(e) => setContactPerson(e.target.value)} />
-          <Input label="Phone" value={contactPhone} onChange={(e) => setContactPhone(e.target.value)} />
-          <Input label="Email" type="email" value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} />
+            Price validation
+          </label>
         </div>
-      </section>
+        <Input label="Delivery" value={deliveryPeriod} onChange={(e) => setDeliveryPeriod(e.target.value)} placeholder="e.g. 15 days" />
+        <Input label="Warranty" value={warrantyPeriod} onChange={(e) => setWarrantyPeriod(e.target.value)} placeholder="e.g. 12 months" />
+        <Input label="Retention %" type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(e.target.value)} min="0" step="0.01" />
+        <Input label="Advance %" type="number" value={advancePercent} onChange={(e) => setAdvancePercent(e.target.value)} min="0" step="0.01" />
+      </div>
 
-      <section>
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Quotation Information</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Input
-            label="Quotation No."
-            value={quotationNumber}
-            onChange={(e) => setQuotationNumber(e.target.value)}
-            placeholder="Auto-generated if empty"
-          />
-          <DatePicker label="Quotation Date" value={date} onChange={(d) => setDate(fromPickerDateToYyyyMmDd(d))} required />
-          <DatePicker
-            label="Valid Until"
-            value={expiryDate}
-            onChange={(d) => setExpiryDate(fromPickerDateToYyyyMmDd(d))}
-          />
-          <Input label="Currency" value={currency} onChange={(e) => setCurrency(e.target.value)} />
-        </div>
-      </section>
+      <Textarea label="Payment Terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} rows={1} />
 
-      <section>
-        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-500 mb-3">Scope</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <ComboBox
-            label="Project"
-            items={projects}
-            selectedId={projectId}
-            onSelect={(p) => {
-              setProjectId(p?.id || '');
-              setBuildingId('');
-            }}
-            placeholder="Select project"
-            entityType="project"
-          />
-          <ComboBox
-            label="Building"
-            items={projectBuildings}
-            selectedId={buildingId}
-            onSelect={(b) => setBuildingId(b?.id || '')}
-            placeholder="Select building"
-            entityType="building"
-          />
-          <Select label="Contract Package" value={packageName} onChange={(e) => setPackageName(e.target.value)}>
-            <option value="">Select package</option>
-            {PACKAGE_OPTIONS.map((p) => (
-              <option key={p} value={p}>{p}</option>
-            ))}
-          </Select>
-        </div>
-      </section>
-
-      <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Select
-            label="Quotation Type"
-            value={quotationType}
-            onChange={(e) => setQuotationType(e.target.value as QuotationType | '')}
-          >
-            <option value="">Select type</option>
-            {QUOTATION_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </Select>
-          <Select label="Status" value={status} onChange={(e) => setStatus(e.target.value as QuotationStatus)}>
-            {QUOTATION_STATUSES.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </Select>
-          <Select
-            label="Validation Scope"
-            value={validationScope}
-            onChange={(e) => setValidationScope(e.target.value as 'CATEGORY' | 'ITEM')}
-          >
-            <option value="CATEGORY">Category — all items in category</option>
-            <option value="ITEM">Item — category + unit</option>
-          </Select>
-          <div className="flex items-end pb-2">
-            <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={enablePriceValidation}
-                onChange={(e) => setEnablePriceValidation(e.target.checked)}
-              />
-              Enable Price Validation
-            </label>
-          </div>
-        </div>
-      </section>
-
-      <section>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Input label="Delivery Period" value={deliveryPeriod} onChange={(e) => setDeliveryPeriod(e.target.value)} placeholder="e.g. 15 days" />
-          <Input label="Warranty Period" value={warrantyPeriod} onChange={(e) => setWarrantyPeriod(e.target.value)} placeholder="e.g. 12 months" />
-          <Input label="Retention %" type="number" value={retentionPercent} onChange={(e) => setRetentionPercent(e.target.value)} min="0" step="0.01" />
-          <Input label="Advance %" type="number" value={advancePercent} onChange={(e) => setAdvancePercent(e.target.value)} min="0" step="0.01" />
-        </div>
-        <div className="mt-4">
-          <Textarea label="Payment Terms" value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} rows={2} />
-        </div>
-      </section>
-
-      <section className="border-t border-slate-200 pt-4">
-        <h3 className="text-lg font-semibold text-slate-800 mb-4">Items</h3>
+      <div className="border-t border-slate-200 pt-2">
         <QuotationItemGrid
           items={items}
-          vendorId={vendorId}
+          vendorId={effectiveVendorId}
           expenseCategories={expenseCategories}
           onChange={setItems}
+          compact
           onAddNewCategory={(name, onCreated) => {
             entityFormModal.openForm('category', name, undefined, TransactionType.EXPENSE, onCreated);
           }}
         />
-        {items.length > 0 && (
-          <div className="mt-4 p-4 bg-indigo-50 rounded-lg border border-indigo-200">
-            <div className="flex justify-between items-center">
-              <span className="text-lg font-semibold text-indigo-900">Total Amount:</span>
-              <span className="text-2xl font-bold text-indigo-900">
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2 items-end border-t border-slate-200 pt-2">
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-end">
+          <div className="flex-1 min-w-0">
+            <Textarea label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={1} />
+          </div>
+          <div className="flex items-center gap-2 shrink-0 pb-1">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+            />
+            <Button type="button" variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
+              <div className="w-4 h-4 mr-1">{ICONS.upload}</div>
+              {selectedFile ? 'Change file' : 'Attach doc'}
+            </Button>
+            {selectedFile && <span className="text-xs text-slate-600 truncate max-w-[120px]">{selectedFile.name}</span>}
+            {quotationToEdit?.documentId && !selectedFile && (
+              <span className="text-xs text-emerald-600">Doc attached</span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3">
+          {items.length > 0 && (
+            <div className="px-3 py-1.5 bg-indigo-50 rounded-md border border-indigo-200">
+              <span className="text-xs text-indigo-700 mr-2">Total:</span>
+              <span className="text-base font-bold text-indigo-900">
                 {totalAmount.toLocaleString('en-US', { style: 'currency', currency: CURRENCY })}
               </span>
             </div>
-          </div>
-        )}
-      </section>
-
-      <section>
-        <Textarea label="Remarks" value={remarks} onChange={(e) => setRemarks(e.target.value)} rows={2} />
-      </section>
-
-      <section className="border-t border-slate-200 pt-4">
-        <label className="block text-sm font-medium text-slate-700 mb-2">Upload Quotation Document (Optional)</label>
-        <div className="flex items-center gap-3">
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            className="hidden"
-            accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
-          />
-          <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()}>
-            <div className="w-4 h-4 mr-2">{ICONS.upload}</div>
-            {selectedFile ? 'Change File' : 'Select File'}
-          </Button>
-          {selectedFile && <span className="text-sm text-slate-600">{selectedFile.name}</span>}
-          {quotationToEdit?.documentId && !selectedFile && (
-            <span className="text-sm text-emerald-600">Document already uploaded</span>
           )}
+          <div className="flex gap-2">
+            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
+            <LoadingButton
+              type="button"
+              onClick={() => void handleSubmit()}
+              loading={isSubmitting}
+              loadingText="Saving..."
+              className="bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              {quotationToEdit ? 'Update Quotation' : 'Save Quotation'}
+            </LoadingButton>
+          </div>
         </div>
-        <p className="mt-1 text-xs text-slate-500">PDF, JPG, PNG, DOC, DOCX (Max 10MB)</p>
-      </section>
-
-      <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 sticky bottom-0 bg-app-card pb-1">
-        <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>Cancel</Button>
-        <LoadingButton
-          type="button"
-          onClick={() => void handleSubmit()}
-          loading={isSubmitting}
-          loadingText="Saving..."
-          className="bg-indigo-600 hover:bg-indigo-700 text-white"
-        >
-          {quotationToEdit ? 'Update Quotation' : 'Save Quotation'}
-        </LoadingButton>
       </div>
 
       <EntityFormModal

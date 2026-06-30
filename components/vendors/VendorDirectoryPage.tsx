@@ -990,7 +990,9 @@ const VendorDirectoryPage: React.FC = () => {
                 isOpen={isQuotationFormModalOpen}
                 onClose={closeQuotationForm}
                 title={editingQuotation ? 'Edit Quotation' : 'Add New Quotation'}
-                size="xl"
+                size="full"
+                disableScroll
+                className="!max-h-[96vh]"
             >
                 <QuotationForm
                     quotationToEdit={editingQuotation || undefined}

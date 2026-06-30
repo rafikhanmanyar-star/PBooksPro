@@ -172,6 +172,16 @@ function normalizePMCycleAllocationFromApi(raw: Record<string, unknown>): PMCycl
 }
 
 function normalizeInstallmentPlanFromApiRow(p: any): any {
+  const syncVersion =
+    typeof p.version === 'number' ? p.version : p.version != null ? parseInt(String(p.version), 10) : undefined;
+  const planRevisionRaw = p.planRevision ?? p.plan_revision;
+  const planRevision =
+    typeof planRevisionRaw === 'number'
+      ? planRevisionRaw
+      : planRevisionRaw != null
+        ? parseInt(String(planRevisionRaw), 10)
+        : undefined;
+
   return {
     id: p.id,
     projectId: p.project_id || p.projectId || '',
@@ -225,8 +235,8 @@ function normalizeInstallmentPlanFromApiRow(p: any): any {
     totalInstallments: p.total_installments || p.totalInstallments || 0,
     description: p.description || undefined,
     introText: p.intro_text || p.introText || undefined,
-    version:
-      typeof p.version === 'number' ? p.version : p.version != null ? parseInt(String(p.version), 10) : 1,
+    version: planRevision ?? 1,
+    syncVersion,
     rootId: p.root_id || p.rootId || undefined,
     status: p.status || 'Draft',
     approvalRequestedById: p.approval_requested_by || p.approvalRequestedById || undefined,
@@ -414,7 +424,7 @@ import {
 } from './repositories/projectReceivedAssetsApi';
 import { ContractsApiRepository, normalizeContractFromApi } from './repositories/contractsApi';
 import { SalesReturnsApiRepository, normalizeSalesReturnFromApi } from './repositories/salesReturnsApi';
-import { QuotationsApiRepository } from './repositories/quotationsApi';
+import { QuotationsApiRepository, normalizeQuotationFromApi } from './repositories/quotationsApi';
 import { DocumentsApiRepository } from './repositories/documentsApi';
 import { RecurringInvoiceTemplatesApiRepository } from './repositories/recurringInvoiceTemplatesApi';
 import { AppSettingsApiRepository } from './repositories/appSettingsApi';
@@ -690,6 +700,10 @@ export class AppStateApiService {
     }
     if (merged.planAmenities && Array.isArray(merged.planAmenities)) {
       merged.planAmenities = merged.planAmenities.map((a: any) => normalizePlanAmenityFromApiRow(a));
+    }
+
+    if (merged.quotations && Array.isArray(merged.quotations)) {
+      merged.quotations = merged.quotations.map((q: Record<string, unknown>) => normalizeQuotationFromApi(q));
     }
 
     if (merged.transactions && Array.isArray(merged.transactions)) {
@@ -1543,7 +1557,9 @@ export class AppStateApiService {
       projectReceivedAssets: normalizedProjectReceivedAssets,
       contracts: normalizedContracts,
       salesReturns: normalizedSalesReturns,
-      quotations: quotations || [],
+      quotations: (Array.isArray(quotations) ? quotations : []).map((q: Record<string, unknown>) =>
+        normalizeQuotationFromApi(q)
+      ),
       documents: (documents || []).map((d: any) => ({
         id: d.id,
         name: d.name,
@@ -2117,7 +2133,9 @@ export class AppStateApiService {
     // Always use POST endpoint - it handles upserts automatically
     const planWithId = {
       ...plan,
-      id: plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+      id: plan.id || `plan_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      planRevision: plan.version,
+      version: plan.syncVersion,
     };
     logger.logCategory('sync', `💾 Syncing installment plan (POST upsert): ${planWithId.id}`);
     const saved = await this.installmentPlansRepo.create(planWithId);

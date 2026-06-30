@@ -283,14 +283,24 @@ export function mountVersionedApi(app: Express, prefix: string): void {
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'procurement.quotations.create',
+      'procurement.quotations.edit',
+      'procurement.quotations.approve',
+      'procurement.price_validation.override'
+    ),
     quotationsRouter
   );
   app.use(
     prefix,
     authMiddleware,
     requireActiveSubscription(),
-    requireFinancialWriteOnMutations,
+    requireWriteOnMutations(
+      'procurement.quotations.create',
+      'procurement.quotations.edit',
+      'procurement.quotations.approve',
+      'procurement.price_validation.override'
+    ),
     quotationValidationRouter
   );
   app.use(

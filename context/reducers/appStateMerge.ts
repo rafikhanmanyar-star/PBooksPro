@@ -134,15 +134,38 @@ export function mergeProjectAgreementsWithServerBaseline(
     return out;
 }
 
+/** Session-only UI fields — never overwritten by server/API merges (see persistableStateFingerprint). */
+export const SESSION_UI_STATE_KEYS = [
+    'currentPage',
+    'editingEntity',
+    'initialTransactionType',
+    'initialTransactionFilter',
+    'initialTabs',
+    'initialImportType',
+] as const satisfies readonly (keyof AppState)[];
+
+function pickSessionUiState(base: AppState): Pick<AppState, (typeof SESSION_UI_STATE_KEYS)[number]> {
+    return {
+        currentPage: base.currentPage,
+        editingEntity: base.editingEntity,
+        initialTransactionType: base.initialTransactionType,
+        initialTransactionFilter: base.initialTransactionFilter,
+        initialTabs: base.initialTabs,
+        initialImportType: base.initialImportType,
+    };
+}
+
 /** Merge a server partial snapshot into a client baseline (preserves optimistic rows). */
 export function mergePartialStateIntoBaseline(
     base: AppState,
     partial: Partial<AppState>,
     tenantSettings: Partial<AppState> = {}
 ): AppState {
+    const sessionUi = pickSessionUiState(base);
     return {
         ...base,
         ...partial,
+        ...sessionUi,
         transactions: mergeTransactionsWithServerBaseline(base.transactions || [], partial.transactions || []),
         // Deferred entities: only replace when the partial actually contains the entity.
         // When loadStateBulkChunked runs (bootstrap without deferred entities), these keys

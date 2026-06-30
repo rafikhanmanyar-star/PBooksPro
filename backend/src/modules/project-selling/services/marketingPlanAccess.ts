@@ -8,6 +8,7 @@ export { roleCanApproveMarketingPlans, roleCanViewAllMarketingPlans };
 
 export type InstallmentPlanAccessRow = {
   user_id: string | null;
+  approval_requested_by: string | null;
   status: string;
   approval_requested_to: string | null;
   approval_reviewed_by: string | null;
@@ -26,7 +27,7 @@ export function isMarketingPlanApprovalDecisionStatus(status: string): boolean {
   return norm === 'approved' || norm === 'rejected';
 }
 
-/** Sales users see only plans they created; admins and project managers see all. */
+/** Sales users see plans they created or submitted; admins and project managers see all. */
 export function canUserAccessInstallmentPlanRow(
   row: InstallmentPlanAccessRow,
   userId: string | null | undefined,
@@ -34,7 +35,7 @@ export function canUserAccessInstallmentPlanRow(
 ): boolean {
   if (roleCanViewAllMarketingPlans(role)) return true;
   if (!userId) return false;
-  return row.user_id === userId;
+  return row.user_id === userId || row.approval_requested_by === userId;
 }
 
 export function filterInstallmentPlanRowsForUser<T extends InstallmentPlanAccessRow>(
@@ -44,7 +45,7 @@ export function filterInstallmentPlanRowsForUser<T extends InstallmentPlanAccess
 ): T[] {
   if (roleCanViewAllMarketingPlans(role)) return rows;
   if (!userId) return [];
-  return rows.filter((row) => row.user_id === userId);
+  return rows.filter((row) => row.user_id === userId || row.approval_requested_by === userId);
 }
 
 export async function assertUserIsMarketingPlanApprover(

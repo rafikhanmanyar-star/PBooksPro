@@ -46,7 +46,7 @@ dataManagementRouter.delete(
         details: {
           recordsDeleted: result.recordsDeleted,
           tablesCleared: result.tablesCleared,
-          accountsReset: 0,
+          accountsReset: result.accountsReset ?? 0,
         },
       });
     } catch (e) {

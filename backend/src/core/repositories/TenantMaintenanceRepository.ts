@@ -77,6 +77,17 @@ export class TenantWipeRepository {
     return r.rowCount ?? 0;
   }
 
+  /** Zero stored balance and opening_balance for all tenant accounts (preserves chart rows). */
+  async resetTenantAccountBalances(client: pg.PoolClient, tenantId: string): Promise<number> {
+    const r = await client.query(
+      `UPDATE accounts
+       SET balance = 0, opening_balance = 0, version = version + 1, updated_at = NOW()
+       WHERE tenant_id = $1 AND deleted_at IS NULL`,
+      [tenantId]
+    );
+    return r.rowCount ?? 0;
+  }
+
   async deleteNonPermanentCategories(client: pg.PoolClient, tenantId: string): Promise<number> {
     const r = await client.query(
       `DELETE FROM categories WHERE tenant_id = $1 AND is_permanent = FALSE`,

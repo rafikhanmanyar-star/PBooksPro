@@ -33,6 +33,7 @@ import {
   syncPairedExpenseToRentFromSecurityIncome,
   syncRentFromSecurityIncomeToPairedExpense,
 } from '../../utils/rentalSecurityDepositSettlement';
+import { SESSION_UI_STATE_KEYS } from './appStateMerge';
 
 export function appReducer(state: AppState, action: AppAction): AppState {
     // Real-time sync is now handled via Socket.IO in the backend with tenant isolation
@@ -42,10 +43,14 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     switch (action.type) {
         case 'SET_STATE': {
             const payload = action.payload as Partial<AppState>;
+            const isRemote = !!(action as { _isRemote?: boolean })._isRemote;
+            const sessionUiKeySet = new Set<string>(SESSION_UI_STATE_KEYS);
             let changed = false;
             const next = { ...state };
             for (const key of Object.keys(payload)) {
                 const k = key as keyof AppState;
+                // Remote sync must not revert in-flight sidebar navigation (currentPage, tabs, etc.).
+                if (isRemote && sessionUiKeySet.has(key)) continue;
                 if (payload[k] !== state[k]) {
                     (next as any)[k] = payload[k];
                     changed = true;
@@ -1015,10 +1020,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
                 projectAgreements: [],
                 salesReturns: [],
                 // Preserve settings: recurringInvoiceTemplates, accounts (balances + bank opening reset), contacts, categories, projects, buildings, properties, units
-                accounts: state.accounts.map(acc => {
-                    const bankLike = acc.type === AccountType.BANK || acc.type === AccountType.CASH;
-                    return { ...acc, balance: 0, ...(bankLike ? { openingBalance: 0 } : {}) };
-                }),
+                accounts: state.accounts.map(acc => ({
+                    ...acc,
+                    balance: 0,
+                    openingBalance: 0,
+                })),
                 transactionLog: [logEntry, ...(state.transactionLog || [])]
             };
         }

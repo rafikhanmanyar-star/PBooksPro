@@ -79,6 +79,7 @@ export type TenantWipeResult = {
   tenantId: string;
   tablesCleared: number;
   recordsDeleted: number;
+  accountsReset?: number;
 };
 
 function assertTenantMayBeWiped(tenantId: string): void {
@@ -95,8 +96,17 @@ function assertTenantMayBeWiped(tenantId: string): void {
 const journalMaintenance = new TenantJournalMaintenanceRepository();
 const wipeRepo = new TenantWipeRepository();
 
+type PurgeTenantJournalOptions = {
+  /** When true, abort the wipe if journal rows cannot be removed (needed before account reset). */
+  strict?: boolean;
+};
+
 /** Bypass journal immutability triggers (managed Postgres / Render). */
-export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string): Promise<void> {
+export async function purgeTenantJournal(
+  client: pg.PoolClient,
+  tenantId: string,
+  opts?: PurgeTenantJournalOptions
+): Promise<void> {
   const purgeWithReplicaRole = () =>
     withSavepoint(client, 'tenant_journal_purge_replica', async (c) => {
       await c.query(`SET session_replication_role = replica`);
@@ -123,6 +133,12 @@ export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string
     try {
       await purgeWithTriggersDisabled();
     } catch (triggerErr) {
+      const message = 'Failed to purge journal entries; account balances cannot be reset safely.';
+      if (opts?.strict) {
+        throw new Error(message, {
+          cause: triggerErr instanceof Error ? triggerErr : replicaErr,
+        });
+      }
       logger.warn('Tenant journal purge skipped (stale GL rows may remain)', {
         tenantId,
         replicaErr: replicaErr instanceof Error ? replicaErr.message : String(replicaErr),
@@ -132,15 +148,27 @@ export async function purgeTenantJournal(client: pg.PoolClient, tenantId: string
   }
 }
 
+type WipeTenantTablesOptions = {
+  /** Clear transactions: preserve chart rows and reset balances. Factory reset: delete tenant accounts. */
+  preserveAccounts?: boolean;
+  /** Clear transactions: keep custom categories. Factory reset: remove non-permanent categories. */
+  preserveCategories?: boolean;
+  /** Require journal purge to succeed before continuing (clear transactions). */
+  strictJournalPurge?: boolean;
+};
+
 async function wipeTenantTables(
   client: pg.PoolClient,
   tenantId: string,
-  tables: readonly string[]
+  tables: readonly string[],
+  opts: WipeTenantTablesOptions = {}
 ): Promise<TenantWipeResult> {
+  const { preserveAccounts = false, preserveCategories = false, strictJournalPurge = false } = opts;
   let tablesCleared = 0;
   let recordsDeleted = 0;
+  let accountsReset = 0;
 
-  await purgeTenantJournal(client, tenantId);
+  await purgeTenantJournal(client, tenantId, { strict: strictJournalPurge });
   tablesCleared += 1;
   recordsDeleted += 3;
 
@@ -156,27 +184,40 @@ async function wipeTenantTables(
     }
   }
 
-  try {
-    const n = await withSavepoint(client, 'wipe_tenant_accounts', async (c) =>
-      wipeRepo.deleteTenantAccounts(c, tenantId)
-    );
-    recordsDeleted += n;
-    tablesCleared += 1;
-  } catch {
-    /* optional */
+  if (preserveAccounts) {
+    try {
+      accountsReset = await withSavepoint(client, 'reset_tenant_account_balances', async (c) =>
+        wipeRepo.resetTenantAccountBalances(c, tenantId)
+      );
+      if (accountsReset > 0) tablesCleared += 1;
+    } catch {
+      /* optional */
+    }
+  } else {
+    try {
+      const n = await withSavepoint(client, 'wipe_tenant_accounts', async (c) =>
+        wipeRepo.deleteTenantAccounts(c, tenantId)
+      );
+      recordsDeleted += n;
+      tablesCleared += 1;
+    } catch {
+      /* optional */
+    }
   }
 
-  try {
-    const n = await withSavepoint(client, 'wipe_tenant_categories', async (c) =>
-      wipeRepo.deleteNonPermanentCategories(c, tenantId)
-    );
-    recordsDeleted += n;
-    tablesCleared += 1;
-  } catch {
-    /* optional */
+  if (!preserveCategories) {
+    try {
+      const n = await withSavepoint(client, 'wipe_tenant_categories', async (c) =>
+        wipeRepo.deleteNonPermanentCategories(c, tenantId)
+      );
+      recordsDeleted += n;
+      tablesCleared += 1;
+    } catch {
+      /* optional */
+    }
   }
 
-  return { tenantId, tablesCleared, recordsDeleted };
+  return { tenantId, tablesCleared, recordsDeleted, accountsReset };
 }
 
 /** Wipe transactional data; preserve master entities (projects, contacts, etc.). */
@@ -185,7 +226,11 @@ export async function clearTenantTransactions(
   tenantId: string
 ): Promise<TenantWipeResult> {
   assertTenantMayBeWiped(tenantId);
-  return wipeTenantTables(client, tenantId, CLEAR_TRANSACTION_TABLES);
+  return wipeTenantTables(client, tenantId, CLEAR_TRANSACTION_TABLES, {
+    preserveAccounts: true,
+    preserveCategories: true,
+    strictJournalPurge: true,
+  });
 }
 
 async function wipeTenantOrganizationDataUnchecked(

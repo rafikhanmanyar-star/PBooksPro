@@ -196,8 +196,18 @@ function pickBody(body: Record<string, unknown>) {
     staff_id: (body.staffId ?? body.staff_id) as string | null | undefined,
     expense_bearer_type: (body.expenseBearerType ?? body.expense_bearer_type) as string | null | undefined,
     expense_category_items: expenseItemsToDb(body),
-    document_path: (body.documentPath ?? body.document_path) as string | null | undefined,
-    document_id: (body.documentId ?? body.document_id) as string | null | undefined,
+    document_path:
+      body.documentPath === undefined && body.document_path === undefined
+        ? undefined
+        : body.documentPath === null || body.document_path === null
+          ? null
+          : String(body.documentPath ?? body.document_path),
+    document_id:
+      body.documentId === undefined && body.document_id === undefined
+        ? undefined
+        : body.documentId === null || body.document_id === null
+          ? null
+          : String(body.documentId ?? body.document_id),
     purchase_order_id: (body.purchaseOrderId ?? body.purchase_order_id) as string | null | undefined,
     goods_receipt_id: (body.goodsReceiptId ?? body.goods_receipt_id) as string | null | undefined,
     user_id: (body.userId ?? body.user_id) as string | null | undefined,

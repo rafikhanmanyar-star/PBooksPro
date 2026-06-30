@@ -130,6 +130,18 @@ describe('mergePartialStateIntoBaseline', () => {
     assert.equal(merged.projectAgreements[0].id, 'agr-keep');
   });
 
+  it('preserves session UI navigation when partial includes stale currentPage', () => {
+    const base = { ...initialState, currentPage: 'transactions' as const, initialTabs: ['Reports'] };
+    const merged = mergePartialStateIntoBaseline(base, {
+      currentPage: 'dashboard',
+      initialTabs: [],
+      transactions: [tx('srv-1', { version: 1 })],
+    });
+    assert.equal(merged.currentPage, 'transactions');
+    assert.deepEqual(merged.initialTabs, ['Reports']);
+    assert.ok(merged.transactions.some((t) => t.id === 'srv-1'));
+  });
+
   it('invoice merge unchanged — drops versioned invoice missing from server', () => {
     const inv: Invoice = {
       id: 'inv-del',

@@ -44,6 +44,7 @@ export type InstallmentPlanRow = {
   user_id: string | null;
   intro_text: string | null;
   root_id: string | null;
+  plan_revision: number;
   approval_requested_by: string | null;
   approval_requested_to: string | null;
   approval_requested_at: Date | null;
@@ -141,6 +142,10 @@ function pickBody(body: Record<string, unknown>) {
     user_id: optStr(body.userId ?? body.user_id),
     intro_text: body.introText !== undefined || body.intro_text !== undefined ? optStr(body.introText ?? body.intro_text) : null,
     root_id: optStr(body.rootId ?? body.root_id),
+    plan_revision:
+      body.planRevision != null || body.plan_revision != null
+        ? Math.round(num(body.planRevision ?? body.plan_revision))
+        : undefined,
     approval_requested_by: optStr(body.approvalRequestedById ?? body.approval_requested_by),
     approval_requested_to: optStr(body.approvalRequestedToId ?? body.approval_requested_to),
     approval_requested_at: optIso(body.approvalRequestedAt ?? body.approval_requested_at),
@@ -153,6 +158,7 @@ function pickBody(body: Record<string, unknown>) {
     misc_discount_category_id: optStr(body.miscDiscountCategoryId ?? body.misc_discount_category_id),
     selected_amenities: jsonbSelectedAmenities(body),
     amenities_total: num(body.amenitiesTotal ?? body.amenities_total),
+    /** LWW optimistic concurrency — not marketing plan revision (plan_revision). */
     version: typeof body.version === 'number' ? body.version : undefined,
   };
 }
@@ -201,6 +207,7 @@ export function rowToInstallmentPlanApi(row: InstallmentPlanRow): Record<string,
   if (row.user_id) base.userId = row.user_id;
   if (row.intro_text) base.introText = row.intro_text;
   if (row.root_id) base.rootId = row.root_id;
+  base.planRevision = row.plan_revision ?? 1;
   if (row.approval_requested_by) base.approvalRequestedById = row.approval_requested_by;
   if (row.approval_requested_to) base.approvalRequestedToId = row.approval_requested_to;
   if (row.approval_requested_at) {
@@ -237,7 +244,7 @@ export async function listInstallmentPlans(
 ): Promise<InstallmentPlanRow[]> {
   const listFilters: InstallmentPlanListFilters = { ...(filters ?? {}) };
   if (access && !roleCanViewAllMarketingPlans(access.role ?? undefined) && access.userId) {
-    listFilters.createdByUserId = access.userId;
+    listFilters.visibleToUserId = access.userId;
   }
   return new InstallmentPlanRepository(tenantId).listActive(client, listFilters);
 }
@@ -320,8 +327,8 @@ export async function upsertInstallmentPlan(
 
   const salesScoped = authUserId && !roleCanViewAllMarketingPlans(authRole ?? undefined);
   const userId = salesScoped
-    ? String(authUserId)
-    : p.user_id ??
+    ? existing?.user_id ?? String(authUserId)
+    : existing?.user_id ?? p.user_id ??
       (authUserId != null && String(authUserId).trim() ? String(authUserId).trim() : null);
 
   if (salesScoped && isPendingMarketingPlanStatus(p.status)) {
@@ -331,6 +338,8 @@ export async function upsertInstallmentPlan(
   if (salesScoped && isMarketingPlanApprovalDecisionStatus(p.status)) {
     p.approval_reviewed_by = authUserId ?? p.approval_reviewed_by;
   }
+
+  const planRevisionForWrite = p.plan_revision ?? (existing ? null : 1);
 
   const insertValues = [
     id,
@@ -355,6 +364,7 @@ export async function upsertInstallmentPlan(
     userId,
     p.intro_text,
     p.root_id,
+    planRevisionForWrite,
     p.approval_requested_by,
     p.approval_requested_to,
     p.approval_requested_at,

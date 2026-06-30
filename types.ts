@@ -344,6 +344,8 @@ export interface InstallmentPlan {
   description?: string;
   introText?: string; // Custom editable text after "Exclusively for You"
   version: number;
+  /** PostgreSQL optimistic concurrency (separate from marketing plan revision). */
+  syncVersion?: number;
   rootId?: string; // ID of the first version of this plan
   status: 'Draft' | 'Pending Approval' | 'Approved' | 'Rejected' | 'Locked' | 'Sale Recognized';
   approvalRequestedById?: string;

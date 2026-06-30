@@ -12,6 +12,27 @@ import { useNotification } from '../../context/NotificationContext';
 import { ContactsApiRepository } from '../../services/api/repositories/contactsApi';
 import SettingsTableActions, { SETTINGS_TABLE_ACTIONS_COL_CLASS } from './SettingsTableActions';
 
+/** Email is stored in description as `email:user@example.com` on its own line. */
+const CONTACT_EMAIL_LINE = /^email:([^\n]*)(?:\n|$)/;
+
+function parseContactDescription(description?: string): { email: string; notes: string } {
+    if (!description) return { email: '', notes: '' };
+    const match = description.match(CONTACT_EMAIL_LINE);
+    if (!match) return { email: '', notes: description };
+    const email = match[1] ?? '';
+    const notes = description.slice(match[0].length).trim();
+    return { email, notes };
+}
+
+function buildContactDescription(email: string, notes: string): string | undefined {
+    const trimmedEmail = email.trim();
+    const trimmedNotes = notes.trim();
+    if (trimmedEmail && trimmedNotes) return `email:${trimmedEmail}\n${trimmedNotes}`;
+    if (trimmedEmail) return `email:${trimmedEmail}`;
+    if (trimmedNotes) return trimmedNotes;
+    return undefined;
+}
+
 /** Normalize API contact (snake_case) to app Contact (camelCase) so it displays correctly. */
 function normalizeContactFromApi(api: any): Contact {
     return {
@@ -53,6 +74,15 @@ const ContactsManagement: React.FC = () => {
     const [gridSearchQuery, setGridSearchQuery] = useState('');
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
     const [editingContact, setEditingContact] = useState<Contact | null>(null);
+    const [editBaseline, setEditBaseline] = useState<{
+        name: string;
+        type: ContactType;
+        phone: string;
+        company: string;
+        address: string;
+        email: string;
+        notes: string;
+    } | null>(null);
     const [selectedContactTypeFilter, setSelectedContactTypeFilter] = useState<ContactType | null>(null);
 
     // Contact type options matching the reference
@@ -183,17 +213,8 @@ const ContactsManagement: React.FC = () => {
             contactNo: phone.trim() || undefined,
             companyName: company.trim() || undefined,
             address: address.trim() || undefined,
-            description: notes.trim() || undefined
+            description: buildContactDescription(email, notes),
         };
-
-        // Store email in description field (since Contact interface doesn't have email)
-        // Format: "email:user@example.com\n[other notes]"
-        if (email.trim()) {
-            const emailLine = `email:${email.trim()}`;
-            contactData.description = notes.trim()
-                ? `${emailLine}\n${notes.trim()}`
-                : emailLine;
-        }
 
         setIsSubmitting(true);
         try {
@@ -236,6 +257,7 @@ const ContactsManagement: React.FC = () => {
         setAddress('');
         setNotes('');
         setEditingContact(null);
+        setEditBaseline(null);
         setSelectedType(ContactType.OWNER);
         if (closeForm) {
             setIsFormOpen(false);
@@ -251,6 +273,7 @@ const ContactsManagement: React.FC = () => {
         setAddress('');
         setNotes('');
         setEditingContact(null);
+        setEditBaseline(null);
         // Set type based on filter or default to Owner
         if (selectedContactTypeFilter) {
             setSelectedType(selectedContactTypeFilter);
@@ -261,27 +284,30 @@ const ContactsManagement: React.FC = () => {
     };
 
     const handleEdit = (contact: Contact) => {
-        setEditingContact(contact);
-        setName(contact.name);
-        setSelectedType(contact.type);
-        setPhone(contact.contactNo || '');
-        setCompany(contact.companyName || '');
-        setAddress(contact.address || '');
+        const { email: contactEmail, notes: contactNotes } = parseContactDescription(contact.description);
+        const baseline = {
+            name: contact.name,
+            type: contact.type,
+            phone: contact.contactNo || '',
+            company: contact.companyName || '',
+            address: contact.address || '',
+            email: contactEmail,
+            notes: contactNotes,
+        };
 
-        // Extract email from description
-        const emailMatch = contact.description?.match(/^email:(.+?)(?:\n|$)/);
-        if (emailMatch) {
-            setEmail(emailMatch[1]);
-            setNotes((contact.description ?? '').replace(/^email:.+?\n?/, '').trim());
-        } else {
-            setEmail('');
-            setNotes(contact.description || '');
-        }
+        setEditingContact(contact);
+        setEditBaseline(baseline);
+        setName(baseline.name);
+        setSelectedType(baseline.type);
+        setPhone(baseline.phone);
+        setCompany(baseline.company);
+        setAddress(baseline.address);
+        setEmail(baseline.email);
+        setNotes(baseline.notes);
 
         if (!isFormOpen) {
             setIsFormOpen(true);
         }
-        // Scroll to form
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
@@ -315,10 +341,18 @@ const ContactsManagement: React.FC = () => {
         }
     };
 
-    const extractEmail = (contact: Contact): string => {
-        const emailMatch = contact.description?.match(/^email:(.+?)(?:\n|$)/);
-        return emailMatch ? emailMatch[1] : '';
-    };
+    const hasEditChanges = useMemo(() => {
+        if (!editingContact || !editBaseline) return false;
+        return (
+            name.trim() !== editBaseline.name.trim() ||
+            selectedType !== editBaseline.type ||
+            phone.trim() !== editBaseline.phone.trim() ||
+            company.trim() !== editBaseline.company.trim() ||
+            address.trim() !== editBaseline.address.trim() ||
+            email.trim() !== editBaseline.email.trim() ||
+            notes.trim() !== editBaseline.notes.trim()
+        );
+    }, [editingContact, editBaseline, name, selectedType, phone, company, address, email, notes]);
 
     const getTypeBadgeColor = (type: ContactType) => {
         const config = getTypeConfig(type);
@@ -513,6 +547,7 @@ const ContactsManagement: React.FC = () => {
                                 type="submit"
                                 loading={isSubmitting}
                                 loadingText="Saving..."
+                                disabled={!!editingContact && !hasEditChanges}
                                 className={`flex-1 text-sm py-2 ${activeTypeConfig.color === 'blue' ? 'bg-blue-600 hover:bg-blue-700' :
                                     activeTypeConfig.color === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' :
                                         activeTypeConfig.color === 'orange' ? 'bg-orange-600 hover:bg-orange-700' :
@@ -600,8 +635,7 @@ const ContactsManagement: React.FC = () => {
                                 gridContacts.map((contact) => {
                                     const typeConfig = getTypeConfig(contact.type);
                                     const badgeColors = getTypeBadgeColor(contact.type);
-                                    const contactEmail = extractEmail(contact);
-                                    const notesOnly = contact.description?.replace(/^email:.+?\n?/, '').trim() || '';
+                                    const { email: contactEmail, notes: notesOnly } = parseContactDescription(contact.description);
 
                                     return (
                                         <tr

@@ -4,7 +4,6 @@ import type { AuthedRequest } from '../../../middleware/authMiddleware.js';
 import { getPool, withTransaction } from '../../../db/pool.js';
 import {
   getInvoiceById,
-  InvoiceLinkedToAgreementError,
   listInvoices,
   rowToInvoiceApi,
   softDeleteInvoice,
@@ -172,12 +171,11 @@ invoicesRouter.delete('/invoices/:id', async (req: AuthedRequest, res) => {
       return;
     }
     emitEntityEvent(tenantId, 'deleted', 'invoice', { id, sourceUserId: req.userId });
+    if (result.agreement) {
+      emitEntityEvent(tenantId, 'updated', 'agreement', { data: result.agreement, sourceUserId: req.userId });
+    }
     sendSuccess(res, { id });
   } catch (e) {
-    if (e instanceof InvoiceLinkedToAgreementError) {
-      sendFailure(res, 409, e.code, e.message);
-      return;
-    }
     if (e instanceof LockGuardError) {
       sendFailure(res, 409, String(e.code ?? 'CONFLICT'), e.message);
       return;

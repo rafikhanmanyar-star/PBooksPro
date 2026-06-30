@@ -64,7 +64,11 @@ export async function waitForInvoiceApiSaveIdle(): Promise<void> {
     await invoiceApiSaveQueue;
 }
 
-export function _setAppState(state: AppState): void { _appState = state; }
+export function _setAppState(state: AppState): void {
+    if (_appState === state) return;
+    _appState = state;
+    _notifyStateListeners();
+}
 export function _setAppDispatch(dispatch: React.Dispatch<AppAction>): void { _appDispatch = dispatch; }
 export function _setInitialDataLoading(loading: boolean): void { _initialDataLoading = loading; }
 export function _setAppDataLoading(loading: boolean): void {

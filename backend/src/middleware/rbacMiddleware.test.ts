@@ -61,6 +61,21 @@ describe('rbacMiddleware', () => {
     assert.equal(res.statusCode, 403);
   });
 
+  it('requireWriteOnMutations allows procurement quotation POST without financial.write', () => {
+    const middleware = requireWriteOnMutations(
+      'procurement.quotations.create',
+      'procurement.quotations.edit',
+      'procurement.quotations.approve'
+    );
+    const req = mockReq('POST', 'Project Manager');
+    const res = mockRes();
+    let called = false;
+    middleware(req, res, () => {
+      called = true;
+    });
+    assert.equal(called, true);
+  });
+
   it('allows Sales User POST for project selling marketing plans', () => {
     const req = mockReq('POST', 'Sales User');
     const res = mockRes();

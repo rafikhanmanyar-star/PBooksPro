@@ -462,8 +462,8 @@ export async function softDeleteProjectAgreement(
 /**
  * Set an agreement's selling price to mirror its linked installment invoices.
  * Called from the invoices service after a linked invoice is created/updated so the agreement
- * value always equals the sum of its invoices. No-ops (returns null) when the agreement is missing,
- * the price is unchanged, or the new price is not greater than zero (selling price must stay > 0).
+ * value always equals the sum of its invoices. No-ops (returns null) when the agreement is missing
+ * or the price is unchanged. Allows zero when all linked invoices were deleted.
  * Returns the updated agreement API row so the route can emit a real-time `agreement` event.
  */
 export async function setAgreementSellingPrice(
@@ -474,7 +474,7 @@ export async function setAgreementSellingPrice(
   actorUserId?: string | null
 ): Promise<Record<string, unknown> | null> {
   if (!agreementId || !String(agreementId).trim()) return null;
-  if (!Number.isFinite(newPrice) || newPrice <= 0) return null;
+  if (!Number.isFinite(newPrice) || newPrice < 0) return null;
 
   const repo = new ProjectAgreementRepository(tenantId);
   const existing = await repo.getById(client, agreementId);

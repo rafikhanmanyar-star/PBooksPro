@@ -9,18 +9,6 @@ import { InvoiceRepository, type InvoiceWriteFields } from '../repositories/Invo
 import { setAgreementSellingPrice } from '../../project-selling/services/projectAgreementsService.js';
 
 /**
- * Thrown when a caller attempts to delete an invoice that was generated from / linked to a project
- * agreement. Such invoices may be edited (which adjusts the agreement value) but never deleted.
- */
-export class InvoiceLinkedToAgreementError extends Error {
-  readonly code = 'INVOICE_LINKED_TO_AGREEMENT';
-  constructor(message = 'Invoices linked to a project agreement cannot be deleted.') {
-    super(message);
-    this.name = 'InvoiceLinkedToAgreementError';
-  }
-}
-
-/**
  * Recalculate a linked project agreement's selling price to equal the sum of its active invoices.
  * Returns the updated agreement API row (for real-time emit) or null when nothing changed.
  */
@@ -380,16 +368,13 @@ export async function softDeleteInvoice(
   id: string,
   expectedVersion?: number,
   actorUserId?: string | null
-): Promise<{ ok: boolean; conflict: boolean }> {
+): Promise<{ ok: boolean; conflict: boolean; agreement?: Record<string, unknown> | null }> {
   const before = await getInvoiceById(client, tenantId, id);
   if (!before) return { ok: false, conflict: false };
 
-  if (before.agreement_id && String(before.agreement_id).trim()) {
-    throw new InvoiceLinkedToAgreementError(
-      `Invoice ${before.invoice_number} was created from a project agreement and cannot be deleted. ` +
-        'Edit the invoice amount instead — the agreement value updates automatically.'
-    );
-  }
+  const linkedAgreementId = before.agreement_id && String(before.agreement_id).trim()
+    ? before.agreement_id
+    : null;
 
   await enforceLockForSave(client, tenantId, 'invoice', id, actorUserId);
 
@@ -423,7 +408,10 @@ export async function softDeleteInvoice(
       version: after.version,
     });
   }
-  return { ok: true, conflict: false };
+  const agreement = linkedAgreementId
+    ? await recalcLinkedAgreementSellingPrice(client, tenantId, linkedAgreementId, actorUserId ?? null)
+    : null;
+  return { ok: true, conflict: false, agreement };
 }
 
 /** Includes soft-deleted rows (for incremental sync tombstones). */

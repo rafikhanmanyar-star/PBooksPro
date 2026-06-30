@@ -302,9 +302,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
       if (bill.amount !== undefined && bill.amount !== null) {
         setAmount(bill.amount.toString());
       }
-      setDocumentPath(bill.documentPath || '');
-      setDocumentId(bill.documentId || '');
-
       // Restore tenant information if this is a tenant-allocated bill
       // First, check if projectAgreementId is a rental agreement ID
       if (bill.projectAgreementId) {
@@ -558,6 +555,31 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
   const [documentFile, setDocumentFile] = useState<File | null>(null);
   const [documentPath, setDocumentPath] = useState((defaults as Bill)?.documentPath || '');
   const [documentId, setDocumentId] = useState((defaults as Bill)?.documentId || '');
+  /** True when user removed an existing attachment; prevents re-sync and ensures save clears document fields. */
+  const [documentCleared, setDocumentCleared] = useState(false);
+
+  useEffect(() => {
+    if (type !== 'bill') return;
+    if (itemToEdit) {
+      const bill = itemToEdit as Bill;
+      setDocumentPath(bill.documentPath || '');
+      setDocumentId(bill.documentId || '');
+      setDocumentFile(null);
+      setDocumentCleared(false);
+    } else {
+      setDocumentPath((initialData as Bill | undefined)?.documentPath || '');
+      setDocumentId((initialData as Bill | undefined)?.documentId || '');
+      setDocumentFile(null);
+      setDocumentCleared(false);
+    }
+  }, [itemToEdit?.id, type, (initialData as Bill | undefined)?.documentId, (initialData as Bill | undefined)?.documentPath]);
+
+  const clearBillDocumentAttachment = () => {
+    setDocumentPath('');
+    setDocumentId('');
+    setDocumentFile(null);
+    setDocumentCleared(true);
+  };
 
   const { amountAlreadyInvoiced, agreementBalance } = useMemo(() => {
     if (!agreementForInvoice) return { amountAlreadyInvoiced: 0, agreementBalance: 0 };
@@ -1184,14 +1206,6 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
   const handleDelete = async () => {
     if (!itemToEdit) return;
-    if (type === 'invoice' && (itemToEdit as Invoice).agreementId) {
-      await showAlert(
-        'This invoice was created from a project agreement and cannot be deleted. ' +
-        'You can edit the invoice amount instead — the agreement value will update automatically.',
-        { title: 'Cannot Delete Invoice' }
-      );
-      return;
-    }
     if (itemToEdit && recordLock.viewOnly) {
       await showAlert('This invoice is open in view-only mode.', { title: 'Cannot delete' });
       return;
@@ -1470,12 +1484,13 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
 
     /* Recurring template creation disabled */
 
-    const finalDocumentPath = documentPath;
+    let finalDocumentPath = documentCleared ? undefined : (documentPath || undefined);
     const billId = itemToEdit?.id || newBillRowId();
-    let finalDocumentId = documentId || undefined;
+    let finalDocumentId = documentCleared ? undefined : (documentId || undefined);
     if (type === 'bill' && documentFile) {
       try {
         finalDocumentId = await uploadEntityDocument(documentFile, 'bill', billId, dispatch, state.currentUser?.id);
+        finalDocumentPath = undefined;
       } catch (err) {
         await showAlert(err instanceof Error ? err.message : 'Failed to upload document.');
         return;
@@ -1537,8 +1552,8 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
           projectAgreementId: billAllocationType === 'tenant' ? (agreementId || undefined) : undefined,
           propertyId: (billAllocationType === 'owner' || billAllocationType === 'tenant') ? (propertyId || undefined) : undefined,
           expenseBearerType,
-          documentPath: type === 'bill' ? (finalDocumentPath || (itemToEdit as Bill).documentPath || undefined) : undefined,
-          documentId: type === 'bill' ? (finalDocumentId ?? (itemToEdit as Bill).documentId) : undefined,
+          documentPath: type === 'bill' ? finalDocumentPath : undefined,
+          documentId: type === 'bill' ? finalDocumentId : undefined,
           expenseCategoryItems: (type === 'bill' && expenseCategoryItems.length > 0) ? expenseCategoryItems : ((itemToEdit as Bill).expenseCategoryItems || undefined),
         };
         if (type === 'bill' && rootAllocationType === 'building') {
@@ -2263,12 +2278,12 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                         try { const result = await (window as any).electronAPI.openDocumentFile({ filePath: documentPath }); if (!result?.success) await showAlert(`Failed to open: ${result?.error || 'Unknown'}`); } catch (error) { await showAlert(error instanceof Error ? error.message : 'Error opening document'); }
                       } else { await showAlert('File system access not available'); }
                     }} className="text-[10px] font-medium text-primary hover:text-primary/80 transition-colors">Open</button>
-                    <button type="button" onClick={() => { setDocumentPath(''); setDocumentId(''); setDocumentFile(null); }} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
+                    <button type="button" onClick={clearBillDocumentAttachment} className="text-[10px] font-medium text-rose-500 hover:text-rose-700 transition-colors">Remove</button>
                   </div>
                 </div>
               ) : (
                 <label className="flex-1 cursor-pointer">
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); } }} className="hidden" disabled={isAgreementCancelled} />
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={(e) => { const file = e.target.files?.[0]; if (file) { setDocumentFile(file); setDocumentPath(''); setDocumentId(''); setDocumentCleared(false); } }} className="hidden" disabled={isAgreementCancelled} />
                   <div className={`h-full border-2 border-dashed border-app-border rounded-xl flex items-center justify-center gap-2 py-4 hover:border-primary hover:bg-primary/5 transition-all ${isAgreementCancelled ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     {documentFile ? (
                       <>
@@ -3089,11 +3104,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                     type="button"
                     variant="secondary"
                     size="sm"
-                    onClick={() => {
-                      setDocumentPath('');
-                      setDocumentId('');
-                      setDocumentFile(null);
-                    }}
+                    onClick={clearBillDocumentAttachment}
                   >
                     Remove
                   </Button>
@@ -3112,6 +3123,7 @@ const InvoiceBillForm: React.FC<InvoiceBillFormProps> = ({ onClose, type, itemTo
                       setDocumentFile(file);
                       setDocumentPath('');
                       setDocumentId('');
+                      setDocumentCleared(false);
                     }
                   }}
                   className="hidden"

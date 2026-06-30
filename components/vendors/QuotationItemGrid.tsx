@@ -9,10 +9,11 @@ import { useQuotationItemRates, computeVariancePercent, varianceSeverity } from 
 
 interface QuotationItemGridProps {
   items: QuotationItem[];
-  vendorId: string;
+  vendorId?: string;
   expenseCategories: Array<{ id: string; name: string }>;
   onChange: (items: QuotationItem[]) => void;
   onAddNewCategory: (name: string, onCreated: (id: string) => void) => void;
+  compact?: boolean;
 }
 
 const fmt = (n?: number) =>
@@ -27,10 +28,11 @@ const severityClass: Record<string, string> = {
 
 const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
   items,
-  vendorId,
+  vendorId = '',
   expenseCategories,
   onChange,
   onAddNewCategory,
+  compact = false,
 }) => {
   const { lookupRates } = useQuotationItemRates(vendorId);
 
@@ -91,9 +93,9 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
 
   if (!items.length) {
     return (
-      <div className="text-center py-8 text-slate-500">
-        <p>No items added yet.</p>
-        <Button type="button" variant="secondary" onClick={addItem} className="mt-3" size="sm">
+      <div className={`text-center ${compact ? 'py-3' : 'py-8'} text-slate-500`}>
+        <p className={compact ? 'text-xs' : undefined}>No items added yet.</p>
+        <Button type="button" variant="secondary" onClick={addItem} className="mt-2" size="sm">
           <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
           Add Item
         </Button>
@@ -101,8 +103,11 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
     );
   }
 
+  const cellPad = compact ? 'px-1 py-1' : 'px-2 py-2';
+  const headPad = compact ? 'px-1 py-1 text-xs' : 'px-2 py-2';
+
   return (
-    <div className="space-y-3">
+    <div className={compact ? 'space-y-1' : 'space-y-3'}>
       <div className="flex justify-end">
         <Button type="button" variant="secondary" onClick={addItem} size="sm">
           <div className="w-4 h-4 mr-2">{ICONS.plus}</div>
@@ -111,21 +116,21 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-lg">
-        <table className="min-w-full text-sm">
+        <table className={`min-w-full ${compact ? 'text-xs' : 'text-sm'}`}>
           <thead className="bg-slate-100 text-slate-700">
             <tr>
-              <th className="px-2 py-2 text-left font-semibold">Category</th>
-              <th className="px-2 py-2 text-left font-semibold">Item</th>
-              <th className="px-2 py-2 text-left font-semibold">Brand</th>
-              <th className="px-2 py-2 text-left font-semibold">Specification</th>
-              <th className="px-2 py-2 text-left font-semibold">Unit</th>
-              <th className="px-2 py-2 text-right font-semibold">Qty</th>
-              <th className="px-2 py-2 text-right font-semibold">Unit Rate</th>
-              <th className="px-2 py-2 text-right font-semibold">Last Rate</th>
-              <th className="px-2 py-2 text-right font-semibold">Market</th>
-              <th className="px-2 py-2 text-right font-semibold">Var %</th>
-              <th className="px-2 py-2 text-right font-semibold">Total</th>
-              <th className="px-2 py-2" />
+              <th className={`${headPad} text-left font-semibold`}>Category</th>
+              <th className={`${headPad} text-left font-semibold`}>Item</th>
+              <th className={`${headPad} text-left font-semibold`}>Brand</th>
+              <th className={`${headPad} text-left font-semibold`}>Spec</th>
+              <th className={`${headPad} text-left font-semibold`}>Unit</th>
+              <th className={`${headPad} text-right font-semibold`}>Qty</th>
+              <th className={`${headPad} text-right font-semibold`}>Rate</th>
+              <th className={`${headPad} text-right font-semibold`}>Last</th>
+              <th className={`${headPad} text-right font-semibold`}>Mkt</th>
+              <th className={`${headPad} text-right font-semibold`}>Var%</th>
+              <th className={`${headPad} text-right font-semibold`}>Total</th>
+              <th className={headPad} />
             </tr>
           </thead>
           <tbody>
@@ -134,7 +139,7 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
               const lineTotal = (item.quantity || 0) * (item.pricePerQuantity || 0);
               return (
                 <tr key={item.id} className="border-t border-slate-200 align-top">
-                  <td className="px-2 py-2 min-w-[140px]">
+                  <td className={`${cellPad} min-w-[120px]`}>
                     <ComboBox
                       id={`qi-cat-${item.id}`}
                       items={expenseCategories}
@@ -145,26 +150,26 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
                       onAddNew={(_t, name) => onAddNewCategory(name, (id) => void handleCategorySelect(item, id))}
                     />
                   </td>
-                  <td className="px-2 py-2 min-w-[120px]">
+                  <td className={`${cellPad} min-w-[100px]`}>
                     <Input
                       value={item.itemName || ''}
                       onChange={(e) => updateItem(item.id, { itemName: e.target.value })}
                       placeholder="Item name"
                     />
                   </td>
-                  <td className="px-2 py-2 min-w-[100px]">
+                  <td className={`${cellPad} min-w-[80px]`}>
                     <Input value={item.brand || ''} onChange={(e) => updateItem(item.id, { brand: e.target.value })} />
                   </td>
-                  <td className="px-2 py-2 min-w-[120px]">
+                  <td className={`${cellPad} min-w-[90px]`}>
                     <Input
                       value={item.specification || ''}
                       onChange={(e) => updateItem(item.id, { specification: e.target.value })}
                     />
                   </td>
-                  <td className="px-2 py-2 min-w-[80px]">
+                  <td className={`${cellPad} min-w-[60px]`}>
                     <Input value={item.unit || ''} onChange={(e) => updateItem(item.id, { unit: e.target.value })} />
                   </td>
-                  <td className="px-2 py-2 min-w-[70px]">
+                  <td className={`${cellPad} min-w-[60px]`}>
                     <Input
                       type="number"
                       value={String(item.quantity || 0)}
@@ -173,19 +178,19 @@ const QuotationItemGrid: React.FC<QuotationItemGridProps> = ({
                       step="0.01"
                     />
                   </td>
-                  <td className="px-2 py-2 min-w-[90px]">
+                  <td className={`${cellPad} min-w-[80px]`}>
                     <AmountInput
                       value={item.pricePerQuantity || 0}
                       onChange={(e) => handleUnitRateChange(item, parseFloat(e.target.value) || 0)}
                     />
                   </td>
-                  <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{fmt(item.previousRate)}</td>
-                  <td className="px-2 py-2 text-right text-slate-600 whitespace-nowrap">{fmt(item.marketRate)}</td>
-                  <td className={`px-2 py-2 text-right font-medium whitespace-nowrap ${severityClass[severity]}`}>
+                  <td className={`${cellPad} text-right text-slate-600 whitespace-nowrap`}>{fmt(item.previousRate)}</td>
+                  <td className={`${cellPad} text-right text-slate-600 whitespace-nowrap`}>{fmt(item.marketRate)}</td>
+                  <td className={`${cellPad} text-right font-medium whitespace-nowrap ${severityClass[severity]}`}>
                     {item.variancePercent != null ? `${item.variancePercent.toFixed(1)}%` : '—'}
                   </td>
-                  <td className="px-2 py-2 text-right font-semibold whitespace-nowrap">{fmt(lineTotal)}</td>
-                  <td className="px-2 py-2">
+                  <td className={`${cellPad} text-right font-semibold whitespace-nowrap`}>{fmt(lineTotal)}</td>
+                  <td className={cellPad}>
                     <button
                       type="button"
                       onClick={() => removeItem(item.id)}

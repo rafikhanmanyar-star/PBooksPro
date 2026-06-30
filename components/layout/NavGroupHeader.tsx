@@ -8,25 +8,22 @@ type NavGroupHeaderProps = {
   onToggle: () => void;
 };
 
-/** Collapsible group header in the main sidebar — label styling, chevron-only hover. */
+/** Collapsible group header in the main sidebar. */
 export default function NavGroupHeader({ title, expanded, onToggle }: NavGroupHeaderProps) {
   return (
     <button
       type="button"
       onClick={onToggle}
       aria-expanded={expanded}
-      className="w-full flex items-center justify-between px-3 py-1 group/header"
+      className="sidebar-group-header group/header"
     >
       <NavSectionLabel as="span" variant="header" tone="sidebar">
         {title}
       </NavSectionLabel>
-      <span
-        className="text-slate-600 group-hover/header:text-slate-500 transition-colors rounded p-0.5 shrink-0"
-        aria-hidden
-      >
+      <span className="sidebar-group-chevron" aria-hidden>
         {expanded
-          ? React.cloneElement(ICONS.chevronDown as React.ReactElement, { width: 14, height: 14 })
-          : React.cloneElement(ICONS.chevronRight as React.ReactElement, { width: 14, height: 14 })}
+          ? React.cloneElement(ICONS.chevronDown as React.ReactElement<{ width?: number; height?: number }>, { width: 14, height: 14 })
+          : React.cloneElement(ICONS.chevronRight as React.ReactElement<{ width?: number; height?: number }>, { width: 14, height: 14 })}
       </span>
     </button>
   );

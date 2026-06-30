@@ -947,11 +947,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
             if (a.type === 'DELETE_INVOICE' && typeof a.payload === 'string') {
                 const id = a.payload;
-                const version = prev.invoices.find((i) => i.id === id)?.version;
+                const inv = prev.invoices.find((i) => i.id === id);
+                const version = inv?.version;
+                const agreementId = inv?.agreementId;
                 baseDispatch(action);
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
-                    getAppStateApiService()
-                        .deleteInvoice(id, version)
+                    const api = getAppStateApiService();
+                    api.deleteInvoice(id, version)
+                        .then(async () => {
+                            if (agreementId) {
+                                const freshAgreement = await api.fetchProjectAgreement(agreementId);
+                                if (freshAgreement?.id) {
+                                    dispatch({
+                                        type: 'UPDATE_PROJECT_AGREEMENT',
+                                        payload: freshAgreement,
+                                        _isRemote: true,
+                                    } as AppAction);
+                                }
+                            }
+                        })
                         .catch((err) => {
                             logger.warnCategory('sync', '⚠️ Failed to delete invoice on API:', err);
                         });
@@ -1465,7 +1479,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                     getAppStateApiService()
                         .saveInstallmentPlan(plan)
                         .then((saved) => {
-                            if (saved && typeof saved.version === 'number') {
+                            if (saved?.id) {
                                 dispatch({
                                     type: 'UPDATE_INSTALLMENT_PLAN',
                                     payload: { ...plan, ...saved },
@@ -1479,7 +1493,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 });
             } else if (a.type === 'DELETE_INSTALLMENT_PLAN' && typeof a.payload === 'string') {
                 const id = a.payload;
-                const version = prev.installmentPlans?.find((x) => x.id === id)?.version;
+                const version = prev.installmentPlans?.find((x) => x.id === id)?.syncVersion;
                 void import('../services/api/appStateApi').then(({ getAppStateApiService }) => {
                     getAppStateApiService()
                         .deleteInstallmentPlan(id, version)
@@ -1649,6 +1663,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                 sessionStorage.removeItem('pbooks_api_last_sync_at');
             }
             dispatch({ type: 'SET_STATE', payload: initialState, _isRemote: true } as any);
+            dispatch({ type: 'SET_PAGE', payload: 'dashboard' });
             setStoredState(initialState);
             sessionRestoreRefreshDoneRef.current = false;
             didPostAuthApiMergeRef.current = false;
@@ -2503,9 +2518,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     _setAppState(state);
     _setAppDispatch(dispatch);
     _setInitialDataLoading(isInitialDataLoading);
-    useEffect(() => {
-        _notifyStateListeners();
-    });
 
     // PERFORMANCE: Memoize the context value to prevent cascading re-renders.
     // Without this, every render of AppProvider creates a new { state, dispatch } object,
