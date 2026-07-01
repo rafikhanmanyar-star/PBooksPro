@@ -109,4 +109,52 @@ import {
   assert.equal(report.validation.reconciled, true);
 }
 
+{
+  const entryId = 'je-investor';
+  const cashLines: CashFlowJournalLineInput[] = [
+    {
+      id: 'jl-in',
+      journalEntryId: entryId,
+      accountId: 'acc-bank',
+      debit: 1500000,
+      credit: 0,
+      entryDate: '2025-08-01',
+      accountName: 'Main Bank',
+      accountType: 'Bank',
+    },
+  ];
+  const siblings: CashFlowSiblingLineInput[] = [
+    {
+      id: 'jl-eq',
+      journalEntryId: entryId,
+      accountId: 'inv-eq-ahmad',
+      debit: 0,
+      credit: 1500000,
+      accountName: 'Ahmad — Equity',
+      accountType: 'Equity',
+    },
+    {
+      id: 'jl-in',
+      journalEntryId: entryId,
+      accountId: 'acc-bank',
+      debit: 1500000,
+      credit: 0,
+      accountName: 'Main Bank',
+      accountType: 'Bank',
+    },
+  ];
+  const report = buildCashFlowReportFromJournal({
+    from: '2025-08-01',
+    to: '2025-08-31',
+    cashLines,
+    siblingsByEntry: new Map([[entryId, siblings]]),
+    openingCash: 0,
+    closingCash: 1500000,
+  });
+  assert.equal(report.investing.total, 1500000);
+  assert.equal(report.financing.total, 0);
+  assert.equal(report.investing.items[0]?.label, 'Investing — owner equity and investor movements (journal)');
+  assert.equal(report.validation.reconciled, true);
+}
+
 console.log('cashFlowJournalCore.test.ts: OK');

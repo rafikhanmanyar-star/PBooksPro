@@ -64,77 +64,83 @@ const ReconciliationDashboard: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 p-4 sm:p-6">
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-semibold text-app-text">Financial Reconciliation Certification</h2>
-          <p className="text-sm text-app-muted mt-1">
-            Validates Trial Balance, General Ledger, Profit &amp; Loss, and Balance Sheet against journal-backed data.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-end gap-3">
+    <div className="flex flex-col h-full min-h-0">
+      <div className="shrink-0 space-y-4 p-4 sm:p-6 pb-4">
+        <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
           <div>
-            <label className="block text-xs font-medium text-app-muted mb-1">From</label>
-            <input
-              type="date"
-              className="ds-input-field rounded-lg px-3 py-2 text-sm"
-              value={from}
-              onChange={(e) => setPeriod((p) => ({ ...p, from: e.target.value }))}
-            />
+            <h2 className="text-xl font-semibold text-app-text">Financial Reconciliation Certification</h2>
+            <p className="text-sm text-app-muted mt-1">
+              Validates Trial Balance, General Ledger, Profit &amp; Loss, and Balance Sheet against journal-backed data.
+            </p>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-app-muted mb-1">To</label>
-            <input
-              type="date"
-              className="ds-input-field rounded-lg px-3 py-2 text-sm"
-              value={to}
-              onChange={(e) => setPeriod((p) => ({ ...p, to: e.target.value }))}
-            />
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-app-muted mb-1">From</label>
+              <input
+                type="date"
+                className="ds-input-field rounded-lg px-3 py-2 text-sm"
+                value={from}
+                onChange={(e) => setPeriod((p) => ({ ...p, from: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-app-muted mb-1">To</label>
+              <input
+                type="date"
+                className="ds-input-field rounded-lg px-3 py-2 text-sm"
+                value={to}
+                onChange={(e) => setPeriod((p) => ({ ...p, to: e.target.value }))}
+              />
+            </div>
+            <Button onClick={() => void load()} disabled={loading}>
+              {loading ? 'Certifying…' : 'Run certification'}
+            </Button>
           </div>
-          <Button onClick={() => void load()} disabled={loading}>
-            {loading ? 'Certifying…' : 'Run certification'}
-          </Button>
         </div>
+
+        {error && (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
+        )}
+
+        {loading && !data && (
+          <div className="flex justify-center py-16">
+            <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {data && (
+          <>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <div className={`rounded-xl border p-4 ${statusColor(data.overallStatus)}`}>
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Status</p>
+                <p className="text-lg font-bold mt-1 capitalize">{data.overallStatus}</p>
+              </div>
+              <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
+                <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Certification score</p>
+                <p className={`text-3xl font-bold mt-1 ${scoreColor(data.score)}`}>{data.score}</p>
+              </div>
+              <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
+                <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Missing journals</p>
+                <p className="text-3xl font-bold mt-1 text-app-text">{data.missingJournalCount}</p>
+                <p className="text-xs text-app-muted mt-1">
+                  {data.transactionCount} transactions · {data.journalEntryCount} journal entries
+                </p>
+              </div>
+              <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
+                <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Unified reports</p>
+                <p className="text-3xl font-bold mt-1 text-app-text">
+                  {unifiedCount}/{data.reportSources.length}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-app-muted">{data.summary}</p>
+          </>
+        )}
       </div>
 
-      {error && (
-        <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
-      )}
-
-      {loading && !data && (
-        <div className="flex justify-center py-16">
-          <div className="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
       {data && (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <div className={`rounded-xl border p-4 ${statusColor(data.overallStatus)}`}>
-              <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Status</p>
-              <p className="text-lg font-bold mt-1 capitalize">{data.overallStatus}</p>
-            </div>
-            <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
-              <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Certification score</p>
-              <p className={`text-3xl font-bold mt-1 ${scoreColor(data.score)}`}>{data.score}</p>
-            </div>
-            <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
-              <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Missing journals</p>
-              <p className="text-3xl font-bold mt-1 text-app-text">{data.missingJournalCount}</p>
-              <p className="text-xs text-app-muted mt-1">
-                {data.transactionCount} transactions · {data.journalEntryCount} journal entries
-              </p>
-            </div>
-            <div className="rounded-xl border border-app-border bg-app-card p-4 shadow-sm">
-              <p className="text-xs font-semibold text-app-muted uppercase tracking-wide">Unified reports</p>
-              <p className="text-3xl font-bold mt-1 text-app-text">
-                {unifiedCount}/{data.reportSources.length}
-              </p>
-            </div>
-          </div>
-
-          <p className="text-sm text-app-muted">{data.summary}</p>
-
+        <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 sm:px-6 pb-4 sm:pb-6 space-y-6 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-600">
           <section className="rounded-xl border border-app-border bg-app-card shadow-sm overflow-hidden">
             <div className="px-5 py-4 border-b border-app-border">
               <h3 className="font-semibold text-app-text">Reconciliation checks</h3>
@@ -264,7 +270,7 @@ const ReconciliationDashboard: React.FC = () => {
               <div>Net profit: <strong>{data.reconciliation.netProfit.toFixed(2)}</strong></div>
             </div>
           </section>
-        </>
+        </div>
       )}
     </div>
   );

@@ -104,14 +104,23 @@ function isCashAccountType(t: string): boolean {
   return u === 'bank' || u === 'cash';
 }
 
+/** User investor equity accounts (investment management) — excludes system chart equity (retained earnings, etc.). */
+function isInvestorEquityLine(l: CashFlowSiblingLineInput): boolean {
+  if (String(l.accountType).toLowerCase() !== 'equity') return false;
+  return !String(l.accountId ?? '').startsWith('sys-acc-');
+}
+
 function classifyFromSiblings(siblings: CashFlowSiblingLineInput[]): { section: CashflowSection; label: string } {
   const nonCash = siblings.filter((l) => !isCashAccountType(l.accountType));
   if (nonCash.length === 0) {
     return { section: 'operating', label: 'Other operating cash flows (journal)' };
   }
   const tLower = (s: string) => s.toLowerCase();
+  if (nonCash.some(isInvestorEquityLine)) {
+    return { section: 'investing', label: 'Investing — owner equity and investor movements (journal)' };
+  }
   if (nonCash.some((l) => tLower(l.accountType) === 'equity')) {
-    return { section: 'financing', label: 'Financing — equity and investor movements (journal)' };
+    return { section: 'financing', label: 'Financing — equity movements (journal)' };
   }
   if (nonCash.some((l) => tLower(l.accountType) === 'liability')) {
     const loanish = nonCash.some((l) => /loan|borrowing|term|facility|note payable|credit line/i.test(l.accountName));
