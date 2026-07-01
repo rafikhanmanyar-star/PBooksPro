@@ -124,7 +124,8 @@ export async function updateContact(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
-  body: Record<string, unknown>
+  body: Record<string, unknown>,
+  actorUserId: string | null
 ): Promise<{ row: ContactRow | null; conflict: boolean }> {
   const p = pickBody(body);
   const expectedVersion = p.version;
@@ -153,7 +154,7 @@ export async function updateContact(
     }
     await recordDomainMutation(client, {
       tenantId,
-      userId: row.user_id,
+      userId: actorUserId,
       module: 'contacts',
       entityType: 'contact',
       entityId: row.id,
@@ -176,7 +177,7 @@ export async function updateContact(
   if (row) {
     await recordDomainMutation(client, {
       tenantId,
-      userId: row.user_id,
+      userId: actorUserId,
       module: 'contacts',
       entityType: 'contact',
       entityId: row.id,
@@ -193,6 +194,7 @@ export async function softDeleteContact(
   client: pg.PoolClient,
   tenantId: string,
   id: string,
+  actorUserId: string | null,
   expectedVersion?: number
 ): Promise<{ ok: boolean; conflict: boolean }> {
   const before = await getContactById(client, tenantId, id);
@@ -213,7 +215,7 @@ export async function softDeleteContact(
     if (!row) return { ok: false, conflict: false };
     await recordDomainMutation(client, {
       tenantId,
-      userId: row.user_id,
+      userId: actorUserId,
       module: 'contacts',
       entityType: 'contact',
       entityId: row.id,
@@ -228,7 +230,7 @@ export async function softDeleteContact(
   if (ok && row) {
     await recordDomainMutation(client, {
       tenantId,
-      userId: row.user_id,
+      userId: actorUserId,
       module: 'contacts',
       entityType: 'contact',
       entityId: row.id,

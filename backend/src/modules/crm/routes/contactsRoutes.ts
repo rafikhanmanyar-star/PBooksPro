@@ -88,7 +88,7 @@ contactsRouter.put('/contacts/:id', async (req: AuthedRequest, res) => {
   const { id } = req.params;
   try {
     const result = await withTransaction((client) =>
-      updateContact(client, tenantId, id, req.body as Record<string, unknown>)
+      updateContact(client, tenantId, id, req.body as Record<string, unknown>, req.userId ?? null)
     );
     if (result.conflict) {
       await respondVersionConflict(res, async () => {
@@ -128,7 +128,13 @@ contactsRouter.delete('/contacts/:id', async (req: AuthedRequest, res) => {
 
   try {
     const result = await withTransaction((client) =>
-      softDeleteContact(client, tenantId, id, Number.isFinite(expectedVersion) ? expectedVersion : undefined)
+      softDeleteContact(
+        client,
+        tenantId,
+        id,
+        req.userId ?? null,
+        Number.isFinite(expectedVersion) ? expectedVersion : undefined
+      )
     );
     if (result.conflict) {
       await respondVersionConflict(res, async () => {
